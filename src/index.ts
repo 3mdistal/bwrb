@@ -1,0 +1,20 @@
+#!/usr/bin/env node
+
+import { Command } from 'commander';
+import { newCommand } from './commands/new.js';
+import { editCommand } from './commands/edit.js';
+import { listCommand } from './commands/list.js';
+
+const program = new Command();
+
+program
+  .name('ovault')
+  .description('Schema-driven template creation and editing for Obsidian vaults')
+  .version('2.0.0')
+  .option('-v, --vault <path>', 'Path to the vault directory');
+
+program.addCommand(newCommand);
+program.addCommand(editCommand);
+program.addCommand(listCommand);
+
+program.parse();

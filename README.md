@@ -4,32 +4,39 @@ Schema-driven template creation and editing for Obsidian vaults.
 
 ## Overview
 
-`ovault` is a standalone zsh tool that creates and edits Obsidian markdown files based on a hierarchical type schema. It supports:
+`ovault` is a CLI tool that creates and edits Obsidian markdown files based on a hierarchical type schema. It supports:
 
 - Interactive type selection with subtype navigation
 - Dynamic frontmatter prompts (enums, text input, vault queries)
 - Configurable body sections with various content types
 - Edit mode for updating existing files
+- List and filter notes by type and frontmatter fields
 - Works with any vault via the `--vault` flag
 
 ## Prerequisites
 
-- **zsh** (default on macOS)
-- **jq** - JSON processor for parsing schema files
-  ```sh
-  brew install jq
-  ```
+- **Node.js** >= 18
+
+## Installation
+
+### From source (development)
+
+```sh
+cd ~/Developer/ovault
+pnpm install
+pnpm build
+pnpm link --global  # Makes 'ovault' available globally
+```
+
+### Development mode
+
+```sh
+pnpm dev -- new idea  # Run without building
+```
 
 ## Setup
 
-1. Clone or copy this repo to a location like `~/Developer/ovault`
-
-2. Add an alias to your `.zshrc`:
-   ```sh
-   alias ovault='~/Developer/ovault/ovault.sh'
-   ```
-
-3. Create a `.ovault/schema.json` in each vault you want to use with ovault.
+Create a `.ovault/schema.json` in each vault you want to use with ovault.
 
 ## Usage
 
@@ -254,19 +261,27 @@ The schema structure is defined by `schema.schema.json` (JSON Schema draft-07). 
 **ovault repo:**
 ```
 ovault/
-├── ovault.sh           # Main entrypoint (subcommands: new, edit, help)
-├── lib/                # Shared library modules
-│   ├── common.sh       # Colors, prompts, dependency checks
-│   ├── schema.sh       # Schema parsing and type navigation
-│   ├── query.sh        # Dynamic source queries and value formatting
-│   └── body.sh         # Body section generation
-├── schema.schema.json  # JSON Schema for validating vault schemas
-├── validate_schema.sh  # Schema validator
-├── README.md           # This file
-└── tests/              # Test suite
-    ├── test_runner.sh  # Test harness
-    ├── test_new.sh     # Test cases
-    └── fixtures/       # Test data
+├── src/
+│   ├── index.ts              # CLI entry point
+│   ├── commands/
+│   │   ├── new.ts            # Create new notes
+│   │   ├── edit.ts           # Edit existing notes
+│   │   └── list.ts           # List and filter notes
+│   ├── lib/
+│   │   ├── schema.ts         # Schema loading & validation
+│   │   ├── frontmatter.ts    # Frontmatter parsing & writing
+│   │   ├── query.ts          # Filter parsing & evaluation
+│   │   ├── vault.ts          # Vault operations
+│   │   └── prompt.ts         # Interactive prompts
+│   └── types/
+│       └── schema.ts         # Zod schema definitions
+├── tests/
+│   └── ts/                   # TypeScript test suite
+├── package.json
+├── tsconfig.json
+├── vitest.config.ts
+├── schema.schema.json        # JSON Schema for validating vault schemas
+└── README.md
 ```
 
 **Each vault:**
@@ -279,5 +294,7 @@ my-vault/
 ## Running Tests
 
 ```sh
-./tests/test_runner.sh
+pnpm test              # Run tests
+pnpm test:coverage     # Run with coverage report
+pnpm typecheck         # Type checking
 ```
