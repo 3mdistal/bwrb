@@ -24,7 +24,8 @@ import type { Schema, Field, BodySection } from '../types/schema.js';
 export const editCommand = new Command('edit')
   .description('Edit an existing note\'s frontmatter')
   .argument('<file>', 'Path to the file to edit')
-  .action(async (filePath: string, _options: unknown, cmd: Command) => {
+  .option('--open', 'Open the note in Obsidian after editing')
+  .action(async (filePath: string, options: { open?: boolean }, cmd: Command) => {
     try {
       const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
       const vaultDir = resolveVaultDir(parentOpts ?? {});
@@ -39,6 +40,12 @@ export const editCommand = new Command('edit')
       }
 
       await editNote(schema, vaultDir, resolvedPath);
+
+      // Open in Obsidian if requested
+      if (options.open) {
+        const { openInObsidian } = await import('./open.js');
+        await openInObsidian(vaultDir, resolvedPath);
+      }
     } catch (err) {
       printError(err instanceof Error ? err.message : String(err));
       process.exit(1);

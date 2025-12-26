@@ -10,6 +10,7 @@ import {
   discriminatorName,
   getFieldsForType,
   getFrontmatterOrder,
+  getOrderedFieldNames,
   resolveTypePathFromFrontmatter,
   getAllFieldsForType,
   getEnumForField,
@@ -138,6 +139,28 @@ describe('schema', () => {
       expect(fields).toHaveProperty('status');
       expect(fields).toHaveProperty('milestone');
     });
+
+    it('should only include shared fields that type opts into', () => {
+      // idea opts into status but not tags
+      const ideaFields = getFieldsForType(schema, 'idea');
+      expect(ideaFields).toHaveProperty('status');
+      expect(ideaFields).not.toHaveProperty('tags');
+
+      // task opts into both status and tags
+      const taskFields = getFieldsForType(schema, 'objective/task');
+      expect(taskFields).toHaveProperty('status');
+      expect(taskFields).toHaveProperty('tags');
+    });
+
+    it('should apply field_overrides to shared fields', () => {
+      // task overrides status default from 'raw' to 'backlog'
+      const taskFields = getFieldsForType(schema, 'objective/task');
+      expect(taskFields.status?.default).toBe('backlog');
+
+      // idea uses shared field default 'raw'
+      const ideaFields = getFieldsForType(schema, 'idea');
+      expect(ideaFields.status?.default).toBe('raw');
+    });
   });
 
   describe('getFrontmatterOrder', () => {
@@ -146,6 +169,37 @@ describe('schema', () => {
       expect(typeDef).toBeDefined();
       const order = getFrontmatterOrder(typeDef!);
       expect(order).toEqual(['type', 'status', 'priority']);
+    });
+  });
+
+  describe('getOrderedFieldNames', () => {
+    it('should use frontmatter_order if defined', () => {
+      const typeDef = getTypeDefByPath(schema, 'objective/task');
+      expect(typeDef).toBeDefined();
+      const order = getOrderedFieldNames(schema, 'objective/task', typeDef!);
+      expect(order).toEqual(['type', 'objective-type', 'status', 'milestone', 'creation-date', 'deadline', 'tags']);
+    });
+
+    it('should put shared fields first when no explicit order', () => {
+      // Create a type def without frontmatter_order for testing
+      const mockTypeDef = {
+        output_dir: 'Test',
+        shared_fields: ['status', 'tags'],
+        frontmatter: {
+          type: { value: 'test' },
+          custom: { prompt: 'input' as const },
+        },
+      };
+      const mockSchema = {
+        ...schema,
+        types: { ...schema.types, test: mockTypeDef },
+      };
+      const order = getOrderedFieldNames(mockSchema, 'test', mockTypeDef);
+      // Shared fields first, then type-specific
+      expect(order[0]).toBe('status');
+      expect(order[1]).toBe('tags');
+      expect(order).toContain('type');
+      expect(order).toContain('custom');
     });
   });
 

@@ -4,6 +4,8 @@ import { Command } from 'commander';
 import { newCommand } from './commands/new.js';
 import { editCommand } from './commands/edit.js';
 import { listCommand } from './commands/list.js';
+import { openCommand } from './commands/open.js';
+import { schemaCommand } from './commands/schema.js';
 
 const program = new Command();
 
@@ -16,5 +18,7 @@ program
 program.addCommand(newCommand);
 program.addCommand(editCommand);
 program.addCommand(listCommand);
+program.addCommand(openCommand);
+program.addCommand(schemaCommand);
 
 program.parse();

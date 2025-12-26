@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { join, basename, relative } from 'path';
+import { join, basename, relative, dirname } from 'path';
+import { stat } from 'fs/promises';
 import Table from 'cli-table3';
 import {
   loadSchema,
@@ -11,13 +12,19 @@ import {
 import { parseNote } from '../lib/frontmatter.js';
 import { resolveVaultDir, listFilesInDir, getOutputDir } from '../lib/vault.js';
 import { parseFilters, matchesAllFilters, validateFilters } from '../lib/query.js';
+import { matchesExpression, type EvalContext } from '../lib/expression.js';
 import { printError } from '../lib/prompt.js';
 import type { Schema } from '../types/schema.js';
 
 export const listCommand = new Command('list')
   .description(`List notes of a given type
 
-Filters:
+Expression Filters (--where):
+  ovault list task --where "status == 'in-progress'"
+  ovault list task --where "priority < 3 && !isEmpty(deadline)"
+  ovault list task --where "deadline < today() + '7d'"
+
+Simple Filters:
   --field=value        Include where field equals value
   --field=a,b          Include where field equals a OR b
   --field!=value       Exclude where field equals value
@@ -27,12 +34,14 @@ Filters:
 Examples:
   ovault list idea --status=raw
   ovault list objective/task --status!=settled
-  ovault list idea --fields=status,priority`)
+  ovault list idea --fields=status,priority
+  ovault list task --where "status == 'done' && !isEmpty(tags)"`)
   .argument('[type]', 'Type path (e.g., idea, objective/task)')
   .option('--paths', 'Show file paths instead of names')
   .option('--fields <fields>', 'Show frontmatter fields in a table (comma-separated)')
+  .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
   .allowUnknownOption(true)
-  .action(async (typePath: string | undefined, options: { paths?: boolean; fields?: string }, cmd: Command) => {
+  .action(async (typePath: string | undefined, options: { paths?: boolean; fields?: string; where?: string[] }, cmd: Command) => {
     try {
       const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
       const vaultDir = resolveVaultDir(parentOpts ?? {});
@@ -69,6 +78,7 @@ Examples:
         showPaths: options.paths ?? false,
         fields: options.fields?.split(',').map(f => f.trim()),
         filters,
+        whereExpressions: options.where ?? [],
       });
     } catch (err) {
       printError(err instanceof Error ? err.message : String(err));
@@ -80,6 +90,7 @@ interface ListOptions {
   showPaths: boolean;
   fields?: string[];
   filters: { field: string; operator: 'eq' | 'neq'; values: string[] }[];
+  whereExpressions: string[];
 }
 
 /**
@@ -91,8 +102,15 @@ function showListUsage(schema: Schema): void {
   console.log('Options:');
   console.log('  --paths              Show file paths instead of names');
   console.log('  --fields=f1,f2,...   Show frontmatter fields in a table');
+  console.log('  --where "expr"       Filter with expression (can be repeated)');
   console.log('');
-  console.log('Filters:');
+  console.log('Expression examples:');
+  console.log('  --where "status == \'done\'"');
+  console.log('  --where "priority < 3 && !isEmpty(deadline)"');
+  console.log('  --where "deadline < today() + \'7d\'"');
+  console.log('  --where "contains(tags, \'urgent\')"');
+  console.log('');
+  console.log('Simple Filters:');
   console.log('  --field=value        Include items where field equals value');
   console.log('  --field=val1,val2    Include items where field equals any value (OR)');
   console.log('  --field!=value       Exclude items where field equals value');
@@ -122,9 +140,27 @@ async function listObjects(
   for (const file of files) {
     try {
       const { frontmatter } = await parseNote(file);
-      if (matchesAllFilters(frontmatter, options.filters)) {
-        filteredFiles.push({ path: file, frontmatter });
+
+      // Apply simple filters
+      if (!matchesAllFilters(frontmatter, options.filters)) {
+        continue;
       }
+
+      // Apply expression filters
+      if (options.whereExpressions.length > 0) {
+        const context = await buildEvalContext(file, vaultDir, frontmatter);
+        const allMatch = options.whereExpressions.every(expr => {
+          try {
+            return matchesExpression(expr, context);
+          } catch (e) {
+            printError(`Expression error in "${expr}": ${(e as Error).message}`);
+            return false;
+          }
+        });
+        if (!allMatch) continue;
+      }
+
+      filteredFiles.push({ path: file, frontmatter });
     } catch {
       // Skip files that can't be parsed
     }
@@ -224,4 +260,42 @@ function formatValue(value: unknown): string {
     return value.join(', ');
   }
   return String(value);
+}
+
+/**
+ * Build evaluation context for expression filtering.
+ */
+async function buildEvalContext(
+  filePath: string,
+  vaultDir: string,
+  frontmatter: Record<string, unknown>
+): Promise<EvalContext> {
+  const relativePath = relative(vaultDir, filePath);
+  const fileName = basename(filePath, '.md');
+  const folder = dirname(relativePath);
+
+  let fileInfo: EvalContext['file'] = {
+    name: fileName,
+    path: relativePath,
+    folder,
+    ext: '.md',
+  };
+
+  // Try to get file stats
+  try {
+    const stats = await stat(filePath);
+    fileInfo = {
+      ...fileInfo,
+      size: stats.size,
+      ctime: stats.birthtime,
+      mtime: stats.mtime,
+    };
+  } catch {
+    // Ignore stat errors
+  }
+
+  return {
+    frontmatter,
+    file: fileInfo,
+  };
 }
