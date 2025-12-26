@@ -39,12 +39,21 @@ export const DynamicSourceSchema = z.object({
   filter: z.record(FilterConditionSchema).optional(),
 });
 
+// Field override definition (for overriding shared field properties)
+export const FieldOverrideSchema = z.object({
+  default: z.union([z.string(), z.array(z.string())]).optional(),
+  required: z.boolean().optional(),
+  label: z.string().optional(),
+});
+
 // Subtype definition (recursive via Type)
 export const SubtypeSchema: z.ZodType<Subtype> = z.lazy(() =>
   z.object({
     output_dir: z.string().optional(),
     filename: z.string().optional(),
     name_field: z.string().optional(),
+    shared_fields: z.array(z.string()).optional(), // Opt-in to shared fields
+    field_overrides: z.record(FieldOverrideSchema).optional(), // Override shared field properties
     frontmatter: z.record(FieldSchema).optional(),
     frontmatter_order: z.array(z.string()).optional(),
     body_sections: z.array(BodySectionSchema).optional(),
@@ -57,6 +66,8 @@ export const TypeSchema = z.object({
   output_dir: z.string().optional(), // Optional for parent types with subtypes
   dir_mode: z.enum(['pooled', 'instance-grouped']).optional().default('pooled'),
   name_field: z.string().optional(),
+  shared_fields: z.array(z.string()).optional(), // Opt-in to shared fields
+  field_overrides: z.record(FieldOverrideSchema).optional(), // Override shared field properties
   frontmatter: z.record(FieldSchema).optional(),
   frontmatter_order: z.array(z.string()).optional(),
   body_sections: z.array(BodySectionSchema).optional(),
@@ -74,6 +85,7 @@ export const OvaultSchema = z.object({
 
 // Inferred types
 export type Field = z.infer<typeof FieldSchema>;
+export type FieldOverride = z.infer<typeof FieldOverrideSchema>;
 export type BodySection = {
   title: string;
   level?: number;
@@ -88,6 +100,8 @@ export type Subtype = {
   output_dir?: string;
   filename?: string;
   name_field?: string;
+  shared_fields?: string[];
+  field_overrides?: Record<string, FieldOverride>;
   frontmatter?: Record<string, Field>;
   frontmatter_order?: string[];
   body_sections?: BodySection[];

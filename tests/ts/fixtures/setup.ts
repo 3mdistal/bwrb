@@ -3,7 +3,20 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 
 export const TEST_SCHEMA = {
-  version: 1,
+  version: 2,
+  shared_fields: {
+    status: {
+      prompt: 'select',
+      enum: 'status',
+      default: 'raw',
+      required: true,
+    },
+    tags: {
+      prompt: 'multi-input',
+      list_format: 'yaml-array',
+      default: [],
+    },
+  },
   enums: {
     status: ['raw', 'backlog', 'in-flight', 'settled'],
     priority: ['low', 'medium', 'high'],
@@ -23,15 +36,18 @@ export const TEST_SCHEMA = {
         task: {
           output_dir: 'Objectives/Tasks',
           name_field: 'Task name',
+          shared_fields: ['status', 'tags'],
+          field_overrides: {
+            status: { default: 'backlog' },
+          },
           frontmatter: {
             type: { value: 'objective' },
             'objective-type': { value: 'task' },
-            status: { prompt: 'select', enum: 'status', default: 'raw' },
             milestone: { prompt: 'dynamic', source: 'active_milestones', format: 'quoted-wikilink' },
             'creation-date': { value: '$NOW' },
             deadline: { prompt: 'input', label: 'Deadline (YYYY-MM-DD)' },
           },
-          frontmatter_order: ['type', 'objective-type', 'status', 'milestone', 'creation-date', 'deadline'],
+          frontmatter_order: ['type', 'objective-type', 'status', 'milestone', 'creation-date', 'deadline', 'tags'],
           body_sections: [
             { title: 'Steps', level: 2, content_type: 'checkboxes', prompt: 'multi-input', prompt_label: 'Steps' },
             { title: 'Notes', level: 2, content_type: 'paragraphs' },
@@ -40,10 +56,10 @@ export const TEST_SCHEMA = {
         milestone: {
           output_dir: 'Objectives/Milestones',
           name_field: 'Milestone name',
+          shared_fields: ['status'],
           frontmatter: {
             type: { value: 'objective' },
             'objective-type': { value: 'milestone' },
-            status: { prompt: 'select', enum: 'status', default: 'raw' },
           },
           frontmatter_order: ['type', 'objective-type', 'status'],
         },
@@ -52,9 +68,9 @@ export const TEST_SCHEMA = {
     idea: {
       output_dir: 'Ideas',
       name_field: 'Idea name',
+      shared_fields: ['status'],
       frontmatter: {
         type: { value: 'idea' },
-        status: { prompt: 'select', enum: 'status', default: 'raw' },
         priority: { prompt: 'select', enum: 'priority' },
       },
       frontmatter_order: ['type', 'status', 'priority'],

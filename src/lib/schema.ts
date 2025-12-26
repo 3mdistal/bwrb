@@ -1,6 +1,6 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { OvaultSchema, type Schema, type TypeDef, type Field, type Subtype } from '../types/schema.js';
+import { OvaultSchema, type Schema, type TypeDef, type Field, type FieldOverride, type Subtype } from '../types/schema.js';
 
 const SCHEMA_PATH = '.ovault/schema.json';
 
@@ -80,8 +80,12 @@ export function discriminatorName(parentName: string | undefined): string {
 }
 
 /**
- * Get all frontmatter fields for a type, including inherited fields from parent types.
- * Walks up from the leaf type collecting fields.
+ * Get all frontmatter fields for a type, using opt-in shared fields model.
+ * 
+ * Order of resolution:
+ * 1. Collect shared fields that the leaf type opts into (via shared_fields array)
+ * 2. Apply field_overrides from the leaf type
+ * 3. Add type-specific frontmatter fields from the type hierarchy
  */
 export function getFieldsForType(
   schema: Schema,
@@ -90,13 +94,40 @@ export function getFieldsForType(
   const segments = parseTypePath(typePath);
   const fields: Record<string, Field> = {};
 
-  // Start with shared fields
-  if (schema.shared_fields) {
-    Object.assign(fields, schema.shared_fields);
+  // Find the leaf type definition
+  let leafType: TypeDef | undefined;
+  let current: TypeDef | undefined;
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    if (i === 0) {
+      current = segment ? schema.types[segment] : undefined;
+    } else if (current?.subtypes && segment) {
+      current = current.subtypes[segment];
+    }
+    leafType = current;
   }
 
-  // Walk through the type path, collecting fields
-  let current: TypeDef | undefined;
+  // 1. Add shared fields that the leaf type opts into
+  const sharedFieldNames = getSharedFieldNames(leafType);
+  if (schema.shared_fields && sharedFieldNames.length > 0) {
+    for (const fieldName of sharedFieldNames) {
+      const sharedField = schema.shared_fields[fieldName];
+      if (sharedField) {
+        fields[fieldName] = { ...sharedField };
+      }
+    }
+  }
+
+  // 2. Apply field_overrides from the leaf type
+  const overrides = getFieldOverrides(leafType);
+  for (const [fieldName, override] of Object.entries(overrides)) {
+    if (fields[fieldName]) {
+      fields[fieldName] = applyFieldOverride(fields[fieldName], override);
+    }
+  }
+
+  // 3. Add type-specific frontmatter fields from the hierarchy
+  current = undefined;
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
     if (i === 0) {
@@ -114,6 +145,36 @@ export function getFieldsForType(
 }
 
 /**
+ * Get the shared field names a type opts into.
+ */
+function getSharedFieldNames(typeDef: TypeDef | undefined): string[] {
+  if (!typeDef) return [];
+  // TypeDef could be Type or Subtype, both now have shared_fields
+  return (typeDef as { shared_fields?: string[] }).shared_fields ?? [];
+}
+
+/**
+ * Get field overrides for a type.
+ */
+function getFieldOverrides(typeDef: TypeDef | undefined): Record<string, FieldOverride> {
+  if (!typeDef) return {};
+  return (typeDef as { field_overrides?: Record<string, FieldOverride> }).field_overrides ?? {};
+}
+
+/**
+ * Apply a field override to a shared field.
+ * Only default, required, and label can be overridden.
+ */
+function applyFieldOverride(field: Field, override: FieldOverride): Field {
+  return {
+    ...field,
+    ...(override.default !== undefined && { default: override.default }),
+    ...(override.required !== undefined && { required: override.required }),
+    ...(override.label !== undefined && { label: override.label }),
+  };
+}
+
+/**
  * Get frontmatter field order for a type.
  * Uses explicit order if defined, otherwise returns field keys.
  */
@@ -122,6 +183,34 @@ export function getFrontmatterOrder(typeDef: TypeDef): string[] {
     return typeDef.frontmatter_order;
   }
   return typeDef.frontmatter ? Object.keys(typeDef.frontmatter) : [];
+}
+
+/**
+ * Get ordered field names for a type.
+ * If frontmatter_order is defined, uses that.
+ * Otherwise: shared fields first (in opt-in order), then type-specific fields.
+ */
+export function getOrderedFieldNames(
+  schema: Schema,
+  typePath: string,
+  typeDef: TypeDef
+): string[] {
+  // If explicit order is defined, use it
+  if (typeDef.frontmatter_order && typeDef.frontmatter_order.length > 0) {
+    return typeDef.frontmatter_order;
+  }
+
+  const fields = getFieldsForType(schema, typePath);
+  const allFieldNames = Object.keys(fields);
+
+  // Get shared field names in opt-in order
+  const sharedFieldNames = getSharedFieldNames(typeDef);
+  const sharedInOrder = sharedFieldNames.filter(f => allFieldNames.includes(f));
+
+  // Get type-specific fields (everything not in shared)
+  const typeSpecific = allFieldNames.filter(f => !sharedFieldNames.includes(f));
+
+  return [...sharedInOrder, ...typeSpecific];
 }
 
 /**

@@ -13,7 +13,21 @@ import {
   getEnumValues,
 } from '../lib/schema.js';
 import { writeNote, generateBodyWithContent } from '../lib/frontmatter.js';
-import { resolveVaultDir, queryDynamicSource, formatValue } from '../lib/vault.js';
+import {
+  resolveVaultDir,
+  queryDynamicSource,
+  formatValue,
+  getDirMode,
+  isInstanceGroupedSubtype,
+  getParentTypeName,
+  listInstanceFolders,
+  getInstanceFolderPath,
+  getParentNotePath,
+  createInstanceFolder,
+  generateFilename,
+  getFilenamePattern,
+  getOutputDir,
+} from '../lib/vault.js';
 import {
   promptSelection,
   promptInput,
@@ -28,9 +42,19 @@ import {
 import type { Schema, TypeDef, Field, BodySection } from '../types/schema.js';
 
 export const newCommand = new Command('new')
-  .description('Create a new note')
+  .description('Create a new note (interactive type navigation if type omitted)')
   .argument('[type]', 'Type of note to create (e.g., idea, objective/task)')
-  .action(async (typePath: string | undefined, _options: unknown, cmd: Command) => {
+  .option('--open', 'Open the note in Obsidian after creation')
+  .addHelpText('after', `
+Examples:
+  ovault new                    # Interactive type selection
+  ovault new idea               # Create an idea
+  ovault new objective/task     # Create a task
+  ovault new draft --open       # Create and open in Obsidian
+
+For instance-grouped types (like drafts), you'll be prompted to select
+or create a parent instance folder.`)
+  .action(async (typePath: string | undefined, options: { open?: boolean }, cmd: Command) => {
     try {
       const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
       const vaultDir = resolveVaultDir(parentOpts ?? {});
@@ -49,7 +73,13 @@ export const newCommand = new Command('new')
         process.exit(1);
       }
 
-      await createNote(schema, vaultDir, resolvedPath, typeDef);
+      const filePath = await createNote(schema, vaultDir, resolvedPath, typeDef);
+
+      // Open in Obsidian if requested
+      if (options.open && filePath) {
+        const { openInObsidian } = await import('./open.js');
+        await openInObsidian(vaultDir, filePath);
+      }
     } catch (err) {
       printError(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -96,18 +126,44 @@ async function resolveTypePath(
 
 /**
  * Create a new note with the given type.
+ * Returns the file path of the created note.
  */
 async function createNote(
   schema: Schema,
   vaultDir: string,
   typePath: string,
   typeDef: TypeDef
-): Promise<void> {
+): Promise<string> {
   const segments = typePath.split('/');
   const typeName = segments[0] ?? typePath;
+  const dirMode = getDirMode(schema, typePath);
+  const isSubtype = isInstanceGroupedSubtype(schema, typePath);
 
   printInfo(`\n=== New ${typeName} ===`);
 
+  // Handle instance-grouped subtypes differently
+  if (dirMode === 'instance-grouped' && isSubtype) {
+    return await createInstanceGroupedNote(schema, vaultDir, typePath, typeDef);
+  }
+
+  // Handle instance-grouped parent types (creating new instance)
+  if (dirMode === 'instance-grouped' && segments.length === 1) {
+    return await createInstanceParent(schema, vaultDir, typePath, typeDef);
+  }
+
+  // Standard pooled mode
+  return await createPooledNote(schema, vaultDir, typePath, typeDef);
+}
+
+/**
+ * Create a note in pooled mode (standard flat directory).
+ */
+async function createPooledNote(
+  schema: Schema,
+  vaultDir: string,
+  typePath: string,
+  typeDef: TypeDef
+): Promise<string> {
   // Get output directory
   const outputDir = getOutputDirForType(schema, typePath);
   if (!outputDir) {
@@ -120,31 +176,8 @@ async function createNote(
   const nameField = typeDef.name_field ?? 'Name';
   const itemName = await promptRequired(nameField);
 
-  // Build frontmatter
-  const frontmatter: Record<string, unknown> = {};
-  const fields = getFieldsForType(schema, typePath);
-  const fieldOrder = getFrontmatterOrder(typeDef);
-
-  // Determine actual field order (use explicit order, or all field keys)
-  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(fields);
-
-  for (const fieldName of orderedFields) {
-    const field = fields[fieldName];
-    if (!field) continue;
-
-    const value = await promptField(schema, vaultDir, fieldName, field);
-    if (value !== undefined && value !== '') {
-      frontmatter[fieldName] = value;
-    }
-  }
-
-  // Build body sections
-  let body = '';
-  const bodySections = typeDef.body_sections;
-  if (bodySections && bodySections.length > 0) {
-    const sectionContent = await promptBodySections(bodySections);
-    body = generateBodyWithContent(bodySections, sectionContent);
-  }
+  // Build frontmatter and body
+  const { frontmatter, body, orderedFields } = await buildNoteContent(schema, vaultDir, typePath, typeDef);
 
   // Create file
   const filePath = join(fullOutputDir, `${itemName}.md`);
@@ -160,6 +193,166 @@ async function createNote(
 
   await writeNote(filePath, frontmatter, body, orderedFields);
   printSuccess(`\n✓ Created: ${filePath}`);
+  return filePath;
+}
+
+/**
+ * Create the parent/index note for an instance-grouped type.
+ */
+async function createInstanceParent(
+  schema: Schema,
+  vaultDir: string,
+  typePath: string,
+  typeDef: TypeDef
+): Promise<string> {
+  // Get output directory (e.g., "Drafts")
+  const outputDir = getOutputDir(schema, typePath);
+  if (!outputDir) {
+    printError(`No output_dir defined for type: ${typePath}`);
+    process.exit(1);
+  }
+
+  // Prompt for instance name
+  const nameField = typeDef.name_field ?? 'Name';
+  const instanceName = await promptRequired(nameField);
+
+  // Create instance folder
+  await createInstanceFolder(vaultDir, outputDir, instanceName);
+
+  // Build frontmatter and body
+  const { frontmatter, body, orderedFields } = await buildNoteContent(schema, vaultDir, typePath, typeDef);
+
+  // Create parent note (e.g., "Drafts/My Project/My Project.md")
+  const filePath = getParentNotePath(vaultDir, outputDir, instanceName);
+
+  if (existsSync(filePath)) {
+    printWarning(`\nWarning: Instance already exists: ${filePath}`);
+    const overwrite = await promptConfirm('Overwrite parent note?');
+    if (!overwrite) {
+      console.log('Aborted.');
+      process.exit(1);
+    }
+  }
+
+  await writeNote(filePath, frontmatter, body, orderedFields);
+  printSuccess(`\n✓ Created instance: ${instanceName}`);
+  printSuccess(`  Parent note: ${filePath}`);
+  return filePath;
+}
+
+/**
+ * Create a note for a subtype within an instance-grouped parent.
+ */
+async function createInstanceGroupedNote(
+  schema: Schema,
+  vaultDir: string,
+  typePath: string,
+  typeDef: TypeDef
+): Promise<string> {
+  const parentTypeName = getParentTypeName(schema, typePath);
+  if (!parentTypeName) {
+    printError('Could not determine parent type');
+    process.exit(1);
+  }
+
+  // Get parent type's output directory
+  const parentOutputDir = getOutputDir(schema, parentTypeName);
+  if (!parentOutputDir) {
+    printError(`No output_dir defined for parent type: ${parentTypeName}`);
+    process.exit(1);
+  }
+
+  // List existing instances
+  const instances = await listInstanceFolders(vaultDir, parentOutputDir);
+
+  // Prompt for instance selection
+  let selectedInstance: string | undefined;
+  if (instances.length === 0) {
+    printInfo(`No existing ${parentTypeName} instances found.`);
+    const createNew = await promptConfirm(`Create a new ${parentTypeName}?`);
+    if (!createNew) {
+      console.log('Aborted.');
+      process.exit(1);
+    }
+    // Create new instance
+    const instanceName = await promptRequired(`New ${parentTypeName} name`);
+    await createInstanceFolder(vaultDir, parentOutputDir, instanceName);
+    selectedInstance = instanceName;
+  } else {
+    const options = [...instances, `[Create new ${parentTypeName}]`];
+    const selected = await promptSelection(`Select ${parentTypeName}:`, options);
+    if (!selected) {
+      console.log('Aborted.');
+      process.exit(1);
+    }
+    if (selected.startsWith('[Create new')) {
+      const instanceName = await promptRequired(`New ${parentTypeName} name`);
+      await createInstanceFolder(vaultDir, parentOutputDir, instanceName);
+      selectedInstance = instanceName;
+    } else {
+      selectedInstance = selected;
+    }
+  }
+
+  // Build frontmatter and body
+  const { frontmatter, body, orderedFields } = await buildNoteContent(schema, vaultDir, typePath, typeDef);
+
+  // Get instance folder path
+  const instanceDir = getInstanceFolderPath(vaultDir, parentOutputDir, selectedInstance);
+
+  // Generate filename using pattern
+  const filenamePattern = getFilenamePattern(schema, typePath);
+  const subtypeName = typePath.split('/').pop() ?? 'note';
+  const filename = await generateFilename(filenamePattern, instanceDir, subtypeName);
+
+  const filePath = join(instanceDir, filename);
+
+  if (existsSync(filePath)) {
+    printWarning(`\nWarning: File already exists: ${filePath}`);
+    const overwrite = await promptConfirm('Overwrite?');
+    if (!overwrite) {
+      console.log('Aborted.');
+      process.exit(1);
+    }
+  }
+
+  await writeNote(filePath, frontmatter, body, orderedFields);
+  printSuccess(`\n✓ Created: ${filePath}`);
+  return filePath;
+}
+
+/**
+ * Build frontmatter and body content for a note.
+ */
+async function buildNoteContent(
+  schema: Schema,
+  vaultDir: string,
+  typePath: string,
+  typeDef: TypeDef
+): Promise<{ frontmatter: Record<string, unknown>; body: string; orderedFields: string[] }> {
+  const frontmatter: Record<string, unknown> = {};
+  const fields = getFieldsForType(schema, typePath);
+  const fieldOrder = getFrontmatterOrder(typeDef);
+  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(fields);
+
+  for (const fieldName of orderedFields) {
+    const field = fields[fieldName];
+    if (!field) continue;
+
+    const value = await promptField(schema, vaultDir, fieldName, field);
+    if (value !== undefined && value !== '') {
+      frontmatter[fieldName] = value;
+    }
+  }
+
+  let body = '';
+  const bodySections = typeDef.body_sections;
+  if (bodySections && bodySections.length > 0) {
+    const sectionContent = await promptBodySections(bodySections);
+    body = generateBodyWithContent(bodySections, sectionContent);
+  }
+
+  return { frontmatter, body, orderedFields };
 }
 
 /**
