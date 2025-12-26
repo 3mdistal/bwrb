@@ -13,7 +13,13 @@ import { printError, printSuccess } from '../lib/prompt.js';
 import type { Schema, Type, TypeDef, Field } from '../types/schema.js';
 
 export const schemaCommand = new Command('schema')
-  .description('Schema introspection commands');
+  .description('Schema introspection commands')
+  .addHelpText('after', `
+Examples:
+  ovault schema show              # Show all types
+  ovault schema show objective    # Show objective type details
+  ovault schema show objective/task  # Show task subtype details
+  ovault schema validate          # Validate schema structure`);
 
 // schema show
 schemaCommand

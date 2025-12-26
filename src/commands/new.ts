@@ -42,9 +42,18 @@ import {
 import type { Schema, TypeDef, Field, BodySection } from '../types/schema.js';
 
 export const newCommand = new Command('new')
-  .description('Create a new note')
+  .description('Create a new note (interactive type navigation if type omitted)')
   .argument('[type]', 'Type of note to create (e.g., idea, objective/task)')
   .option('--open', 'Open the note in Obsidian after creation')
+  .addHelpText('after', `
+Examples:
+  ovault new                    # Interactive type selection
+  ovault new idea               # Create an idea
+  ovault new objective/task     # Create a task
+  ovault new draft --open       # Create and open in Obsidian
+
+For instance-grouped types (like drafts), you'll be prompted to select
+or create a parent instance folder.`)
   .action(async (typePath: string | undefined, options: { open?: boolean }, cmd: Command) => {
     try {
       const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;

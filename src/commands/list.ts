@@ -17,8 +17,8 @@ import { printError } from '../lib/prompt.js';
 import type { Schema } from '../types/schema.js';
 
 export const listCommand = new Command('list')
-  .description(`List notes of a given type
-
+  .description('List notes of a given type with optional filtering')
+  .addHelpText('after', `
 Expression Filters (--where):
   ovault list task --where "status == 'in-progress'"
   ovault list task --where "priority < 3 && !isEmpty(deadline)"
@@ -26,7 +26,7 @@ Expression Filters (--where):
 
 Simple Filters:
   --field=value        Include where field equals value
-  --field=a,b          Include where field equals a OR b
+  --field=a,b          Include where field equals a OR b  
   --field!=value       Exclude where field equals value
   --field=             Include where field is empty/missing
   --field!=            Include where field exists
@@ -35,7 +35,10 @@ Examples:
   ovault list idea --status=raw
   ovault list objective/task --status!=settled
   ovault list idea --fields=status,priority
-  ovault list task --where "status == 'done' && !isEmpty(tags)"`)
+  ovault list task --where "status == 'done' && !isEmpty(tags)"
+
+Note: In zsh, use single quotes for expressions with '!' to avoid history expansion:
+  ovault list task --where '!isEmpty(deadline)'`)
   .argument('[type]', 'Type path (e.g., idea, objective/task)')
   .option('--paths', 'Show file paths instead of names')
   .option('--fields <fields>', 'Show frontmatter fields in a table (comma-separated)')

@@ -7,8 +7,14 @@ import { resolveVaultDir, isFile } from '../lib/vault.js';
 import { printError, printSuccess, printInfo } from '../lib/prompt.js';
 
 export const openCommand = new Command('open')
-  .description('Open a note in Obsidian')
-  .argument('<file>', 'Path to the file to open')
+  .description('Open a note in Obsidian via URI scheme')
+  .argument('<file>', 'Path to the file to open (relative or absolute)')
+  .addHelpText('after', `
+Examples:
+  ovault open Ideas/My\\ Idea.md
+  ovault open "Objectives/Tasks/My Task.md"
+
+Note: Obsidian must be running for the file to open.`)
   .action(async (filePath: string, _options: unknown, cmd: Command) => {
     try {
       const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;

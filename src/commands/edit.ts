@@ -22,9 +22,13 @@ import {
 import type { Schema, Field, BodySection } from '../types/schema.js';
 
 export const editCommand = new Command('edit')
-  .description('Edit an existing note\'s frontmatter')
-  .argument('<file>', 'Path to the file to edit')
+  .description('Edit an existing note\'s frontmatter interactively')
+  .argument('<file>', 'Path to the file to edit (relative or absolute)')
   .option('--open', 'Open the note in Obsidian after editing')
+  .addHelpText('after', `
+Examples:
+  ovault edit Ideas/My\\ Idea.md
+  ovault edit "Objectives/Tasks/My Task.md" --open`)
   .action(async (filePath: string, options: { open?: boolean }, cmd: Command) => {
     try {
       const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
