@@ -1,29 +1,21 @@
 import prompts from 'prompts';
 import chalk from 'chalk';
+import { numberedSelect } from './numberedSelect.js';
 
 /**
  * Prompt for selection from a list of options.
  * Returns undefined if user cancels or skips.
+ * 
+ * Features:
+ * - Number keys (1-9, 0) for immediate selection
+ * - Arrow keys for navigation (Enter to confirm)
+ * - -/+/= for page navigation when > 10 options
  */
 export async function promptSelection(
   message: string,
   options: string[]
 ): Promise<string | undefined> {
-  const choices = options.map((opt, i) => ({
-    title: opt,
-    value: opt,
-    description: `${i + 1}`,
-  }));
-
-  const response = await prompts({
-    type: 'select',
-    name: 'value',
-    message,
-    choices,
-    hint: 'Use arrow keys, Enter to select',
-  });
-
-  return response.value as string | undefined;
+  return numberedSelect(message, options);
 }
 
 /**
