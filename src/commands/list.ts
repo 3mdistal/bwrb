@@ -106,9 +106,10 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         }
       }
 
+      const fields = options.fields?.split(',').map(f => f.trim());
       await listObjects(schema, vaultDir, typePath, {
         showPaths: options.paths ?? false,
-        fields: options.fields?.split(',').map(f => f.trim()),
+        ...(fields !== undefined && { fields }),
         filters,
         whereExpressions: options.where ?? [],
         jsonMode,

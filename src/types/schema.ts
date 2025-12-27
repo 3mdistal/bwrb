@@ -14,7 +14,7 @@ export const FieldSchema = z.object({
 });
 
 // Body section definition
-export const BodySectionSchema: z.ZodType<BodySection> = z.lazy(() =>
+export const BodySectionSchema: z.ZodType<BodySection, z.ZodTypeDef, BodySectionInput> = z.lazy(() =>
   z.object({
     title: z.string(),
     level: z.number().optional().default(2),
@@ -47,7 +47,7 @@ export const FieldOverrideSchema = z.object({
 });
 
 // Subtype definition (recursive via Type)
-export const SubtypeSchema: z.ZodType<Subtype> = z.lazy(() =>
+export const SubtypeSchema: z.ZodType<Subtype, z.ZodTypeDef, SubtypeInput> = z.lazy(() =>
   z.object({
     output_dir: z.string().optional(),
     filename: z.string().optional(),
@@ -88,24 +88,45 @@ export type Field = z.infer<typeof FieldSchema>;
 export type FieldOverride = z.infer<typeof FieldOverrideSchema>;
 export type BodySection = {
   title: string;
-  level?: number;
-  content_type?: 'none' | 'paragraphs' | 'bullets' | 'checkboxes';
-  prompt?: 'none' | 'multi-input';
-  prompt_label?: string;
-  children?: BodySection[];
+  level?: number | undefined;
+  content_type?: 'none' | 'paragraphs' | 'bullets' | 'checkboxes' | undefined;
+  prompt?: 'none' | 'multi-input' | undefined;
+  prompt_label?: string | undefined;
+  children?: BodySection[] | undefined;
+};
+// Input type for BodySection (allows missing level which gets defaulted)
+export type BodySectionInput = {
+  title: string;
+  level?: number | undefined;
+  content_type?: 'none' | 'paragraphs' | 'bullets' | 'checkboxes' | undefined;
+  prompt?: 'none' | 'multi-input' | undefined;
+  prompt_label?: string | undefined;
+  children?: BodySectionInput[] | undefined;
 };
 export type FilterCondition = z.infer<typeof FilterConditionSchema>;
 export type DynamicSource = z.infer<typeof DynamicSourceSchema>;
 export type Subtype = {
-  output_dir?: string;
-  filename?: string;
-  name_field?: string;
-  shared_fields?: string[];
-  field_overrides?: Record<string, FieldOverride>;
-  frontmatter?: Record<string, Field>;
-  frontmatter_order?: string[];
-  body_sections?: BodySection[];
-  subtypes?: Record<string, Subtype>;
+  output_dir?: string | undefined;
+  filename?: string | undefined;
+  name_field?: string | undefined;
+  shared_fields?: string[] | undefined;
+  field_overrides?: Record<string, FieldOverride> | undefined;
+  frontmatter?: Record<string, Field> | undefined;
+  frontmatter_order?: string[] | undefined;
+  body_sections?: BodySection[] | undefined;
+  subtypes?: Record<string, Subtype> | undefined;
+};
+// Input type for Subtype
+export type SubtypeInput = {
+  output_dir?: string | undefined;
+  filename?: string | undefined;
+  name_field?: string | undefined;
+  shared_fields?: string[] | undefined;
+  field_overrides?: Record<string, FieldOverride> | undefined;
+  frontmatter?: Record<string, Field> | undefined;
+  frontmatter_order?: string[] | undefined;
+  body_sections?: BodySectionInput[] | undefined;
+  subtypes?: Record<string, SubtypeInput> | undefined;
 };
 export type Type = z.infer<typeof TypeSchema>;
 export type Schema = z.infer<typeof OvaultSchema>;

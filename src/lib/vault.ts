@@ -153,7 +153,7 @@ export function getOutputDir(
   let outputDir: string | undefined;
 
   // Walk through segments, keeping track of most recent output_dir
-  let current: { output_dir?: string; subtypes?: Record<string, unknown> } | undefined;
+  let current: { output_dir?: string | undefined; subtypes?: Record<string, unknown> | undefined } | undefined;
   
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];

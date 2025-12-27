@@ -65,11 +65,12 @@ export function validateFrontmatter(
 
     // Check required fields
     if (field.required && !hasValue && field.default === undefined) {
+      const expected = getFieldExpected(schema, field);
       errors.push({
         type: 'required_field_missing',
         field: fieldName,
         message: `Required field missing: ${fieldName}`,
-        expected: getFieldExpected(schema, field),
+        ...(expected !== undefined && { expected }),
       });
       continue;
     }
@@ -85,7 +86,7 @@ export function validateFrontmatter(
           value,
           message: `Invalid value for ${fieldName}: "${value}"`,
           expected: enumValues,
-          suggestion: suggestion ? `Did you mean '${suggestion}'?` : undefined,
+          ...(suggestion && { suggestion: `Did you mean '${suggestion}'?` }),
         });
       }
     }
@@ -108,7 +109,7 @@ export function validateFrontmatter(
         field: fieldName,
         value: frontmatter[fieldName],
         message: `Unknown field: ${fieldName}`,
-        suggestion: suggestion ? `Did you mean '${suggestion}'?` : undefined,
+        ...(suggestion && { suggestion: `Did you mean '${suggestion}'?` }),
       };
       if (options.strictFields) {
         errors.push(error);

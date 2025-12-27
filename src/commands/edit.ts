@@ -155,11 +155,11 @@ async function editNoteFromJson(
       error: 'Validation failed',
       errors: validation.errors.map(e => ({
         field: e.field,
-        value: e.value,
         message: e.message,
-        expected: e.expected,
-        suggestion: e.suggestion,
         currentValue: frontmatter[e.field],
+        ...(e.value !== undefined && { value: e.value }),
+        ...(e.expected !== undefined && { expected: e.expected }),
+        ...(e.suggestion !== undefined && { suggestion: e.suggestion }),
       })),
     });
     process.exit(ExitCodes.VALIDATION_ERROR);

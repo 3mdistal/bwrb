@@ -178,10 +178,10 @@ async function createNoteFromJson(
       error: 'Validation failed',
       errors: validation.errors.map(e => ({
         field: e.field,
-        value: e.value,
         message: e.message,
-        expected: e.expected,
-        suggestion: e.suggestion,
+        ...(e.value !== undefined && { value: e.value }),
+        ...(e.expected !== undefined && { expected: e.expected }),
+        ...(e.suggestion !== undefined && { suggestion: e.suggestion }),
       })),
     });
     process.exit(ExitCodes.VALIDATION_ERROR);
@@ -655,7 +655,7 @@ function getOutputDirForType(schema: Schema, typePath: string): string | undefin
   const segments = typePath.split('/').filter(Boolean);
   let outputDir: string | undefined;
 
-  type TypeLike = { output_dir?: string; subtypes?: Record<string, TypeLike> };
+  type TypeLike = { output_dir?: string | undefined; subtypes?: Record<string, TypeLike> | undefined };
   let current: TypeLike | undefined;
 
   for (let i = 0; i < segments.length; i++) {
