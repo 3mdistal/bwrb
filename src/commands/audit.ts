@@ -13,11 +13,13 @@ import {
   getFieldsForType,
   getEnumValues,
   resolveTypePathFromFrontmatter,
+  getDiscriminatorFieldsFromTypePath,
+  getEnumForField,
 } from '../lib/schema.js';
 import { parseNote, writeNote } from '../lib/frontmatter.js';
 import { resolveVaultDir, getOutputDir, getDirMode } from '../lib/vault.js';
 import { suggestEnumValue, suggestFieldName } from '../lib/validation.js';
-import { printError, promptSelection, promptConfirm } from '../lib/prompt.js';
+import { printError, promptSelection, promptConfirm, promptInput } from '../lib/prompt.js';
 import {
   printJson,
   jsonError,
@@ -59,6 +61,8 @@ export interface AuditIssue {
   expected?: string[] | string;
   suggestion?: string;
   autoFixable: boolean;
+  /** For orphan-file issues: the expected type path inferred from directory location */
+  inferredType?: string;
 }
 
 /**
@@ -552,7 +556,8 @@ async function auditFile(
       severity: 'error',
       code: 'orphan-file',
       message: "No 'type' field (in managed directory)",
-      autoFixable: false,
+      autoFixable: Boolean(file.expectedType),
+      inferredType: file.expectedType,
     });
     return issues;
   }
@@ -696,6 +701,16 @@ async function applyFix(
     const frontmatter = { ...parsed.frontmatter };
 
     switch (issue.code) {
+      case 'orphan-file': {
+        // newValue should be a type path (e.g., 'objective/task')
+        if (typeof newValue !== 'string') {
+          return { file: filePath, issue, action: 'failed', message: 'No type path provided' };
+        }
+        // Convert type path to discriminator fields and add them
+        const discriminatorFields = getDiscriminatorFieldsFromTypePath(newValue);
+        Object.assign(frontmatter, discriminatorFields);
+        break;
+      }
       case 'missing-required': {
         if (issue.field && newValue !== undefined) {
           frontmatter[issue.field] = newValue;
@@ -819,7 +834,23 @@ async function runAutoFix(
 
     // Apply auto-fixes
     for (const issue of fixableIssues) {
-      if (issue.code === 'missing-required' && issue.field) {
+      if (issue.code === 'orphan-file' && issue.inferredType) {
+        // Auto-fix orphan-file when we have inferred type from directory
+        const fixResult = await applyFix(schema, result.path, issue, issue.inferredType);
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          const fields = getDiscriminatorFieldsFromTypePath(issue.inferredType);
+          const fieldStr = Object.entries(fields)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(', ');
+          console.log(chalk.green(`    ✓ Added ${fieldStr} (from directory)`));
+          fixed++;
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to add type: ${fixResult.message}`));
+          failed++;
+        }
+      } else if (issue.code === 'missing-required' && issue.field) {
         const parsed = await parseNote(result.path);
         const defaultValue = getDefaultValue(schema, result.path, parsed.frontmatter, issue.field);
 
@@ -900,12 +931,100 @@ async function runInteractiveFix(
 
       // Handle based on issue type
       switch (issue.code) {
+        case 'orphan-file': {
+          // Handle missing type field
+          let typePath: string | undefined;
+
+          if (issue.inferredType) {
+            // We know the expected type from the directory
+            const confirm = await promptConfirm(
+              `    → Add type fields for '${issue.inferredType}'?`
+            );
+            if (confirm) {
+              typePath = issue.inferredType;
+            }
+          } else {
+            // Need to prompt user to select type
+            const typeEnum = getEnumValues(schema, 'type');
+            if (typeEnum.length > 0) {
+              const typeOptions = [...typeEnum, '[skip]', '[quit]'];
+              const selectedType = await promptSelection(
+                '    Select type:',
+                typeOptions
+              );
+
+              if (selectedType === '[quit]') {
+                quit = true;
+                console.log(chalk.dim('    → Quit'));
+                break;
+              } else if (selectedType === '[skip]' || !selectedType) {
+                console.log(chalk.dim('    → Skipped'));
+                skipped++;
+                break;
+              }
+
+              // Check if selected type has subtypes
+              const typeDef = getTypeDefByPath(schema, selectedType);
+              if (typeDef && hasSubtypes(typeDef)) {
+                const subtypeEnumName = `${selectedType}-type`;
+                const subtypeEnum = getEnumValues(schema, subtypeEnumName);
+                if (subtypeEnum.length > 0) {
+                  const subtypeOptions = [...subtypeEnum, '[skip]', '[quit]'];
+                  const selectedSubtype = await promptSelection(
+                    `    Select ${subtypeEnumName}:`,
+                    subtypeOptions
+                  );
+
+                  if (selectedSubtype === '[quit]') {
+                    quit = true;
+                    console.log(chalk.dim('    → Quit'));
+                    break;
+                  } else if (selectedSubtype === '[skip]' || !selectedSubtype) {
+                    console.log(chalk.dim('    → Skipped'));
+                    skipped++;
+                    break;
+                  }
+
+                  typePath = `${selectedType}/${selectedSubtype}`;
+                } else {
+                  typePath = selectedType;
+                }
+              } else {
+                typePath = selectedType;
+              }
+            } else {
+              console.log(chalk.dim('    (No type enum defined - skipping)'));
+              skipped++;
+              break;
+            }
+          }
+
+          if (typePath) {
+            const fixResult = await applyFix(schema, result.path, issue, typePath);
+            if (fixResult.action === 'fixed') {
+              const fields = getDiscriminatorFieldsFromTypePath(typePath);
+              const fieldStr = Object.entries(fields)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(', ');
+              console.log(chalk.green(`    ✓ Added ${fieldStr}`));
+              fixed++;
+            } else {
+              console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+              failed++;
+            }
+          } else {
+            console.log(chalk.dim('    → Skipped'));
+            skipped++;
+          }
+          break;
+        }
         case 'missing-required': {
           if (issue.field) {
             const parsed = await parseNote(result.path);
             const defaultValue = getDefaultValue(schema, result.path, parsed.frontmatter, issue.field);
 
             if (defaultValue !== undefined) {
+              // Has default value - offer to use it
               const confirm = await promptConfirm(`    → Add with default '${JSON.stringify(defaultValue)}'?`);
               if (confirm) {
                 const fixResult = await applyFix(schema, result.path, issue, defaultValue);
@@ -921,8 +1040,52 @@ async function runInteractiveFix(
                 skipped++;
               }
             } else {
-              console.log(chalk.dim('    (No default value available - skipping)'));
-              skipped++;
+              // No default - check if field has enum or allow text input
+              const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+              const enumName = typePath ? getEnumForField(schema, typePath, issue.field) : undefined;
+              const enumValues = enumName ? getEnumValues(schema, enumName) : [];
+
+              if (enumValues.length > 0) {
+                // Field has enum - prompt to select
+                const options = [...enumValues, '[skip]', '[quit]'];
+                const selected = await promptSelection(
+                  `    Select value for ${issue.field}:`,
+                  options
+                );
+
+                if (selected === '[quit]') {
+                  quit = true;
+                  console.log(chalk.dim('    → Quit'));
+                } else if (selected === '[skip]' || !selected) {
+                  console.log(chalk.dim('    → Skipped'));
+                  skipped++;
+                } else {
+                  const fixResult = await applyFix(schema, result.path, issue, selected);
+                  if (fixResult.action === 'fixed') {
+                    console.log(chalk.green(`    ✓ Added ${issue.field}: ${selected}`));
+                    fixed++;
+                  } else {
+                    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+                    failed++;
+                  }
+                }
+              } else {
+                // No enum - prompt for text input
+                const value = await promptInput(`    Enter value for ${issue.field}:`);
+                if (value) {
+                  const fixResult = await applyFix(schema, result.path, issue, value);
+                  if (fixResult.action === 'fixed') {
+                    console.log(chalk.green(`    ✓ Added ${issue.field}: ${value}`));
+                    fixed++;
+                  } else {
+                    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+                    failed++;
+                  }
+                } else {
+                  console.log(chalk.dim('    → Skipped'));
+                  skipped++;
+                }
+              }
             }
           }
           break;

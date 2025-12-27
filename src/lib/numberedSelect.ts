@@ -55,6 +55,7 @@ export class NumberedSelectPrompt {
   private totalPages: number;
   private rl: readline.Interface | null = null;
   private done: boolean = false;
+  private firstRender: boolean = true;
   private resolve: ((result: NumberedSelectResult) => void) | null = null;
 
   constructor(options: NumberedSelectOptions) {
@@ -272,9 +273,10 @@ export class NumberedSelectPrompt {
 
   private render(): void {
     // Clear previous output if not first render
-    if (!this.done) {
+    if (!this.done && !this.firstRender) {
       this.clearPrompt();
     }
+    this.firstRender = false;
 
     const lines: string[] = [];
 

@@ -14,6 +14,7 @@ import {
   resolveTypePathFromFrontmatter,
   getAllFieldsForType,
   getEnumForField,
+  getDiscriminatorFieldsFromTypePath,
 } from '../../../src/lib/schema.js';
 import { createTestVault, cleanupTestVault, TEST_SCHEMA } from '../fixtures/setup.js';
 import type { Schema } from '../../../src/types/schema.js';
@@ -241,6 +242,35 @@ describe('schema', () => {
     it('should return undefined for non-enum fields', () => {
       const enumName = getEnumForField(schema, 'objective/task', 'deadline');
       expect(enumName).toBeUndefined();
+    });
+  });
+
+  describe('getDiscriminatorFieldsFromTypePath', () => {
+    it('should return type field for simple path', () => {
+      const fields = getDiscriminatorFieldsFromTypePath('idea');
+      expect(fields).toEqual({ type: 'idea' });
+    });
+
+    it('should return type and subtype fields for nested path', () => {
+      const fields = getDiscriminatorFieldsFromTypePath('objective/task');
+      expect(fields).toEqual({
+        type: 'objective',
+        'objective-type': 'task',
+      });
+    });
+
+    it('should handle deeply nested paths', () => {
+      const fields = getDiscriminatorFieldsFromTypePath('a/b/c');
+      expect(fields).toEqual({
+        type: 'a',
+        'a-type': 'b',
+        'b-type': 'c',
+      });
+    });
+
+    it('should return empty object for empty path', () => {
+      const fields = getDiscriminatorFieldsFromTypePath('');
+      expect(fields).toEqual({});
     });
   });
 });

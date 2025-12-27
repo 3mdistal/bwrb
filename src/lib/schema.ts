@@ -300,3 +300,32 @@ export function getEnumForField(
 
   return findEnum(getTypeDefByPath(schema, typePath));
 }
+
+/**
+ * Convert a type path (e.g., "objective/task") into discriminator field values.
+ * Returns an object like { type: 'objective', 'objective-type': 'task' }.
+ */
+export function getDiscriminatorFieldsFromTypePath(
+  typePath: string
+): Record<string, string> {
+  const segments = parseTypePath(typePath);
+  const fields: Record<string, string> = {};
+
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    if (!segment) continue;
+
+    if (i === 0) {
+      // First segment is always 'type'
+      fields['type'] = segment;
+    } else {
+      // Subsequent segments use '<parent>-type' naming
+      const parentSegment = segments[i - 1];
+      if (parentSegment) {
+        fields[`${parentSegment}-type`] = segment;
+      }
+    }
+  }
+
+  return fields;
+}

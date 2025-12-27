@@ -901,4 +901,115 @@ priority: medium
       expect(result.stdout).not.toContain('Ancient.md');
     });
   });
+
+  describe('orphan-file auto-fix with inferred type', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-orphan-fix-'));
+      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.ovault', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Objectives', 'Tasks'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should auto-fix orphan file in managed directory with inferred type', async () => {
+      // Create a file in Ideas/ without type field
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Missing Type.md'),
+        `---
+status: raw
+priority: medium
+---
+Some content
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.stdout).toContain('Auto-fixing');
+      expect(result.stdout).toContain('type: idea');
+      expect(result.stdout).toContain('from directory');
+      expect(result.stdout).toContain('Fixed: 1 issues');
+
+      // Verify the file was actually fixed
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(join(tempVaultDir, 'Ideas', 'Missing Type.md'), 'utf-8');
+      expect(content).toContain('type: idea');
+    });
+
+    it('should auto-fix orphan file with nested type path', async () => {
+      // Create a file in Objectives/Tasks/ without type fields
+      await writeFile(
+        join(tempVaultDir, 'Objectives', 'Tasks', 'Missing Type.md'),
+        `---
+status: backlog
+milestone: "[[Test Milestone]]"
+---
+Task content
+`
+      );
+
+      const result = await runCLI(['audit', 'objective/task', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.stdout).toContain('Auto-fixing');
+      expect(result.stdout).toContain('type: objective');
+      expect(result.stdout).toContain('objective-type: task');
+      expect(result.stdout).toContain('Fixed: 1 issues');
+
+      // Verify the file was actually fixed
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(join(tempVaultDir, 'Objectives', 'Tasks', 'Missing Type.md'), 'utf-8');
+      expect(content).toContain('type: objective');
+      expect(content).toContain('objective-type: task');
+    });
+
+    it('should mark orphan-file as auto-fixable when inferred type is available', async () => {
+      // Create a file in Ideas/ without type field
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Orphan.md'),
+        `---
+status: raw
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const orphanIssue = output.files[0].issues.find((i: { code: string }) => i.code === 'orphan-file');
+      expect(orphanIssue).toBeDefined();
+      expect(orphanIssue.autoFixable).toBe(true);
+    });
+
+    it('should NOT mark orphan-file as auto-fixable when no inferred type', async () => {
+      // Create a file outside managed directories
+      await mkdir(join(tempVaultDir, 'Random'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Random', 'Stray.md'),
+        `---
+title: Random note
+---
+`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const strayFile = output.files.find((f: { path: string }) => f.path.includes('Stray.md'));
+      expect(strayFile).toBeDefined();
+      const orphanIssue = strayFile.issues.find((i: { code: string }) => i.code === 'orphan-file');
+      expect(orphanIssue).toBeDefined();
+      expect(orphanIssue.autoFixable).toBe(false);
+    });
+  });
 });
