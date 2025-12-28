@@ -1012,4 +1012,421 @@ title: Random note
       expect(orphanIssue.autoFixable).toBe(false);
     });
   });
+
+  describe('--allow-field option', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-allow-field-'));
+      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.ovault', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should allow extra field with --allow-field option', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Extra Field.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+customField: value
+---
+`
+      );
+
+      // Without --allow-field, should warn
+      const result1 = await runCLI(['audit', 'idea'], tempVaultDir);
+      expect(result1.stdout).toContain('Unknown field: customField');
+
+      // With --allow-field, should not warn
+      const result2 = await runCLI(['audit', 'idea', '--allow-field', 'customField'], tempVaultDir);
+      expect(result2.exitCode).toBe(0);
+      expect(result2.stdout).not.toContain('customField');
+    });
+
+    it('should allow multiple fields with repeated --allow-field', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Multiple Extra.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+customField1: value1
+customField2: value2
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--allow-field', 'customField1', '--allow-field', 'customField2'], tempVaultDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain('customField1');
+      expect(result.stdout).not.toContain('customField2');
+    });
+
+    it('should still error on unknown field in strict mode even with different allow-field', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Extra Field.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+customField: value
+otherField: value
+---
+`
+      );
+
+      // Allow one field but not the other in strict mode
+      const result = await runCLI(['audit', 'idea', '--strict', '--allow-field', 'customField'], tempVaultDir);
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).not.toContain('customField');
+      expect(result.stdout).toContain('Unknown field: otherField');
+    });
+  });
+
+  describe('format violation detection', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-format-'));
+      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      // Use schema with wikilink format field
+      await writeFile(
+        join(tempVaultDir, '.ovault', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Objectives/Milestones'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect format violation when wikilink field contains plain text', async () => {
+      // Create a milestone for reference
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Milestones', 'Q1 Release.md'),
+        `---
+type: objective
+objective-type: milestone
+status: in-flight
+---
+`
+      );
+
+      // Create a task with plain text instead of wikilink for milestone
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Bad Format.md'),
+        `---
+type: objective
+objective-type: task
+status: backlog
+milestone: Q1 Release
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'objective/task', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const taskFile = output.files.find((f: { path: string }) => f.path.includes('Bad Format.md'));
+      expect(taskFile).toBeDefined();
+      const formatIssue = taskFile.issues.find((i: { code: string }) => i.code === 'format-violation');
+      expect(formatIssue).toBeDefined();
+      expect(formatIssue.field).toBe('milestone');
+      expect(formatIssue.autoFixable).toBe(true);
+      expect(formatIssue.expectedFormat).toBe('quoted-wikilink');
+    });
+
+    it('should auto-fix format violation to wikilink', async () => {
+      // Create a task with plain text instead of quoted-wikilink
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Fixable.md'),
+        `---
+type: objective
+objective-type: task
+status: backlog
+milestone: Q1 Release
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'objective/task', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.stdout).toContain('Fixed');
+      expect(result.stdout).toContain('milestone');
+
+      // Verify the file was fixed
+      const { readFile: rf } = await import('fs/promises');
+      const content = await rf(join(tempVaultDir, 'Objectives/Tasks', 'Fixable.md'), 'utf-8');
+      expect(content).toContain('"[[Q1 Release]]"');
+    });
+
+    it('should not report format violation for correctly formatted wikilink', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Good Format.md'),
+        `---
+type: objective
+objective-type: task
+status: backlog
+milestone: "[[Q1 Release]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'objective/task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain('format-violation');
+    });
+  });
+
+  describe('stale reference detection', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-stale-'));
+      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.ovault', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Objectives/Milestones'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect stale reference in frontmatter wikilink field', async () => {
+      // Create a task pointing to non-existent milestone
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Stale Ref.md'),
+        `---
+type: objective
+objective-type: task
+status: backlog
+milestone: "[[Non Existent Milestone]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'objective/task', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const taskFile = output.files.find((f: { path: string }) => f.path.includes('Stale Ref.md'));
+      expect(taskFile).toBeDefined();
+      const staleIssue = taskFile.issues.find((i: { code: string }) => i.code === 'stale-reference');
+      expect(staleIssue).toBeDefined();
+      expect(staleIssue.targetName).toBe('Non Existent Milestone');
+      expect(staleIssue.inBody).toBe(false);
+    });
+
+    it('should detect stale reference in body content', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Body Links.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+
+This idea references [[Non Existent Note]] which doesn't exist.
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const ideaFile = output.files.find((f: { path: string }) => f.path.includes('Body Links.md'));
+      expect(ideaFile).toBeDefined();
+      const staleIssue = ideaFile.issues.find((i: { code: string }) => i.code === 'stale-reference');
+      expect(staleIssue).toBeDefined();
+      expect(staleIssue.targetName).toBe('Non Existent Note');
+      expect(staleIssue.inBody).toBe(true);
+      expect(staleIssue.lineNumber).toBeGreaterThan(0);
+    });
+
+    it('should not report stale reference for existing file', async () => {
+      // Create target file first
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Target Note.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+`
+      );
+
+      // Create file linking to it
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Linking Note.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+
+This links to [[Target Note]] which exists.
+`
+      );
+
+      const result = await runCLI(['audit', 'idea'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain('stale-reference');
+    });
+
+    it('should suggest similar files for stale references', async () => {
+      // Create a milestone with a similar name
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Milestones', 'Q1 Release.md'),
+        `---
+type: objective
+objective-type: milestone
+status: in-flight
+---
+`
+      );
+
+      // Create a task with a typo in the milestone name
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Typo Ref.md'),
+        `---
+type: objective
+objective-type: task
+status: backlog
+milestone: "[[Q1 Relase]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'objective/task', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const taskFile = output.files.find((f: { path: string }) => f.path.includes('Typo Ref.md'));
+      expect(taskFile).toBeDefined();
+      const staleIssue = taskFile.issues.find((i: { code: string }) => i.code === 'stale-reference');
+      expect(staleIssue).toBeDefined();
+      expect(staleIssue.similarFiles).toBeDefined();
+      expect(staleIssue.similarFiles.length).toBeGreaterThan(0);
+      // Should suggest Q1 Release as a similar file
+      expect(staleIssue.similarFiles.some((f: string) => f.includes('Q1 Release'))).toBe(true);
+    });
+
+    it('should handle multiple wikilinks in body content', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Multiple Links.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+
+First link: [[Missing One]]
+Second link: [[Missing Two]]
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const ideaFile = output.files.find((f: { path: string }) => f.path.includes('Multiple Links.md'));
+      expect(ideaFile).toBeDefined();
+      const staleIssues = ideaFile.issues.filter((i: { code: string }) => i.code === 'stale-reference');
+      expect(staleIssues.length).toBe(2);
+      expect(staleIssues.some((i: { targetName: string }) => i.targetName === 'Missing One')).toBe(true);
+      expect(staleIssues.some((i: { targetName: string }) => i.targetName === 'Missing Two')).toBe(true);
+    });
+
+    it('should handle wikilinks with aliases and headings', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Complex Links.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+
+Link with alias: [[Missing Note|Custom Alias]]
+Link with heading: [[Missing Note#Section]]
+Link with both: [[Missing Note#Section|Alias]]
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const ideaFile = output.files.find((f: { path: string }) => f.path.includes('Complex Links.md'));
+      expect(ideaFile).toBeDefined();
+      const staleIssues = ideaFile.issues.filter((i: { code: string }) => i.code === 'stale-reference');
+      expect(staleIssues.length).toBe(3);
+      // All should target "Missing Note"
+      staleIssues.forEach((issue: { targetName: string }) => {
+        expect(issue.targetName).toBe('Missing Note');
+      });
+    });
+  });
+
+  describe('schema allowed_extra_fields config', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-schema-allow-'));
+      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should respect schema audit.allowed_extra_fields', async () => {
+      // Create schema with allowed_extra_fields
+      const schemaWithAllowed = {
+        ...TEST_SCHEMA,
+        audit: {
+          allowed_extra_fields: ['legacyField', 'customData'],
+        },
+      };
+      await writeFile(
+        join(tempVaultDir, '.ovault', 'schema.json'),
+        JSON.stringify(schemaWithAllowed, null, 2)
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'With Allowed.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+legacyField: some value
+customData: other value
+unknownField: should warn
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea'], tempVaultDir);
+
+      // Should not warn about allowed fields
+      expect(result.stdout).not.toContain('legacyField');
+      expect(result.stdout).not.toContain('customData');
+      // Should still warn about unknown field
+      expect(result.stdout).toContain('unknownField');
+    });
+  });
 });

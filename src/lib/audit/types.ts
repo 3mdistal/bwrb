@@ -1,0 +1,227 @@
+/**
+ * Audit types and interfaces.
+ * 
+ * This module contains all type definitions for the audit system.
+ */
+
+import type { Schema } from '../../types/schema.js';
+
+// ============================================================================
+// Issue Types
+// ============================================================================
+
+/**
+ * Issue severity levels.
+ */
+export type IssueSeverity = 'error' | 'warning';
+
+/**
+ * Issue codes for audit findings.
+ */
+export type IssueCode =
+  | 'orphan-file'
+  | 'invalid-type'
+  | 'missing-required'
+  | 'invalid-enum'
+  | 'unknown-field'
+  | 'wrong-directory'
+  | 'type-mismatch'
+  | 'format-violation'
+  | 'stale-reference';
+
+/**
+ * A single audit issue.
+ */
+export interface AuditIssue {
+  severity: IssueSeverity;
+  code: IssueCode;
+  message: string;
+  field?: string | undefined;
+  value?: unknown;
+  expected?: string[] | string | undefined;
+  suggestion?: string | undefined;
+  autoFixable: boolean;
+  /** For orphan-file issues: the expected type path inferred from directory location */
+  inferredType?: string | undefined;
+  /** For format-violation: the expected format */
+  expectedFormat?: 'plain' | 'wikilink' | 'quoted-wikilink' | undefined;
+  /** For stale-reference: similar file names that exist */
+  similarFiles?: string[] | undefined;
+  /** For stale-reference: the target that couldn't be found */
+  targetName?: string | undefined;
+  /** For stale-reference: whether this is in body content vs frontmatter */
+  inBody?: boolean | undefined;
+  /** For stale-reference: the line number in the file (for body references) */
+  lineNumber?: number | undefined;
+}
+
+/**
+ * Audit result for a single file.
+ */
+export interface FileAuditResult {
+  path: string;
+  relativePath: string;
+  issues: AuditIssue[];
+}
+
+/**
+ * Overall audit summary.
+ */
+export interface AuditSummary {
+  filesChecked: number;
+  filesWithErrors: number;
+  filesWithWarnings: number;
+  totalErrors: number;
+  totalWarnings: number;
+}
+
+// ============================================================================
+// Fix Types
+// ============================================================================
+
+/**
+ * Fix result for a single issue.
+ */
+export type FixAction = 'fixed' | 'skipped' | 'failed';
+
+export interface FixResult {
+  file: string;
+  issue: AuditIssue;
+  action: FixAction;
+  message?: string;
+}
+
+/**
+ * Summary of fix operations.
+ */
+export interface FixSummary {
+  fixed: number;
+  skipped: number;
+  failed: number;
+  remaining: number;
+}
+
+// ============================================================================
+// Internal Types
+// ============================================================================
+
+/**
+ * Managed file with expected type context.
+ */
+export interface ManagedFile {
+  path: string;
+  relativePath: string;
+  expectedType?: string;
+  instance?: string;
+}
+
+/**
+ * Audit command options.
+ */
+export interface AuditOptions {
+  strict?: boolean;
+  path?: string;
+  only?: string;
+  ignore?: string;
+  output?: string;
+  fix?: boolean;
+  auto?: boolean;
+  allowField?: string[];
+}
+
+/**
+ * Options for running audit detection.
+ */
+export interface AuditRunOptions {
+  typePath?: string | undefined;
+  strict: boolean;
+  pathFilter?: string | undefined;
+  onlyIssue?: IssueCode | undefined;
+  ignoreIssue?: IssueCode | undefined;
+  allowedFields?: Set<string> | undefined;
+  /** Vault directory path for resolving wikilink references */
+  vaultDir?: string | undefined;
+  /** Schema for looking up field formats */
+  schema?: Schema | undefined;
+}
+
+/**
+ * Context passed to fix operations.
+ */
+export interface FixContext {
+  schema: Schema;
+  vaultDir: string;
+}
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/**
+ * Native fields that are always allowed (Obsidian-specific).
+ */
+export const ALLOWED_NATIVE_FIELDS = new Set([
+  'tags',
+  'aliases',
+  'cssclasses',
+  'publish',
+  'type',  // type discriminator
+]);
+
+/**
+ * Wikilink regex pattern for extracting link targets.
+ * Matches: [[Target]], [[Target|Alias]], [[Target#Heading]], [[Target#Heading|Alias]]
+ */
+export const WIKILINK_PATTERN = /\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]+)?\]\]/g;
+
+/**
+ * Check if a value is formatted as a wikilink.
+ */
+export function isWikilink(value: string): boolean {
+  return /^\[\[.+\]\]$/.test(value);
+}
+
+/**
+ * Check if a value is formatted as a quoted wikilink.
+ */
+export function isQuotedWikilink(value: string): boolean {
+  return /^"\[\[.+\]\]"$/.test(value);
+}
+
+/**
+ * Extract the target from a wikilink.
+ * Returns the target without brackets, heading, or alias.
+ */
+export function extractWikilinkTarget(value: string): string | null {
+  // Handle quoted wikilink
+  let v = value;
+  if (v.startsWith('"') && v.endsWith('"')) {
+    v = v.slice(1, -1);
+  }
+  
+  const match = v.match(/^\[\[([^\]|#]+)/);
+  return match ? match[1]! : null;
+}
+
+/**
+ * Convert a plain value to wikilink format.
+ */
+export function toWikilink(value: string): string {
+  if (isWikilink(value) || isQuotedWikilink(value)) {
+    return value;
+  }
+  return `[[${value}]]`;
+}
+
+/**
+ * Convert a plain value to quoted wikilink format.
+ */
+export function toQuotedWikilink(value: string): string {
+  if (isQuotedWikilink(value)) {
+    return value;
+  }
+  if (isWikilink(value)) {
+    return `"${value}"`;
+  }
+  return `"[[${value}]]"`;
+}
