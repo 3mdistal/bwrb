@@ -6,6 +6,7 @@
  * - Rename fields (for migrations)
  * - Delete fields
  * - Append/remove from list fields
+ * - Move files to different directories (with wikilink auto-update)
  */
 
 import { Command } from 'commander';
@@ -37,6 +38,7 @@ interface BulkCommandOptions {
   delete?: string[];
   append?: string[];
   remove?: string[];
+  move?: string;
   where?: string[];
   execute?: boolean;
   backup?: boolean;
@@ -56,6 +58,7 @@ Operations:
   --delete <field>            Delete field
   --append <field>=<value>    Append to list field
   --remove <field>=<value>    Remove from list field
+  --move <path>               Move files to path (auto-updates wikilinks)
 
 Filters:
   --field=value               Include where field equals value
@@ -94,6 +97,9 @@ Examples:
   # Create backup before changes
   ovault bulk task --set status=archived --execute --backup
 
+  # Move files to archive (updates wikilinks automatically)
+  ovault bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
+
   # Using simple filters
   ovault bulk task --status=done --set archived=true --execute
   ovault bulk idea --priority=high,critical --set urgent=true --execute`)
@@ -103,6 +109,7 @@ Examples:
   .option('--delete <field...>', 'Delete field')
   .option('--append <field=value...>', 'Append to list field')
   .option('--remove <field=value...>', 'Remove from list field')
+  .option('--move <path>', 'Move files to path (auto-updates wikilinks)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
   .option('--execute', 'Actually apply changes (dry-run by default)')
   .option('--backup', 'Create backup before changes')
@@ -216,6 +223,15 @@ Examples:
         }
       }
 
+      // Parse --move option
+      if (options.move) {
+        operations.push({
+          type: 'move',
+          field: '', // Not used for move
+          targetPath: options.move,
+        });
+      }
+
       // Check for validation errors
       if (validationErrors.length > 0) {
         if (jsonMode) {
@@ -232,7 +248,19 @@ Examples:
 
       // Check that at least one operation was specified
       if (operations.length === 0) {
-        const error = 'No operations specified. Use --set, --rename, --delete, --append, or --remove.';
+        const error = 'No operations specified. Use --set, --rename, --delete, --append, --remove, or --move.';
+        if (jsonMode) {
+          printJson(jsonError(error));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        printError(error);
+        process.exit(1);
+      }
+
+      // Move operation cannot be combined with other operations
+      const hasMoveOp = operations.some(op => op.type === 'move');
+      if (hasMoveOp && operations.length > 1) {
+        const error = '--move cannot be combined with other operations';
         if (jsonMode) {
           printJson(jsonError(error));
           process.exit(ExitCodes.VALIDATION_ERROR);
@@ -332,24 +360,46 @@ function showAvailableTypes(schema: Schema): void {
  * Output result as JSON.
  */
 function outputJsonResult(result: BulkResult): void {
+  // Check if this is a move operation
+  const isMoveOperation = result.moveResults && result.moveResults.length > 0;
+
   const jsonOutput = {
     success: result.errors.length === 0,
     dryRun: result.dryRun,
     totalFiles: result.totalFiles,
     filesModified: result.affectedFiles,
     ...(result.backupPath && { backupPath: result.backupPath }),
-    changes: result.changes.map(fc => ({
-      file: fc.relativePath,
-      applied: fc.applied,
-      ...(fc.error && { error: fc.error }),
-      changes: fc.changes.map(c => ({
-        operation: c.operation,
-        field: c.field,
-        from: c.oldValue,
-        to: c.newValue,
-        ...(c.newField && { newField: c.newField }),
+    // For move operations
+    ...(isMoveOperation && {
+      moves: result.moveResults!.map(m => ({
+        from: m.oldRelativePath,
+        to: m.newRelativePath,
+        applied: m.applied,
+        ...(m.error && { error: m.error }),
       })),
-    })),
+      wikilinkUpdates: result.wikilinkUpdates?.map(u => ({
+        file: u.relativePath,
+        linksUpdated: u.linksUpdated,
+        applied: u.applied,
+        ...(u.error && { error: u.error }),
+      })),
+      totalLinksUpdated: result.totalLinksUpdated,
+    }),
+    // For field operations
+    ...(!isMoveOperation && {
+      changes: result.changes.map(fc => ({
+        file: fc.relativePath,
+        applied: fc.applied,
+        ...(fc.error && { error: fc.error }),
+        changes: fc.changes.map(c => ({
+          operation: c.operation,
+          field: c.field,
+          from: c.oldValue,
+          to: c.newValue,
+          ...(c.newField && { newField: c.newField }),
+        })),
+      })),
+    }),
     ...(result.errors.length > 0 && { errors: result.errors }),
   };
 
@@ -363,6 +413,14 @@ function outputJsonResult(result: BulkResult): void {
  * Output result as text.
  */
 function outputTextResult(result: BulkResult, verbose: boolean, quiet: boolean): void {
+  // Check if this is a move operation
+  const isMoveOperation = result.moveResults && result.moveResults.length > 0;
+
+  if (isMoveOperation) {
+    outputMoveTextResult(result, verbose, quiet);
+    return;
+  }
+
   // Quiet mode - just summary
   if (quiet) {
     if (result.dryRun) {
@@ -424,6 +482,106 @@ function outputTextResult(result: BulkResult, verbose: boolean, quiet: boolean):
     console.log(`Run with ${chalk.cyan('--execute')} to apply changes.`);
   } else {
     console.log(chalk.green(`✓ Updated ${result.affectedFiles} files`));
+  }
+
+  // Show errors if any
+  if (result.errors.length > 0) {
+    console.log();
+    console.log(chalk.red(`Errors (${result.errors.length}):`));
+    for (const error of result.errors) {
+      console.log(`  ${chalk.red('•')} ${error}`);
+    }
+  }
+}
+
+/**
+ * Output move operation result as text.
+ */
+function outputMoveTextResult(result: BulkResult, verbose: boolean, quiet: boolean): void {
+  const moveResults = result.moveResults ?? [];
+  const wikilinkUpdates = result.wikilinkUpdates ?? [];
+  const totalLinksUpdated = result.totalLinksUpdated ?? 0;
+
+  // Quiet mode - just summary
+  if (quiet) {
+    if (result.dryRun) {
+      console.log(`Would move ${moveResults.length} files`);
+      if (totalLinksUpdated > 0) {
+        console.log(`Would update ${totalLinksUpdated} wikilinks`);
+      }
+    } else {
+      console.log(chalk.green(`✓ Moved ${result.affectedFiles} files`));
+      if (totalLinksUpdated > 0) {
+        console.log(chalk.green(`✓ Updated ${totalLinksUpdated} wikilinks`));
+      }
+    }
+    return;
+  }
+
+  // Dry-run header
+  if (result.dryRun) {
+    console.log(chalk.yellow('Dry run - no changes will be made'));
+    console.log();
+  }
+
+  // Show backup path if created
+  if (result.backupPath) {
+    console.log(chalk.blue(`Backup created: ${result.backupPath}`));
+    console.log();
+  }
+
+  // No files case
+  if (moveResults.length === 0) {
+    console.log('No files match the criteria.');
+    return;
+  }
+
+  // Show file moves
+  if (result.dryRun) {
+    console.log(`Would move ${moveResults.length} file${moveResults.length === 1 ? '' : 's'}:`);
+  } else {
+    console.log(`Moving ${moveResults.length} file${moveResults.length === 1 ? '' : 's'}...`);
+  }
+
+  for (const move of moveResults) {
+    if (verbose || result.dryRun) {
+      console.log(`  ${move.oldRelativePath} → ${move.newRelativePath}`);
+    } else {
+      const status = move.applied 
+        ? chalk.green('✓') 
+        : (move.error ? chalk.red('✗') : ' ');
+      console.log(`  ${status} ${move.oldRelativePath} → ${move.newRelativePath}`);
+      if (move.error) {
+        console.log(`    ${chalk.red(move.error)}`);
+      }
+    }
+  }
+
+  // Show wikilink updates
+  if (wikilinkUpdates.length > 0 || totalLinksUpdated > 0) {
+    console.log();
+    if (result.dryRun) {
+      console.log(`Would update ${totalLinksUpdated} wikilink${totalLinksUpdated === 1 ? '' : 's'} across ${wikilinkUpdates.length} file${wikilinkUpdates.length === 1 ? '' : 's'}:`);
+    } else {
+      console.log(`Updating wikilinks...`);
+    }
+
+    if (verbose || result.dryRun) {
+      for (const update of wikilinkUpdates) {
+        console.log(`  ${update.relativePath}: ${update.linksUpdated} link${update.linksUpdated === 1 ? '' : 's'}`);
+      }
+    }
+  }
+
+  // Summary
+  console.log();
+  if (result.dryRun) {
+    console.log(`Run with ${chalk.cyan('--execute')} to apply changes.`);
+  } else {
+    console.log(chalk.green(`✓ Moved ${result.affectedFiles} files`));
+    if (totalLinksUpdated > 0) {
+      console.log(chalk.green(`✓ Updated ${totalLinksUpdated} wikilinks`));
+    }
   }
 
   // Show errors if any

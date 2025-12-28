@@ -492,6 +492,159 @@ tags:
       expect(result.stdout).toContain('Active Milestone.md');
     });
   });
+
+  describe('--move operation', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await createTestVault();
+      // Create Archive directory
+      await mkdir(join(tempVaultDir, 'Archive'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Archive', 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await cleanupTestVault(tempVaultDir);
+    });
+
+    it('should preview move in dry-run mode', async () => {
+      const result = await runCLI(['bulk', 'idea', '--move', 'Archive/Ideas'], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Dry run');
+      expect(result.stdout).toContain('Would move');
+      expect(result.stdout).toContain('Sample Idea.md');
+      expect(result.stdout).toContain('Archive/Ideas/Sample Idea.md');
+
+      // Verify file wasn't moved
+      await expect(readFile(join(tempVaultDir, 'Ideas', 'Sample Idea.md'), 'utf-8')).resolves.toBeDefined();
+    });
+
+    it('should move files when --execute is used', async () => {
+      const result = await runCLI(['bulk', 'idea', '--move', 'Archive/Ideas', '--execute'], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Moved');
+
+      // Verify files were moved
+      await expect(readFile(join(tempVaultDir, 'Archive', 'Ideas', 'Sample Idea.md'), 'utf-8')).resolves.toBeDefined();
+      await expect(readFile(join(tempVaultDir, 'Archive', 'Ideas', 'Another Idea.md'), 'utf-8')).resolves.toBeDefined();
+    });
+
+    it('should filter files with --where', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--move', 'Archive/Ideas',
+        '--where', "status == 'raw'",
+        '--execute'
+      ], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      // Only Sample Idea has status=raw
+      expect(result.stdout).toContain('Moved 1 file');
+
+      // Sample Idea should be moved
+      await expect(readFile(join(tempVaultDir, 'Archive', 'Ideas', 'Sample Idea.md'), 'utf-8')).resolves.toBeDefined();
+      // Another Idea should NOT be moved (it has backlog status)
+      await expect(readFile(join(tempVaultDir, 'Ideas', 'Another Idea.md'), 'utf-8')).resolves.toBeDefined();
+    });
+
+    it('should update wikilinks when moving files', async () => {
+      // Create a task that references an idea
+      await writeFile(
+        join(tempVaultDir, 'Objectives', 'Tasks', 'Task With Link.md'),
+        `---
+type: task
+status: active
+scope: day
+---
+This task relates to [[Sample Idea]].
+`
+      );
+
+      // Create another file with same name for disambiguation
+      await mkdir(join(tempVaultDir, 'Other'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Other', 'Sample Idea.md'),
+        '# Other Sample Idea\nUnmanaged file with same name.'
+      );
+
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--move', 'Archive/Ideas',
+        '--where', "status == 'raw'",
+        '--execute'
+      ], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('wikilink');
+
+      // Check that the task file was updated with the new path
+      const taskContent = await readFile(join(tempVaultDir, 'Objectives', 'Tasks', 'Task With Link.md'), 'utf-8');
+      expect(taskContent).toContain('[[Archive/Ideas/Sample Idea]]');
+    });
+
+    it('should not combine --move with other operations', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--move', 'Archive/Ideas',
+        '--set', 'status=settled'
+      ], tempVaultDir);
+      
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('cannot be combined');
+    });
+
+    it('should show JSON output with --output json', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--move', 'Archive/Ideas',
+        '--output', 'json'
+      ], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.data.dryRun).toBe(true);
+      expect(json.data.moves).toBeDefined();
+      expect(json.data.moves.length).toBeGreaterThan(0);
+    });
+
+    it('should handle --quiet mode', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--move', 'Archive/Ideas',
+        '--quiet'
+      ], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Would move');
+      expect(result.stdout).not.toContain('Sample Idea.md');
+    });
+
+    it('should handle --limit option', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--move', 'Archive/Ideas',
+        '--limit', '1',
+        '--execute'
+      ], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Moved 1 file');
+    });
+
+    it('should show no files message when nothing matches', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--move', 'Archive/Ideas',
+        '--where', "status == 'settled'"
+      ], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('No files match');
+    });
+  });
 });
 
 describe('bulk operations unit tests', () => {

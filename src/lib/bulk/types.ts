@@ -7,7 +7,7 @@ import type { Schema } from '../../types/schema.js';
 /**
  * Types of bulk operations.
  */
-export type OperationType = 'set' | 'clear' | 'rename' | 'delete' | 'append' | 'remove';
+export type OperationType = 'set' | 'clear' | 'rename' | 'delete' | 'append' | 'remove' | 'move';
 
 /**
  * A single bulk operation to apply.
@@ -17,6 +17,7 @@ export interface BulkOperation {
   field: string;
   value?: unknown;        // For set, append, remove
   newField?: string;      // For rename
+  targetPath?: string;    // For move
 }
 
 /**
@@ -51,6 +52,35 @@ export interface BulkResult {
   changes: FileChange[];
   backupPath?: string;
   errors: string[];
+  /** For move operations: file move results */
+  moveResults?: MoveFileResult[];
+  /** For move operations: wikilink update results */
+  wikilinkUpdates?: WikilinkUpdateInfo[];
+  /** For move operations: total wikilinks updated */
+  totalLinksUpdated?: number;
+}
+
+/**
+ * Result of moving a single file.
+ */
+export interface MoveFileResult {
+  oldPath: string;
+  newPath: string;
+  oldRelativePath: string;
+  newRelativePath: string;
+  applied: boolean;
+  error?: string;
+}
+
+/**
+ * Result of updating wikilinks in a file.
+ */
+export interface WikilinkUpdateInfo {
+  filePath: string;
+  relativePath: string;
+  linksUpdated: number;
+  applied: boolean;
+  error?: string;
 }
 
 /**
