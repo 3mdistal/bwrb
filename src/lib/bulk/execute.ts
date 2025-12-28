@@ -10,12 +10,20 @@ import { matchesAllFilters } from '../query.js';
 import { discoverManagedFiles } from '../audit/detection.js';
 import { applyOperations } from './operations.js';
 import { createBackup } from './backup.js';
+import { executeBulkMove, findAllMarkdownFiles } from './move.js';
 import type {
   BulkOptions,
   BulkResult,
   FileChange,
   BulkOperation,
 } from './types.js';
+
+/**
+ * Check if operations include a move operation.
+ */
+function hasMoveOperation(operations: BulkOperation[]): BulkOperation | undefined {
+  return operations.find(op => op.type === 'move');
+}
 
 /**
  * Execute bulk operations on matching files.
@@ -40,6 +48,12 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
     changes: [],
     errors: [],
   };
+
+  // Check for move operation - handle separately
+  const moveOp = hasMoveOperation(operations);
+  if (moveOp) {
+    return executeBulkWithMove(options, moveOp);
+  }
 
   // Discover files for the specified type
   const files = await discoverManagedFiles(schema, vaultDir, typePath);
@@ -139,6 +153,119 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
   }
 
   result.affectedFiles = result.changes.filter(c => c.changes.length > 0).length;
+
+  return result;
+}
+
+/**
+ * Execute bulk move operation with wikilink updates.
+ */
+async function executeBulkWithMove(
+  options: BulkOptions,
+  moveOp: BulkOperation
+): Promise<BulkResult> {
+  const {
+    typePath,
+    whereExpressions,
+    simpleFilters,
+    execute,
+    backup,
+    limit,
+    vaultDir,
+    schema,
+  } = options;
+
+  const targetPath = moveOp.targetPath;
+  if (!targetPath) {
+    throw new Error('Move operation requires a target path');
+  }
+
+  const result: BulkResult = {
+    dryRun: !execute,
+    totalFiles: 0,
+    affectedFiles: 0,
+    changes: [],
+    errors: [],
+    moveResults: [],
+    wikilinkUpdates: [],
+    totalLinksUpdated: 0,
+  };
+
+  // Discover files for the specified type
+  const files = await discoverManagedFiles(schema, vaultDir, typePath);
+  result.totalFiles = files.length;
+
+  // Filter files based on criteria
+  const filesToMove: string[] = [];
+
+  for (const file of files) {
+    try {
+      const { frontmatter } = await parseNote(file.path);
+
+      // Apply simple filters (--field=value syntax)
+      if (simpleFilters.length > 0) {
+        if (!matchesAllFilters(frontmatter, simpleFilters)) {
+          continue;
+        }
+      }
+
+      // Apply where expression filters
+      if (whereExpressions.length > 0) {
+        const context = await buildEvalContext(file.path, vaultDir, frontmatter);
+        const allMatch = whereExpressions.every(expr => {
+          try {
+            return matchesExpression(expr, context);
+          } catch {
+            return false;
+          }
+        });
+        if (!allMatch) continue;
+      }
+
+      filesToMove.push(file.path);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      result.errors.push(`Failed to parse ${file.relativePath}: ${message}`);
+    }
+  }
+
+  // Apply limit
+  const filesToProcess = limit ? filesToMove.slice(0, limit) : filesToMove;
+
+  if (filesToProcess.length === 0) {
+    return result;
+  }
+
+  // Get all vault files for wikilink scanning
+  const allVaultFiles = await findAllMarkdownFiles(vaultDir);
+
+  // Create backup if requested and executing
+  if (execute && backup) {
+    // For move operations, we need to backup both the files being moved
+    // and the files that will have wikilinks updated
+    // For simplicity, just backup files being moved
+    result.backupPath = await createBackup(
+      vaultDir,
+      filesToProcess,
+      `bulk move to ${targetPath}`
+    );
+  }
+
+  // Execute the move
+  const moveResult = await executeBulkMove({
+    vaultDir,
+    targetDir: targetPath,
+    filesToMove: filesToProcess,
+    execute,
+    allVaultFiles,
+  });
+
+  // Transfer results
+  result.moveResults = moveResult.moveResults;
+  result.wikilinkUpdates = moveResult.wikilinkUpdates;
+  result.totalLinksUpdated = moveResult.totalLinksUpdated;
+  result.errors.push(...moveResult.errors);
+  result.affectedFiles = moveResult.moveResults.filter(r => !r.error).length;
 
   return result;
 }
