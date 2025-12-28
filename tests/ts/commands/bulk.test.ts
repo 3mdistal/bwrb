@@ -1,0 +1,628 @@
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { mkdtemp, rm, mkdir, writeFile, readFile } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { createTestVault, cleanupTestVault, runCLI, TEST_SCHEMA } from '../fixtures/setup.js';
+import { parseNote } from '../../../src/lib/frontmatter.js';
+
+describe('bulk command', () => {
+  let vaultDir: string;
+
+  beforeAll(async () => {
+    vaultDir = await createTestVault();
+  });
+
+  afterAll(async () => {
+    await cleanupTestVault(vaultDir);
+  });
+
+  describe('basic validation', () => {
+    it('should require a type argument', async () => {
+      const result = await runCLI(['bulk'], vaultDir);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("required");
+    });
+
+    it('should reject unknown type', async () => {
+      const result = await runCLI(['bulk', 'unknown', '--set', 'status=done'], vaultDir);
+      expect(result.exitCode).toBe(1);
+      // Error goes to stderr via printError
+      expect(result.stderr).toContain('Unknown type: unknown');
+    });
+
+    it('should require at least one operation', async () => {
+      const result = await runCLI(['bulk', 'idea'], vaultDir);
+      expect(result.exitCode).toBe(1);
+      // Error goes to stderr via printError
+      expect(result.stderr).toContain('No operations specified');
+    });
+
+    it('should validate enum values', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'status=invalid'], vaultDir);
+      expect(result.exitCode).toBe(1);
+      // Error goes to stderr via printError
+      expect(result.stderr).toContain("Invalid value 'invalid' for field 'status'");
+    });
+  });
+
+  describe('dry-run mode', () => {
+    it('should show what would change without modifying files', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'status=backlog'], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Dry run');
+      expect(result.stdout).toContain('Sample Idea.md');
+      expect(result.stdout).toContain('status: raw → backlog');
+      expect(result.stdout).toContain('--execute');
+
+      // Verify file wasn't changed
+      const { frontmatter } = await parseNote(join(vaultDir, 'Ideas', 'Sample Idea.md'));
+      expect(frontmatter.status).toBe('raw');
+    });
+
+    it('should show no changes when nothing matches', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'status=raw', '--where', "status == 'settled'"], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('No files match');
+    });
+  });
+
+  describe('--set operation', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await createTestVault();
+    });
+
+    afterEach(async () => {
+      await cleanupTestVault(tempVaultDir);
+    });
+
+    it('should set a single field', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--execute'], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Updated 2 files');
+
+      // Verify files were changed
+      const { frontmatter: fm1 } = await parseNote(join(tempVaultDir, 'Ideas', 'Sample Idea.md'));
+      expect(fm1.status).toBe('settled');
+
+      const { frontmatter: fm2 } = await parseNote(join(tempVaultDir, 'Ideas', 'Another Idea.md'));
+      expect(fm2.status).toBe('settled');
+    });
+
+    it('should set multiple fields', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--set', 'status=settled',
+        '--set', 'priority=low',
+        '--execute'
+      ], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Updated 2 files');
+
+      const { frontmatter } = await parseNote(join(tempVaultDir, 'Ideas', 'Sample Idea.md'));
+      expect(frontmatter.status).toBe('settled');
+      expect(frontmatter.priority).toBe('low');
+    });
+
+    it('should clear a field with --set field=', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'priority=', '--execute'], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+
+      const { frontmatter } = await parseNote(join(tempVaultDir, 'Ideas', 'Sample Idea.md'));
+      expect(frontmatter.priority).toBeUndefined();
+    });
+
+    it('should allow setting arbitrary fields (not in schema)', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'custom-field=test', '--execute'], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Updated 2 files');
+
+      const { frontmatter } = await parseNote(join(tempVaultDir, 'Ideas', 'Sample Idea.md'));
+      expect(frontmatter['custom-field']).toBe('test');
+    });
+  });
+
+  describe('--rename operation', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await createTestVault();
+    });
+
+    afterEach(async () => {
+      await cleanupTestVault(tempVaultDir);
+    });
+
+    it('should rename a field', async () => {
+      // First add a field to rename
+      await runCLI(['bulk', 'idea', '--set', 'old-field=value', '--execute'], tempVaultDir);
+      
+      const result = await runCLI(['bulk', 'idea', '--rename', 'old-field=new-field', '--execute'], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Updated 2 files');
+
+      const { frontmatter } = await parseNote(join(tempVaultDir, 'Ideas', 'Sample Idea.md'));
+      expect(frontmatter['old-field']).toBeUndefined();
+      expect(frontmatter['new-field']).toBe('value');
+    });
+
+    it('should error when target field already exists', async () => {
+      const result = await runCLI(['bulk', 'idea', '--rename', 'status=priority', '--execute'], tempVaultDir);
+      
+      expect(result.exitCode).toBe(1);
+      // Error goes to stderr via printError
+      expect(result.stderr).toContain('target field already exists');
+    });
+  });
+
+  describe('--delete operation', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await createTestVault();
+    });
+
+    afterEach(async () => {
+      await cleanupTestVault(tempVaultDir);
+    });
+
+    it('should delete a field', async () => {
+      const result = await runCLI(['bulk', 'idea', '--delete', 'priority', '--execute'], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Updated 2 files');
+
+      const { frontmatter } = await parseNote(join(tempVaultDir, 'Ideas', 'Sample Idea.md'));
+      expect(frontmatter.priority).toBeUndefined();
+    });
+
+    it('should not fail when field does not exist', async () => {
+      const result = await runCLI(['bulk', 'idea', '--delete', 'nonexistent', '--execute'], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      // No files should be modified since field doesn't exist
+      expect(result.stdout).toContain('No files match');
+    });
+  });
+
+  describe('--append operation', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await createTestVault();
+    });
+
+    afterEach(async () => {
+      await cleanupTestVault(tempVaultDir);
+    });
+
+    it('should append to an existing array', async () => {
+      // First set tags as an array
+      await runCLI(['bulk', 'idea', '--set', 'tags=existing', '--execute'], tempVaultDir);
+      
+      const result = await runCLI(['bulk', 'idea', '--append', 'tags=newtag', '--execute'], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Updated 2 files');
+
+      const { frontmatter } = await parseNote(join(tempVaultDir, 'Ideas', 'Sample Idea.md'));
+      expect(frontmatter.tags).toContain('existing');
+      expect(frontmatter.tags).toContain('newtag');
+    });
+
+    it('should create array for new field', async () => {
+      const result = await runCLI(['bulk', 'idea', '--append', 'labels=first', '--execute'], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+
+      const { frontmatter } = await parseNote(join(tempVaultDir, 'Ideas', 'Sample Idea.md'));
+      expect(frontmatter.labels).toEqual(['first']);
+    });
+
+    it('should convert scalar to array when appending', async () => {
+      // First set a scalar value
+      await runCLI(['bulk', 'idea', '--set', 'scalar-field=first', '--execute'], tempVaultDir);
+      
+      const result = await runCLI(['bulk', 'idea', '--append', 'scalar-field=second', '--execute'], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+
+      const { frontmatter } = await parseNote(join(tempVaultDir, 'Ideas', 'Sample Idea.md'));
+      expect(frontmatter['scalar-field']).toEqual(['first', 'second']);
+    });
+  });
+
+  describe('--remove operation', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await createTestVault();
+      // Set up array field for testing
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Sample Idea.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+tags:
+  - one
+  - two
+  - three
+---
+`
+      );
+    });
+
+    afterEach(async () => {
+      await cleanupTestVault(tempVaultDir);
+    });
+
+    it('should remove item from array', async () => {
+      const result = await runCLI(['bulk', 'idea', '--remove', 'tags=two', '--execute', '--where', "contains(tags, 'two')"], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+
+      const { frontmatter } = await parseNote(join(tempVaultDir, 'Ideas', 'Sample Idea.md'));
+      expect(frontmatter.tags).toEqual(['one', 'three']);
+    });
+
+    it('should leave empty array after removing last item', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Single Tag.md'),
+        `---
+type: idea
+status: raw
+tags:
+  - only
+---
+`
+      );
+
+      const result = await runCLI(['bulk', 'idea', '--remove', 'tags=only', '--execute', '--where', "contains(tags, 'only')"], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+
+      const { frontmatter } = await parseNote(join(tempVaultDir, 'Ideas', 'Single Tag.md'));
+      expect(frontmatter.tags).toEqual([]);
+    });
+  });
+
+  describe('--where filtering', () => {
+    it('should filter by expression', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--where', "status == 'raw'"], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Sample Idea.md');
+      expect(result.stdout).not.toContain('Another Idea.md'); // This one has backlog status
+    });
+
+    it('should combine multiple where expressions with AND', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--set', 'status=settled',
+        '--where', "status == 'backlog'",
+        '--where', "priority == 'high'"
+      ], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      // Only Another Idea matches both conditions
+      expect(result.stdout).toContain('Another Idea.md');
+      expect(result.stdout).not.toContain('Sample Idea.md');
+    });
+  });
+
+  describe('simple filters (--field=value syntax)', () => {
+    it('should filter with equality', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--status=raw',
+        '--set', 'priority=high'
+      ], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      // Only Sample Idea has status=raw
+      expect(result.stdout).toContain('Sample Idea.md');
+      expect(result.stdout).not.toContain('Another Idea.md');
+    });
+
+    it('should filter with negation', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--status!=raw',
+        '--set', 'priority=low'
+      ], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      // Only Another Idea has status!=raw (it's backlog)
+      expect(result.stdout).toContain('Another Idea.md');
+      expect(result.stdout).not.toContain('Sample Idea.md');
+    });
+
+    it('should filter with multiple values (OR)', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--status=raw,backlog',
+        '--set', 'test=value'
+      ], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      // Both files match (raw or backlog)
+      expect(result.stdout).toContain('Sample Idea.md');
+      expect(result.stdout).toContain('Another Idea.md');
+    });
+
+    it('should combine simple filters with AND', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--status=backlog',
+        '--priority=high',
+        '--set', 'test=value'
+      ], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      // Only Another Idea has both status=backlog AND priority=high
+      expect(result.stdout).toContain('Another Idea.md');
+      expect(result.stdout).not.toContain('Sample Idea.md');
+    });
+
+    it('should combine simple filters with --where expressions', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--status=backlog',
+        '--where', "priority == 'high'",
+        '--set', 'test=value'
+      ], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      // Only Another Idea matches both conditions
+      expect(result.stdout).toContain('Another Idea.md');
+      expect(result.stdout).not.toContain('Sample Idea.md');
+    });
+
+    it('should validate filter field names', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--nonexistent=value',
+        '--set', 'status=done'
+      ], vaultDir);
+      
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Unknown field 'nonexistent'");
+    });
+
+    it('should validate filter enum values', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--status=invalid',
+        '--set', 'priority=high'
+      ], vaultDir);
+      
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Invalid value 'invalid'");
+    });
+  });
+
+  describe('--limit option', () => {
+    it('should limit number of files affected', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--limit', '1'], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Would affect 1 file');
+    });
+
+    it('should reject invalid limit', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--limit', 'abc'], vaultDir);
+      
+      expect(result.exitCode).toBe(1);
+      // Error goes to stderr via printError
+      expect(result.stderr).toContain('Invalid --limit');
+    });
+  });
+
+  describe('--backup option', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await createTestVault();
+    });
+
+    afterEach(async () => {
+      await cleanupTestVault(tempVaultDir);
+    });
+
+    it('should create backup when --backup is specified', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--execute', '--backup'], tempVaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Backup created');
+      expect(result.stdout).toContain('.ovault/backups');
+    });
+  });
+
+  describe('output modes', () => {
+    it('should output JSON with --output json', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--output', 'json'], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.data.dryRun).toBe(true);
+      expect(json.data.filesModified).toBeGreaterThan(0);
+    });
+
+    it('should show minimal output with --quiet', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--quiet'], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Would affect');
+      expect(result.stdout).not.toContain('Sample Idea.md');
+    });
+
+    it('should show detailed output with --verbose', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--verbose'], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Sample Idea.md');
+      expect(result.stdout).toContain('status:');
+    });
+  });
+
+  describe('subtype handling', () => {
+    it('should work with subtypes', async () => {
+      const result = await runCLI(['bulk', 'objective/task', '--set', 'status=settled'], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Sample Task.md');
+    });
+
+    it('should work with parent type (affecting all subtypes)', async () => {
+      const result = await runCLI(['bulk', 'objective', '--set', 'status=settled'], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      // Should show both task and milestone
+      expect(result.stdout).toContain('Sample Task.md');
+      expect(result.stdout).toContain('Active Milestone.md');
+    });
+  });
+});
+
+describe('bulk operations unit tests', () => {
+  describe('applyOperations', () => {
+    // Import dynamically in tests
+    let applyOperations: typeof import('../../../src/lib/bulk/operations.js')['applyOperations'];
+
+    beforeAll(async () => {
+      const mod = await import('../../../src/lib/bulk/operations.js');
+      applyOperations = mod.applyOperations;
+    });
+
+    it('should set field value', () => {
+      const fm = { existing: 'value' };
+      const { modified, changes } = applyOperations(fm, [
+        { type: 'set', field: 'new', value: 'test' }
+      ]);
+      
+      expect(modified.new).toBe('test');
+      expect(changes).toHaveLength(1);
+      expect(changes[0]?.operation).toBe('set');
+    });
+
+    it('should rename field', () => {
+      const fm = { old: 'value' };
+      const { modified, changes } = applyOperations(fm, [
+        { type: 'rename', field: 'old', newField: 'new' }
+      ]);
+      
+      expect(modified.old).toBeUndefined();
+      expect(modified.new).toBe('value');
+      expect(changes).toHaveLength(1);
+      expect(changes[0]?.operation).toBe('rename');
+    });
+
+    it('should throw when renaming to existing field', () => {
+      const fm = { old: 'value1', new: 'value2' };
+      expect(() => {
+        applyOperations(fm, [
+          { type: 'rename', field: 'old', newField: 'new' }
+        ]);
+      }).toThrow('target field already exists');
+    });
+
+    it('should delete field', () => {
+      const fm = { field: 'value' };
+      const { modified, changes } = applyOperations(fm, [
+        { type: 'delete', field: 'field' }
+      ]);
+      
+      expect(modified.field).toBeUndefined();
+      expect(changes).toHaveLength(1);
+    });
+
+    it('should append to array', () => {
+      const fm = { list: ['a', 'b'] };
+      const { modified } = applyOperations(fm, [
+        { type: 'append', field: 'list', value: 'c' }
+      ]);
+      
+      expect(modified.list).toEqual(['a', 'b', 'c']);
+    });
+
+    it('should not append duplicate value', () => {
+      const fm = { list: ['a', 'b'] };
+      const { modified, changes } = applyOperations(fm, [
+        { type: 'append', field: 'list', value: 'a' }
+      ]);
+      
+      expect(modified.list).toEqual(['a', 'b']);
+      expect(changes).toHaveLength(0);
+    });
+
+    it('should remove from array', () => {
+      const fm = { list: ['a', 'b', 'c'] };
+      const { modified } = applyOperations(fm, [
+        { type: 'remove', field: 'list', value: 'b' }
+      ]);
+      
+      expect(modified.list).toEqual(['a', 'c']);
+    });
+
+    it('should leave empty array after removing last item', () => {
+      const fm = { list: ['only'] };
+      const { modified } = applyOperations(fm, [
+        { type: 'remove', field: 'list', value: 'only' }
+      ]);
+      
+      expect(modified.list).toEqual([]);
+    });
+  });
+
+  describe('buildOperation', () => {
+    let buildOperation: typeof import('../../../src/lib/bulk/operations.js')['buildOperation'];
+
+    beforeAll(async () => {
+      const mod = await import('../../../src/lib/bulk/operations.js');
+      buildOperation = mod.buildOperation;
+    });
+
+    it('should parse set operation', () => {
+      const op = buildOperation('set', 'field=value');
+      expect(op.type).toBe('set');
+      expect(op.field).toBe('field');
+      expect(op.value).toBe('value');
+    });
+
+    it('should parse clear operation', () => {
+      const op = buildOperation('set', 'field=');
+      expect(op.type).toBe('clear');
+      expect(op.field).toBe('field');
+    });
+
+    it('should parse rename operation', () => {
+      const op = buildOperation('rename', 'old=new');
+      expect(op.type).toBe('rename');
+      expect(op.field).toBe('old');
+      expect(op.newField).toBe('new');
+    });
+
+    it('should parse boolean values', () => {
+      const opTrue = buildOperation('set', 'field=true');
+      expect(opTrue.value).toBe(true);
+
+      const opFalse = buildOperation('set', 'field=false');
+      expect(opFalse.value).toBe(false);
+    });
+
+    it('should parse numeric values', () => {
+      const op = buildOperation('set', 'count=42');
+      expect(op.value).toBe(42);
+    });
+  });
+});

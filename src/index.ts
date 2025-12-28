@@ -7,6 +7,7 @@ import { listCommand } from './commands/list.js';
 import { openCommand } from './commands/open.js';
 import { schemaCommand } from './commands/schema.js';
 import { auditCommand } from './commands/audit.js';
+import { bulkCommand } from './commands/bulk.js';
 
 const program = new Command();
 
@@ -22,5 +23,6 @@ program.addCommand(listCommand);
 program.addCommand(openCommand);
 program.addCommand(schemaCommand);
 program.addCommand(auditCommand);
+program.addCommand(bulkCommand);
 
 program.parse();
