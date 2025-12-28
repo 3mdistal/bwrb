@@ -215,13 +215,21 @@ export function toWikilink(value: string): string {
 
 /**
  * Convert a plain value to quoted wikilink format.
+ * 
+ * Note: After YAML parsing, both wikilink and quoted-wikilink values
+ * are stored as [[Target]]. The "quoted" part is a serialization concern -
+ * the YAML library automatically quotes strings containing brackets.
+ * So this function just returns a wikilink.
  */
 export function toQuotedWikilink(value: string): string {
-  if (isQuotedWikilink(value)) {
+  // If already a wikilink, return as-is
+  if (isWikilink(value)) {
     return value;
   }
-  if (isWikilink(value)) {
-    return `"${value}"`;
+  // If it has embedded quotes (from a previous buggy fix), strip them
+  if (isQuotedWikilink(value)) {
+    return value.slice(1, -1); // Remove outer quotes
   }
-  return `"[[${value}]]"`;
+  // Convert plain text to wikilink
+  return `[[${value}]]`;
 }
