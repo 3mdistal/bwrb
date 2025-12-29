@@ -1,6 +1,6 @@
 {
   "name": "ovault",
-  "version": "2.0.0",
+  "version": "0.2.0",
   "description": "Schema-driven template creation and editing for Obsidian vaults",
   "type": "module",
   "main": "dist/index.js",

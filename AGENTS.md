@@ -1,40 +1,57 @@
 # Agent Instructions
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+## Project Overview
 
-## Quick Reference
+**ovault** is a CLI tool for schema-driven note creation and editing in Obsidian vaults. It enforces consistent frontmatter structure, enables dynamic field prompts, and provides batch operations for vault maintenance.
 
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync               # Sync with git
+## Architecture
+
+```
+src/
+├── index.ts           # CLI entry point (Commander.js)
+├── commands/          # Command implementations
+│   ├── new.ts         # Create notes with schema-driven prompts
+│   ├── edit.ts        # Modify existing notes
+│   ├── list.ts        # Query and filter notes
+│   ├── open.ts        # Open notes in editor/Obsidian
+│   ├── link.ts        # Generate wikilinks
+│   ├── audit.ts       # Validate notes against schema
+│   ├── bulk.ts        # Batch frontmatter operations
+│   └── schema.ts      # Schema inspection
+├── lib/               # Shared utilities
+│   ├── schema.ts      # Schema loading & resolution
+│   ├── frontmatter.ts # YAML frontmatter parsing
+│   ├── query.ts       # Filter expression evaluation
+│   ├── vault.ts       # Vault discovery & file ops
+│   ├── prompt.ts      # Interactive prompts (prompts library)
+│   ├── validation.ts  # Frontmatter validation
+│   ├── audit/         # Audit detection and fix logic
+│   └── bulk/          # Bulk operation utilities
+└── types/
+    └── schema.ts      # Zod schemas for type safety
 ```
 
-## Landing the Plane (Session Completion)
+## Key Concepts
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+- **Schema**: Each vault has `.ovault/schema.json` defining types, enums, and dynamic sources
+- **Types**: Hierarchical (e.g., `objective/task`) with frontmatter definitions
+- **Dynamic sources**: Query vault files for field values (e.g., active milestones)
+- **Wikilinks**: `[[Note]]` or `"[[Note]]"` format for Obsidian linking
 
-**MANDATORY WORKFLOW:**
+## Development
 
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+```sh
+pnpm install          # Install dependencies
+pnpm dev -- <cmd>     # Run without building
+pnpm build            # Build to dist/
+pnpm test             # Run vitest tests
+pnpm typecheck        # Type checking
+```
 
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+## Testing
 
+Tests live in `tests/ts/` with fixtures in `tests/fixtures/vault/`. Run `pnpm test` before committing.
+
+## Issue Tracking
+
+This project uses Beads for issue tracking. Load the `beads` skill for commands.
