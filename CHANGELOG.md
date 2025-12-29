@@ -2,6 +2,22 @@
 
 All notable changes to ovault are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **PTY-based integration tests** for interactive prompts
+  - Uses node-pty to test real terminal behavior
+  - Catches UI bugs that unit tests miss
+  - Helpers in `tests/ts/lib/pty-helpers.ts`
+
+### Fixed
+
+- **Numbered select prompt flicker** (ovault-18j)
+  - Arrow key navigation now uses differential updates instead of full re-render
+  - Only the changed lines (old/new selection) are updated
+  - Eliminates visual flicker during navigation
+
 ## [0.2.0] - 2025-12-29
 
 Complete rewrite from shell scripts to TypeScript with significant new features.

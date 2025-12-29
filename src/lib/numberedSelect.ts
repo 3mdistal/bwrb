@@ -154,35 +154,51 @@ export class NumberedSelectPrompt {
   };
 
   private moveUp(): void {
+    const oldCursor = this.cursor;
+    const oldPage = this.currentPage;
+
     if (this.cursor > 0) {
       this.cursor--;
-      // Update page if cursor moved to previous page
-      const newPage = Math.floor(this.cursor / ITEMS_PER_PAGE);
-      if (newPage !== this.currentPage) {
-        this.currentPage = newPage;
-      }
-      this.render();
     } else {
       // Wrap to end
       this.cursor = this.choices.length - 1;
-      this.currentPage = Math.floor(this.cursor / ITEMS_PER_PAGE);
+    }
+
+    // Update page if cursor moved to a different page
+    const newPage = Math.floor(this.cursor / ITEMS_PER_PAGE);
+    if (newPage !== this.currentPage) {
+      this.currentPage = newPage;
+    }
+
+    // Use differential update if staying on same page, full render if page changed
+    if (oldPage === this.currentPage) {
+      this.updateSelection(oldCursor, this.cursor);
+    } else {
       this.render();
     }
   }
 
   private moveDown(): void {
+    const oldCursor = this.cursor;
+    const oldPage = this.currentPage;
+
     if (this.cursor < this.choices.length - 1) {
       this.cursor++;
-      // Update page if cursor moved to next page
-      const newPage = Math.floor(this.cursor / ITEMS_PER_PAGE);
-      if (newPage !== this.currentPage) {
-        this.currentPage = newPage;
-      }
-      this.render();
     } else {
       // Wrap to beginning
       this.cursor = 0;
-      this.currentPage = 0;
+    }
+
+    // Update page if cursor moved to a different page
+    const newPage = Math.floor(this.cursor / ITEMS_PER_PAGE);
+    if (newPage !== this.currentPage) {
+      this.currentPage = newPage;
+    }
+
+    // Use differential update if staying on same page, full render if page changed
+    if (oldPage === this.currentPage) {
+      this.updateSelection(oldCursor, this.cursor);
+    } else {
       this.render();
     }
   }
@@ -268,6 +284,63 @@ export class NumberedSelectPrompt {
         process.stdout.write('\x1b[1A'); // Move up
       }
     }
+    process.stdout.write('\r'); // Move to start of line
+  }
+
+  /**
+   * Render a single choice line.
+   */
+  private renderChoiceLine(absoluteIndex: number): string {
+    const indexInPage = absoluteIndex - this.currentPage * ITEMS_PER_PAGE;
+    const keyLabel = getDisplayKey(indexInPage);
+    const choice = this.choices[absoluteIndex];
+    const isSelected = absoluteIndex === this.cursor;
+
+    if (isSelected) {
+      return `${chalk.cyan('❯')} ${chalk.dim(keyLabel)}  ${chalk.cyan.underline(choice)}`;
+    } else {
+      return `  ${chalk.dim(keyLabel)}  ${choice}`;
+    }
+  }
+
+  /**
+   * Update only the lines that changed during cursor movement.
+   * This avoids full re-render flicker when navigating within a page.
+   */
+  private updateSelection(oldCursor: number, newCursor: number): void {
+    if (oldCursor === newCursor) return;
+
+    const pageStart = this.currentPage * ITEMS_PER_PAGE;
+    const pageEnd = Math.min(pageStart + ITEMS_PER_PAGE, this.choices.length);
+    const visibleChoices = pageEnd - pageStart;
+
+    // Calculate line positions relative to current cursor
+    // We're at the hint line (last line), need to move up
+    const oldLineOffset = visibleChoices - (oldCursor - pageStart);
+    const newLineOffset = visibleChoices - (newCursor - pageStart);
+
+    // Move up to the old selection line and update it
+    process.stdout.write(`\x1b[${oldLineOffset + 1}A`); // +1 for hint line
+    process.stdout.write('\x1b[2K'); // Clear line
+    process.stdout.write('\r'); // Move to start
+    process.stdout.write(this.renderChoiceLine(oldCursor));
+
+    // Calculate relative movement from old line to new line
+    const lineDelta = newLineOffset - oldLineOffset;
+    if (lineDelta > 0) {
+      process.stdout.write(`\x1b[${lineDelta}A`); // Move up
+    } else if (lineDelta < 0) {
+      process.stdout.write(`\x1b[${-lineDelta}B`); // Move down
+    }
+
+    // Update the new selection line
+    process.stdout.write('\x1b[2K'); // Clear line
+    process.stdout.write('\r'); // Move to start
+    process.stdout.write(this.renderChoiceLine(newCursor));
+
+    // Move back to the hint line (bottom)
+    const moveDown = newLineOffset + 1; // +1 for hint line
+    process.stdout.write(`\x1b[${moveDown}B`);
     process.stdout.write('\r'); // Move to start of line
   }
 
