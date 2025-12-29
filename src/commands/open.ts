@@ -234,6 +234,34 @@ Note: Obsidian must be running for --app obsidian to work.
 // Helpers
 // ============================================================================
 
+/**
+ * Open a note using the configured app mode (respects OVAULT_DEFAULT_APP).
+ * This is the shared entry point for opening notes from other commands.
+ */
+export async function openNote(
+  vaultDir: string,
+  filePath: string,
+  jsonMode: boolean = false
+): Promise<void> {
+  const appMode = parseAppMode(undefined); // Uses OVAULT_DEFAULT_APP or defaults to obsidian
+
+  switch (appMode) {
+    case 'print':
+      console.log(filePath);
+      break;
+    case 'editor':
+      await openInEditor(filePath, jsonMode);
+      break;
+    case 'system':
+      await openWithSystem(filePath, jsonMode);
+      break;
+    case 'obsidian':
+    default:
+      await openInObsidian(vaultDir, filePath, jsonMode);
+      break;
+  }
+}
+
 function parseAppMode(value: string | undefined): AppMode {
   // Use explicit value, then env var, then default to obsidian
   const effectiveValue = value ?? process.env['OVAULT_DEFAULT_APP'];
