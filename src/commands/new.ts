@@ -51,6 +51,18 @@ import {
 } from '../lib/output.js';
 import type { Schema, TypeDef, Field, BodySection } from '../types/schema.js';
 
+/**
+ * Error thrown when user cancels an interactive prompt (Ctrl+C/Escape).
+ * This allows cancellation to propagate cleanly through the call stack
+ * without creating side effects (like folders or partial files).
+ */
+class UserCancelledError extends Error {
+  constructor() {
+    super('User cancelled');
+    this.name = 'UserCancelledError';
+  }
+}
+
 interface NewCommandOptions {
   open?: boolean;
   json?: string;
@@ -132,6 +144,12 @@ or create a parent instance folder.`)
         await openNote(vaultDir, filePath);
       }
     } catch (err) {
+      // Handle user cancellation cleanly
+      if (err instanceof UserCancelledError) {
+        console.log('Cancelled.');
+        process.exit(1);
+      }
+
       const message = err instanceof Error ? err.message : String(err);
       if (jsonMode) {
         printJson(jsonError(message));
@@ -468,8 +486,11 @@ async function createPooledNote(
   // Prompt for name
   const nameField = typeDef.name_field ?? 'Name';
   const itemName = await promptRequired(nameField);
+  if (itemName === null) {
+    throw new UserCancelledError();
+  }
 
-  // Build frontmatter and body
+  // Build frontmatter and body (may throw UserCancelledError)
   const { frontmatter, body, orderedFields } = await buildNoteContent(schema, vaultDir, typePath, typeDef);
 
   // Create file
@@ -478,7 +499,10 @@ async function createPooledNote(
   if (existsSync(filePath)) {
     printWarning(`\nWarning: File already exists: ${filePath}`);
     const overwrite = await promptConfirm('Overwrite?');
-    if (!overwrite) {
+    if (overwrite === null) {
+      throw new UserCancelledError();
+    }
+    if (overwrite === false) {
       console.log('Aborted.');
       process.exit(1);
     }
@@ -508,24 +532,29 @@ async function createInstanceParent(
   // Prompt for instance name
   const nameField = typeDef.name_field ?? 'Name';
   const instanceName = await promptRequired(nameField);
+  if (instanceName === null) {
+    throw new UserCancelledError();
+  }
 
-  // Create instance folder
-  await createInstanceFolder(vaultDir, outputDir, instanceName);
-
-  // Build frontmatter and body
+  // Build frontmatter and body BEFORE creating folder (may throw UserCancelledError)
   const { frontmatter, body, orderedFields } = await buildNoteContent(schema, vaultDir, typePath, typeDef);
 
-  // Create parent note (e.g., "Drafts/My Project/My Project.md")
+  // Check if instance already exists BEFORE creating folder
   const filePath = getParentNotePath(vaultDir, outputDir, instanceName);
-
   if (existsSync(filePath)) {
     printWarning(`\nWarning: Instance already exists: ${filePath}`);
     const overwrite = await promptConfirm('Overwrite parent note?');
-    if (!overwrite) {
+    if (overwrite === null) {
+      throw new UserCancelledError();
+    }
+    if (overwrite === false) {
       console.log('Aborted.');
       process.exit(1);
     }
   }
+
+  // Only create folder after all prompts succeed
+  await createInstanceFolder(vaultDir, outputDir, instanceName);
 
   await writeNote(filePath, frontmatter, body, orderedFields);
   printSuccess(`\n✓ Created instance: ${instanceName}`);
@@ -558,37 +587,52 @@ async function createInstanceGroupedNote(
   // List existing instances
   const instances = await listInstanceFolders(vaultDir, parentOutputDir);
 
-  // Prompt for instance selection
-  let selectedInstance: string | undefined;
+  // Prompt for instance selection - track if we need to create a new instance
+  let selectedInstance: string;
+  let needsNewInstance = false;
+
   if (instances.length === 0) {
     printInfo(`No existing ${parentTypeName} instances found.`);
     const createNew = await promptConfirm(`Create a new ${parentTypeName}?`);
-    if (!createNew) {
+    if (createNew === null) {
+      throw new UserCancelledError();
+    }
+    if (createNew === false) {
       console.log('Aborted.');
       process.exit(1);
     }
-    // Create new instance
+    // Will create new instance - get name
     const instanceName = await promptRequired(`New ${parentTypeName} name`);
-    await createInstanceFolder(vaultDir, parentOutputDir, instanceName);
+    if (instanceName === null) {
+      throw new UserCancelledError();
+    }
     selectedInstance = instanceName;
+    needsNewInstance = true;
   } else {
     const options = [...instances, `[Create new ${parentTypeName}]`];
     const selected = await promptSelection(`Select ${parentTypeName}:`, options);
-    if (!selected) {
-      console.log('Aborted.');
-      process.exit(1);
+    if (selected === null) {
+      throw new UserCancelledError();
     }
     if (selected.startsWith('[Create new')) {
       const instanceName = await promptRequired(`New ${parentTypeName} name`);
-      await createInstanceFolder(vaultDir, parentOutputDir, instanceName);
+      if (instanceName === null) {
+        throw new UserCancelledError();
+      }
       selectedInstance = instanceName;
+      needsNewInstance = true;
     } else {
       selectedInstance = selected;
     }
   }
 
-  // Build frontmatter and body
+  // Build frontmatter and body BEFORE creating any folders (may throw UserCancelledError)
   const { frontmatter, body, orderedFields } = await buildNoteContent(schema, vaultDir, typePath, typeDef);
+
+  // Now that all prompts have succeeded, create folder if needed
+  if (needsNewInstance) {
+    await createInstanceFolder(vaultDir, parentOutputDir, selectedInstance);
+  }
 
   // Get instance folder path
   const instanceDir = getInstanceFolderPath(vaultDir, parentOutputDir, selectedInstance);
@@ -603,7 +647,10 @@ async function createInstanceGroupedNote(
   if (existsSync(filePath)) {
     printWarning(`\nWarning: File already exists: ${filePath}`);
     const overwrite = await promptConfirm('Overwrite?');
-    if (!overwrite) {
+    if (overwrite === null) {
+      throw new UserCancelledError();
+    }
+    if (overwrite === false) {
       console.log('Aborted.');
       process.exit(1);
     }
@@ -676,6 +723,7 @@ function getOutputDirForType(schema: Schema, typePath: string): string | undefin
 
 /**
  * Prompt for a single frontmatter field value.
+ * Throws UserCancelledError if user cancels any prompt.
  */
 async function promptField(
   schema: Schema,
@@ -694,7 +742,10 @@ async function promptField(
       if (!field.enum) return field.default;
       const options = getEnumValues(schema, field.enum);
       const selected = await promptSelection(`Select ${fieldName}:`, options);
-      return selected ?? field.default;
+      if (selected === null) {
+        throw new UserCancelledError();
+      }
+      return selected;
     }
 
     case 'dynamic': {
@@ -705,21 +756,35 @@ async function promptField(
         return '';
       }
       const selected = await promptSelection(`Select ${fieldName}:`, options);
-      return selected ? formatValue(selected, field.format) : '';
+      if (selected === null) {
+        throw new UserCancelledError();
+      }
+      return formatValue(selected, field.format);
     }
 
     case 'input': {
       const label = field.label ?? fieldName;
       if (field.required) {
-        return await promptRequired(label);
+        const value = await promptRequired(label);
+        if (value === null) {
+          throw new UserCancelledError();
+        }
+        return value;
       }
       const defaultVal = typeof field.default === 'string' ? field.default : undefined;
-      return await promptInput(label, defaultVal);
+      const value = await promptInput(label, defaultVal);
+      if (value === null) {
+        throw new UserCancelledError();
+      }
+      return value;
     }
 
     case 'multi-input': {
       const label = field.label ?? fieldName;
       const items = await promptMultiInput(label);
+      if (items === null) {
+        throw new UserCancelledError();
+      }
       if (field.list_format === 'comma-separated') {
         return items.join(', ');
       }
@@ -729,7 +794,11 @@ async function promptField(
     case 'date': {
       const label = field.label ?? fieldName;
       const defaultVal = typeof field.default === 'string' ? field.default : undefined;
-      return await promptInput(label, defaultVal);
+      const value = await promptInput(label, defaultVal);
+      if (value === null) {
+        throw new UserCancelledError();
+      }
+      return value;
     }
 
     default:
@@ -755,6 +824,7 @@ function expandStaticValue(value: string): string {
 
 /**
  * Prompt for body section content.
+ * Throws UserCancelledError if user cancels any prompt.
  */
 async function promptBodySections(
   sections: BodySection[]
@@ -764,6 +834,9 @@ async function promptBodySections(
   for (const section of sections) {
     if (section.prompt === 'multi-input' && section.prompt_label) {
       const items = await promptMultiInput(section.prompt_label);
+      if (items === null) {
+        throw new UserCancelledError();
+      }
       if (items.length > 0) {
         content.set(section.title, items);
       }

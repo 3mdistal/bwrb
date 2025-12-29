@@ -30,6 +30,17 @@ import {
 } from '../lib/output.js';
 import type { Schema, Field, BodySection } from '../types/schema.js';
 
+/**
+ * Error thrown when user cancels an interactive prompt (Ctrl+C/Escape).
+ * This allows cancellation to propagate cleanly without writing changes.
+ */
+class UserCancelledError extends Error {
+  constructor() {
+    super('User cancelled');
+    this.name = 'UserCancelledError';
+  }
+}
+
 interface EditCommandOptions {
   open?: boolean;
   json?: string;
@@ -98,6 +109,12 @@ JSON mode uses patch/merge semantics:
         await openInObsidian(vaultDir, resolvedPath);
       }
     } catch (err) {
+      // Handle user cancellation cleanly (no changes written)
+      if (err instanceof UserCancelledError) {
+        console.log('Cancelled.');
+        process.exit(1);
+      }
+
       const message = err instanceof Error ? err.message : String(err);
       if (jsonMode) {
         printJson(jsonError(message));
@@ -261,6 +278,9 @@ async function editNote(
   const bodySections = typeDef.body_sections;
   if (bodySections && bodySections.length > 0) {
     const addSections = await promptConfirm('\nCheck for missing sections?');
+    if (addSections === null) {
+      throw new UserCancelledError();
+    }
     if (addSections) {
       updatedBody = await addMissingSections(body, bodySections);
     }
@@ -273,6 +293,7 @@ async function editNote(
 
 /**
  * Prompt for editing a single frontmatter field.
+ * Throws UserCancelledError if user cancels any prompt.
  */
 async function promptFieldEdit(
   schema: Schema,
@@ -299,7 +320,10 @@ async function promptFieldEdit(
       if (!field.enum) return currentValue;
       const options = getEnumValues(schema, field.enum);
       const selected = await promptSelection(`New ${fieldName} (or Enter to keep):`, options);
-      return selected ?? currentValue;
+      if (selected === null) {
+        throw new UserCancelledError();
+      }
+      return selected;
     }
 
     case 'dynamic': {
@@ -309,16 +333,19 @@ async function promptFieldEdit(
         return currentValue;
       }
       const selected = await promptSelection(`New ${fieldName} (or Enter to keep):`, options);
-      if (selected) {
-        return formatValue(selected, field.format);
+      if (selected === null) {
+        throw new UserCancelledError();
       }
-      return currentValue;
+      return formatValue(selected, field.format);
     }
 
     case 'input': {
       const label = field.label ?? fieldName;
       const currentDefault = typeof currentValue === 'string' ? currentValue : '';
       const newValue = await promptInput(`New ${label} (or Enter to keep)`, currentDefault);
+      if (newValue === null) {
+        throw new UserCancelledError();
+      }
       return newValue || currentValue;
     }
 
@@ -358,6 +385,7 @@ function expandStaticValue(value: string): string {
 
 /**
  * Check for missing sections and offer to add them.
+ * Throws UserCancelledError if user cancels any prompt.
  */
 async function addMissingSections(
   body: string,
@@ -373,6 +401,9 @@ async function addMissingSections(
     if (!pattern.test(body)) {
       printWarning(`Missing section: ${section.title}`);
       const addIt = await promptConfirm('Add it?');
+      if (addIt === null) {
+        throw new UserCancelledError();
+      }
       if (addIt) {
         const newSection = generateBodySections([section]);
         updatedBody += '\n' + newSection;

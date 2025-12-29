@@ -519,6 +519,9 @@ async function handleMissingRequiredFix(
 
   // No enum - prompt for text input
   const value = await promptInput(`    Enter value for ${issue.field}:`);
+  if (value === null) {
+    return 'quit';
+  }
   if (value) {
     const fixResult = await applyFix(schema, result.path, issue, value);
     if (fixResult.action === 'fixed') {

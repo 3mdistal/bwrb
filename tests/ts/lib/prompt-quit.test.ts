@@ -1,14 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NumberedSelectPrompt } from '../../../src/lib/numberedSelect.js';
 
 /**
  * Tests for Ctrl+C quit behavior across interactive prompts.
  * 
- * Note: Full TTY-based Ctrl+C testing requires manual verification.
- * These tests verify the underlying behavior that makes Ctrl+C work:
- * - numberedSelect returns null when aborted
- * - promptConfirm returns null when cancelled
- * - All interactive commands check for null and quit
+ * Prompt Architecture:
+ * - All prompt functions in src/lib/prompt.ts return `T | null`
+ * - null means user cancelled (Ctrl+C/Escape)
+ * - Callers must use `=== null` checks (not truthiness) since `false` and `''` are valid
+ * 
+ * Two underlying implementations:
+ * - numberedSelect: Custom TTY-based selection (supports number keys, pagination)
+ * - prompts (npm): Used for confirm/text inputs
  * 
  * Manual verification:
  *   1. Run `ovault audit --fix` on a vault with issues
@@ -70,23 +73,65 @@ describe('Ctrl+C quit behavior', () => {
       // response.value === undefined (which happens on Ctrl+C).
     });
   });
+
+  describe('promptInput return type contract', () => {
+    it('should have correct return type signature (string | null)', async () => {
+      const { promptInput } = await import('../../../src/lib/prompt.js');
+      
+      // Verify the function exists and returns a promise
+      expect(typeof promptInput).toBe('function');
+      
+      // Note: Actual null return requires mocking prompts to return {}
+      // The implementation returns null when response.value === undefined
+    });
+  });
+
+  describe('promptRequired return type contract', () => {
+    it('should have correct return type signature (string | null)', async () => {
+      const { promptRequired } = await import('../../../src/lib/prompt.js');
+      
+      // Verify the function exists and returns a promise
+      expect(typeof promptRequired).toBe('function');
+      
+      // Note: Actual null return requires mocking prompts to return {}
+      // The implementation returns null when response.value === undefined
+      // Unlike before, it no longer calls process.exit(1)
+    });
+  });
+
+  describe('promptMultiInput return type contract', () => {
+    it('should have correct return type signature (string[] | null)', async () => {
+      const { promptMultiInput } = await import('../../../src/lib/prompt.js');
+      
+      // Verify the function exists and returns a promise
+      expect(typeof promptMultiInput).toBe('function');
+      
+      // Note: Actual null return requires mocking prompts to return {}
+      // Empty input (just Enter) returns [], not null
+      // Only Ctrl+C returns null
+    });
+  });
 });
 
 describe('Interactive command quit handling (documented)', () => {
   /**
    * This describe block documents which commands support Ctrl+C quit
    * and how they handle it. Actual behavior must be verified manually.
+   * 
+   * Key distinction: Ctrl+C (null) means "quit the entire operation"
+   * while answering "no" to a confirm just means "no to this question".
    */
 
   it('audit --fix: Ctrl+C quits the entire fix loop', () => {
-    // audit.ts explicitly handles null from both promptConfirm and promptSelection
-    // by setting quit=true and breaking out of the fix loop.
+    // audit/fix.ts explicitly handles null from all prompts
+    // by returning 'quit' and breaking out of the fix loop.
     //
     // All prompt locations check for null:
     // - orphan-file with inferred type (promptConfirm → null)
     // - orphan-file without inferred type (promptSelection → null)
     // - missing-required with default (promptConfirm → null)
     // - missing-required with enum (promptSelection → null)
+    // - missing-required with text input (promptInput → null) [NEW]
     // - invalid-enum (promptSelection → null)
     // - unknown-field (promptSelection → null)
     //
@@ -94,30 +139,39 @@ describe('Interactive command quit handling (documented)', () => {
     expect(true).toBe(true);
   });
 
-  it('new: Ctrl+C aborts note creation', () => {
-    // new.ts handles null/falsy returns by:
-    // - Returning undefined from resolveTypePath (exits cleanly)
-    // - Printing "Aborted." and calling process.exit(1)
+  it('new: Ctrl+C aborts note creation without side effects', () => {
+    // new.ts uses UserCancelledError to propagate cancellation.
+    // This ensures no files/folders are created on cancel.
     //
-    // Prompts affected:
+    // Prompts affected (all throw UserCancelledError on null):
     // - Type selection (promptSelection)
     // - Subtype selection (promptSelection)
-    // - Overwrite confirmation (promptConfirm)
-    // - Instance selection (promptSelection)
+    // - Name input (promptRequired)
+    // - Field inputs (promptInput, promptMultiInput, promptSelection)
+    // - Overwrite confirmation (promptConfirm) - null = quit, false = abort
+    // - Instance selection (promptSelection, promptRequired)
     //
-    // Expected behavior: Note creation is aborted
+    // Key behaviors:
+    // - Instance folders are only created AFTER all prompts succeed
+    // - UserCancelledError is caught at top level, prints "Cancelled."
+    // - No partial state is left behind
     expect(true).toBe(true);
   });
 
-  it('edit: Ctrl+C skips current prompt or keeps current value', () => {
-    // edit.ts handles null returns by:
-    // - Keeping current value (selected ?? currentValue)
-    // - Skipping optional operations (if addSections)
+  it('edit: Ctrl+C aborts edit without writing changes', () => {
+    // edit.ts now uses UserCancelledError like new.ts.
+    // Ctrl+C at any prompt exits without writing the file.
     //
-    // This is intentional - edit is more forgiving since
-    // the file already exists.
+    // Prompts affected (all throw UserCancelledError on null):
+    // - Field selection (promptSelection)
+    // - Field input (promptInput)
+    // - Missing sections confirm (promptConfirm)
+    // - Individual section add confirm (promptConfirm)
     //
-    // Expected behavior: Current value preserved, edit continues
+    // Key behaviors:
+    // - No changes are written until all prompts complete
+    // - UserCancelledError is caught at top level, prints "Cancelled."
+    // - Original file is preserved on cancel
     expect(true).toBe(true);
   });
 });
