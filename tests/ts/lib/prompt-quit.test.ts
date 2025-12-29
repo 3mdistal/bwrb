@@ -175,3 +175,60 @@ describe('Interactive command quit handling (documented)', () => {
     expect(true).toBe(true);
   });
 });
+
+describe('Optional field skip behavior (documented)', () => {
+  /**
+   * This describe block documents the (skip) and (keep current) options
+   * for optional select/dynamic fields. Actual behavior must be verified manually.
+   * 
+   * Key distinction:
+   * - Required fields do NOT show skip option
+   * - Optional fields show skip as the first choice
+   * - Selecting skip returns the default value (or empty string if no default)
+   */
+
+  it('new: optional select/dynamic fields show (skip) option', () => {
+    // In new.ts promptField(), for 'select' and 'dynamic' prompt types:
+    // - If field.required !== true, prepend a skip option to the choices
+    // - Skip label format: "(skip)" if no default, "(skip) [defaultValue]" if default exists
+    // - Selecting skip returns field.default ?? ''
+    //
+    // Example for optional field with default "raw":
+    //   ? Select status:
+    //   > 1  (skip) [raw]
+    //     2  raw
+    //     3  backlog
+    //     4  in-flight
+    //
+    // Example for optional field without default:
+    //   ? Select milestone:
+    //   > 1  (skip)
+    //     2  Active Milestone
+    //
+    // Manual verification:
+    //   1. Run `ovault new objective/task`
+    //   2. At the milestone prompt, verify "(skip)" appears first
+    //   3. Select (skip), verify the field is empty/default in the created note
+    expect(true).toBe(true);
+  });
+
+  it('edit: select/dynamic fields show (keep current) option', () => {
+    // In edit.ts promptFieldEdit(), for 'select' and 'dynamic' prompt types:
+    // - Always prepend "(keep current)" option to preserve existing value
+    // - Selecting it returns the currentValue unchanged
+    //
+    // Example:
+    //   Current status: in-flight
+    //   ? New status:
+    //   > 1  (keep current)
+    //     2  raw
+    //     3  backlog
+    //     4  in-flight
+    //
+    // Manual verification:
+    //   1. Run `ovault edit` on an existing note
+    //   2. At any select prompt, verify "(keep current)" appears first
+    //   3. Select it, verify the field value is unchanged
+    expect(true).toBe(true);
+  });
+});

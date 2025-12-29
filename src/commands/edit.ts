@@ -318,23 +318,43 @@ async function promptFieldEdit(
   switch (field.prompt) {
     case 'select': {
       if (!field.enum) return currentValue;
-      const options = getEnumValues(schema, field.enum);
-      const selected = await promptSelection(`New ${fieldName} (or Enter to keep):`, options);
+      const enumOptions = getEnumValues(schema, field.enum);
+      
+      // Add a "keep current" option at the top
+      const keepLabel = '(keep current)';
+      const options = [keepLabel, ...enumOptions];
+      
+      const selected = await promptSelection(`New ${fieldName}:`, options);
       if (selected === null) {
         throw new UserCancelledError();
+      }
+      
+      // If user selected keep current, return the existing value
+      if (selected === keepLabel) {
+        return currentValue;
       }
       return selected;
     }
 
     case 'dynamic': {
       if (!field.source) return currentValue;
-      const options = await queryDynamicSource(schema, vaultDir, field.source);
-      if (options.length === 0) {
+      const dynamicOptions = await queryDynamicSource(schema, vaultDir, field.source);
+      if (dynamicOptions.length === 0) {
         return currentValue;
       }
-      const selected = await promptSelection(`New ${fieldName} (or Enter to keep):`, options);
+      
+      // Add a "keep current" option at the top
+      const keepLabel = '(keep current)';
+      const options = [keepLabel, ...dynamicOptions];
+      
+      const selected = await promptSelection(`New ${fieldName}:`, options);
       if (selected === null) {
         throw new UserCancelledError();
+      }
+      
+      // If user selected keep current, return the existing value
+      if (selected === keepLabel) {
+        return currentValue;
       }
       return formatValue(selected, field.format);
     }

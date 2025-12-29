@@ -894,24 +894,58 @@ async function promptField(
   switch (field.prompt) {
     case 'select': {
       if (!field.enum) return field.default;
-      const options = getEnumValues(schema, field.enum);
+      const enumOptions = getEnumValues(schema, field.enum);
+      
+      // For optional fields, add a skip option
+      let options: string[];
+      let skipLabel: string | undefined;
+      if (!field.required) {
+        const defaultStr = field.default !== undefined ? String(field.default) : undefined;
+        skipLabel = defaultStr ? `(skip) [${defaultStr}]` : '(skip)';
+        options = [skipLabel, ...enumOptions];
+      } else {
+        options = enumOptions;
+      }
+      
       const selected = await promptSelection(`Select ${fieldName}:`, options);
       if (selected === null) {
         throw new UserCancelledError();
+      }
+      
+      // If user selected skip, return the default value
+      if (skipLabel && selected === skipLabel) {
+        return field.default ?? '';
       }
       return selected;
     }
 
     case 'dynamic': {
       if (!field.source) return field.default;
-      const options = await queryDynamicSource(schema, vaultDir, field.source);
-      if (options.length === 0) {
+      const dynamicOptions = await queryDynamicSource(schema, vaultDir, field.source);
+      if (dynamicOptions.length === 0) {
         printWarning(`No options available for ${fieldName}`);
-        return '';
+        return field.default ?? '';
       }
+      
+      // For optional fields, add a skip option
+      let options: string[];
+      let skipLabel: string | undefined;
+      if (!field.required) {
+        const defaultStr = field.default !== undefined ? String(field.default) : undefined;
+        skipLabel = defaultStr ? `(skip) [${defaultStr}]` : '(skip)';
+        options = [skipLabel, ...dynamicOptions];
+      } else {
+        options = dynamicOptions;
+      }
+      
       const selected = await promptSelection(`Select ${fieldName}:`, options);
       if (selected === null) {
         throw new UserCancelledError();
+      }
+      
+      // If user selected skip, return the default value
+      if (skipLabel && selected === skipLabel) {
+        return field.default ?? '';
       }
       return formatValue(selected, field.format);
     }
