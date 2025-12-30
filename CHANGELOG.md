@@ -4,6 +4,20 @@ All notable changes to ovault are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **PTY tests failing due to node-pty spawn-helper permissions** (ovault-ne9)
+  - The node-pty npm package publishes `spawn-helper` binary without execute permission
+  - Added postinstall script to fix permissions on macOS after `pnpm install`
+  - PTY tests now run reliably instead of being skipped
+
+### Changed
+
+- **Standardized on pnpm as package manager**
+  - Added `packageManager` field to package.json to enforce pnpm
+  - Removed `package-lock.json` from repository (was stale and causing confusion)
+  - Added `package-lock.json` to `.gitignore`
+
 ### Added
 
 - **Comprehensive PTY test coverage** for all interactive prompt types
@@ -15,7 +29,7 @@ All notable changes to ovault are documented in this file.
   - Cancellation behavior at every prompt point
   - Template selection and overwrite confirmation
   - Enhanced helpers: `typeText()`, `typeAndEnter()`, `waitForStable()`, temp vault utilities
-  - Automatic skip when node-pty is incompatible (e.g., Node.js 25)
+  - Graceful skip when node-pty is unavailable (CI without TTY, etc.)
 
 ### Fixed
 
