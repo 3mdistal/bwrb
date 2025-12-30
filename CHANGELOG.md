@@ -4,6 +4,13 @@ All notable changes to ovault are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Extracted `resolveAndPick` helper** (ovault-bjg)
+  - DRYs up ~76 lines of duplicated query resolution + picker logic from `open` and `link` commands
+  - Adds `exitWithResolutionError` helper for consistent error output with optional candidates list
+  - Makes it easier to add new commands that need file selection
+
 ### Fixed
 
 - **PTY tests failing due to node-pty spawn-helper permissions** (ovault-ne9)
