@@ -146,6 +146,38 @@ export type TypeDef = Type | Subtype;
 // ============================================================================
 
 /**
+ * Constraint definition for template fields.
+ * Constraints allow templates to enforce stricter validation than the base schema.
+ */
+export const ConstraintSchema = z.object({
+  /** Make an optional field required for this template */
+  required: z.boolean().optional(),
+  /** Expression that must evaluate to true; 'this' refers to the field value */
+  validate: z.string().optional(),
+  /** Custom error message when validation fails */
+  error: z.string().optional(),
+});
+
+export type Constraint = z.infer<typeof ConstraintSchema>;
+
+/**
+ * Instance scaffold definition for parent templates.
+ * Allows creating multiple related files when creating an instance-grouped parent.
+ */
+export const InstanceScaffoldSchema = z.object({
+  /** Which subtype to create (e.g., "version", "research") */
+  subtype: z.string(),
+  /** Override the default filename */
+  filename: z.string().optional(),
+  /** Template name to use for this instance (resolved against subtype's template dir) */
+  template: z.string().optional(),
+  /** Additional defaults for this instance */
+  defaults: z.record(z.unknown()).optional(),
+});
+
+export type InstanceScaffold = z.infer<typeof InstanceScaffoldSchema>;
+
+/**
  * Template frontmatter schema.
  * Templates are markdown files with special frontmatter that define defaults,
  * body structure, and other properties for note creation.
@@ -155,8 +187,10 @@ export const TemplateFrontmatterSchema = z.object({
   'template-for': z.string(), // Type path (e.g., "objective/task")
   description: z.string().optional(),
   defaults: z.record(z.unknown()).optional(),
+  constraints: z.record(ConstraintSchema).optional(),
   'prompt-fields': z.array(z.string()).optional(),
   'filename-pattern': z.string().optional(),
+  instances: z.array(InstanceScaffoldSchema).optional(),
 });
 
 export type TemplateFrontmatter = z.infer<typeof TemplateFrontmatterSchema>;
@@ -175,10 +209,14 @@ export interface Template {
   description?: string;
   /** Default field values */
   defaults?: Record<string, unknown>;
+  /** Field constraints (validation rules stricter than schema) */
+  constraints?: Record<string, Constraint>;
   /** Fields to always prompt for, even with defaults */
   promptFields?: string[];
   /** Override filename pattern */
   filenamePattern?: string;
+  /** Instance scaffolding for parent templates */
+  instances?: InstanceScaffold[];
   /** Template body content (markdown after frontmatter) */
   body: string;
 }

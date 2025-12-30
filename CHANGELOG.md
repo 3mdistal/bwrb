@@ -4,6 +4,31 @@ All notable changes to ovault are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Template constraints** (ovault-31k)
+  - Templates can now enforce stricter validation rules than the base schema
+  - `constraints` section in template frontmatter with `required`, `validate`, and `error` properties
+  - `required: true` makes optional fields required for that template
+  - `validate: "<expression>"` validates field values using expression syntax with `this` keyword
+  - `error: "<message>"` provides custom error messages when validation fails
+  - Constraint validation runs after all prompts before creating the note
+  - Full JSON mode support with detailed error reporting
+  - Example: `constraints: { deadline: { required: true, validate: "this < today() + '7d'", error: "Deadline must be within 7 days" } }`
+
+- **Parent templates for instance scaffolding** (ovault-5li)
+  - Templates for instance-grouped types can now scaffold multiple files at once
+  - `instances` array in template frontmatter specifies subtype files to create
+  - Each instance supports: `subtype` (required), `filename` (optional), `template` (optional), `defaults` (optional)
+  - Template names are resolved against the subtype's template directory
+  - Existing files are skipped with a warning (not overwritten)
+  - Full progress reporting in interactive mode
+  - Example: `instances: [{ subtype: version, filename: "Draft v1.md" }, { subtype: research, template: seo }]`
+
+- **`this` keyword in expression evaluation**
+  - Expression system now supports `ThisExpression` node type for constraint validation
+  - `this` refers to the current field value being validated
+
 ### Breaking Changes
 
 - **Template location changed from `Templates/` to `.ovault/templates/`** (ovault-33b)

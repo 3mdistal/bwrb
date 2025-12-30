@@ -54,6 +54,8 @@ import {
   findTemplateByName,
   findDefaultTemplate,
   processTemplateBody,
+  validateConstraints,
+  createScaffoldedInstances,
 } from '../lib/template.js';
 import type { Schema, TypeDef, Field, BodySection, Template } from '../types/schema.js';
 import { UserCancelledError } from '../lib/errors.js';
@@ -307,6 +309,23 @@ async function createNoteFromJson(
   // Apply schema defaults for missing fields
   const frontmatter = applyDefaults(schema, typePath, mergedInput);
 
+  // Validate template constraints
+  if (template?.constraints) {
+    const constraintResult = validateConstraints(frontmatter, template.constraints);
+    if (!constraintResult.valid) {
+      printJson({
+        success: false,
+        error: 'Template constraint validation failed',
+        errors: constraintResult.errors.map(e => ({
+          field: e.field,
+          message: e.message,
+          constraint: e.constraint,
+        })),
+      });
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+  }
+
   // Get the name from the frontmatter
   const nameField = typeDef.name_field ?? 'Name';
   const itemName = frontmatter[nameField];
@@ -434,6 +453,22 @@ async function createInstanceParentFromJson(
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
 
   await writeNote(filePath, frontmatter, body, orderedFields);
+
+  // Scaffold instance files if template defines them
+  if (template?.instances && template.instances.length > 0) {
+    const instanceDir = getInstanceFolderPath(vaultDir, outputDir, instanceName);
+    
+    await createScaffoldedInstances(
+      schema,
+      vaultDir,
+      typePath,
+      instanceDir,
+      template.instances,
+      frontmatter
+    );
+    // In JSON mode, we don't print progress - the result is in the JSON output
+  }
+
   return filePath;
 }
 
@@ -718,6 +753,41 @@ async function createInstanceParent(
   await writeNote(filePath, frontmatter, body, orderedFields);
   printSuccess(`\n✓ Created instance: ${instanceName}`);
   printSuccess(`  Parent note: ${filePath}`);
+
+  // Scaffold instance files if template defines them
+  if (template?.instances && template.instances.length > 0) {
+    const instanceDir = getInstanceFolderPath(vaultDir, outputDir, instanceName);
+    
+    printInfo(`\nScaffolding ${template.instances.length} instance files...`);
+    
+    const scaffoldResult = await createScaffoldedInstances(
+      schema,
+      vaultDir,
+      typePath,
+      instanceDir,
+      template.instances,
+      frontmatter
+    );
+    
+    // Report created files
+    for (const path of scaffoldResult.created) {
+      printSuccess(`  ✓ Created: ${relative(vaultDir, path)}`);
+    }
+    
+    // Report skipped files (already exist)
+    for (const path of scaffoldResult.skipped) {
+      printWarning(`  ⚠ Skipped: ${relative(vaultDir, path)} (already exists)`);
+    }
+    
+    // Report errors
+    for (const error of scaffoldResult.errors) {
+      printWarning(`  ✗ ${error.subtype}: ${error.message}`);
+    }
+    
+    const totalFiles = scaffoldResult.created.length + 1; // +1 for parent
+    printSuccess(`\n✓ Created ${totalFiles} files total`);
+  }
+
   return filePath;
 }
 
@@ -863,6 +933,18 @@ async function buildNoteContent(
       if (value !== undefined && value !== '') {
         frontmatter[fieldName] = value;
       }
+    }
+  }
+
+  // Validate template constraints (after all prompts, before creating note)
+  if (template?.constraints) {
+    const constraintResult = validateConstraints(frontmatter, template.constraints);
+    if (!constraintResult.valid) {
+      printError('\nTemplate constraint validation failed:');
+      for (const error of constraintResult.errors) {
+        printError(`  - ${error.field}: ${error.message}`);
+      }
+      throw new Error('Template constraints not satisfied');
     }
   }
 

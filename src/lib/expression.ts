@@ -63,6 +63,10 @@ export function evaluateExpression(expr: Expression, context: EvalContext): unkn
     case 'MemberExpression':
       return evaluateMember(expr as MemberExpression, context);
 
+    case 'ThisExpression':
+      // 'this' refers to the current field value in constraint validation
+      return context.frontmatter['this'];
+
     default:
       throw new Error(`Unknown expression type: ${expr.type}`);
   }

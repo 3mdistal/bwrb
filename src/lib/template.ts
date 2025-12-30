@@ -1,9 +1,11 @@
 import { readdir } from 'fs/promises';
 import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
-import { parseNote } from './frontmatter.js';
-import { TemplateFrontmatterSchema, type Template, type Schema, type Field } from '../types/schema.js';
-import { getTypeDefByPath, getFieldsForType, getEnumValues } from './schema.js';
+import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
+import { TemplateFrontmatterSchema, type Template, type Schema, type Field, type Constraint, type InstanceScaffold } from '../types/schema.js';
+import { getTypeDefByPath, getFieldsForType, getEnumValues, getFrontmatterOrder, getSubtypeKeys, hasSubtypes } from './schema.js';
+import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
+import { applyDefaults } from './validation.js';
 
 /**
  * Template Discovery and Parsing
@@ -81,11 +83,17 @@ export async function parseTemplate(filePath: string): Promise<Template | null> 
     if (data.defaults !== undefined) {
       template.defaults = data.defaults;
     }
+    if (data.constraints !== undefined) {
+      template.constraints = data.constraints;
+    }
     if (data['prompt-fields'] !== undefined) {
       template.promptFields = data['prompt-fields'];
     }
     if (data['filename-pattern'] !== undefined) {
       template.filenamePattern = data['filename-pattern'];
+    }
+    if (data.instances !== undefined) {
+      template.instances = data.instances;
     }
     
     return template;
@@ -689,6 +697,95 @@ export async function validateTemplate(
     }
   }
   
+  // 6. Validate constraints
+  if (template.constraints) {
+    for (const [fieldName, constraint] of Object.entries(template.constraints)) {
+      // Check field exists
+      if (!validFieldNames.includes(fieldName)) {
+        const suggestion = findClosestMatch(fieldName, validFieldNames);
+        const issue: TemplateValidationIssue = {
+          severity: 'error',
+          message: `Unknown field '${fieldName}' in constraints`,
+          field: fieldName,
+        };
+        if (suggestion) {
+          issue.suggestion = `Did you mean '${suggestion}'?`;
+        }
+        issues.push(issue);
+        continue;
+      }
+      
+      // Validate expression syntax
+      if (constraint.validate) {
+        try {
+          parseExpression(constraint.validate);
+        } catch (e) {
+          issues.push({
+            severity: 'error',
+            message: `Invalid constraint expression for '${fieldName}': ${(e as Error).message}`,
+            field: fieldName,
+          });
+        }
+      }
+    }
+  }
+  
+  // 7. Validate instances (for parent templates)
+  if (template.instances) {
+    // Get valid subtypes for this parent type
+    const validSubtypes = hasSubtypes(typeDef) ? getSubtypeKeys(typeDef) : [];
+    
+    for (const instance of template.instances) {
+      // Check subtype exists
+      if (!validSubtypes.includes(instance.subtype)) {
+        const suggestion = findClosestMatch(instance.subtype, validSubtypes);
+        const issue: TemplateValidationIssue = {
+          severity: 'error',
+          message: `Unknown subtype '${instance.subtype}' in instances`,
+        };
+        if (suggestion) {
+          issue.suggestion = `Did you mean '${suggestion}'?`;
+        } else if (validSubtypes.length > 0) {
+          issue.suggestion = `Valid subtypes: ${validSubtypes.join(', ')}`;
+        } else {
+          issue.suggestion = `Type '${template.templateFor}' has no subtypes`;
+        }
+        issues.push(issue);
+        continue;
+      }
+      
+      // Validate template name if specified (just check it's not empty)
+      if (instance.template !== undefined && instance.template.trim() === '') {
+        issues.push({
+          severity: 'warning',
+          message: `Empty template name for instance subtype '${instance.subtype}'`,
+        });
+      }
+      
+      // Validate defaults against subtype schema if provided
+      if (instance.defaults) {
+        const subtypePath = `${template.templateFor}/${instance.subtype}`;
+        const subtypeFields = getFieldsForType(schema, subtypePath);
+        const subtypeFieldNames = Object.keys(subtypeFields);
+        
+        for (const fieldName of Object.keys(instance.defaults)) {
+          if (!subtypeFieldNames.includes(fieldName)) {
+            const suggestion = findClosestMatch(fieldName, subtypeFieldNames);
+            const issue: TemplateValidationIssue = {
+              severity: 'warning',
+              message: `Unknown field '${fieldName}' in instance defaults for '${instance.subtype}'`,
+              field: fieldName,
+            };
+            if (suggestion) {
+              issue.suggestion = `Did you mean '${suggestion}'?`;
+            }
+            issues.push(issue);
+          }
+        }
+      }
+    }
+  }
+  
   const hasErrors = issues.some(i => i.severity === 'error');
   
   return {
@@ -721,4 +818,281 @@ export async function validateAllTemplates(
   }
   
   return results;
+}
+
+// ============================================================================
+// Constraint Validation
+// ============================================================================
+
+/**
+ * Error from constraint validation.
+ */
+export interface ConstraintValidationError {
+  /** Field name that failed validation */
+  field: string;
+  /** Error message */
+  message: string;
+  /** Which constraint failed: 'required' or 'validate' */
+  constraint: 'required' | 'validate';
+}
+
+/**
+ * Result of validating frontmatter against template constraints.
+ */
+export interface ConstraintValidationResult {
+  /** Whether all constraints passed */
+  valid: boolean;
+  /** List of validation errors */
+  errors: ConstraintValidationError[];
+}
+
+/**
+ * Validate frontmatter against template constraints.
+ * 
+ * Constraints allow templates to enforce stricter rules than the base schema:
+ * - required: true - Make an optional field required
+ * - validate: expression - Expression must evaluate to true (using 'this' for field value)
+ * - error: message - Custom error message
+ * 
+ * @param frontmatter - The frontmatter values to validate
+ * @param constraints - Template constraints to apply
+ * @returns Validation result with any errors
+ * 
+ * @example
+ * const constraints = {
+ *   deadline: {
+ *     required: true,
+ *     validate: "this < today() + '7d'",
+ *     error: "Deadline must be within 7 days"
+ *   }
+ * };
+ * const result = validateConstraints({ deadline: '2025-01-15' }, constraints);
+ */
+export function validateConstraints(
+  frontmatter: Record<string, unknown>,
+  constraints: Record<string, Constraint>
+): ConstraintValidationResult {
+  const errors: ConstraintValidationError[] = [];
+  
+  for (const [fieldName, constraint] of Object.entries(constraints)) {
+    const value = frontmatter[fieldName];
+    
+    // Check required constraint
+    if (constraint.required) {
+      const isEmpty = value === undefined || value === null || value === '';
+      if (isEmpty) {
+        errors.push({
+          field: fieldName,
+          message: constraint.error ?? `Field '${fieldName}' is required by this template`,
+          constraint: 'required',
+        });
+        continue; // Skip validate check if required failed
+      }
+    }
+    
+    // Check validate expression
+    if (constraint.validate && value !== undefined && value !== null && value !== '') {
+      // Build context with 'this' set to the field value
+      const context: EvalContext = {
+        frontmatter: { ...frontmatter, this: value },
+      };
+      
+      try {
+        const result = matchesExpression(constraint.validate, context);
+        if (!result) {
+          errors.push({
+            field: fieldName,
+            message: constraint.error ?? `Field '${fieldName}' failed validation: ${constraint.validate}`,
+            constraint: 'validate',
+          });
+        }
+      } catch (e) {
+        errors.push({
+          field: fieldName,
+          message: `Invalid constraint expression for '${fieldName}': ${(e as Error).message}`,
+          constraint: 'validate',
+        });
+      }
+    }
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+/**
+ * Validate that constraint expressions are syntactically valid.
+ * This is used during template validation to catch errors early.
+ * 
+ * @param constraints - Template constraints to validate
+ * @returns Array of syntax errors found
+ */
+export function validateConstraintSyntax(
+  constraints: Record<string, Constraint>
+): Array<{ field: string; message: string }> {
+  const errors: Array<{ field: string; message: string }> = [];
+  
+  for (const [fieldName, constraint] of Object.entries(constraints)) {
+    if (constraint.validate) {
+      try {
+        parseExpression(constraint.validate);
+      } catch (e) {
+        errors.push({
+          field: fieldName,
+          message: `Invalid expression: ${(e as Error).message}`,
+        });
+      }
+    }
+  }
+  
+  return errors;
+}
+
+// ============================================================================
+// Instance Scaffolding
+// ============================================================================
+
+/**
+ * Error from instance scaffolding.
+ */
+export interface ScaffoldError {
+  /** Subtype that failed */
+  subtype: string;
+  /** Filename if specified */
+  filename?: string | undefined;
+  /** Error message */
+  message: string;
+}
+
+/**
+ * Result of creating scaffolded instances.
+ */
+export interface ScaffoldResult {
+  /** Paths of successfully created files */
+  created: string[];
+  /** Files that were skipped (already exist) */
+  skipped: string[];
+  /** Errors encountered */
+  errors: ScaffoldError[];
+}
+
+/**
+ * Create scaffolded instance files from a parent template.
+ * 
+ * When a parent template has an `instances` array, this function creates
+ * all the specified subtype files within the instance folder.
+ * 
+ * @param schema - The vault schema
+ * @param vaultDir - Path to vault directory
+ * @param parentTypePath - Type path of parent (e.g., "draft")
+ * @param instanceDir - Path to instance folder
+ * @param instances - Instance definitions from template
+ * @param parentFrontmatter - Frontmatter from parent note (for variable substitution)
+ * @returns Result with created files, skipped files, and any errors
+ * 
+ * @example
+ * const result = await createScaffoldedInstances(
+ *   schema,
+ *   '/vault',
+ *   'draft',
+ *   '/vault/Drafts/My Project',
+ *   [
+ *     { subtype: 'version', filename: 'Draft v1.md' },
+ *     { subtype: 'research', filename: 'SEO.md', template: 'seo' },
+ *   ],
+ *   { Name: 'My Project', status: 'draft' }
+ * );
+ */
+export async function createScaffoldedInstances(
+  schema: Schema,
+  vaultDir: string,
+  parentTypePath: string,
+  instanceDir: string,
+  instances: InstanceScaffold[],
+  parentFrontmatter: Record<string, unknown>
+): Promise<ScaffoldResult> {
+  const created: string[] = [];
+  const skipped: string[] = [];
+  const errors: ScaffoldError[] = [];
+  
+  for (const instance of instances) {
+    try {
+      // Build full subtype path (e.g., "draft/version")
+      const subtypePath = `${parentTypePath}/${instance.subtype}`;
+      
+      // Validate subtype exists
+      const subtypeDef = getTypeDefByPath(schema, subtypePath);
+      if (!subtypeDef) {
+        errors.push({
+          subtype: instance.subtype,
+          filename: instance.filename,
+          message: `Unknown subtype: ${instance.subtype}`,
+        });
+        continue;
+      }
+      
+      // Determine filename
+      const filename = instance.filename ?? `${instance.subtype}.md`;
+      const filePath = join(instanceDir, filename);
+      
+      // Skip if file exists (warn but continue)
+      if (existsSync(filePath)) {
+        skipped.push(filePath);
+        continue;
+      }
+      
+      // Load instance template if specified (resolve by name against subtype's template dir)
+      let instanceTemplate: Template | null = null;
+      if (instance.template) {
+        instanceTemplate = await findTemplateByName(vaultDir, subtypePath, instance.template);
+        // If not found, don't error - just continue without template
+      }
+      
+      // Build frontmatter with defaults
+      let frontmatter: Record<string, unknown> = {};
+      
+      // Apply instance-specific defaults first
+      if (instance.defaults) {
+        frontmatter = { ...instance.defaults };
+      }
+      
+      // Apply template defaults (template overrides instance defaults)
+      if (instanceTemplate?.defaults) {
+        frontmatter = { ...frontmatter, ...instanceTemplate.defaults };
+      }
+      
+      // Apply schema defaults for any missing required fields
+      frontmatter = applyDefaults(schema, subtypePath, frontmatter);
+      
+      // Generate body
+      let body = '';
+      if (instanceTemplate?.body) {
+        body = processTemplateBody(instanceTemplate.body, {
+          ...parentFrontmatter,
+          ...frontmatter,
+        });
+      } else if (subtypeDef.body_sections && subtypeDef.body_sections.length > 0) {
+        body = generateBodySections(subtypeDef.body_sections);
+      }
+      
+      // Get field order from subtype definition
+      const fieldOrder = getFrontmatterOrder(subtypeDef);
+      const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
+      
+      // Write file
+      await writeNote(filePath, frontmatter, body, orderedFields);
+      created.push(filePath);
+      
+    } catch (e) {
+      errors.push({
+        subtype: instance.subtype,
+        filename: instance.filename,
+        message: (e as Error).message,
+      });
+    }
+  }
+  
+  return { created, skipped, errors };
 }
