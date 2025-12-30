@@ -9,15 +9,13 @@ import { Command } from 'commander';
 import { resolveVaultDir } from '../lib/vault.js';
 import { loadSchema } from '../lib/schema.js';
 import { printError } from '../lib/prompt.js';
-import { printJson, jsonSuccess, jsonError, ExitCodes } from '../lib/output.js';
+import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError } from '../lib/output.js';
 import {
   buildNoteIndex,
-  resolveNoteQuery,
   getShortestWikilinkTarget,
   generateWikilink,
-  type ManagedFile,
 } from '../lib/navigation.js';
-import { pickFile, parsePickerMode, type PickerMode } from '../lib/picker.js';
+import { parsePickerMode, resolveAndPick, type PickerMode } from '../lib/picker.js';
 
 // ============================================================================
 // Types
@@ -81,94 +79,20 @@ Examples:
       // Build note index
       const index = await buildNoteIndex(schema, vaultDir);
 
-      let targetFile: ManagedFile | null = null;
+      // Resolve query to a file (with picker if needed)
+      const result = await resolveAndPick(index, query, {
+        pickerMode: effectivePickerMode,
+        prompt: 'Select note to link',
+      });
 
-      if (!query) {
-        // No query - show picker with all files
-        if (index.allFiles.length === 0) {
-          const error = 'No notes found in vault';
-          if (jsonMode) {
-            printJson(jsonError(error));
-            process.exit(ExitCodes.VALIDATION_ERROR);
-          }
-          printError(error);
-          process.exit(1);
-        }
-
-        const pickerResult = await pickFile(index.allFiles, {
-          mode: effectivePickerMode,
-          prompt: 'Select note to link',
-        });
-
-        if (pickerResult.error) {
-          if (jsonMode) {
-            printJson(jsonError(pickerResult.error));
-            process.exit(ExitCodes.VALIDATION_ERROR);
-          }
-          printError(pickerResult.error);
-          process.exit(1);
-        }
-
-        if (pickerResult.cancelled || !pickerResult.selected) {
+      if (!result.ok) {
+        if (result.cancelled) {
           process.exit(0);
         }
-
-        targetFile = pickerResult.selected;
-      } else {
-        // Query provided - resolve it
-        const resolution = resolveNoteQuery(index, query);
-
-        if (resolution.exact) {
-          // Unambiguous match
-          targetFile = resolution.exact;
-        } else if (resolution.candidates.length > 0) {
-          // Ambiguous or fuzzy match - use picker
-          const pickerResult = await pickFile(resolution.candidates, {
-            mode: effectivePickerMode,
-            prompt: 'Select note to link',
-          });
-
-          if (pickerResult.error) {
-            if (jsonMode) {
-              const errorDetails = pickerResult.candidates
-                ? {
-                    errors: pickerResult.candidates.map(c => ({
-                      field: 'candidate',
-                      value: c.relativePath,
-                      message: 'Matching file',
-                    })),
-                  }
-                : {};
-              printJson(jsonError(pickerResult.error, errorDetails));
-              process.exit(ExitCodes.VALIDATION_ERROR);
-            }
-            printError(pickerResult.error);
-            if (pickerResult.candidates && pickerResult.candidates.length > 0) {
-              console.error('\nMatching files:');
-              for (const c of pickerResult.candidates) {
-                console.error(`  ${c.relativePath}`);
-              }
-            }
-            process.exit(1);
-          }
-
-          if (pickerResult.cancelled || !pickerResult.selected) {
-            // User cancelled
-            process.exit(0);
-          }
-
-          targetFile = pickerResult.selected;
-        } else {
-          // No matches at all
-          const error = `No matching notes found for: ${query}`;
-          if (jsonMode) {
-            printJson(jsonError(error));
-            process.exit(ExitCodes.VALIDATION_ERROR);
-          }
-          printError(error);
-          process.exit(1);
-        }
+        exitWithResolutionError(result.error, result.candidates, jsonMode);
       }
+
+      const targetFile = result.file;
 
       // Generate wikilink
       const linkTarget = getShortestWikilinkTarget(index, targetFile);
