@@ -238,19 +238,21 @@ Content types: `none`, `paragraphs`, `bullets`, `checkboxes`
 
 ## Templates
 
-Templates provide reusable defaults and body structure for note creation. They're stored in the vault's `Templates/` directory, organized by type path.
+Templates provide reusable defaults and body structure for note creation. They're stored in `.ovault/templates/`, organized by type path.
 
 ### Template Location
 
 ```
 my-vault/
-└── Templates/
-    ├── idea/
-    │   └── default.md           # Default template for ideas
-    └── objective/
-        └── task/
-            ├── default.md       # Default template for tasks
-            └── bug-report.md    # Bug report template
+└── .ovault/
+    ├── schema.json
+    └── templates/
+        ├── idea/
+        │   └── default.md           # Default template for ideas
+        └── objective/
+            └── task/
+                ├── default.md       # Default template for tasks
+                └── bug-report.md    # Bug report template
 ```
 
 ### Template Format
@@ -324,10 +326,40 @@ ovault new task --json '{"Task name": "Fix bug"}' --template bug-report
 ### Template Discovery
 
 Templates use **strict matching** - only templates in the exact type path directory are considered:
-- `objective/task` → `Templates/objective/task/*.md`
-- `idea` → `Templates/idea/*.md`
+- `objective/task` → `.ovault/templates/objective/task/*.md`
+- `idea` → `.ovault/templates/idea/*.md`
 
 There is no inheritance from parent types.
+
+### Template Management
+
+Use the `template` command to manage templates:
+
+```sh
+# List all templates
+ovault template list
+ovault template list objective/task    # Filter by type
+
+# Show template details
+ovault template show idea default
+
+# Validate templates against schema
+ovault template validate               # All templates
+ovault template validate idea          # Templates for specific type
+
+# Create new template interactively
+ovault template new idea
+ovault template new objective/task --name bug-report
+
+# Create template from JSON
+ovault template new idea --name quick --json '{"defaults": {"status": "raw"}}'
+
+# Edit template interactively
+ovault template edit idea default
+
+# Edit template from JSON
+ovault template edit idea default --json '{"defaults": {"priority": "high"}}'
+```
 
 ## Adding a New Type
 

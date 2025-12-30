@@ -22,12 +22,3 @@ prompt-fields:
 
 ## Actual Behavior
 
-## Environment
-
-- OS: 
-- Version: 
-
-## Screenshots
-
-## Additional Context
-

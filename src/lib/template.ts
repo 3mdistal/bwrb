@@ -1,14 +1,15 @@
 import { readdir } from 'fs/promises';
-import { join, basename } from 'path';
+import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import { parseNote } from './frontmatter.js';
-import { TemplateFrontmatterSchema, type Template } from '../types/schema.js';
+import { TemplateFrontmatterSchema, type Template, type Schema, type Field } from '../types/schema.js';
+import { getTypeDefByPath, getFieldsForType, getEnumValues } from './schema.js';
 
 /**
  * Template Discovery and Parsing
  * ==============================
  * 
- * Templates are markdown files stored in Templates/{type}/{subtype}/*.md
+ * Templates are markdown files stored in .ovault/templates/{type}/{subtype}/*.md
  * They provide defaults, body structure, and filename patterns for note creation.
  * 
  * Key design decisions:
@@ -23,15 +24,22 @@ import { TemplateFrontmatterSchema, type Template } from '../types/schema.js';
 
 /**
  * Get the template directory for a type path.
- * Templates are stored at Templates/{type}/{subtype}/...
+ * Templates are stored at .ovault/templates/{type}/{subtype}/...
  * 
  * @example
- * getTemplateDir('/vault', 'objective/task') => '/vault/Templates/objective/task'
- * getTemplateDir('/vault', 'idea') => '/vault/Templates/idea'
+ * getTemplateDir('/vault', 'objective/task') => '/vault/.ovault/templates/objective/task'
+ * getTemplateDir('/vault', 'idea') => '/vault/.ovault/templates/idea'
  */
 export function getTemplateDir(vaultDir: string, typePath: string): string {
   const segments = typePath.split('/').filter(Boolean);
-  return join(vaultDir, 'Templates', ...segments);
+  return join(vaultDir, '.ovault', 'templates', ...segments);
+}
+
+/**
+ * Get the root templates directory for a vault.
+ */
+export function getTemplatesRoot(vaultDir: string): string {
+  return join(vaultDir, '.ovault', 'templates');
 }
 
 // ============================================================================
@@ -97,8 +105,8 @@ export async function parseTemplate(filePath: string): Promise<Template | null> 
  * 
  * @example
  * findTemplates('/vault', 'objective/task')
- * // Searches ONLY Templates/objective/task/*.md
- * // Does NOT search Templates/objective/*.md
+ * // Searches ONLY .ovault/templates/objective/task/*.md
+ * // Does NOT search .ovault/templates/objective/*.md
  */
 export async function findTemplates(
   vaultDir: string,
@@ -195,6 +203,54 @@ export async function findTemplateByName(
   }
   
   return null;
+}
+
+/**
+ * Find ALL templates in the vault across all types.
+ * Returns templates sorted by type path, then by name.
+ */
+export async function findAllTemplates(vaultDir: string): Promise<Template[]> {
+  const templatesRoot = getTemplatesRoot(vaultDir);
+  
+  if (!existsSync(templatesRoot)) {
+    return [];
+  }
+  
+  const templates: Template[] = [];
+  
+  async function scanDir(dir: string): Promise<void> {
+    try {
+      const entries = await readdir(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+        
+        if (entry.isDirectory()) {
+          await scanDir(fullPath);
+        } else if (entry.isFile() && entry.name.endsWith('.md')) {
+          const template = await parseTemplate(fullPath);
+          if (template) {
+            templates.push(template);
+          }
+        }
+      }
+    } catch {
+      // Ignore directory read errors
+    }
+  }
+  
+  await scanDir(templatesRoot);
+  
+  // Sort by type path, then by name (with default first)
+  templates.sort((a, b) => {
+    const typeCompare = a.templateFor.localeCompare(b.templateFor);
+    if (typeCompare !== 0) return typeCompare;
+    if (a.name === 'default') return -1;
+    if (b.name === 'default') return 1;
+    return a.name.localeCompare(b.name);
+  });
+  
+  return templates;
 }
 
 // ============================================================================
@@ -341,4 +397,328 @@ export async function resolveTemplate(
   
   // Multiple templates, no default - need to prompt
   return { template: null, shouldPrompt: true, availableTemplates: templates };
+}
+
+// ============================================================================
+// Template Validation
+// ============================================================================
+
+/**
+ * A validation issue found in a template.
+ */
+export interface TemplateValidationIssue {
+  /** Issue severity: error prevents use, warning is informational */
+  severity: 'error' | 'warning';
+  /** Error message */
+  message: string;
+  /** Field name if applicable */
+  field?: string;
+  /** Suggestion for fixing the issue */
+  suggestion?: string;
+}
+
+/**
+ * Result of validating a template.
+ */
+export interface TemplateValidationResult {
+  /** Path to the template file */
+  path: string;
+  /** Relative path for display */
+  relativePath: string;
+  /** Template name */
+  name: string;
+  /** Type path the template is for */
+  templateFor: string;
+  /** Whether the template is valid (no errors) */
+  valid: boolean;
+  /** All validation issues found */
+  issues: TemplateValidationIssue[];
+}
+
+/**
+ * Calculate Levenshtein distance between two strings.
+ * Used for typo suggestions.
+ */
+function levenshteinDistance(a: string, b: string): number {
+  const matrix: number[][] = [];
+  
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0]![j] = j;
+  }
+  
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i]![j] = matrix[i - 1]![j - 1]!;
+      } else {
+        matrix[i]![j] = Math.min(
+          matrix[i - 1]![j - 1]! + 1, // substitution
+          matrix[i]![j - 1]! + 1,     // insertion
+          matrix[i - 1]![j]! + 1      // deletion
+        );
+      }
+    }
+  }
+  
+  return matrix[b.length]![a.length]!;
+}
+
+/**
+ * Find the closest match to a string from a list of options.
+ * Returns undefined if no close match found (distance > 3).
+ */
+function findClosestMatch(target: string, options: string[]): string | undefined {
+  let closest: string | undefined;
+  let minDistance = 4; // Max distance for suggestions
+  
+  for (const option of options) {
+    const distance = levenshteinDistance(target.toLowerCase(), option.toLowerCase());
+    if (distance < minDistance) {
+      minDistance = distance;
+      closest = option;
+    }
+  }
+  
+  return closest;
+}
+
+/**
+ * Validate a field value against its field definition.
+ */
+function validateFieldValue(
+  schema: Schema,
+  fieldName: string,
+  field: Field,
+  value: unknown
+): TemplateValidationIssue[] {
+  const issues: TemplateValidationIssue[] = [];
+  
+  // Skip validation for null/undefined values (not set)
+  if (value === null || value === undefined) {
+    return issues;
+  }
+  
+  // Validate enum values
+  if (field.enum) {
+    const enumValues = getEnumValues(schema, field.enum);
+    
+    if (Array.isArray(value)) {
+      // Multi-value field
+      for (const v of value) {
+        if (typeof v === 'string' && !enumValues.includes(v)) {
+          const suggestion = findClosestMatch(v, enumValues);
+          issues.push({
+            severity: 'error',
+            message: `Invalid value '${v}' for field '${fieldName}'`,
+            field: fieldName,
+            suggestion: suggestion 
+              ? `Did you mean '${suggestion}'?`
+              : `Expected one of: ${enumValues.join(', ')}`,
+          });
+        }
+      }
+    } else if (typeof value === 'string') {
+      if (!enumValues.includes(value)) {
+        const suggestion = findClosestMatch(value, enumValues);
+        issues.push({
+          severity: 'error',
+          message: `Invalid value '${value}' for field '${fieldName}'`,
+          field: fieldName,
+          suggestion: suggestion 
+            ? `Did you mean '${suggestion}'?`
+            : `Expected one of: ${enumValues.join(', ')}`,
+        });
+      }
+    }
+  }
+  
+  // Validate prompt type compatibility
+  if (field.prompt === 'multi-input' && !Array.isArray(value)) {
+    issues.push({
+      severity: 'warning',
+      message: `Field '${fieldName}' expects an array but got ${typeof value}`,
+      field: fieldName,
+    });
+  }
+  
+  return issues;
+}
+
+/**
+ * Validate a template against the schema.
+ * 
+ * Performs full validation:
+ * 1. Frontmatter schema validity
+ * 2. Type path exists in schema
+ * 3. Defaults reference valid fields
+ * 4. Default values match field types/enums
+ * 5. prompt-fields reference valid fields
+ * 6. filename-pattern references valid fields
+ */
+export async function validateTemplate(
+  vaultDir: string,
+  template: Template,
+  schema: Schema
+): Promise<TemplateValidationResult> {
+  const issues: TemplateValidationIssue[] = [];
+  const relativePath = relative(vaultDir, template.path);
+  
+  // 1. Check type path exists
+  const typeDef = getTypeDefByPath(schema, template.templateFor);
+  if (!typeDef) {
+    issues.push({
+      severity: 'error',
+      message: `Type '${template.templateFor}' not found in schema`,
+      suggestion: 'Check the template-for field matches a valid type path',
+    });
+    
+    // Can't do further validation without a valid type
+    return {
+      path: template.path,
+      relativePath,
+      name: template.name,
+      templateFor: template.templateFor,
+      valid: false,
+      issues,
+    };
+  }
+  
+  // Get all fields for this type
+  const fields = getFieldsForType(schema, template.templateFor);
+  const validFieldNames = Object.keys(fields);
+  
+  // 2. Validate defaults
+  if (template.defaults) {
+    for (const [fieldName, value] of Object.entries(template.defaults)) {
+      // Check field exists
+      if (!validFieldNames.includes(fieldName)) {
+        const suggestion = findClosestMatch(fieldName, validFieldNames);
+        const issue: TemplateValidationIssue = {
+          severity: 'error',
+          message: `Unknown field '${fieldName}' in defaults`,
+          field: fieldName,
+        };
+        if (suggestion) {
+          issue.suggestion = `Did you mean '${suggestion}'?`;
+        }
+        issues.push(issue);
+        continue;
+      }
+      
+      // Validate value against field definition
+      const field = fields[fieldName];
+      if (field) {
+        const valueIssues = validateFieldValue(schema, fieldName, field, value);
+        issues.push(...valueIssues);
+      }
+    }
+  }
+  
+  // 3. Validate prompt-fields
+  if (template.promptFields) {
+    for (const fieldName of template.promptFields) {
+      if (!validFieldNames.includes(fieldName)) {
+        const suggestion = findClosestMatch(fieldName, validFieldNames);
+        const issue: TemplateValidationIssue = {
+          severity: 'error',
+          message: `Unknown field '${fieldName}' in prompt-fields`,
+          field: fieldName,
+        };
+        if (suggestion) {
+          issue.suggestion = `Did you mean '${suggestion}'?`;
+        }
+        issues.push(issue);
+      }
+    }
+  }
+  
+  // 4. Validate filename-pattern
+  if (template.filenamePattern) {
+    // Extract field references from pattern
+    const fieldRefs = template.filenamePattern.match(/\{([^}:]+)(?::[^}]*)?\}/g);
+    if (fieldRefs) {
+      for (const ref of fieldRefs) {
+        // Extract field name from {fieldName} or {fieldName:format}
+        const match = ref.match(/\{([^}:]+)/);
+        const fieldName = match?.[1];
+        
+        // Skip special fields
+        if (fieldName === 'date' || fieldName === 'title') continue;
+        
+        if (fieldName && !validFieldNames.includes(fieldName)) {
+          const suggestion = findClosestMatch(fieldName, validFieldNames);
+          const issue: TemplateValidationIssue = {
+            severity: 'warning',
+            message: `Unknown field '${fieldName}' referenced in filename-pattern`,
+            field: fieldName,
+          };
+          if (suggestion) {
+            issue.suggestion = `Did you mean '${suggestion}'?`;
+          }
+          issues.push(issue);
+        }
+      }
+    }
+  }
+  
+  // 5. Check body placeholders
+  const bodyFieldRefs = template.body.match(/\{([^}:]+)(?::[^}]*)?\}/g);
+  if (bodyFieldRefs) {
+    for (const ref of bodyFieldRefs) {
+      const match = ref.match(/\{([^}:]+)/);
+      const fieldName = match?.[1];
+      
+      // Skip special fields
+      if (fieldName === 'date' || fieldName === 'title') continue;
+      
+      if (fieldName && !validFieldNames.includes(fieldName)) {
+        const suggestion = findClosestMatch(fieldName, validFieldNames);
+        const issue: TemplateValidationIssue = {
+          severity: 'warning',
+          message: `Unknown field '${fieldName}' referenced in body`,
+          field: fieldName,
+        };
+        if (suggestion) {
+          issue.suggestion = `Did you mean '${suggestion}'?`;
+        }
+        issues.push(issue);
+      }
+    }
+  }
+  
+  const hasErrors = issues.some(i => i.severity === 'error');
+  
+  return {
+    path: template.path,
+    relativePath,
+    name: template.name,
+    templateFor: template.templateFor,
+    valid: !hasErrors,
+    issues,
+  };
+}
+
+/**
+ * Validate all templates in a vault.
+ */
+export async function validateAllTemplates(
+  vaultDir: string,
+  schema: Schema,
+  typePath?: string
+): Promise<TemplateValidationResult[]> {
+  const templates = typePath 
+    ? await findTemplates(vaultDir, typePath)
+    : await findAllTemplates(vaultDir);
+  
+  const results: TemplateValidationResult[] = [];
+  
+  for (const template of templates) {
+    const result = await validateTemplate(vaultDir, template, schema);
+    results.push(result);
+  }
+  
+  return results;
 }

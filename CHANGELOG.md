@@ -6,6 +6,11 @@ All notable changes to ovault are documented in this file.
 
 ### Breaking Changes
 
+- **Template location changed from `Templates/` to `.ovault/templates/`** (ovault-33b)
+  - Templates are now stored in `.ovault/templates/{type}/{subtype}/*.md`
+  - This keeps templates hidden from Obsidian's note browser and prevents accidental edits
+  - Existing templates in `Templates/` will need to be migrated manually
+
 - **Renamed `link` command to `search`** (ovault-boe)
   - `ovault link` is now `ovault search` with more flexible output options
   - Default output is now just the note name (previously was wikilink `[[Name]]`)
@@ -41,6 +46,16 @@ All notable changes to ovault are documented in this file.
   - Enables AI agents to discover notes without requiring exact matches
   - No query in JSON mode returns all notes in the vault
   - Use `--content` flag to include file contents in JSON output (opt-in to avoid large payloads)
+
+- **New `template` command for template management** (ovault-33b)
+  - `ovault template list [type]` - List all templates or filter by type
+  - `ovault template show <type> <name>` - Show template details
+  - `ovault template validate [type]` - Validate templates against schema with full error reporting
+  - `ovault template new <type>` - Create new templates interactively or via JSON
+  - `ovault template edit <type> <name>` - Edit existing templates interactively or via JSON
+  - Full validation: type path exists, defaults match field enums, prompt-fields reference valid fields
+  - Typo suggestions using Levenshtein distance for field names and enum values
+  - JSON mode support for all subcommands (`--output json` or `--json`)
 
 ### Changed
 

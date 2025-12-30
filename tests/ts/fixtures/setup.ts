@@ -160,12 +160,12 @@ status: settled
 `
   );
 
-  // Create template directories and sample templates
-  await mkdir(join(vaultDir, 'Templates/idea'), { recursive: true });
-  await mkdir(join(vaultDir, 'Templates/objective/task'), { recursive: true });
+  // Create template directories and sample templates in .ovault/templates/
+  await mkdir(join(vaultDir, '.ovault/templates/idea'), { recursive: true });
+  await mkdir(join(vaultDir, '.ovault/templates/objective/task'), { recursive: true });
 
   await writeFile(
-    join(vaultDir, 'Templates/idea', 'default.md'),
+    join(vaultDir, '.ovault/templates/idea', 'default.md'),
     `---
 type: template
 template-for: idea
@@ -190,7 +190,7 @@ defaults:
   );
 
   await writeFile(
-    join(vaultDir, 'Templates/objective/task', 'default.md'),
+    join(vaultDir, '.ovault/templates/objective/task', 'default.md'),
     `---
 type: template
 template-for: objective/task
@@ -209,7 +209,7 @@ defaults:
   );
 
   await writeFile(
-    join(vaultDir, 'Templates/objective/task', 'bug-report.md'),
+    join(vaultDir, '.ovault/templates/objective/task', 'bug-report.md'),
     `---
 type: template
 template-for: objective/task

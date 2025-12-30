@@ -9,6 +9,7 @@ import { searchCommand } from './commands/search.js';
 import { schemaCommand } from './commands/schema.js';
 import { auditCommand } from './commands/audit.js';
 import { bulkCommand } from './commands/bulk.js';
+import { templateCommand } from './commands/template.js';
 
 const program = new Command();
 
@@ -26,5 +27,6 @@ program.addCommand(searchCommand);
 program.addCommand(schemaCommand);
 program.addCommand(auditCommand);
 program.addCommand(bulkCommand);
+program.addCommand(templateCommand);
 
 program.parse();

@@ -14,10 +14,11 @@ src/
 │   ├── edit.ts        # Modify existing notes
 │   ├── list.ts        # Query and filter notes
 │   ├── open.ts        # Open notes in editor/Obsidian
-│   ├── link.ts        # Generate wikilinks
+│   ├── search.ts      # Search notes, generate wikilinks
 │   ├── audit.ts       # Validate notes against schema
 │   ├── bulk.ts        # Batch frontmatter operations
-│   └── schema.ts      # Schema inspection
+│   ├── schema.ts      # Schema inspection
+│   └── template.ts    # Template management (list, show, new, edit, validate)
 ├── lib/               # Shared utilities
 │   ├── schema.ts      # Schema loading & resolution
 │   ├── template.ts    # Template discovery & parsing
@@ -36,7 +37,7 @@ src/
 
 - **Schema**: Each vault has `.ovault/schema.json` defining types, enums, and dynamic sources
 - **Types**: Hierarchical (e.g., `objective/task`) with frontmatter definitions
-- **Templates**: Reusable note templates in `Templates/{type}/{subtype}/*.md` with defaults and body structure
+- **Templates**: Reusable note templates in `.ovault/templates/{type}/{subtype}/*.md` with defaults and body structure
 - **Dynamic sources**: Query vault files for field values (e.g., active milestones)
 - **Wikilinks**: `[[Note]]` or `"[[Note]]"` format for Obsidian linking
 
@@ -60,7 +61,7 @@ Tests live in `tests/ts/` with fixtures in `tests/fixtures/vault/`. Run `pnpm te
 
 PTY test locations:
 - `tests/ts/lib/*.pty.test.ts` - Prompt-level tests (input, confirm, select)
-- `tests/ts/commands/*.pty.test.ts` - Full command flow tests (new, edit, audit)
+- `tests/ts/commands/*.pty.test.ts` - Full command flow tests (new, edit, audit, template)
 
 ## Issue Tracking
 

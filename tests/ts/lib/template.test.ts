@@ -27,25 +27,25 @@ describe('template library', () => {
   describe('getTemplateDir', () => {
     it('returns correct path for simple type', () => {
       const result = getTemplateDir('/vault', 'idea');
-      expect(result).toBe('/vault/Templates/idea');
+      expect(result).toBe('/vault/.ovault/templates/idea');
     });
 
     it('returns correct path for nested type', () => {
       const result = getTemplateDir('/vault', 'objective/task');
-      expect(result).toBe('/vault/Templates/objective/task');
+      expect(result).toBe('/vault/.ovault/templates/objective/task');
     });
 
     it('returns correct path for deeply nested type', () => {
       const result = getTemplateDir('/vault', 'a/b/c');
-      expect(result).toBe('/vault/Templates/a/b/c');
+      expect(result).toBe('/vault/.ovault/templates/a/b/c');
     });
   });
 
   describe('parseTemplate', () => {
     it('parses valid template file', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'default.md'),
+        join(tempDir, '.ovault/templates/idea', 'default.md'),
         `---
 type: template
 template-for: idea
@@ -60,7 +60,7 @@ Body content here.
 `
       );
 
-      const template = await parseTemplate(join(tempDir, 'Templates/idea', 'default.md'));
+      const template = await parseTemplate(join(tempDir, '.ovault/templates/idea', 'default.md'));
 
       expect(template).not.toBeNull();
       expect(template?.name).toBe('default');
@@ -89,9 +89,9 @@ Just a regular note.
     });
 
     it('returns null for missing template-for field', async () => {
-      await mkdir(join(tempDir, 'Templates'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates', 'bad.md'),
+        join(tempDir, '.ovault/templates', 'bad.md'),
         `---
 type: template
 ---
@@ -100,7 +100,7 @@ Missing template-for.
 `
       );
 
-      const template = await parseTemplate(join(tempDir, 'Templates', 'bad.md'));
+      const template = await parseTemplate(join(tempDir, '.ovault/templates', 'bad.md'));
       expect(template).toBeNull();
     });
 
@@ -110,9 +110,9 @@ Missing template-for.
     });
 
     it('parses template with prompt-fields', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'special.md'),
+        join(tempDir, '.ovault/templates/idea', 'special.md'),
         `---
 type: template
 template-for: idea
@@ -125,16 +125,16 @@ Body.
 `
       );
 
-      const template = await parseTemplate(join(tempDir, 'Templates/idea', 'special.md'));
+      const template = await parseTemplate(join(tempDir, '.ovault/templates/idea', 'special.md'));
 
       expect(template).not.toBeNull();
       expect(template?.promptFields).toEqual(['status', 'priority']);
     });
 
     it('parses template with filename-pattern', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'dated.md'),
+        join(tempDir, '.ovault/templates/idea', 'dated.md'),
         `---
 type: template
 template-for: idea
@@ -145,7 +145,7 @@ Body.
 `
       );
 
-      const template = await parseTemplate(join(tempDir, 'Templates/idea', 'dated.md'));
+      const template = await parseTemplate(join(tempDir, '.ovault/templates/idea', 'dated.md'));
 
       expect(template).not.toBeNull();
       expect(template?.filenamePattern).toBe('{date} - {title}');
@@ -154,9 +154,9 @@ Body.
 
   describe('findTemplates', () => {
     it('finds all templates for a type', async () => {
-      await mkdir(join(tempDir, 'Templates/objective/task'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/objective/task'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/objective/task', 'default.md'),
+        join(tempDir, '.ovault/templates/objective/task', 'default.md'),
         `---
 type: template
 template-for: objective/task
@@ -164,7 +164,7 @@ template-for: objective/task
 `
       );
       await writeFile(
-        join(tempDir, 'Templates/objective/task', 'bug-report.md'),
+        join(tempDir, '.ovault/templates/objective/task', 'bug-report.md'),
         `---
 type: template
 template-for: objective/task
@@ -180,9 +180,9 @@ template-for: objective/task
     });
 
     it('sorts templates with default first', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'zebra.md'),
+        join(tempDir, '.ovault/templates/idea', 'zebra.md'),
         `---
 type: template
 template-for: idea
@@ -190,7 +190,7 @@ template-for: idea
 `
       );
       await writeFile(
-        join(tempDir, 'Templates/idea', 'default.md'),
+        join(tempDir, '.ovault/templates/idea', 'default.md'),
         `---
 type: template
 template-for: idea
@@ -198,7 +198,7 @@ template-for: idea
 `
       );
       await writeFile(
-        join(tempDir, 'Templates/idea', 'alpha.md'),
+        join(tempDir, '.ovault/templates/idea', 'alpha.md'),
         `---
 type: template
 template-for: idea
@@ -220,9 +220,9 @@ template-for: idea
     });
 
     it('excludes templates for wrong type', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'wrong.md'),
+        join(tempDir, '.ovault/templates/idea', 'wrong.md'),
         `---
 type: template
 template-for: objective/task
@@ -236,11 +236,11 @@ template-for: objective/task
 
     it('does not inherit templates from parent type (strict matching)', async () => {
       // Create template in parent directory
-      await mkdir(join(tempDir, 'Templates/objective'), { recursive: true });
-      await mkdir(join(tempDir, 'Templates/objective/task'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/objective'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/objective/task'), { recursive: true });
       
       await writeFile(
-        join(tempDir, 'Templates/objective', 'parent-template.md'),
+        join(tempDir, '.ovault/templates/objective', 'parent-template.md'),
         `---
 type: template
 template-for: objective
@@ -256,9 +256,9 @@ template-for: objective
 
   describe('findDefaultTemplate', () => {
     it('finds default.md template', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'default.md'),
+        join(tempDir, '.ovault/templates/idea', 'default.md'),
         `---
 type: template
 template-for: idea
@@ -275,9 +275,9 @@ description: The default
     });
 
     it('returns null when no default template exists', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'other.md'),
+        join(tempDir, '.ovault/templates/idea', 'other.md'),
         `---
 type: template
 template-for: idea
@@ -290,9 +290,9 @@ template-for: idea
     });
 
     it('returns null when default.md has wrong template-for', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'default.md'),
+        join(tempDir, '.ovault/templates/idea', 'default.md'),
         `---
 type: template
 template-for: objective/task
@@ -307,9 +307,9 @@ template-for: objective/task
 
   describe('findTemplateByName', () => {
     it('finds template by name', async () => {
-      await mkdir(join(tempDir, 'Templates/objective/task'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/objective/task'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/objective/task', 'bug-report.md'),
+        join(tempDir, '.ovault/templates/objective/task', 'bug-report.md'),
         `---
 type: template
 template-for: objective/task
@@ -326,9 +326,9 @@ description: Bug template
     });
 
     it('finds template by name with .md extension', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'special.md'),
+        join(tempDir, '.ovault/templates/idea', 'special.md'),
         `---
 type: template
 template-for: idea
@@ -347,9 +347,9 @@ template-for: idea
     });
 
     it('returns null when template-for does not match', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'wrong.md'),
+        join(tempDir, '.ovault/templates/idea', 'wrong.md'),
         `---
 type: template
 template-for: objective/task
@@ -429,9 +429,9 @@ template-for: objective/task
     });
 
     it('finds specific template by name', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'special.md'),
+        join(tempDir, '.ovault/templates/idea', 'special.md'),
         `---
 type: template
 template-for: idea
@@ -454,9 +454,9 @@ template-for: idea
     });
 
     it('finds default template when useDefault is true', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'default.md'),
+        join(tempDir, '.ovault/templates/idea', 'default.md'),
         `---
 type: template
 template-for: idea
@@ -472,9 +472,9 @@ template-for: idea
     });
 
     it('auto-selects default.md when no flags provided', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'default.md'),
+        join(tempDir, '.ovault/templates/idea', 'default.md'),
         `---
 type: template
 template-for: idea
@@ -482,7 +482,7 @@ template-for: idea
 `
       );
       await writeFile(
-        join(tempDir, 'Templates/idea', 'other.md'),
+        join(tempDir, '.ovault/templates/idea', 'other.md'),
         `---
 type: template
 template-for: idea
@@ -499,9 +499,9 @@ template-for: idea
     });
 
     it('prompts when multiple templates but no default', async () => {
-      await mkdir(join(tempDir, 'Templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.ovault/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, 'Templates/idea', 'alpha.md'),
+        join(tempDir, '.ovault/templates/idea', 'alpha.md'),
         `---
 type: template
 template-for: idea
@@ -509,7 +509,7 @@ template-for: idea
 `
       );
       await writeFile(
-        join(tempDir, 'Templates/idea', 'beta.md'),
+        join(tempDir, '.ovault/templates/idea', 'beta.md'),
         `---
 type: template
 template-for: idea
