@@ -225,3 +225,119 @@ export function parsePickerMode(value: string | undefined): PickerMode {
   if (normalized === 'none') return 'none';
   return 'auto';
 }
+
+// ============================================================================
+// Resolve and Pick Helper
+// ============================================================================
+
+// Import here to avoid circular dependency at module load time
+import { resolveNoteQuery, type NoteIndex } from './navigation.js';
+
+export interface ResolveAndPickOptions {
+  /** Picker mode to use */
+  pickerMode: PickerMode;
+  /** Prompt message for picker */
+  prompt: string;
+}
+
+/**
+ * Result of resolveAndPick - either success with a file, cancellation, or error.
+ */
+export type ResolveAndPickResult =
+  | { ok: true; file: ManagedFile }
+  | { ok: false; cancelled: true }
+  | { ok: false; cancelled: false; error: string; candidates?: ManagedFile[] };
+
+/**
+ * Resolve a query to a file, using the picker if needed.
+ * 
+ * This handles the common pattern shared by open/link commands:
+ * 1. No query → show all files in picker
+ * 2. Query provided → resolve it
+ * 3. Exact match → return directly
+ * 4. Candidates → invoke picker
+ * 5. No matches → return error
+ * 
+ * Returns a discriminated union:
+ * - `{ ok: true, file }` on success
+ * - `{ ok: false, cancelled: true }` if user cancelled picker
+ * - `{ ok: false, cancelled: false, error, candidates? }` on error
+ */
+export async function resolveAndPick(
+  index: NoteIndex,
+  query: string | undefined,
+  options: ResolveAndPickOptions
+): Promise<ResolveAndPickResult> {
+  const { pickerMode, prompt } = options;
+
+  if (!query) {
+    // No query - show picker with all files
+    if (index.allFiles.length === 0) {
+      return { ok: false, cancelled: false, error: 'No notes found in vault' };
+    }
+
+    const pickerResult = await pickFile(index.allFiles, {
+      mode: pickerMode,
+      prompt,
+    });
+
+    if (pickerResult.error) {
+      const result: ResolveAndPickResult = {
+        ok: false,
+        cancelled: false,
+        error: pickerResult.error,
+      };
+      if (pickerResult.candidates) {
+        result.candidates = pickerResult.candidates;
+      }
+      return result;
+    }
+
+    if (pickerResult.cancelled || !pickerResult.selected) {
+      return { ok: false, cancelled: true };
+    }
+
+    return { ok: true, file: pickerResult.selected };
+  }
+
+  // Query provided - resolve it
+  const resolution = resolveNoteQuery(index, query);
+
+  if (resolution.exact) {
+    // Unambiguous match
+    return { ok: true, file: resolution.exact };
+  }
+
+  if (resolution.candidates.length > 0) {
+    // Ambiguous or fuzzy match - use picker
+    const pickerResult = await pickFile(resolution.candidates, {
+      mode: pickerMode,
+      prompt,
+    });
+
+    if (pickerResult.error) {
+      const result: ResolveAndPickResult = {
+        ok: false,
+        cancelled: false,
+        error: pickerResult.error,
+      };
+      if (pickerResult.candidates) {
+        result.candidates = pickerResult.candidates;
+      }
+      return result;
+    }
+
+    if (pickerResult.cancelled || !pickerResult.selected) {
+      return { ok: false, cancelled: true };
+    }
+
+    return { ok: true, file: pickerResult.selected };
+  }
+
+  // No matches at all
+  return {
+    ok: false,
+    cancelled: false,
+    error: `No matching notes found for: ${query}`,
+  };
+}

@@ -137,3 +137,46 @@ export function stripColors(str: string): string {
   // eslint-disable-next-line no-control-regex
   return str.replace(/\x1b\[[0-9;]*m/g, '');
 }
+
+/**
+ * A candidate file for error reporting (minimal interface).
+ */
+export interface ErrorCandidate {
+  relativePath: string;
+}
+
+/**
+ * Exit with a resolution error, optionally showing candidates.
+ * 
+ * Used by open/link commands when query resolution fails.
+ * In JSON mode, candidates are included in the errors array.
+ * In text mode, candidates are listed after the error message.
+ */
+export function exitWithResolutionError(
+  error: string,
+  candidates: ErrorCandidate[] | undefined,
+  jsonMode: boolean
+): never {
+  if (jsonMode) {
+    const errorDetails = candidates
+      ? {
+          errors: candidates.map(c => ({
+            field: 'candidate',
+            value: c.relativePath,
+            message: 'Matching file',
+          })),
+        }
+      : {};
+    printJson(jsonError(error, errorDetails));
+    process.exit(ExitCodes.VALIDATION_ERROR);
+  }
+
+  console.error(chalk.red(error));
+  if (candidates && candidates.length > 0) {
+    console.error('\nMatching files:');
+    for (const c of candidates) {
+      console.error(`  ${c.relativePath}`);
+    }
+  }
+  process.exit(1);
+}
