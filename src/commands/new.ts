@@ -12,7 +12,7 @@ import {
   getFrontmatterOrder,
   getEnumValues,
 } from '../lib/schema.js';
-import { writeNote, generateBodyWithContent, generateBodySections, mergeBodySectionContent, extractSectionItems } from '../lib/frontmatter.js';
+import { writeNote, generateBodyWithContent, generateBodySections, mergeBodySectionContent, extractSectionItems, parseBodyInput } from '../lib/frontmatter.js';
 import {
   resolveVaultDir,
   queryDynamicSource,
@@ -92,6 +92,10 @@ Non-interactive (JSON) mode:
   ovault new idea --json '{"Name": "My Idea", "status": "raw"}'
   ovault new objective/task --json '{"Name": "Fix bug", "status": "in-progress"}'
   ovault new task --json '{"Name": "Bug"}' --template bug-report
+
+Body sections (JSON mode):
+  ovault new task --json '{"Task name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'
+  The _body field accepts section names as keys, with string or string[] values.
 
 Template Discovery:
   Templates are stored in Templates/{type}/{subtype}/*.md
@@ -262,11 +266,24 @@ async function createNoteFromJson(
     process.exit(ExitCodes.VALIDATION_ERROR);
   }
 
+  // Extract _body from input (special field for body section content)
+  const { _body: rawBodyInput, ...frontmatterInput } = inputData;
+  
+  // Validate _body if provided
+  let bodyInput: Record<string, unknown> | undefined;
+  if (rawBodyInput !== undefined && rawBodyInput !== null) {
+    if (typeof rawBodyInput !== 'object' || Array.isArray(rawBodyInput)) {
+      printJson(jsonError('_body must be an object with section names as keys'));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    bodyInput = rawBodyInput as Record<string, unknown>;
+  }
+
   // Apply template defaults first, then JSON input overrides them
-  let mergedInput = { ...inputData };
+  let mergedInput = { ...frontmatterInput };
   if (template?.defaults) {
     // Template defaults are base, JSON input takes precedence
-    mergedInput = { ...template.defaults, ...inputData };
+    mergedInput = { ...template.defaults, ...frontmatterInput };
   }
 
   // Validate and apply defaults
@@ -314,7 +331,8 @@ async function createNoteFromJson(
       typeDef,
       frontmatter,
       instanceName,
-      template
+      template,
+      bodyInput
     );
   } else if (dirMode === 'instance-grouped' && segments.length === 1) {
     // Instance-grouped parent
@@ -325,7 +343,8 @@ async function createNoteFromJson(
       typeDef,
       frontmatter,
       itemName,
-      template
+      template,
+      bodyInput
     );
   } else {
     // Pooled mode
@@ -336,7 +355,8 @@ async function createNoteFromJson(
       typeDef,
       frontmatter,
       itemName,
-      template
+      template,
+      bodyInput
     );
   }
 
@@ -353,7 +373,8 @@ async function createPooledNoteFromJson(
   typeDef: TypeDef,
   frontmatter: Record<string, unknown>,
   itemName: string,
-  template?: Template | null
+  template?: Template | null,
+  bodyInput?: Record<string, unknown>
 ): Promise<string> {
   const outputDir = getOutputDirForType(schema, typePath);
   if (!outputDir) {
@@ -369,13 +390,8 @@ async function createPooledNoteFromJson(
     process.exit(ExitCodes.IO_ERROR);
   }
 
-  // Generate body - prefer template body, fall back to schema body_sections
-  let body: string;
-  if (template?.body) {
-    body = processTemplateBody(template.body, frontmatter);
-  } else {
-    body = generateBodyFromSections(typeDef.body_sections);
-  }
+  // Generate body content
+  const body = generateBodyForJson(typeDef, frontmatter, template, bodyInput);
   
   const fieldOrder = getFrontmatterOrder(typeDef);
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
@@ -394,7 +410,8 @@ async function createInstanceParentFromJson(
   typeDef: TypeDef,
   frontmatter: Record<string, unknown>,
   instanceName: string,
-  template?: Template | null
+  template?: Template | null,
+  bodyInput?: Record<string, unknown>
 ): Promise<string> {
   const outputDir = getOutputDir(schema, typePath);
   if (!outputDir) {
@@ -410,13 +427,8 @@ async function createInstanceParentFromJson(
     process.exit(ExitCodes.IO_ERROR);
   }
 
-  // Generate body - prefer template body, fall back to schema body_sections
-  let body: string;
-  if (template?.body) {
-    body = processTemplateBody(template.body, frontmatter);
-  } else {
-    body = generateBodyFromSections(typeDef.body_sections);
-  }
+  // Generate body content
+  const body = generateBodyForJson(typeDef, frontmatter, template, bodyInput);
   
   const fieldOrder = getFrontmatterOrder(typeDef);
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
@@ -435,7 +447,8 @@ async function createInstanceGroupedNoteFromJson(
   typeDef: TypeDef,
   frontmatter: Record<string, unknown>,
   instanceName?: string,
-  template?: Template | null
+  template?: Template | null,
+  bodyInput?: Record<string, unknown>
 ): Promise<string> {
   const parentTypeName = getParentTypeName(schema, typePath);
   if (!parentTypeName) {
@@ -480,13 +493,8 @@ async function createInstanceGroupedNoteFromJson(
   // Remove _instance from frontmatter before writing
   const { _instance, ...cleanFrontmatter } = frontmatter;
 
-  // Generate body - prefer template body, fall back to schema body_sections
-  let body: string;
-  if (template?.body) {
-    body = processTemplateBody(template.body, cleanFrontmatter);
-  } else {
-    body = generateBodyFromSections(typeDef.body_sections);
-  }
+  // Generate body content
+  const body = generateBodyForJson(typeDef, cleanFrontmatter, template, bodyInput);
   
   const fieldOrder = getFrontmatterOrder(typeDef);
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(cleanFrontmatter);
@@ -496,13 +504,48 @@ async function createInstanceGroupedNoteFromJson(
 }
 
 /**
- * Generate body content from body sections (for non-interactive mode).
+ * Generate body content for JSON mode.
+ * 
+ * Priority:
+ * 1. If bodyInput provided: use it to populate sections
+ * 2. If template body exists: merge bodyInput into template
+ * 3. Fall back to empty schema body_sections
  */
-function generateBodyFromSections(sections?: BodySection[]): string {
-  if (!sections || sections.length === 0) {
-    return '';
+function generateBodyForJson(
+  typeDef: TypeDef,
+  frontmatter: Record<string, unknown>,
+  template?: Template | null,
+  bodyInput?: Record<string, unknown>
+): string {
+  const sections = typeDef.body_sections ?? [];
+  
+  // Parse body input if provided
+  let sectionContent: Map<string, string[]> | undefined;
+  if (bodyInput && Object.keys(bodyInput).length > 0) {
+    // This may throw an error for unknown sections, which will be caught
+    // by the try/catch in the action handler and returned as JSON error
+    sectionContent = parseBodyInput(bodyInput, sections);
   }
-  return generateBodySections(sections);
+
+  // Generate body based on what we have
+  if (template?.body && sectionContent && sectionContent.size > 0) {
+    // Template + body input: start with template, merge in body content
+    let body = processTemplateBody(template.body, frontmatter);
+    body = mergeBodySectionContent(body, sections, sectionContent);
+    return body;
+  } else if (template?.body) {
+    // Template only: use processed template body
+    return processTemplateBody(template.body, frontmatter);
+  } else if (sectionContent && sectionContent.size > 0) {
+    // Body input only: generate sections with content
+    return generateBodyWithContent(sections, sectionContent);
+  } else {
+    // Neither: generate empty sections from schema
+    if (sections.length === 0) {
+      return '';
+    }
+    return generateBodySections(sections);
+  }
 }
 
 /**

@@ -379,3 +379,76 @@ function generateSectionWithItems(
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+/**
+ * Flatten all section titles from a body sections array (including nested children).
+ */
+function flattenSectionTitles(sections: BodySection[]): string[] {
+  const titles: string[] = [];
+  for (const section of sections) {
+    titles.push(section.title);
+    if (section.children) {
+      titles.push(...flattenSectionTitles(section.children));
+    }
+  }
+  return titles;
+}
+
+/**
+ * Parse body input from JSON into a Map for use with generateBodyWithContent.
+ * 
+ * @param bodyInput - Object with section titles as keys, content as values
+ * @param sections - Body section definitions from schema
+ * @returns Map of section title to content items
+ * @throws Error if section title is unknown or content type is invalid
+ * 
+ * @example
+ * // Input
+ * { "Steps": ["Step 1", "Step 2"], "Notes": "Some notes" }
+ * // Returns
+ * Map { "Steps" => ["Step 1", "Step 2"], "Notes" => ["Some notes"] }
+ */
+export function parseBodyInput(
+  bodyInput: Record<string, unknown>,
+  sections: BodySection[]
+): Map<string, string[]> {
+  const sectionContent = new Map<string, string[]>();
+  const sectionTitles = new Set(flattenSectionTitles(sections));
+  const availableTitles = Array.from(sectionTitles);
+
+  for (const [title, content] of Object.entries(bodyInput)) {
+    // Validate section exists in schema
+    if (!sectionTitles.has(title)) {
+      const suggestion = availableTitles.length > 0
+        ? `. Available sections: ${availableTitles.join(', ')}`
+        : '';
+      throw new Error(`Unknown body section: "${title}"${suggestion}`);
+    }
+
+    // Skip null/undefined values
+    if (content === null || content === undefined) {
+      continue;
+    }
+
+    // Normalize content to string[]
+    if (Array.isArray(content)) {
+      // Filter out non-string items and convert others to strings
+      const items = content
+        .filter(item => item !== null && item !== undefined)
+        .map(item => String(item));
+      if (items.length > 0) {
+        sectionContent.set(title, items);
+      }
+    } else if (typeof content === 'string') {
+      if (content.trim()) {
+        sectionContent.set(title, [content]);
+      }
+    } else {
+      throw new Error(
+        `Invalid content for section "${title}": expected string or string[], got ${typeof content}`
+      );
+    }
+  }
+
+  return sectionContent;
+}

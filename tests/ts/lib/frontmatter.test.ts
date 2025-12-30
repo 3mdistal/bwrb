@@ -11,6 +11,7 @@ import {
   generateBodyWithContent,
   extractSectionItems,
   mergeBodySectionContent,
+  parseBodyInput,
 } from '../../../src/lib/frontmatter.js';
 import { createTestVault, cleanupTestVault } from '../fixtures/setup.js';
 
@@ -321,6 +322,140 @@ Existing description
       
       expect(result).toContain('Existing description');
       expect(result).toContain('Added paragraph');
+    });
+  });
+
+  describe('parseBodyInput', () => {
+    const testSections = [
+      { title: 'Steps', level: 2, content_type: 'checkboxes' as const },
+      { title: 'Notes', level: 2, content_type: 'paragraphs' as const },
+      { title: 'Items', level: 2, content_type: 'bullets' as const },
+    ];
+
+    it('should parse string array content', () => {
+      const input = { Steps: ['Step 1', 'Step 2'] };
+      const result = parseBodyInput(input, testSections);
+      
+      expect(result.get('Steps')).toEqual(['Step 1', 'Step 2']);
+    });
+
+    it('should parse string content as single-item array', () => {
+      const input = { Notes: 'A single note' };
+      const result = parseBodyInput(input, testSections);
+      
+      expect(result.get('Notes')).toEqual(['A single note']);
+    });
+
+    it('should handle multiple sections', () => {
+      const input = {
+        Steps: ['Step 1', 'Step 2'],
+        Notes: 'Some notes',
+        Items: ['Item A', 'Item B'],
+      };
+      const result = parseBodyInput(input, testSections);
+      
+      expect(result.get('Steps')).toEqual(['Step 1', 'Step 2']);
+      expect(result.get('Notes')).toEqual(['Some notes']);
+      expect(result.get('Items')).toEqual(['Item A', 'Item B']);
+    });
+
+    it('should skip null values', () => {
+      const input = { Steps: null, Notes: 'Valid note' };
+      const result = parseBodyInput(input as Record<string, unknown>, testSections);
+      
+      expect(result.has('Steps')).toBe(false);
+      expect(result.get('Notes')).toEqual(['Valid note']);
+    });
+
+    it('should skip undefined values', () => {
+      const input = { Steps: undefined, Notes: 'Valid note' };
+      const result = parseBodyInput(input as Record<string, unknown>, testSections);
+      
+      expect(result.has('Steps')).toBe(false);
+      expect(result.get('Notes')).toEqual(['Valid note']);
+    });
+
+    it('should skip empty strings', () => {
+      const input = { Steps: '', Notes: 'Valid note' };
+      const result = parseBodyInput(input, testSections);
+      
+      expect(result.has('Steps')).toBe(false);
+      expect(result.get('Notes')).toEqual(['Valid note']);
+    });
+
+    it('should skip empty arrays', () => {
+      const input = { Steps: [], Notes: 'Valid note' };
+      const result = parseBodyInput(input, testSections);
+      
+      expect(result.has('Steps')).toBe(false);
+      expect(result.get('Notes')).toEqual(['Valid note']);
+    });
+
+    it('should convert non-string array items to strings', () => {
+      const input = { Steps: [1, 2, 3] };
+      const result = parseBodyInput(input as Record<string, unknown>, testSections);
+      
+      expect(result.get('Steps')).toEqual(['1', '2', '3']);
+    });
+
+    it('should filter null/undefined from arrays', () => {
+      const input = { Steps: ['Step 1', null, 'Step 2', undefined] };
+      const result = parseBodyInput(input as Record<string, unknown>, testSections);
+      
+      expect(result.get('Steps')).toEqual(['Step 1', 'Step 2']);
+    });
+
+    it('should throw error for unknown section', () => {
+      const input = { Unknown: ['Item'] };
+      
+      expect(() => parseBodyInput(input, testSections)).toThrow('Unknown body section: "Unknown"');
+    });
+
+    it('should include available sections in error message', () => {
+      const input = { Unknown: ['Item'] };
+      
+      expect(() => parseBodyInput(input, testSections)).toThrow('Available sections: Steps, Notes, Items');
+    });
+
+    it('should throw error for invalid content type (object)', () => {
+      const input = { Steps: { nested: 'object' } };
+      
+      expect(() => parseBodyInput(input as Record<string, unknown>, testSections)).toThrow(
+        'Invalid content for section "Steps": expected string or string[], got object'
+      );
+    });
+
+    it('should throw error for invalid content type (number)', () => {
+      const input = { Steps: 42 };
+      
+      expect(() => parseBodyInput(input as Record<string, unknown>, testSections)).toThrow(
+        'Invalid content for section "Steps": expected string or string[], got number'
+      );
+    });
+
+    it('should handle nested child sections', () => {
+      const nestedSections = [
+        {
+          title: 'Parent',
+          level: 2,
+          content_type: 'paragraphs' as const,
+          children: [
+            { title: 'Child', level: 3, content_type: 'bullets' as const },
+          ],
+        },
+      ];
+      
+      const input = { Parent: 'Parent content', Child: ['Child item'] };
+      const result = parseBodyInput(input, nestedSections);
+      
+      expect(result.get('Parent')).toEqual(['Parent content']);
+      expect(result.get('Child')).toEqual(['Child item']);
+    });
+
+    it('should return empty map for empty input', () => {
+      const result = parseBodyInput({}, testSections);
+      
+      expect(result.size).toBe(0);
     });
   });
 });

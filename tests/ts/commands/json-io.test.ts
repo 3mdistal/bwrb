@@ -123,6 +123,182 @@ describe('JSON I/O', () => {
       expect(json.success).toBe(false);
       expect(json.error).toContain('required');
     });
+
+    describe('with _body', () => {
+      it('should create note with body sections from _body field', async () => {
+        const result = await runCLI(
+          ['new', 'objective/task', '--json', JSON.stringify({
+            'Task name': 'Test Task',
+            _body: {
+              Steps: ['Step 1', 'Step 2', 'Step 3'],
+            },
+          })],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+
+        const filePath = join(vaultDir, json.path);
+        const content = await readFile(filePath, 'utf-8');
+        expect(content).toContain('## Steps');
+        expect(content).toContain('- [ ] Step 1');
+        expect(content).toContain('- [ ] Step 2');
+        expect(content).toContain('- [ ] Step 3');
+      });
+
+      it('should handle string content for paragraphs section', async () => {
+        const result = await runCLI(
+          ['new', 'objective/task', '--json', JSON.stringify({
+            'Task name': 'Notes Task',
+            _body: {
+              Notes: 'This is a paragraph of notes about the task.',
+            },
+          })],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+
+        const filePath = join(vaultDir, json.path);
+        const content = await readFile(filePath, 'utf-8');
+        expect(content).toContain('## Notes');
+        expect(content).toContain('This is a paragraph of notes about the task.');
+      });
+
+      it('should handle multiple body sections', async () => {
+        const result = await runCLI(
+          ['new', 'objective/task', '--json', JSON.stringify({
+            'Task name': 'Multi Section Task',
+            _body: {
+              Steps: ['Step A', 'Step B'],
+              Notes: 'Important notes here',
+            },
+          })],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+
+        const filePath = join(vaultDir, json.path);
+        const content = await readFile(filePath, 'utf-8');
+        expect(content).toContain('## Steps');
+        expect(content).toContain('- [ ] Step A');
+        expect(content).toContain('- [ ] Step B');
+        expect(content).toContain('## Notes');
+        expect(content).toContain('Important notes here');
+      });
+
+      it('should error on unknown body section', async () => {
+        const result = await runCLI(
+          ['new', 'objective/task', '--json', JSON.stringify({
+            'Task name': 'Bad Section Task',
+            _body: {
+              UnknownSection: ['Item'],
+            },
+          })],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(1);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain('Unknown body section');
+        expect(json.error).toContain('UnknownSection');
+      });
+
+      it('should error when _body is not an object', async () => {
+        const result = await runCLI(
+          ['new', 'objective/task', '--json', JSON.stringify({
+            'Task name': 'Bad Body Task',
+            _body: 'not an object',
+          })],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(1);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain('_body must be an object');
+      });
+
+      it('should error when _body is an array', async () => {
+        const result = await runCLI(
+          ['new', 'objective/task', '--json', JSON.stringify({
+            'Task name': 'Array Body Task',
+            _body: ['not', 'valid'],
+          })],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(1);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain('_body must be an object');
+      });
+
+      it('should handle empty _body object', async () => {
+        const result = await runCLI(
+          ['new', 'objective/task', '--json', JSON.stringify({
+            'Task name': 'Empty Body Task',
+            _body: {},
+          })],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+
+        // Should still create the note with default body sections
+        const filePath = join(vaultDir, json.path);
+        expect(existsSync(filePath)).toBe(true);
+      });
+
+      it('should handle null _body', async () => {
+        const result = await runCLI(
+          ['new', 'objective/task', '--json', JSON.stringify({
+            'Task name': 'Null Body Task',
+            _body: null,
+          })],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+      });
+
+      it('should not include _body in frontmatter', async () => {
+        const result = await runCLI(
+          ['new', 'objective/task', '--json', JSON.stringify({
+            'Task name': 'Body Not In FM',
+            _body: {
+              Steps: ['Step 1'],
+            },
+          })],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+
+        const filePath = join(vaultDir, json.path);
+        const content = await readFile(filePath, 'utf-8');
+        
+        // Extract frontmatter (between --- markers)
+        const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+        expect(fmMatch).not.toBeNull();
+        const frontmatter = fmMatch![1];
+        expect(frontmatter).not.toContain('_body');
+      });
+    });
   });
 
   describe('ovault edit --json', () => {

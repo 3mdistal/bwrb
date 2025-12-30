@@ -20,6 +20,14 @@ All notable changes to ovault are documented in this file.
 
 ### Added
 
+- **Body sections via `_body` in JSON mode** (ovault-slq)
+  - The `--json` flag for `ovault new` now accepts a `_body` field to populate body sections
+  - Eliminates the need to create a note, read it, then edit it to populate body content
+  - Section content can be string (for paragraphs) or string[] (for bullets/checkboxes)
+  - Example: `ovault new task --json '{"Task name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'`
+  - Validates section names against schema and provides helpful error messages with available sections
+  - Works with templates: body input is merged into template body
+
 - **Full-text content search** (ovault-acb)
   - New `--text` / `-t` flag enables searching inside file contents using ripgrep
   - `--type <type>` restricts search to specific types (e.g., `--type task`)
