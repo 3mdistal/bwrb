@@ -8,7 +8,7 @@
     "ovault": "./dist/index.js"
   },
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "sh -c 'shift $([ \"$1\" = \"--\" ] && echo 1 || echo 0); exec tsx src/index.ts \"$@\"' --",
     "build": "tsup src/index.ts --format esm --dts --clean",
     "test": "vitest run",
     "test:watch": "vitest",
