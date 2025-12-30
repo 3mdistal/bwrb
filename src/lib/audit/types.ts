@@ -105,15 +105,8 @@ export interface FixSummary {
 // Internal Types
 // ============================================================================
 
-/**
- * Managed file with expected type context.
- */
-export interface ManagedFile {
-  path: string;
-  relativePath: string;
-  expectedType?: string;
-  instance?: string;
-}
+// Re-export ManagedFile from discovery module (single source of truth)
+export type { ManagedFile } from '../discovery.js';
 
 /**
  * Audit command options.

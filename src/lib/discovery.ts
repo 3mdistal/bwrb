@@ -38,7 +38,7 @@ export interface ManagedFile {
 /**
  * Load and parse .gitignore file if it exists.
  */
-async function loadGitignore(vaultDir: string): Promise<Ignore | null> {
+export async function loadGitignore(vaultDir: string): Promise<Ignore | null> {
   const gitignorePath = join(vaultDir, '.gitignore');
   try {
     const content = await readFile(gitignorePath, 'utf-8');

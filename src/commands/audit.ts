@@ -34,9 +34,11 @@ import {
   runAudit,
   discoverManagedFiles,
   auditFile,
+} from '../lib/audit/detection.js';
+import {
   collectPooledFiles,
   collectInstanceGroupedFiles,
-} from '../lib/audit/detection.js';
+} from '../lib/discovery.js';
 import {
   runAutoFix,
   runInteractiveFix,

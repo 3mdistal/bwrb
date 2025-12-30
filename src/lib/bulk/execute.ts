@@ -7,7 +7,7 @@ import { stat } from 'fs/promises';
 import { parseNote, writeNote } from '../frontmatter.js';
 import { matchesExpression, type EvalContext } from '../expression.js';
 import { matchesAllFilters } from '../query.js';
-import { discoverManagedFiles } from '../audit/detection.js';
+import { discoverManagedFiles } from '../discovery.js';
 import { applyOperations } from './operations.js';
 import { createBackup } from './backup.js';
 import { executeBulkMove, findAllMarkdownFiles } from './move.js';

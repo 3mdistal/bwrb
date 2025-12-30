@@ -6,6 +6,12 @@ All notable changes to ovault are documented in this file.
 
 ### Changed
 
+- **Consolidated file discovery logic** (ovault-5jk)
+  - Moved duplicated file discovery functions from `audit/detection.ts` to shared `discovery.ts` module
+  - Single source of truth for `discoverManagedFiles`, `collectAllMarkdownFiles`, `findSimilarFiles`, etc.
+  - Added dedicated test suite for discovery module (31 tests)
+  - Reduces code duplication by ~200 lines
+
 - **Extracted `resolveAndPick` helper** (ovault-bjg)
   - DRYs up ~76 lines of duplicated query resolution + picker logic from `open` and `link` commands
   - Adds `exitWithResolutionError` helper for consistent error output with optional candidates list
