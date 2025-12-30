@@ -7,7 +7,7 @@
 
 import ignore, { type Ignore } from 'ignore';
 import { readdir, readFile } from 'fs/promises';
-import { join, basename } from 'path';
+import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import {
   getTypeDefByPath,
@@ -98,7 +98,7 @@ export async function collectAllMarkdownFiles(
   
   for (const entry of entries) {
     const fullPath = join(dir, entry.name);
-    const relativePath = fullPath.slice(baseDir.length + 1); // +1 for leading slash
+    const relativePath = relative(baseDir, fullPath);
     
     // Check if this path should be excluded by explicit exclusions
     const shouldExclude = Array.from(excluded).some(excl => 

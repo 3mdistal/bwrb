@@ -234,4 +234,150 @@ status: backlog
       expect(json.data.length).toBeGreaterThan(0);
     });
   });
+
+  describe('content search (--text)', () => {
+    it('should search file contents with --text flag', async () => {
+      const result = await runCLI(['search', 'type', '--text'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // Should find "type:" in frontmatter
+      expect(result.stdout).toContain('type:');
+    });
+
+    it('should require a pattern for content search', async () => {
+      const result = await runCLI(['search', '--text'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('pattern is required');
+    });
+
+    it('should filter by type with --type flag', async () => {
+      const result = await runCLI(['search', 'status', '--text', '--type', 'idea'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // Should only find matches in Ideas directory
+      if (result.stdout.trim()) {
+        expect(result.stdout).toContain('Ideas/');
+        expect(result.stdout).not.toContain('Tasks/');
+        expect(result.stdout).not.toContain('Milestones/');
+      }
+    });
+
+    it('should output JSON with matches', async () => {
+      const result = await runCLI(['search', 'status', '--text', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(Array.isArray(json.data)).toBe(true);
+      if (json.data.length > 0) {
+        expect(json.data[0].path).toBeDefined();
+        expect(json.data[0].matches).toBeDefined();
+        expect(Array.isArray(json.data[0].matches)).toBe(true);
+      }
+    });
+
+    it('should show context lines by default', async () => {
+      const result = await runCLI(['search', 'status', '--text'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // Context lines use - as separator, match lines use :
+      // Format: file.md:line-context text
+      if (result.stdout.trim()) {
+        // Should have both : (match) and - (context) separators
+        expect(result.stdout).toMatch(/:\d+:/); // match line
+      }
+    });
+
+    it('should hide context with --no-context', async () => {
+      const result = await runCLI(['search', 'status', '--text', '--no-context'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // All lines should be match lines (with :line:)
+      const lines = result.stdout.trim().split('\n').filter(l => l.trim());
+      for (const line of lines) {
+        // Should not have context separators (line-)
+        expect(line).toMatch(/:\d+:/);
+      }
+    });
+
+    it('should be case-insensitive by default', async () => {
+      const result = await runCLI(['search', 'STATUS', '--text', '--no-context'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // Should find matches even though we searched uppercase
+      expect(result.stdout.trim().length).toBeGreaterThan(0);
+    });
+
+    it('should respect --case-sensitive flag', async () => {
+      const resultInsensitive = await runCLI(['search', 'STATUS', '--text', '--no-context'], vaultDir);
+      const resultSensitive = await runCLI(['search', 'STATUS', '--text', '--no-context', '--case-sensitive'], vaultDir);
+
+      // Case-insensitive should find matches
+      expect(resultInsensitive.stdout.trim().length).toBeGreaterThan(0);
+      // Case-sensitive should not find "STATUS" (files have lowercase "status")
+      expect(resultSensitive.stdout.trim()).toBe('');
+    });
+
+    it('should support regex with --regex flag', async () => {
+      const result = await runCLI(['search', 'status:.*', '--text', '--no-context', '--regex'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // Should find "status: raw", "status: backlog", etc.
+      expect(result.stdout).toContain('status:');
+    });
+
+    it('should filter results with --where expression', async () => {
+      const result = await runCLI([
+        'search', 'status', '--text', '--type', 'idea',
+        '--where', "status == 'raw'",
+        '--no-context'
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // Should only match Sample Idea (which has status: raw)
+      if (result.stdout.trim()) {
+        expect(result.stdout).toContain('Sample Idea');
+        expect(result.stdout).not.toContain('Another Idea');
+      }
+    });
+
+    it('should return empty for no matches', async () => {
+      const result = await runCLI(['search', 'xyznonexistent123', '--text'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+    });
+
+    it('should return empty JSON for no matches', async () => {
+      const result = await runCLI(['search', 'xyznonexistent123', '--text', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.data).toEqual([]);
+    });
+
+    it('should respect --limit flag', async () => {
+      const result = await runCLI(['search', 'type', '--text', '--output', 'json', '--limit', '1'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.data.length).toBeLessThanOrEqual(1);
+    });
+
+    it('should show updated help with content search options', async () => {
+      const result = await runCLI(['search', '--help'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('--text');
+      expect(result.stdout).toContain('--type');
+      expect(result.stdout).toContain('--where');
+      expect(result.stdout).toContain('--context');
+      expect(result.stdout).toContain('--case-sensitive');
+      expect(result.stdout).toContain('--regex');
+      expect(result.stdout).toContain('--limit');
+    });
+  });
 });
