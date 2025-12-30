@@ -19,6 +19,13 @@ All notable changes to ovault are documented in this file.
 
 ### Fixed
 
+- **Body sections skipped when using templates** 
+  - Previously, if a template had body content, schema-defined body_sections with prompts were completely skipped
+  - Now, promptable body_sections work alongside templates: existing template content is shown, then user is prompted for additional items
+  - Added items are appended to matching sections in the template
+  - Sections not in template are added at the end of the body
+  - Supports checkboxes, bullets, and paragraph content types
+
 - **Numbered select prompt flicker** (ovault-18j)
   - Arrow key navigation now uses differential updates instead of full re-render
   - Only the changed lines (old/new selection) are updated

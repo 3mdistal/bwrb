@@ -12,7 +12,7 @@ import {
   getFrontmatterOrder,
   getEnumValues,
 } from '../lib/schema.js';
-import { writeNote, generateBodyWithContent, generateBodySections } from '../lib/frontmatter.js';
+import { writeNote, generateBodyWithContent, generateBodySections, mergeBodySectionContent, extractSectionItems } from '../lib/frontmatter.js';
 import {
   resolveVaultDir,
   queryDynamicSource,
@@ -834,16 +834,28 @@ async function buildNoteContent(
     }
   }
 
-  // Generate body - prefer template body, fall back to schema body_sections
+  // Generate body content
+  // If we have a template body, use it as the base and merge in prompted sections
+  // If no template, prompt for schema body_sections from scratch
   let body = '';
+  const bodySections = typeDef.body_sections;
+  const promptableSections = bodySections?.filter(s => s.prompt === 'multi-input') ?? [];
+  
   if (template?.body) {
+    // Start with processed template body
     body = processTemplateBody(template.body, frontmatter);
-  } else {
-    const bodySections = typeDef.body_sections;
-    if (bodySections && bodySections.length > 0) {
-      const sectionContent = await promptBodySections(bodySections);
-      body = generateBodyWithContent(bodySections, sectionContent);
+    
+    // If there are promptable body sections, prompt for additional items
+    if (promptableSections.length > 0) {
+      const sectionContent = await promptBodySections(promptableSections, body);
+      if (sectionContent.size > 0) {
+        body = mergeBodySectionContent(body, promptableSections, sectionContent);
+      }
     }
+  } else if (bodySections && bodySections.length > 0) {
+    // No template - prompt for body sections from schema
+    const sectionContent = await promptBodySections(promptableSections, undefined);
+    body = generateBodyWithContent(bodySections, sectionContent);
   }
 
   return { frontmatter, body, orderedFields };
@@ -1012,25 +1024,62 @@ function expandStaticValue(value: string): string {
 
 /**
  * Prompt for body section content.
+ * If templateBody is provided, shows existing items and asks for additions.
  * Throws UserCancelledError if user cancels any prompt.
  */
 async function promptBodySections(
-  sections: BodySection[]
+  sections: BodySection[],
+  templateBody?: string
 ): Promise<Map<string, string[]>> {
   const content = new Map<string, string[]>();
 
   for (const section of sections) {
     if (section.prompt === 'multi-input' && section.prompt_label) {
-      const items = await promptMultiInput(section.prompt_label);
-      if (items === null) {
-        throw new UserCancelledError();
-      }
-      if (items.length > 0) {
-        content.set(section.title, items);
+      // If we have a template body, extract existing items and show them
+      if (templateBody) {
+        const existingItems = extractSectionItems(
+          templateBody,
+          section.title,
+          section.content_type
+        );
+        
+        if (existingItems.length > 0) {
+          // Show existing items from template
+          printInfo(`\n${section.title} (from template):`);
+          for (const item of existingItems) {
+            const prefix = section.content_type === 'checkboxes' ? '  - [ ]' : '  -';
+            console.log(`${prefix} ${item}`);
+          }
+        }
+        
+        // Ask for additional items
+        const label = `Additional ${section.prompt_label}`;
+        const items = await promptMultiInput(label);
+        if (items === null) {
+          throw new UserCancelledError();
+        }
+        if (items.length > 0) {
+          content.set(section.title, items);
+        }
+      } else {
+        // No template - just prompt normally
+        const items = await promptMultiInput(section.prompt_label);
+        if (items === null) {
+          throw new UserCancelledError();
+        }
+        if (items.length > 0) {
+          content.set(section.title, items);
+        }
       }
     }
 
-    // Recursively handle children (no prompting for nested sections)
+    // Recursively handle children
+    if (section.children && section.children.length > 0) {
+      const childContent = await promptBodySections(section.children, templateBody);
+      for (const [key, value] of childContent) {
+        content.set(key, value);
+      }
+    }
   }
 
   return content;

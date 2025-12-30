@@ -180,3 +180,202 @@ export function generateBodyWithContent(
 
   return content;
 }
+
+/**
+ * Extract existing items from a body section in template content.
+ * Returns the items found in the section (bullets, checkboxes, or paragraphs).
+ */
+export function extractSectionItems(
+  templateBody: string,
+  sectionTitle: string,
+  contentType: BodySection['content_type']
+): string[] {
+  const items: string[] = [];
+  const lines = templateBody.split('\n');
+  
+  // Find the section header (any heading level)
+  const headerPattern = new RegExp(`^#{1,6}\\s+${escapeRegex(sectionTitle)}\\s*$`, 'i');
+  let inSection = false;
+  
+  for (const line of lines) {
+    if (headerPattern.test(line)) {
+      inSection = true;
+      continue;
+    }
+    
+    // Stop when we hit another heading
+    if (inSection && /^#{1,6}\s+/.test(line)) {
+      break;
+    }
+    
+    if (inSection) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      
+      // Extract content based on type
+      if (contentType === 'checkboxes') {
+        const match = trimmed.match(/^-\s*\[[ x]\]\s*(.+)$/i);
+        if (match && match[1]) {
+          items.push(match[1]);
+        }
+      } else if (contentType === 'bullets') {
+        const match = trimmed.match(/^-\s+(.+)$/);
+        if (match && match[1]) {
+          items.push(match[1]);
+        }
+      } else {
+        // paragraphs - any non-empty line
+        items.push(trimmed);
+      }
+    }
+  }
+  
+  return items;
+}
+
+/**
+ * Merge prompted content into a template body.
+ * For each section in sectionContent, finds the matching section in the template
+ * and appends the new items. Sections not in template are added at the end.
+ */
+export function mergeBodySectionContent(
+  templateBody: string,
+  sections: BodySection[],
+  sectionContent: Map<string, string[]>
+): string {
+  let result = templateBody;
+  const sectionsInTemplate = new Set<string>();
+  
+  // Process each section that has prompted content
+  for (const section of sections) {
+    const items = sectionContent.get(section.title);
+    if (!items || items.length === 0) continue;
+    
+    // Check if section exists in template
+    const headerPattern = new RegExp(
+      `(^#{1,6}\\s+${escapeRegex(section.title)}\\s*$)`,
+      'im'
+    );
+    
+    if (headerPattern.test(result)) {
+      sectionsInTemplate.add(section.title);
+      // Find the end of this section (before next heading or end of content)
+      result = appendToSection(result, section.title, items, section.content_type);
+    }
+  }
+  
+  // Add sections not in template at the end
+  const missingSections: string[] = [];
+  for (const section of sections) {
+    const items = sectionContent.get(section.title);
+    if (!items || items.length === 0) continue;
+    
+    if (!sectionsInTemplate.has(section.title)) {
+      missingSections.push(generateSectionWithItems(section, items));
+    }
+  }
+  
+  if (missingSections.length > 0) {
+    // Ensure there's a newline before adding new sections
+    if (!result.endsWith('\n')) {
+      result += '\n';
+    }
+    result += '\n' + missingSections.join('\n');
+  }
+  
+  return result;
+}
+
+/**
+ * Append items to an existing section in the body.
+ */
+function appendToSection(
+  body: string,
+  sectionTitle: string,
+  items: string[],
+  contentType: BodySection['content_type']
+): string {
+  const lines = body.split('\n');
+  const headerPattern = new RegExp(`^#{1,6}\\s+${escapeRegex(sectionTitle)}\\s*$`, 'i');
+  
+  let insertIndex = -1;
+  let inSection = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    if (headerPattern.test(line)) {
+      inSection = true;
+      continue;
+    }
+    
+    if (inSection) {
+      // Found next heading - insert before it
+      if (/^#{1,6}\s+/.test(line)) {
+        insertIndex = i;
+        break;
+      }
+    }
+  }
+  
+  // If no next heading found, insert at end
+  if (inSection && insertIndex === -1) {
+    insertIndex = lines.length;
+  }
+  
+  if (insertIndex === -1) {
+    // Section not found, return unchanged
+    return body;
+  }
+  
+  // Build the new items string
+  const newItems = items.map(item => {
+    switch (contentType) {
+      case 'checkboxes':
+        return `- [ ] ${item}`;
+      case 'bullets':
+        return `- ${item}`;
+      default:
+        return item;
+    }
+  });
+  
+  // Insert the new items
+  lines.splice(insertIndex, 0, ...newItems);
+  
+  return lines.join('\n');
+}
+
+/**
+ * Generate a complete section with items for sections not in template.
+ */
+function generateSectionWithItems(
+  section: BodySection,
+  items: string[]
+): string {
+  const level = section.level ?? 2;
+  const prefix = '#'.repeat(level);
+  let content = `${prefix} ${section.title}\n`;
+  
+  for (const item of items) {
+    switch (section.content_type) {
+      case 'checkboxes':
+        content += `- [ ] ${item}\n`;
+        break;
+      case 'bullets':
+        content += `- ${item}\n`;
+        break;
+      default:
+        content += `${item}\n`;
+        break;
+    }
+  }
+  
+  return content;
+}
+
+/**
+ * Escape special regex characters in a string.
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
