@@ -56,18 +56,7 @@ import {
   processTemplateBody,
 } from '../lib/template.js';
 import type { Schema, TypeDef, Field, BodySection, Template } from '../types/schema.js';
-
-/**
- * Error thrown when user cancels an interactive prompt (Ctrl+C/Escape).
- * This allows cancellation to propagate cleanly through the call stack
- * without creating side effects (like folders or partial files).
- */
-class UserCancelledError extends Error {
-  constructor() {
-    super('User cancelled');
-    this.name = 'UserCancelledError';
-  }
-}
+import { UserCancelledError } from '../lib/errors.js';
 
 interface NewCommandOptions {
   open?: boolean;

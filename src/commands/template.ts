@@ -35,16 +35,7 @@ import {
   ExitCodes,
 } from '../lib/output.js';
 import type { Schema, Field, Template } from '../types/schema.js';
-
-/**
- * Error thrown when user cancels an interactive prompt (Ctrl+C/Escape).
- */
-class UserCancelledError extends Error {
-  constructor() {
-    super('User cancelled');
-    this.name = 'UserCancelledError';
-  }
-}
+import { UserCancelledError } from '../lib/errors.js';
 
 interface TemplateListOptions {
   output?: string;
