@@ -4,6 +4,31 @@ All notable changes to ovault are documented in this file.
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **Renamed `link` command to `search`** (ovault-boe)
+  - `ovault link` is now `ovault search` with more flexible output options
+  - Default output is now just the note name (previously was wikilink `[[Name]]`)
+  - Use `--wikilink` flag to get the old default behavior
+  - Removed `--bare` flag (name-only output is now the default)
+  - JSON output structure changed: `target` -> `name`, `relativePath` -> `path`
+
+### Added
+
+- **New `search` command output formats** (ovault-boe)
+  - `--wikilink` - Output `[[Name]]` format for Obsidian links
+  - `--path` - Output vault-relative path with extension
+  - `--content` - Output full file contents (frontmatter + body)
+  - Default output is just the note name (basename without .md)
+  - Flags are mutually exclusive with priority: content > path > wikilink > name
+  - Warning displayed when multiple format flags are provided
+
+- **Multi-match JSON output for search** (ovault-boe)
+  - In JSON mode, ambiguous queries now return all matches as success (instead of error)
+  - Enables AI agents to discover notes without requiring exact matches
+  - No query in JSON mode returns all notes in the vault
+  - Use `--content` flag to include file contents in JSON output (opt-in to avoid large payloads)
+
 ### Changed
 
 - **Consolidated file discovery logic** (ovault-5jk)
