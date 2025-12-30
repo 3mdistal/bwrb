@@ -9,14 +9,16 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import {
   spawnOvault,
   withOvault,
+  withTempVault,
   Keys,
   TEST_VAULT_PATH,
   stripAnsi,
+  shouldSkipPtyTests,
 } from './pty-helpers.js';
 import { existsSync } from 'fs';
 
-// Skip PTY tests if running in CI without TTY support
-const describePty = process.env.CI && !process.stdout.isTTY
+// Skip PTY tests if running in CI without TTY support or node-pty is incompatible
+const describePty = shouldSkipPtyTests()
   ? describe.skip
   : describe;
 
@@ -297,6 +299,333 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
         proc.write(Keys.CTRL_C);
 
+      } finally {
+        if (!proc.hasExited()) {
+          proc.kill();
+        }
+      }
+    }, 30000);
+  });
+
+  describe('pagination', () => {
+    // Schema with a large enum to test pagination (>10 items)
+    const PAGINATION_SCHEMA = {
+      version: 1,
+      enums: {
+        category: [
+          'category-01', 'category-02', 'category-03', 'category-04', 'category-05',
+          'category-06', 'category-07', 'category-08', 'category-09', 'category-10',
+          'category-11', 'category-12', 'category-13', 'category-14', 'category-15',
+        ],
+      },
+      types: {
+        item: {
+          output_dir: 'Items',
+          name_field: 'Item name',
+          frontmatter: {
+            type: { value: 'item' },
+            category: { prompt: 'select', enum: 'category', required: true },
+          },
+          frontmatter_order: ['type', 'category'],
+        },
+      },
+    };
+
+    it('should show page indicator for lists > 10 items', async () => {
+      await withTempVault(
+        ['new', 'item'],
+        async (proc) => {
+          // Wait for name prompt
+          await proc.waitFor('Item name', 10000);
+          await proc.typeAndEnter('Pagination Test');
+
+          // Wait for category prompt (15 items, so pagination)
+          await proc.waitFor('category', 10000);
+          await proc.waitForStable(100);
+
+          // Check for page indicator [1/2]
+          const output = proc.getOutput();
+          expect(output).toMatch(/\[1\/2\]/);
+
+          // Should show page navigation hint
+          expect(output).toContain('-/+');
+
+          proc.write(Keys.CTRL_C);
+        },
+        [],
+        PAGINATION_SCHEMA
+      );
+    }, 30000);
+
+    it('should navigate to next page with + key', async () => {
+      await withTempVault(
+        ['new', 'item'],
+        async (proc) => {
+          // Wait for name prompt
+          await proc.waitFor('Item name', 10000);
+          await proc.typeAndEnter('Page Nav Test');
+
+          // Wait for category prompt
+          await proc.waitFor('category', 10000);
+          await proc.waitForStable(100);
+
+          // Verify we're on page 1
+          let output = proc.getOutput();
+          expect(output).toMatch(/\[1\/2\]/);
+          expect(output).toContain('category-01');
+
+          // Navigate to page 2
+          proc.write('+');
+          await proc.waitForStable(100);
+
+          // Verify we're on page 2
+          output = proc.getOutput();
+          expect(output).toMatch(/\[2\/2\]/);
+          expect(output).toContain('category-11');
+
+          proc.write(Keys.CTRL_C);
+        },
+        [],
+        PAGINATION_SCHEMA
+      );
+    }, 30000);
+
+    it('should navigate to previous page with - key', async () => {
+      await withTempVault(
+        ['new', 'item'],
+        async (proc) => {
+          // Wait for name prompt
+          await proc.waitFor('Item name', 10000);
+          await proc.typeAndEnter('Prev Page Test');
+
+          // Wait for category prompt
+          await proc.waitFor('category', 10000);
+          await proc.waitForStable(100);
+
+          // Go to page 2
+          proc.write('+');
+          await proc.waitForStable(100);
+
+          // Verify on page 2
+          let output = proc.getOutput();
+          expect(output).toMatch(/\[2\/2\]/);
+
+          // Go back to page 1
+          proc.write('-');
+          await proc.waitForStable(100);
+
+          // Verify back on page 1
+          output = proc.getOutput();
+          expect(output).toMatch(/\[1\/2\]/);
+          expect(output).toContain('category-01');
+
+          proc.write(Keys.CTRL_C);
+        },
+        [],
+        PAGINATION_SCHEMA
+      );
+    }, 30000);
+
+    it('should select item from second page using number key', async () => {
+      await withTempVault(
+        ['new', 'item'],
+        async (proc) => {
+          // Wait for name prompt
+          await proc.waitFor('Item name', 10000);
+          await proc.typeAndEnter('Page 2 Select');
+
+          // Wait for category prompt
+          await proc.waitFor('category', 10000);
+          await proc.waitForStable(100);
+
+          // Go to page 2
+          proc.write('+');
+          await proc.waitForStable(100);
+
+          // Select first item on page 2 (category-11)
+          proc.write('1');
+          await proc.waitForStable(200);
+
+          // Should show checkmark with category-11 selected
+          const output = proc.getOutput();
+          expect(output).toContain('category-11');
+          const hasCheckmark = output.includes('✔') || output.includes('✓');
+          expect(hasCheckmark).toBe(true);
+
+          proc.write(Keys.CTRL_C);
+        },
+        [],
+        PAGINATION_SCHEMA
+      );
+    }, 30000);
+
+    it('should not go past last page', async () => {
+      await withTempVault(
+        ['new', 'item'],
+        async (proc) => {
+          // Wait for name prompt
+          await proc.waitFor('Item name', 10000);
+          await proc.typeAndEnter('Last Page Test');
+
+          // Wait for category prompt
+          await proc.waitFor('category', 10000);
+          await proc.waitForStable(100);
+
+          // Go to page 2 (last page)
+          proc.write('+');
+          await proc.waitForStable(100);
+
+          // Try to go further - should stay on page 2
+          proc.write('+');
+          await proc.waitForStable(100);
+          proc.write('+');
+          await proc.waitForStable(100);
+
+          // Should still be on page 2
+          const output = proc.getOutput();
+          expect(output).toMatch(/\[2\/2\]/);
+
+          proc.write(Keys.CTRL_C);
+        },
+        [],
+        PAGINATION_SCHEMA
+      );
+    }, 30000);
+
+    it('should not go before first page', async () => {
+      await withTempVault(
+        ['new', 'item'],
+        async (proc) => {
+          // Wait for name prompt
+          await proc.waitFor('Item name', 10000);
+          await proc.typeAndEnter('First Page Test');
+
+          // Wait for category prompt
+          await proc.waitFor('category', 10000);
+          await proc.waitForStable(100);
+
+          // Try to go to previous page from page 1 - should stay
+          proc.write('-');
+          await proc.waitForStable(100);
+          proc.write('-');
+          await proc.waitForStable(100);
+
+          // Should still be on page 1
+          const output = proc.getOutput();
+          expect(output).toMatch(/\[1\/2\]/);
+
+          proc.write(Keys.CTRL_C);
+        },
+        [],
+        PAGINATION_SCHEMA
+      );
+    }, 30000);
+
+    it('should use = as alternative for + (next page)', async () => {
+      await withTempVault(
+        ['new', 'item'],
+        async (proc) => {
+          // Wait for name prompt
+          await proc.waitFor('Item name', 10000);
+          await proc.typeAndEnter('Equals Key Test');
+
+          // Wait for category prompt
+          await proc.waitFor('category', 10000);
+          await proc.waitForStable(100);
+
+          // Navigate using = key
+          proc.write('=');
+          await proc.waitForStable(100);
+
+          // Should be on page 2
+          const output = proc.getOutput();
+          expect(output).toMatch(/\[2\/2\]/);
+
+          proc.write(Keys.CTRL_C);
+        },
+        [],
+        PAGINATION_SCHEMA
+      );
+    }, 30000);
+  });
+
+  describe('empty choice handling', () => {
+    it('should handle empty choices gracefully', async () => {
+      // Schema with dynamic source that returns no results
+      const emptySchema = {
+        version: 1,
+        enums: {},
+        dynamic_sources: {
+          nonexistent: {
+            dir: 'NonexistentDir',
+            filter: {},
+          },
+        },
+        types: {
+          item: {
+            output_dir: 'Items',
+            name_field: 'Item name',
+            frontmatter: {
+              type: { value: 'item' },
+              ref: { prompt: 'dynamic', source: 'nonexistent', format: 'wikilink' },
+            },
+            frontmatter_order: ['type', 'ref'],
+          },
+        },
+      };
+
+      await withTempVault(
+        ['new', 'item'],
+        async (proc) => {
+          // Wait for name prompt
+          await proc.waitFor('Item name', 10000);
+          await proc.typeAndEnter('Empty Test');
+
+          // Should show message about no options
+          await proc.waitForStable(200);
+          const output = proc.getOutput();
+          expect(
+            output.includes('No options') ||
+            output.includes('Created:') // May skip the field entirely
+          ).toBe(true);
+
+          proc.write(Keys.CTRL_C);
+        },
+        [],
+        emptySchema
+      );
+    }, 30000);
+  });
+
+  describe('escape key abort', () => {
+    it('should abort on Escape key during selection', async () => {
+      const proc = spawnOvault(['new', 'objective/task'], {
+        cwd: TEST_VAULT_PATH,
+      });
+
+      try {
+        // Wait for task name prompt
+        await proc.waitFor('Task name', 10000);
+        proc.write('Escape Test\r');
+
+        // Wait for milestone prompt
+        await proc.waitFor('milestone', 10000);
+
+        // Press Escape to abort
+        proc.write(Keys.ESCAPE);
+
+        // Wait for process to exit
+        await proc.waitForExit(5000);
+
+        // Should show cancellation
+        const output = proc.getOutput();
+        expect(
+          output.includes('Cancelled') ||
+          output.includes('cancelled') ||
+          output.includes('✖')
+        ).toBe(true);
+
+        expect(proc.hasExited()).toBe(true);
       } finally {
         if (!proc.hasExited()) {
           proc.kill();

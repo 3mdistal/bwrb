@@ -6,10 +6,16 @@ All notable changes to ovault are documented in this file.
 
 ### Added
 
-- **PTY-based integration tests** for interactive prompts
-  - Uses node-pty to test real terminal behavior
-  - Catches UI bugs that unit tests miss
-  - Helpers in `tests/ts/lib/pty-helpers.ts`
+- **Comprehensive PTY test coverage** for all interactive prompt types
+  - Text input prompts (`promptInput`, `promptRequired`)
+  - Confirmation prompts (`promptConfirm`)
+  - Multi-input prompts (`promptMultiInput`)
+  - Selection with pagination (page navigation with +/-/=)
+  - Full command flow tests for `new`, `edit`, and `audit --fix`
+  - Cancellation behavior at every prompt point
+  - Template selection and overwrite confirmation
+  - Enhanced helpers: `typeText()`, `typeAndEnter()`, `waitForStable()`, temp vault utilities
+  - Automatic skip when node-pty is incompatible (e.g., Node.js 25)
 
 ### Fixed
 

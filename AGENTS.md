@@ -56,7 +56,11 @@ pnpm typecheck        # Type checking
 
 Tests live in `tests/ts/` with fixtures in `tests/fixtures/vault/`. Run `pnpm test` before committing.
 
-**PTY tests**: Tests in `tests/ts/lib/*.pty.test.ts` use node-pty to spawn real terminal processes. These are slower (~1s each) but catch interactive UI bugs that unit tests miss.
+**PTY tests**: Tests in `tests/ts/**/*.pty.test.ts` use node-pty to spawn real terminal processes. These are slower (~1s each) but catch interactive UI bugs that unit tests miss. PTY tests automatically skip when node-pty is incompatible (e.g., Node.js 25+).
+
+PTY test locations:
+- `tests/ts/lib/*.pty.test.ts` - Prompt-level tests (input, confirm, select)
+- `tests/ts/commands/*.pty.test.ts` - Full command flow tests (new, edit, audit)
 
 ## Issue Tracking
 

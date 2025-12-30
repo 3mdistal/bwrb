@@ -7,6 +7,8 @@
 
 import * as pty from 'node-pty';
 import * as path from 'path';
+import * as fs from 'fs/promises';
+import * as os from 'os';
 
 // Path to the test vault fixture
 export const TEST_VAULT_PATH = path.resolve(
@@ -28,6 +30,8 @@ export const Keys = {
   CTRL_C: '\x03',
   CTRL_D: '\x04',
   ESCAPE: '\x1b',
+  BACKSPACE: '\x7f',
+  TAB: '\t',
   UP: '\x1b[A',
   DOWN: '\x1b[B',
   RIGHT: '\x1b[C',
@@ -207,6 +211,65 @@ export class PtyProcess {
   getPid(): number {
     return this.ptyProcess.pid;
   }
+
+  /**
+   * Type text character by character with optional delay.
+   * More realistic than writing all at once.
+   * @param text The text to type
+   * @param delayMs Delay between characters (default: 5ms)
+   */
+  async typeText(text: string, delayMs: number = 5): Promise<void> {
+    for (const char of text) {
+      this.write(char);
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  /**
+   * Type text and press Enter.
+   * @param text The text to type
+   * @param delayMs Delay between characters (default: 5ms)
+   */
+  async typeAndEnter(text: string, delayMs: number = 5): Promise<void> {
+    await this.typeText(text, delayMs);
+    this.write(Keys.ENTER);
+  }
+
+  /**
+   * Clear the current output buffer.
+   * Useful for focusing assertions on output after a certain point.
+   */
+  clearOutput(): void {
+    this.output = '';
+    this.outputLines = [];
+  }
+
+  /**
+   * Wait for output to stabilize (no new output for a period).
+   * Useful after an action to ensure all output has been received.
+   * @param stableMs Time with no new output to consider stable (default: 100ms)
+   * @param timeoutMs Maximum time to wait (default: 5000ms)
+   */
+  async waitForStable(stableMs: number = 100, timeoutMs: number = 5000): Promise<void> {
+    const startTime = Date.now();
+    let lastLength = this.output.length;
+    let lastChangeTime = Date.now();
+
+    while (Date.now() - startTime < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      
+      if (this.output.length !== lastLength) {
+        lastLength = this.output.length;
+        lastChangeTime = Date.now();
+      } else if (Date.now() - lastChangeTime >= stableMs) {
+        return;
+      }
+    }
+
+    throw new Error(`Output did not stabilize within ${timeoutMs}ms`);
+  }
 }
 
 /**
@@ -309,4 +372,220 @@ export async function withOvault(
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
+}
+
+// ============================================================================
+// Temporary Vault Management
+// ============================================================================
+
+/**
+ * Schema for a minimal test vault.
+ */
+export const MINIMAL_SCHEMA = {
+  $schema: '../../../schema.schema.json',
+  version: 1,
+  enums: {
+    status: ['raw', 'backlog', 'in-flight', 'settled'],
+    priority: ['low', 'medium', 'high'],
+  },
+  types: {
+    idea: {
+      output_dir: 'Ideas',
+      name_field: 'Idea name',
+      frontmatter: {
+        type: { value: 'idea' },
+        status: { prompt: 'select', enum: 'status', default: 'raw' },
+        priority: { prompt: 'select', enum: 'priority' },
+      },
+      frontmatter_order: ['type', 'status', 'priority'],
+    },
+  },
+};
+
+/**
+ * File definition for creating temp vault files.
+ */
+export interface TempVaultFile {
+  /** Relative path within the vault */
+  path: string;
+  /** File content */
+  content: string;
+}
+
+/**
+ * Create a temporary vault directory with the given files.
+ * @param files Array of files to create
+ * @param schema Schema object to use (defaults to MINIMAL_SCHEMA)
+ * @returns Path to the temporary vault
+ */
+export async function createTempVault(
+  files: TempVaultFile[] = [],
+  schema: object = MINIMAL_SCHEMA
+): Promise<string> {
+  // Create temp directory
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ovault-test-'));
+
+  // Create .ovault directory with schema
+  const ovaultDir = path.join(tempDir, '.ovault');
+  await fs.mkdir(ovaultDir, { recursive: true });
+  await fs.writeFile(
+    path.join(ovaultDir, 'schema.json'),
+    JSON.stringify(schema, null, 2)
+  );
+
+  // Create any directories needed by the schema
+  if ('types' in schema && typeof schema.types === 'object' && schema.types !== null) {
+    for (const typeDef of Object.values(schema.types)) {
+      if (typeDef && typeof typeDef === 'object' && 'output_dir' in typeDef) {
+        const outputDir = typeDef.output_dir as string;
+        await fs.mkdir(path.join(tempDir, outputDir), { recursive: true });
+      }
+    }
+  }
+
+  // Create the files
+  for (const file of files) {
+    const filePath = path.join(tempDir, file.path);
+    const fileDir = path.dirname(filePath);
+    await fs.mkdir(fileDir, { recursive: true });
+    await fs.writeFile(filePath, file.content);
+  }
+
+  return tempDir;
+}
+
+/**
+ * Clean up a temporary vault directory.
+ * @param vaultPath Path to the temporary vault
+ */
+export async function cleanupTempVault(vaultPath: string): Promise<void> {
+  // Safety check: only delete paths in temp directory
+  const tempRoot = os.tmpdir();
+  if (!vaultPath.startsWith(tempRoot)) {
+    throw new Error(`Refusing to delete path outside temp directory: ${vaultPath}`);
+  }
+  
+  await fs.rm(vaultPath, { recursive: true, force: true });
+}
+
+/**
+ * Read a file from the vault.
+ * @param vaultPath Path to the vault
+ * @param filePath Relative path within the vault
+ */
+export async function readVaultFile(
+  vaultPath: string,
+  filePath: string
+): Promise<string> {
+  return fs.readFile(path.join(vaultPath, filePath), 'utf-8');
+}
+
+/**
+ * Check if a file exists in the vault.
+ * @param vaultPath Path to the vault
+ * @param filePath Relative path within the vault
+ */
+export async function vaultFileExists(
+  vaultPath: string,
+  filePath: string
+): Promise<boolean> {
+  try {
+    await fs.access(path.join(vaultPath, filePath));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * List files in a vault directory.
+ * @param vaultPath Path to the vault
+ * @param dirPath Relative directory path within the vault
+ */
+export async function listVaultFiles(
+  vaultPath: string,
+  dirPath: string
+): Promise<string[]> {
+  try {
+    const entries = await fs.readdir(path.join(vaultPath, dirPath));
+    return entries.filter(e => e.endsWith('.md'));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Helper to run a PTY test with a temporary vault that gets cleaned up.
+ * @param args ovault arguments
+ * @param fn Test function receiving the PtyProcess and vault path
+ * @param files Files to create in the temp vault
+ * @param schema Schema to use (defaults to MINIMAL_SCHEMA)
+ */
+export async function withTempVault(
+  args: string[],
+  fn: (proc: PtyProcess, vaultPath: string) => Promise<void>,
+  files: TempVaultFile[] = [],
+  schema: object = MINIMAL_SCHEMA
+): Promise<void> {
+  const vaultPath = await createTempVault(files, schema);
+  try {
+    const proc = spawnOvault(args, { cwd: vaultPath });
+    try {
+      await fn(proc, vaultPath);
+    } finally {
+      if (!proc.hasExited()) {
+        proc.kill();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+  } finally {
+    await cleanupTempVault(vaultPath);
+  }
+}
+
+// ============================================================================
+// Test Environment Detection
+// ============================================================================
+
+/**
+ * Test if node-pty can spawn processes in this environment.
+ * Caches the result after first call.
+ */
+let _ptyWorks: boolean | null = null;
+export function canUsePty(): boolean {
+  if (_ptyWorks !== null) return _ptyWorks;
+  
+  try {
+    // Try to spawn a simple echo command
+    const testProc = pty.spawn('/bin/echo', ['test'], {
+      name: 'xterm-256color',
+      cols: 80,
+      rows: 24,
+      cwd: PROJECT_ROOT,
+      env: process.env,
+    });
+    testProc.kill();
+    _ptyWorks = true;
+  } catch {
+    _ptyWorks = false;
+  }
+  
+  return _ptyWorks;
+}
+
+/**
+ * Check if PTY tests should be skipped (e.g., in CI without TTY, or node-pty incompatible).
+ */
+export function shouldSkipPtyTests(): boolean {
+  // Skip in CI without TTY
+  if (process.env.CI && !process.stdout.isTTY) {
+    return true;
+  }
+  
+  // Skip if node-pty doesn't work (e.g., Node.js version incompatibility)
+  if (!canUsePty()) {
+    return true;
+  }
+  
+  return false;
 }
