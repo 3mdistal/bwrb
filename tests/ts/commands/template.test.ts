@@ -346,4 +346,89 @@ Body
       expect(json.error).toContain('Template not found');
     });
   });
+
+  describe('template delete', () => {
+    it('should delete a template with --force', async () => {
+      // First verify template exists
+      const templatePath = join(vaultDir, '.ovault/templates/idea', 'default.md');
+      expect(existsSync(templatePath)).toBe(true);
+
+      const result = await runCLI([
+        'template', 'delete', 'idea', 'default', '--force',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Deleted');
+      expect(result.stdout).toContain('.ovault/templates/idea/default.md');
+      
+      // Verify file was deleted
+      expect(existsSync(templatePath)).toBe(false);
+    });
+
+    it('should output JSON format on delete', async () => {
+      const result = await runCLI([
+        'template', 'delete', 'idea', 'default', '--force', '--output', 'json',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.path).toContain('.ovault/templates/idea/default.md');
+      expect(json.message).toContain('deleted');
+    });
+
+    it('should error on unknown template', async () => {
+      const result = await runCLI([
+        'template', 'delete', 'idea', 'nonexistent', '--force',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Template not found');
+    });
+
+    it('should error on unknown type', async () => {
+      const result = await runCLI([
+        'template', 'delete', 'nonexistent', 'default', '--force',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Unknown type');
+    });
+
+    it('should output JSON error for unknown template', async () => {
+      const result = await runCLI([
+        'template', 'delete', 'idea', 'nonexistent', '--force', '--output', 'json',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Template not found');
+    });
+
+    it('should output JSON error for unknown type', async () => {
+      const result = await runCLI([
+        'template', 'delete', 'nonexistent', 'default', '--force', '--output', 'json',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Unknown type');
+    });
+
+    it('should delete nested subtype templates', async () => {
+      // Test with objective/task template (nested type)
+      const templatePath = join(vaultDir, '.ovault/templates/objective/task', 'default.md');
+      expect(existsSync(templatePath)).toBe(true);
+
+      const result = await runCLI([
+        'template', 'delete', 'objective/task', 'default', '--force',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Deleted');
+      expect(existsSync(templatePath)).toBe(false);
+    });
+  });
 });

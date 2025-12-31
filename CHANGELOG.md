@@ -4,6 +4,14 @@ All notable changes to ovault are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`ovault template delete` command** (ovault-3gb)
+  - Delete templates via CLI: `ovault template delete <type> <name>`
+  - Interactive confirmation prompt (use `--force` to skip)
+  - JSON output mode with `--output json`
+  - Completes the template CRUD cycle (list, show, new, edit, delete)
+
 ### Breaking Changes
 
 - **Removed `name_field` from schema** (ovault-jxd)

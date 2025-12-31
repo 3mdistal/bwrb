@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { join, relative } from 'path';
-import { mkdir } from 'fs/promises';
+import { mkdir, unlink } from 'fs/promises';
 import chalk from 'chalk';
 import {
   loadSchema,
@@ -68,7 +68,8 @@ Examples:
   ovault template show idea default         # Show template details
   ovault template validate                  # Validate all templates
   ovault template new idea                  # Create new template interactively
-  ovault template edit idea default         # Edit existing template`);
+  ovault template edit idea default         # Edit existing template
+  ovault template delete idea default       # Delete a template`);
 
 // ============================================================================
 // template list [type]
@@ -1152,3 +1153,91 @@ async function promptFieldDefaultEdit(
     }
   }
 }
+
+// ============================================================================
+// template delete <type> <name>
+// ============================================================================
+
+interface TemplateDeleteOptions {
+  force?: boolean;
+  output?: string;
+}
+
+templateCommand
+  .command('delete <type> <name>')
+  .description('Delete a template')
+  .option('-f, --force', 'Skip confirmation prompt')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (typePath: string, templateName: string, options: TemplateDeleteOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      // Validate type path
+      const typeDef = getTypeDefByPath(schema, typePath);
+      if (!typeDef) {
+        const error = `Unknown type: ${typePath}`;
+        if (jsonMode) {
+          printJson(jsonError(error));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        printError(error);
+        process.exit(1);
+      }
+
+      // Find template
+      const template = await findTemplateByName(vaultDir, typePath, templateName);
+      if (!template) {
+        const error = `Template not found: ${templateName} for type ${typePath}`;
+        if (jsonMode) {
+          printJson(jsonError(error));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        printError(error);
+        process.exit(1);
+      }
+
+      const relativePath = relative(vaultDir, template.path);
+
+      // Confirm deletion unless --force
+      if (!options.force && !jsonMode) {
+        const confirmed = await promptConfirm(
+          `Delete template '${template.name}' for type '${typePath}'?`
+        );
+        if (confirmed === null) throw new UserCancelledError();
+        if (!confirmed) {
+          console.log('Cancelled.');
+          process.exit(0);
+        }
+      }
+
+      // Delete the template file
+      await unlink(template.path);
+
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          path: relativePath,
+          message: 'Template deleted successfully',
+        }));
+        return;
+      }
+
+      printSuccess(`Deleted: ${relativePath}`);
+    } catch (err) {
+      if (err instanceof UserCancelledError) {
+        console.log('\nCancelled.');
+        process.exit(1);
+      }
+
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });

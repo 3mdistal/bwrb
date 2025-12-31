@@ -214,4 +214,76 @@ describePty('template command PTY tests', () => {
       );
     }, 15000);
   });
+
+  describe('template delete (interactive)', () => {
+    it('should delete template when confirmed with y', async () => {
+      await withTempVault(
+        ['template', 'delete', 'idea', 'default'],
+        async (proc, vaultPath) => {
+          const templatePath = join(vaultPath, '.ovault/templates/idea', 'default.md');
+          
+          // Verify file exists before delete
+          expect(existsSync(templatePath)).toBe(true);
+
+          // Wait for confirmation prompt
+          await proc.waitFor("Delete template 'default'", 10000);
+          proc.write('y');
+
+          // Wait for success message
+          await proc.waitFor('Deleted:', 5000);
+
+          // Verify file was deleted
+          expect(existsSync(templatePath)).toBe(false);
+        },
+        { files: [DEFAULT_IDEA_TEMPLATE], schema: TEST_SCHEMA }
+      );
+    }, 15000);
+
+    it('should not delete template when declined with n', async () => {
+      await withTempVault(
+        ['template', 'delete', 'idea', 'default'],
+        async (proc, vaultPath) => {
+          const templatePath = join(vaultPath, '.ovault/templates/idea', 'default.md');
+          
+          // Verify file exists before
+          expect(existsSync(templatePath)).toBe(true);
+
+          // Wait for confirmation prompt
+          await proc.waitFor("Delete template 'default'", 10000);
+          proc.write('n');
+
+          // Wait for cancellation message
+          await proc.waitFor('Cancelled', 5000);
+
+          // Verify file still exists
+          expect(existsSync(templatePath)).toBe(true);
+        },
+        { files: [DEFAULT_IDEA_TEMPLATE], schema: TEST_SCHEMA }
+      );
+    }, 15000);
+
+    it('should cancel delete on Ctrl+C', async () => {
+      await withTempVault(
+        ['template', 'delete', 'idea', 'default'],
+        async (proc, vaultPath) => {
+          const templatePath = join(vaultPath, '.ovault/templates/idea', 'default.md');
+          
+          // Verify file exists before
+          expect(existsSync(templatePath)).toBe(true);
+
+          // Wait for confirmation prompt
+          await proc.waitFor("Delete template 'default'", 10000);
+          
+          // Cancel with Ctrl+C
+          proc.write('\x03');
+
+          await proc.waitFor('Cancelled', 5000);
+
+          // Verify file still exists
+          expect(existsSync(templatePath)).toBe(true);
+        },
+        { files: [DEFAULT_IDEA_TEMPLATE], schema: TEST_SCHEMA }
+      );
+    }, 15000);
+  });
 });
