@@ -598,41 +598,21 @@ export async function listVaultFiles(
  * 
  * @param args ovault arguments
  * @param fn Test function receiving the PtyProcess and vault path
- * @param optionsOrFiles Options object or files array (for backwards compatibility)
- * @param legacySchema Schema to use (only when optionsOrFiles is an array)
+ * @param options Options for vault creation (files, schema, includeTemplates)
  * 
- * @example New options-based API:
+ * @example
  * ```ts
  * await withTempVault(['new', 'idea'], async (proc, vaultPath) => {
  *   // test code
  * }, { includeTemplates: true, schema: MY_SCHEMA });
  * ```
- * 
- * @example Legacy API (still supported):
- * ```ts
- * await withTempVault(['new', 'idea'], async (proc, vaultPath) => {
- *   // test code
- * }, [{ path: 'test.md', content: '...' }], MY_SCHEMA);
- * ```
  */
 export async function withTempVault(
   args: string[],
   fn: (proc: PtyProcess, vaultPath: string) => Promise<void>,
-  optionsOrFiles: WithTempVaultOptions | TempVaultFile[] = [],
-  legacySchema?: object
+  options: WithTempVaultOptions = {}
 ): Promise<void> {
-  // Determine if using new options API or legacy array API
-  const isOptionsObject = !Array.isArray(optionsOrFiles) && typeof optionsOrFiles === 'object';
-  
-  const files = isOptionsObject 
-    ? (optionsOrFiles.files ?? []) 
-    : optionsOrFiles;
-  const schema = isOptionsObject 
-    ? (optionsOrFiles.schema ?? MINIMAL_SCHEMA) 
-    : (legacySchema ?? MINIMAL_SCHEMA);
-  const includeTemplates = isOptionsObject 
-    ? optionsOrFiles.includeTemplates 
-    : undefined;
+  const { files = [], schema = MINIMAL_SCHEMA, includeTemplates } = options;
 
   const vaultPath = await createTempVault(files, schema, includeTemplates);
   try {
@@ -666,10 +646,9 @@ export function getRelativePath(vaultDir: string): string {
  * 
  * @param args ovault arguments
  * @param fn Test function receiving the PtyProcess and absolute vault path
- * @param optionsOrFiles Options object or files array (for backwards compatibility)
- * @param legacySchema Schema to use (only when optionsOrFiles is an array)
+ * @param options Options for vault creation (files, schema, includeTemplates)
  * 
- * @example New options-based API:
+ * @example
  * ```ts
  * await withTempVaultRelative(['new', 'idea'], async (proc, vaultPath) => {
  *   // test code
@@ -679,21 +658,9 @@ export function getRelativePath(vaultDir: string): string {
 export async function withTempVaultRelative(
   args: string[],
   fn: (proc: PtyProcess, vaultPath: string) => Promise<void>,
-  optionsOrFiles: WithTempVaultOptions | TempVaultFile[] = [],
-  legacySchema?: object
+  options: WithTempVaultOptions = {}
 ): Promise<void> {
-  // Determine if using new options API or legacy array API
-  const isOptionsObject = !Array.isArray(optionsOrFiles) && typeof optionsOrFiles === 'object';
-  
-  const files = isOptionsObject 
-    ? (optionsOrFiles.files ?? []) 
-    : optionsOrFiles;
-  const schema = isOptionsObject 
-    ? (optionsOrFiles.schema ?? MINIMAL_SCHEMA) 
-    : (legacySchema ?? MINIMAL_SCHEMA);
-  const includeTemplates = isOptionsObject 
-    ? optionsOrFiles.includeTemplates 
-    : undefined;
+  const { files = [], schema = MINIMAL_SCHEMA, includeTemplates } = options;
 
   const vaultPath = await createTempVault(files, schema, includeTemplates);
   const relativePath = getRelativePath(vaultPath);

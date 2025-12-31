@@ -68,8 +68,7 @@ describePty('relative vault path PTY tests', () => {
           expect(content).toContain('type: idea');
           expect(content).toContain('status: raw');
         },
-        [],
-        TEST_SCHEMA
+        { schema: TEST_SCHEMA }
       );
     }, 30000);
 
@@ -102,8 +101,7 @@ describePty('relative vault path PTY tests', () => {
           expect(content).toContain('status: backlog');
           expect(content).toContain('priority: high');
         },
-        [],
-        TEST_SCHEMA
+        { schema: TEST_SCHEMA }
       );
     }, 30000);
 
@@ -133,8 +131,7 @@ describePty('relative vault path PTY tests', () => {
           const exists = await vaultFileExists(vaultPath, 'Ideas/Path Display Test.md');
           expect(exists).toBe(true);
         },
-        [],
-        TEST_SCHEMA
+        { schema: TEST_SCHEMA }
       );
     }, 30000);
   });
@@ -155,8 +152,7 @@ describePty('relative vault path PTY tests', () => {
           proc.write('\x03'); // Ctrl+C
           await proc.waitForExit(5000);
         },
-        [],
-        TEST_SCHEMA
+        { schema: TEST_SCHEMA }
       );
     }, 30000);
   });
@@ -184,8 +180,7 @@ describePty('relative vault path PTY tests', () => {
           const exists = await vaultFileExists(vaultPath, 'Ideas/Partial.md');
           expect(exists).toBe(false);
         },
-        [],
-        TEST_SCHEMA
+        { schema: TEST_SCHEMA }
       );
     }, 30000);
   });

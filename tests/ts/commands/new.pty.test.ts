@@ -119,8 +119,7 @@ describePty('ovault new command PTY tests', () => {
           expect(content).toContain('status: backlog');
           expect(content).toContain('priority: high');
         },
-        [],
-        FULL_SCHEMA
+        { schema: FULL_SCHEMA }
       );
     }, 30000);
 
@@ -172,8 +171,7 @@ status: in-flight
           expect(content).toContain('- [ ] Step one');
           expect(content).toContain('- [ ] Step two');
         },
-        [milestone],
-        FULL_SCHEMA
+        { files: [milestone], schema: FULL_SCHEMA }
       );
     }, 30000);
   });
@@ -193,8 +191,7 @@ status: in-flight
 
           proc.write(Keys.CTRL_C);
         },
-        [],
-        FULL_SCHEMA
+        { schema: FULL_SCHEMA }
       );
     }, 30000);
 
@@ -219,8 +216,7 @@ status: in-flight
 
           proc.write(Keys.CTRL_C);
         },
-        [],
-        FULL_SCHEMA
+        { schema: FULL_SCHEMA }
       );
     }, 30000);
 
@@ -252,8 +248,7 @@ status: in-flight
           const exists = await vaultFileExists(vaultPath, 'Ideas/Type Nav Test.md');
           expect(exists).toBe(true);
         },
-        [],
-        FULL_SCHEMA
+        { schema: FULL_SCHEMA }
       );
     }, 30000);
   });
@@ -283,8 +278,7 @@ status: in-flight
           const files = await listVaultFiles(vaultPath, 'Ideas');
           expect(files.length).toBe(0);
         },
-        [],
-        FULL_SCHEMA
+        { schema: FULL_SCHEMA }
       );
     }, 30000);
 
@@ -309,8 +303,7 @@ status: in-flight
           const files = await listVaultFiles(vaultPath, 'Ideas');
           expect(files.length).toBe(0);
         },
-        [],
-        FULL_SCHEMA
+        { schema: FULL_SCHEMA }
       );
     }, 30000);
 
@@ -341,8 +334,7 @@ status: in-flight
           const files = await listVaultFiles(vaultPath, 'Tasks');
           expect(files.length).toBe(0);
         },
-        [],
-        FULL_SCHEMA
+        { schema: FULL_SCHEMA }
       );
     }, 30000);
 
@@ -367,8 +359,7 @@ status: in-flight
             output.includes('✖')
           ).toBe(true);
         },
-        [],
-        FULL_SCHEMA
+        { schema: FULL_SCHEMA }
       );
     }, 30000);
   });
@@ -415,8 +406,7 @@ defaults:
           expect(content).toContain('## Description');
           expect(content).toContain('[Your idea description here]');
         },
-        [defaultTemplate],
-        FULL_SCHEMA
+        { files: [defaultTemplate], schema: FULL_SCHEMA }
       );
     }, 30000);
 
@@ -483,8 +473,7 @@ defaults:
           expect(content).toContain('status: backlog');
           expect(content).toContain('priority: high');
         },
-        [template1, template2],
-        FULL_SCHEMA
+        { files: [template1, template2], schema: FULL_SCHEMA }
       );
     }, 30000);
 
@@ -530,8 +519,7 @@ Template body content
           const content = await readVaultFile(vaultPath, 'Ideas/No Template Test.md');
           expect(content).not.toContain('Template body content');
         },
-        [template1],
-        FULL_SCHEMA
+        { files: [template1], schema: FULL_SCHEMA }
       );
     }, 30000);
   });
@@ -554,8 +542,7 @@ Template body content
 
           proc.write(Keys.CTRL_C);
         },
-        [],
-        FULL_SCHEMA
+        { schema: FULL_SCHEMA }
       );
     }, 30000);
 
@@ -583,8 +570,7 @@ Template body content
           const content = await readVaultFile(vaultPath, 'Ideas/Default Via Skip.md');
           expect(content).toContain('status: raw');
         },
-        [],
-        FULL_SCHEMA
+        { schema: FULL_SCHEMA }
       );
     }, 30000);
   });
@@ -601,8 +587,7 @@ Template body content
           await proc.waitForExit(5000);
           expect(proc.hasExited()).toBe(true);
         },
-        [],
-        FULL_SCHEMA
+        { schema: FULL_SCHEMA }
       );
     }, 30000);
   });

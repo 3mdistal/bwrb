@@ -100,8 +100,7 @@ Content without type field.
           const content = await readVaultFile(vaultPath, 'Ideas/Orphan Idea.md');
           expect(content).toContain('type: idea');
         },
-        [orphanFile],
-        AUDIT_SCHEMA
+        { files: [orphanFile], schema: AUDIT_SCHEMA }
       );
     }, 30000);
 
@@ -137,8 +136,7 @@ some-field: value
           const content = await readVaultFile(vaultPath, 'Ideas/Skip Me.md');
           expect(content).not.toContain('type: idea');
         },
-        [orphanFile],
-        AUDIT_SCHEMA
+        { files: [orphanFile], schema: AUDIT_SCHEMA }
       );
     }, 30000);
   });
@@ -179,8 +177,7 @@ Missing required status.
           const content = await readVaultFile(vaultPath, 'Ideas/Missing Status.md');
           expect(content).toContain('status: raw');
         },
-        [missingField],
-        AUDIT_SCHEMA
+        { files: [missingField], schema: AUDIT_SCHEMA }
       );
     }, 30000);
 
@@ -229,8 +226,7 @@ type: item
           const content = await readVaultFile(vaultPath, 'Items/No Default.md');
           expect(content).toContain('category: raw');
         },
-        [missingField],
-        noDefaultSchema
+        { files: [missingField], schema: noDefaultSchema }
       );
     }, 30000);
   });
@@ -267,8 +263,7 @@ status: invalid-status-value
           expect(content).toContain('status: backlog');
           expect(content).not.toContain('invalid-status-value');
         },
-        [invalidEnum],
-        AUDIT_SCHEMA
+        { files: [invalidEnum], schema: AUDIT_SCHEMA }
       );
     }, 30000);
 
@@ -302,8 +297,7 @@ status: keep-this-bad-value
           const content = await readVaultFile(vaultPath, 'Ideas/Keep Bad.md');
           expect(content).toContain('keep-this-bad-value');
         },
-        [invalidEnum],
-        AUDIT_SCHEMA
+        { files: [invalidEnum], schema: AUDIT_SCHEMA }
       );
     }, 30000);
   });
@@ -340,8 +334,7 @@ extra_unknown_field: some value
           const content = await readVaultFile(vaultPath, 'Ideas/Extra Field.md');
           expect(content).not.toContain('extra_unknown_field');
         },
-        [unknownField],
-        AUDIT_SCHEMA
+        { files: [unknownField], schema: AUDIT_SCHEMA }
       );
     }, 30000);
   });
@@ -387,8 +380,7 @@ status: raw
           // Should have exited (Ctrl+C cancels during prompts)
           expect(proc.hasExited()).toBe(true);
         },
-        [file1, file2],
-        AUDIT_SCHEMA
+        { files: [file1, file2], schema: AUDIT_SCHEMA }
       );
     }, 30000);
 
@@ -417,8 +409,7 @@ some: value
           await proc.waitForExit(5000);
           expect(proc.hasExited()).toBe(true);
         },
-        [orphanFile],
-        AUDIT_SCHEMA
+        { files: [orphanFile], schema: AUDIT_SCHEMA }
       );
     }, 30000);
   });
@@ -481,8 +472,7 @@ link: Target
           const content = await readVaultFile(vaultPath, 'Items/Bad Format.md');
           expect(content).toContain('link: "[[Target]]"');
         },
-        [refFile, formatIssue],
-        formatSchema
+        { files: [refFile, formatIssue], schema: formatSchema }
       );
     }, 30000);
   });
@@ -514,8 +504,7 @@ Auto-fixable orphan.
           const content = await readVaultFile(vaultPath, 'Ideas/Auto Fix Me.md');
           expect(content).toContain('type: idea');
         },
-        [orphanFile],
-        AUDIT_SCHEMA
+        { files: [orphanFile], schema: AUDIT_SCHEMA }
       );
     }, 30000);
 
@@ -559,8 +548,7 @@ type: item
           const content = await readVaultFile(vaultPath, 'Items/Need Manual.md');
           expect(content).not.toContain('category:');
         },
-        [ambiguousFile],
-        noDefaultSchema
+        { files: [ambiguousFile], schema: noDefaultSchema }
       );
     }, 30000);
   });

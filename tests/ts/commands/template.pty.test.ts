@@ -67,8 +67,7 @@ describePty('template command PTY tests', () => {
           expect(content).toContain('template-for: idea');
           expect(content).toContain('Quick idea capture');
         },
-        [],
-        TEST_SCHEMA
+        { schema: TEST_SCHEMA }
       );
     }, 30000);
 
@@ -115,8 +114,7 @@ describePty('template command PTY tests', () => {
           expect(content).toContain('defaults:');
           expect(content).toContain('status:');
         },
-        [],
-        TEST_SCHEMA
+        { schema: TEST_SCHEMA }
       );
     }, 30000);
 
@@ -135,8 +133,7 @@ describePty('template command PTY tests', () => {
           const templatePath = join(vaultPath, '.ovault/templates/idea', 'cancelled.md');
           expect(existsSync(templatePath)).toBe(false);
         },
-        [],
-        TEST_SCHEMA
+        { schema: TEST_SCHEMA }
       );
     }, 15000);
 
@@ -150,8 +147,7 @@ describePty('template command PTY tests', () => {
 
           await proc.waitFor('already exists', 5000);
         },
-        [DEFAULT_IDEA_TEMPLATE], // Need to have existing template
-        TEST_SCHEMA
+        { files: [DEFAULT_IDEA_TEMPLATE], schema: TEST_SCHEMA }
       );
     }, 15000);
   });
@@ -191,8 +187,7 @@ describePty('template command PTY tests', () => {
           const content = await readFile(templatePath, 'utf-8');
           expect(content).toContain('Updated via interactive edit');
         },
-        [DEFAULT_IDEA_TEMPLATE], // Need the template to exist
-        TEST_SCHEMA
+        { files: [DEFAULT_IDEA_TEMPLATE], schema: TEST_SCHEMA }
       );
     }, 30000);
 
@@ -215,8 +210,7 @@ describePty('template command PTY tests', () => {
           const content = await readFile(templatePath, 'utf-8');
           expect(content).toBe(originalContent);
         },
-        [DEFAULT_IDEA_TEMPLATE], // Need the template to exist
-        TEST_SCHEMA
+        { files: [DEFAULT_IDEA_TEMPLATE], schema: TEST_SCHEMA }
       );
     }, 15000);
   });

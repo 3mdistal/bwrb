@@ -93,7 +93,7 @@ Original content.
           const content = await readVaultFile(vaultPath, 'Ideas/Confirm Test.md');
           expect(content).not.toContain('Original content');
         },
-        [existingFile]
+        { files: [existingFile] }
       );
     }, 30000);
 
@@ -135,8 +135,7 @@ Content without Notes section.
           const content = await readVaultFile(vaultPath, 'Ideas/Test Idea.md');
           expect(content).not.toContain('## Notes');
         },
-        [existingFile],
-        EDIT_TEST_SCHEMA
+        { files: [existingFile], schema: EDIT_TEST_SCHEMA }
       );
     }, 30000);
 
@@ -177,8 +176,7 @@ Content.
           const content = await readVaultFile(vaultPath, 'Ideas/Test Idea.md');
           expect(content).not.toContain('## Notes');
         },
-        [existingFile],
-        EDIT_TEST_SCHEMA
+        { files: [existingFile], schema: EDIT_TEST_SCHEMA }
       );
     }, 30000);
 
@@ -221,8 +219,7 @@ Content.
             output.includes('cancelled')
           ).toBe(true);
         },
-        [existingFile],
-        EDIT_TEST_SCHEMA
+        { files: [existingFile], schema: EDIT_TEST_SCHEMA }
       );
     }, 30000);
   });
@@ -272,7 +269,7 @@ Original content.
           // Should NOT contain original content
           expect(content).not.toContain('Original content');
         },
-        [existingFile]
+        { files: [existingFile] }
       );
     }, 30000);
 
@@ -318,7 +315,7 @@ Keep this content.
           const content = await readVaultFile(vaultPath, 'Ideas/Keep This.md');
           expect(content).toContain('Keep this content');
         },
-        [existingFile]
+        { files: [existingFile] }
       );
     }, 30000);
   });

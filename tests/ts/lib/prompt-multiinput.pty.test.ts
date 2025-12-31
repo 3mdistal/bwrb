@@ -99,8 +99,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
           expect(content).toContain('- [ ] Third step');
           expect(content).toContain('## Notes');
         },
-        [],
-        TASK_SCHEMA
+        { schema: TASK_SCHEMA }
       );
     }, 30000);
 
@@ -135,8 +134,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
           // Empty input creates a single empty checkbox (actual behavior)
           // This is fine - it's just an empty placeholder
         },
-        [],
-        TASK_SCHEMA
+        { schema: TASK_SCHEMA }
       );
     }, 30000);
 
@@ -174,8 +172,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
           const exists = await vaultFileExists(vaultPath, 'Tasks/Cancel Test.md');
           expect(exists).toBe(false);
         },
-        [],
-        TASK_SCHEMA
+        { schema: TASK_SCHEMA }
       );
     }, 30000);
 
@@ -208,8 +205,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
           const checkboxCount = (content.match(/- \[ \]/g) || []).length;
           expect(checkboxCount).toBe(1);
         },
-        [],
-        TASK_SCHEMA
+        { schema: TASK_SCHEMA }
       );
     }, 30000);
 
@@ -243,8 +239,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
           // Should not have extra spaces
           expect(content).not.toContain('  Step');
         },
-        [],
-        TASK_SCHEMA
+        { schema: TASK_SCHEMA }
       );
     }, 30000);
   });

@@ -91,8 +91,7 @@ Some notes here.
           expect(content).toContain('status: backlog');
           expect(content).toContain('priority: high');
         },
-        [existingFile],
-        EDIT_SCHEMA
+        { files: [existingFile], schema: EDIT_SCHEMA }
       );
     }, 30000);
 
@@ -145,8 +144,7 @@ Existing notes.
           expect(content).toContain('status: in-flight');
           expect(content).toContain('priority: low'); // Unchanged
         },
-        [existingFile],
-        EDIT_SCHEMA
+        { files: [existingFile], schema: EDIT_SCHEMA }
       );
     }, 30000);
 
@@ -201,8 +199,7 @@ Notes here.
           const content = await readVaultFile(vaultPath, 'Ideas/Text Edit.md');
           expect(content).toContain('description: Updated description text');
         },
-        [existingFile],
-        EDIT_SCHEMA
+        { files: [existingFile], schema: EDIT_SCHEMA }
       );
     }, 30000);
   });
@@ -266,8 +263,7 @@ Just some content without a Notes section.
           const content = await readVaultFile(vaultPath, 'Ideas/No Notes Section.md');
           expect(content).toContain('## Notes');
         },
-        [existingFile],
-        EDIT_SCHEMA
+        { files: [existingFile], schema: EDIT_SCHEMA }
       );
     }, 30000);
 
@@ -316,8 +312,7 @@ Just content, no Notes.
           const content = await readVaultFile(vaultPath, 'Ideas/Keep As Is.md');
           expect(content).not.toContain('## Notes');
         },
-        [existingFile],
-        EDIT_SCHEMA
+        { files: [existingFile], schema: EDIT_SCHEMA }
       );
     }, 30000);
   });
@@ -355,8 +350,7 @@ Original body content.
           const content = await readVaultFile(vaultPath, 'Ideas/Preserve Me.md');
           expect(content).toBe(originalContent);
         },
-        [existingFile],
-        EDIT_SCHEMA
+        { files: [existingFile], schema: EDIT_SCHEMA }
       );
     }, 30000);
 
@@ -387,8 +381,7 @@ status: raw
             output.includes('✖')
           ).toBe(true);
         },
-        [existingFile],
-        EDIT_SCHEMA
+        { files: [existingFile], schema: EDIT_SCHEMA }
       );
     }, 30000);
   });
@@ -405,8 +398,7 @@ status: raw
           await proc.waitForExit(5000);
           expect(proc.hasExited()).toBe(true);
         },
-        [],
-        EDIT_SCHEMA
+        { schema: EDIT_SCHEMA }
       );
     }, 30000);
 
@@ -437,8 +429,7 @@ Content.
             output.includes('error')
           ).toBe(true);
         },
-        [unknownTypeFile],
-        EDIT_SCHEMA
+        { files: [unknownTypeFile], schema: EDIT_SCHEMA }
       );
     }, 30000);
   });

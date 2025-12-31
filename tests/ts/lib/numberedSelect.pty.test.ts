@@ -352,8 +352,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
           proc.write(Keys.CTRL_C);
         },
-        [],
-        PAGINATION_SCHEMA
+        { schema: PAGINATION_SCHEMA }
       );
     }, 30000);
 
@@ -385,8 +384,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
           proc.write(Keys.CTRL_C);
         },
-        [],
-        PAGINATION_SCHEMA
+        { schema: PAGINATION_SCHEMA }
       );
     }, 30000);
 
@@ -421,8 +419,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
           proc.write(Keys.CTRL_C);
         },
-        [],
-        PAGINATION_SCHEMA
+        { schema: PAGINATION_SCHEMA }
       );
     }, 30000);
 
@@ -454,8 +451,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
           proc.write(Keys.CTRL_C);
         },
-        [],
-        PAGINATION_SCHEMA
+        { schema: PAGINATION_SCHEMA }
       );
     }, 30000);
 
@@ -487,8 +483,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
           proc.write(Keys.CTRL_C);
         },
-        [],
-        PAGINATION_SCHEMA
+        { schema: PAGINATION_SCHEMA }
       );
     }, 30000);
 
@@ -516,8 +511,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
           proc.write(Keys.CTRL_C);
         },
-        [],
-        PAGINATION_SCHEMA
+        { schema: PAGINATION_SCHEMA }
       );
     }, 30000);
 
@@ -543,8 +537,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
           proc.write(Keys.CTRL_C);
         },
-        [],
-        PAGINATION_SCHEMA
+        { schema: PAGINATION_SCHEMA }
       );
     }, 30000);
   });
@@ -591,8 +584,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
           proc.write(Keys.CTRL_C);
         },
-        [],
-        emptySchema
+        { schema: emptySchema }
       );
     }, 30000);
   });

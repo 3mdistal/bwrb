@@ -154,8 +154,7 @@ describePty('Text Input Prompt PTY tests', () => {
           const exists = await vaultFileExists(vaultPath, 'Tasks/Test Task.md');
           expect(exists).toBe(true);
         },
-        [],
-        schema
+        { schema: schema }
       );
     }, 30000);
 
@@ -200,8 +199,7 @@ describePty('Text Input Prompt PTY tests', () => {
           const content = await readVaultFile(vaultPath, 'Notes/Test Note.md');
           expect(content).toContain('category: general');
         },
-        [],
-        schema
+        { schema: schema }
       );
     }, 30000);
   });
