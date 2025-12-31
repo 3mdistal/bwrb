@@ -91,12 +91,12 @@ Templates:
   ovault new task --no-template          # Skip templates, use schema only
 
 Non-interactive (JSON) mode:
-  ovault new idea --json '{"Name": "My Idea", "status": "raw"}'
-  ovault new objective/task --json '{"Name": "Fix bug", "status": "in-progress"}'
-  ovault new task --json '{"Name": "Bug"}' --template bug-report
+  ovault new idea --json '{"name": "My Idea", "status": "raw"}'
+  ovault new objective/task --json '{"name": "Fix bug", "status": "in-progress"}'
+  ovault new task --json '{"name": "Bug"}' --template bug-report
 
 Body sections (JSON mode):
-  ovault new task --json '{"Task name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'
+  ovault new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'
   The _body field accepts section names as keys, with string or string[] values.
 
 Template Discovery:
@@ -326,11 +326,10 @@ async function createNoteFromJson(
     }
   }
 
-  // Get the name from the frontmatter
-  const nameField = typeDef.name_field ?? 'Name';
-  const itemName = frontmatter[nameField];
+  // Get the name from the frontmatter (always 'name')
+  const itemName = frontmatter['name'];
   if (!itemName || typeof itemName !== 'string') {
-    printJson(jsonError(`Missing or invalid name field: ${nameField}`));
+    printJson(jsonError(`Missing or invalid 'name' field`));
     process.exit(ExitCodes.VALIDATION_ERROR);
   }
 
@@ -677,8 +676,7 @@ async function createPooledNote(
   const fullOutputDir = join(vaultDir, outputDir);
 
   // Prompt for name
-  const nameField = typeDef.name_field ?? 'Name';
-  const itemName = await promptRequired(nameField);
+  const itemName = await promptRequired('Name');
   if (itemName === null) {
     throw new UserCancelledError();
   }
@@ -724,8 +722,7 @@ async function createInstanceParent(
   }
 
   // Prompt for instance name
-  const nameField = typeDef.name_field ?? 'Name';
-  const instanceName = await promptRequired(nameField);
+  const instanceName = await promptRequired('Name');
   if (instanceName === null) {
     throw new UserCancelledError();
   }

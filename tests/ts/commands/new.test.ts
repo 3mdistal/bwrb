@@ -64,7 +64,7 @@ describe('new command', () => {
   describe('template flags (JSON mode)', () => {
     it('should error when --template specifies non-existent template', async () => {
       const result = await runCLI(
-        ['new', 'idea', '--json', '{"Idea name": "Test"}', '--template', 'nonexistent'],
+        ['new', 'idea', '--json', '{"name": "Test"}', '--template', 'nonexistent'],
         vaultDir
       );
 
@@ -76,7 +76,7 @@ describe('new command', () => {
 
     it('should error when --default but no default.md exists', async () => {
       const result = await runCLI(
-        ['new', 'objective/milestone', '--json', '{"Milestone name": "Test"}', '--default'],
+        ['new', 'objective/milestone', '--json', '{"name": "Test"}', '--default'],
         vaultDir
       );
 
@@ -89,7 +89,7 @@ describe('new command', () => {
     it('should create note with --template flag applying defaults', async () => {
       // bug-report template has defaults: status: backlog
       const result = await runCLI(
-        ['new', 'objective/task', '--json', '{"Task name": "Fix the bug"}', '--template', 'bug-report'],
+        ['new', 'objective/task', '--json', '{"name": "Fix the bug"}', '--template', 'bug-report'],
         vaultDir
       );
 
@@ -108,7 +108,7 @@ describe('new command', () => {
     it('should create note with --default flag', async () => {
       // default.md for idea has defaults: status: raw, priority: medium
       const result = await runCLI(
-        ['new', 'idea', '--json', '{"Idea name": "My Great Idea"}', '--default'],
+        ['new', 'idea', '--json', '{"name": "My Great Idea"}', '--default'],
         vaultDir
       );
 
@@ -127,7 +127,7 @@ describe('new command', () => {
       // Template defaults status: raw, priority: medium
       // JSON input overrides priority to high
       const result = await runCLI(
-        ['new', 'idea', '--json', '{"Idea name": "Override Test", "priority": "high"}', '--default'],
+        ['new', 'idea', '--json', '{"name": "Override Test", "priority": "high"}', '--default'],
         vaultDir
       );
 
@@ -142,7 +142,7 @@ describe('new command', () => {
 
     it('should use schema-only when --no-template specified', async () => {
       const result = await runCLI(
-        ['new', 'idea', '--json', '{"Idea name": "Schema Only", "status": "raw"}', '--no-template'],
+        ['new', 'idea', '--json', '{"name": "Schema Only", "status": "raw"}', '--no-template'],
         vaultDir
       );
 
@@ -159,7 +159,7 @@ describe('new command', () => {
 
     it('should substitute {title} in template body', async () => {
       const result = await runCLI(
-        ['new', 'idea', '--json', '{"Idea name": "Substitution Test"}', '--default'],
+        ['new', 'idea', '--json', '{"name": "Substitution Test"}', '--default'],
         vaultDir
       );
 

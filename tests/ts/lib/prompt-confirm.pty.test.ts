@@ -31,7 +31,6 @@ const EDIT_TEST_SCHEMA = {
   types: {
     idea: {
       output_dir: 'Ideas',
-      name_field: 'Idea name',
       frontmatter: {
         type: { value: 'idea' },
         status: { prompt: 'select', enum: 'status', default: 'raw' },
@@ -67,7 +66,7 @@ Original content.
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
 
           // Enter name that matches existing file
           await proc.typeAndEnter('Confirm Test');
@@ -241,7 +240,7 @@ Original content.
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
 
           // Enter name that matches existing file
           await proc.typeAndEnter('Existing Idea');
@@ -289,7 +288,7 @@ Keep this content.
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
 
           // Enter name that matches existing file
           await proc.typeAndEnter('Keep This');

@@ -31,7 +31,6 @@ const EDIT_SCHEMA = {
   types: {
     idea: {
       output_dir: 'Ideas',
-      name_field: 'Idea name',
       frontmatter: {
         type: { value: 'idea' },
         status: { prompt: 'select', enum: 'status', default: 'raw' },

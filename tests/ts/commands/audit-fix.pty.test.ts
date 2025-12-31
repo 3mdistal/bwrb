@@ -31,7 +31,6 @@ const AUDIT_SCHEMA = {
   types: {
     idea: {
       output_dir: 'Ideas',
-      name_field: 'Idea name',
       frontmatter: {
         type: { value: 'idea' },
         status: { prompt: 'select', enum: 'status', default: 'raw', required: true },
@@ -43,7 +42,6 @@ const AUDIT_SCHEMA = {
       subtypes: {
         task: {
           output_dir: 'Tasks',
-          name_field: 'Task name',
           frontmatter: {
             type: { value: 'objective' },
             'objective-type': { value: 'task' },
@@ -188,7 +186,6 @@ Missing required status.
         types: {
           item: {
             output_dir: 'Items',
-            name_field: 'Item name',
             frontmatter: {
               type: { value: 'item' },
               category: { prompt: 'select', enum: 'status', required: true }, // No default
@@ -421,7 +418,6 @@ some: value
         types: {
           item: {
             output_dir: 'Items',
-            name_field: 'Item name',
             frontmatter: {
               type: { value: 'item' },
               link: { prompt: 'input', format: 'wikilink' },
@@ -515,7 +511,6 @@ Auto-fixable orphan.
         types: {
           item: {
             output_dir: 'Items',
-            name_field: 'Item name',
             frontmatter: {
               type: { value: 'item' },
               category: { prompt: 'select', enum: 'status', required: true },

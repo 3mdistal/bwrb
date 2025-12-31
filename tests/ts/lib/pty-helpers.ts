@@ -282,7 +282,7 @@ export class PtyProcess {
  * @example
  * ```ts
  * const proc = await spawnOvault(['new', 'objective/task'], { cwd: testVaultPath });
- * await proc.waitFor('Task name');
+ * await proc.waitFor('Name');
  * proc.write('My Task\r');
  * ```
  */
@@ -391,7 +391,6 @@ export const MINIMAL_SCHEMA = {
   types: {
     idea: {
       output_dir: 'Ideas',
-      name_field: 'Idea name',
       frontmatter: {
         type: { value: 'idea' },
         status: { prompt: 'select', enum: 'status', default: 'raw' },

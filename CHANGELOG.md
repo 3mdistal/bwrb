@@ -4,6 +4,15 @@ All notable changes to ovault are documented in this file.
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **Removed `name_field` from schema** (ovault-jxd)
+  - The `name_field` property is no longer supported in schema definitions
+  - All types now use a standard `"name"` field in JSON mode payloads
+  - Interactive prompts show "Name:" for all types instead of custom labels
+  - **Migration required**: Remove all `name_field` entries from your `.ovault/schema.json`
+  - **JSON API change**: Use `{"name": "My Note"}` instead of `{"Task name": "My Note"}`
+
 ### Added
 
 - **Comprehensive integration tests for edit command** (ovault-deg)

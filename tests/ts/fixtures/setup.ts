@@ -53,7 +53,6 @@ export const TEST_SCHEMA = {
       subtypes: {
         task: {
           output_dir: 'Objectives/Tasks',
-          name_field: 'Task name',
           shared_fields: ['status', 'tags'],
           field_overrides: {
             status: { default: 'backlog' },
@@ -73,7 +72,6 @@ export const TEST_SCHEMA = {
         },
         milestone: {
           output_dir: 'Objectives/Milestones',
-          name_field: 'Milestone name',
           shared_fields: ['status'],
           frontmatter: {
             type: { value: 'objective' },
@@ -85,7 +83,6 @@ export const TEST_SCHEMA = {
     },
     idea: {
       output_dir: 'Ideas',
-      name_field: 'Idea name',
       shared_fields: ['status'],
       frontmatter: {
         type: { value: 'idea' },

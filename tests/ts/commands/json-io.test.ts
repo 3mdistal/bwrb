@@ -18,7 +18,7 @@ describe('JSON I/O', () => {
   describe('ovault new --json', () => {
     it('should create a note with JSON frontmatter', async () => {
       const result = await runCLI(
-        ['new', 'idea', '--json', '{"Idea name": "Test Idea", "status": "raw", "priority": "high"}'],
+        ['new', 'idea', '--json', '{"name": "Test Idea", "status": "raw", "priority": "high"}'],
         vaultDir
       );
 
@@ -39,7 +39,7 @@ describe('JSON I/O', () => {
 
     it('should error on missing required name field', async () => {
       const result = await runCLI(
-        ['new', 'idea', '--json', '{"status": "raw"}'],  // missing 'Idea name'
+        ['new', 'idea', '--json', '{"status": "raw"}'],  // missing 'name'
         vaultDir
       );
 
@@ -51,7 +51,7 @@ describe('JSON I/O', () => {
 
     it('should error on invalid enum value', async () => {
       const result = await runCLI(
-        ['new', 'idea', '--json', '{"Idea name": "Bad Idea", "status": "invalid-status"}'],
+        ['new', 'idea', '--json', '{"name": "Bad Idea", "status": "invalid-status"}'],
         vaultDir
       );
 
@@ -64,7 +64,7 @@ describe('JSON I/O', () => {
 
     it('should provide suggestions for typos', async () => {
       const result = await runCLI(
-        ['new', 'idea', '--json', '{"Idea name": "Typo Idea", "status": "rae"}'],
+        ['new', 'idea', '--json', '{"name": "Typo Idea", "status": "rae"}'],
         vaultDir
       );
 
@@ -75,7 +75,7 @@ describe('JSON I/O', () => {
 
     it('should apply defaults for missing optional fields', async () => {
       const result = await runCLI(
-        ['new', 'idea', '--json', '{"Idea name": "Minimal Idea"}'],
+        ['new', 'idea', '--json', '{"name": "Minimal Idea"}'],
         vaultDir
       );
 
@@ -90,7 +90,7 @@ describe('JSON I/O', () => {
 
     it('should error on unknown type', async () => {
       const result = await runCLI(
-        ['new', 'unknown-type', '--json', '{"Idea name": "Test"}'],
+        ['new', 'unknown-type', '--json', '{"name": "Test"}'],
         vaultDir
       );
 
@@ -114,7 +114,7 @@ describe('JSON I/O', () => {
 
     it('should require type in JSON mode', async () => {
       const result = await runCLI(
-        ['new', '--json', '{"Idea name": "No Type"}'],
+        ['new', '--json', '{"name": "No Type"}'],
         vaultDir
       );
 
@@ -128,7 +128,7 @@ describe('JSON I/O', () => {
       it('should create note with body sections from _body field', async () => {
         const result = await runCLI(
           ['new', 'objective/task', '--json', JSON.stringify({
-            'Task name': 'Test Task',
+            'name': 'Test Task',
             _body: {
               Steps: ['Step 1', 'Step 2', 'Step 3'],
             },
@@ -151,7 +151,7 @@ describe('JSON I/O', () => {
       it('should handle string content for paragraphs section', async () => {
         const result = await runCLI(
           ['new', 'objective/task', '--json', JSON.stringify({
-            'Task name': 'Notes Task',
+            'name': 'Notes Task',
             _body: {
               Notes: 'This is a paragraph of notes about the task.',
             },
@@ -172,7 +172,7 @@ describe('JSON I/O', () => {
       it('should handle multiple body sections', async () => {
         const result = await runCLI(
           ['new', 'objective/task', '--json', JSON.stringify({
-            'Task name': 'Multi Section Task',
+            'name': 'Multi Section Task',
             _body: {
               Steps: ['Step A', 'Step B'],
               Notes: 'Important notes here',
@@ -197,7 +197,7 @@ describe('JSON I/O', () => {
       it('should error on unknown body section', async () => {
         const result = await runCLI(
           ['new', 'objective/task', '--json', JSON.stringify({
-            'Task name': 'Bad Section Task',
+            'name': 'Bad Section Task',
             _body: {
               UnknownSection: ['Item'],
             },
@@ -215,7 +215,7 @@ describe('JSON I/O', () => {
       it('should error when _body is not an object', async () => {
         const result = await runCLI(
           ['new', 'objective/task', '--json', JSON.stringify({
-            'Task name': 'Bad Body Task',
+            'name': 'Bad Body Task',
             _body: 'not an object',
           })],
           vaultDir
@@ -230,7 +230,7 @@ describe('JSON I/O', () => {
       it('should error when _body is an array', async () => {
         const result = await runCLI(
           ['new', 'objective/task', '--json', JSON.stringify({
-            'Task name': 'Array Body Task',
+            'name': 'Array Body Task',
             _body: ['not', 'valid'],
           })],
           vaultDir
@@ -245,7 +245,7 @@ describe('JSON I/O', () => {
       it('should handle empty _body object', async () => {
         const result = await runCLI(
           ['new', 'objective/task', '--json', JSON.stringify({
-            'Task name': 'Empty Body Task',
+            'name': 'Empty Body Task',
             _body: {},
           })],
           vaultDir
@@ -263,7 +263,7 @@ describe('JSON I/O', () => {
       it('should handle null _body', async () => {
         const result = await runCLI(
           ['new', 'objective/task', '--json', JSON.stringify({
-            'Task name': 'Null Body Task',
+            'name': 'Null Body Task',
             _body: null,
           })],
           vaultDir
@@ -277,7 +277,7 @@ describe('JSON I/O', () => {
       it('should not include _body in frontmatter', async () => {
         const result = await runCLI(
           ['new', 'objective/task', '--json', JSON.stringify({
-            'Task name': 'Body Not In FM',
+            'name': 'Body Not In FM',
             _body: {
               Steps: ['Step 1'],
             },

@@ -26,7 +26,6 @@ const TEST_SCHEMA = {
   types: {
     idea: {
       output_dir: 'Ideas',
-      name_field: 'Idea name',
       frontmatter: {
         type: { value: 'idea' },
         status: { prompt: 'select', enum: 'status', default: 'raw' },
@@ -44,7 +43,7 @@ describePty('relative vault path PTY tests', () => {
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Relative Path Interactive Test');
 
           // Status selection - (skip) is first option, which uses default
@@ -77,7 +76,7 @@ describePty('relative vault path PTY tests', () => {
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Full Prompts Relative');
 
           // Status selection - select 'backlog' (option 3)
@@ -110,7 +109,7 @@ describePty('relative vault path PTY tests', () => {
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Complete the flow
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Path Display Test');
 
           await proc.waitFor('status', 10000);
@@ -163,7 +162,7 @@ describePty('relative vault path PTY tests', () => {
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
 
           // Type partial name then cancel
           await proc.typeText('Partial');

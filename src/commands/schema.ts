@@ -145,7 +145,6 @@ function outputTypeDetailsJson(schema: Schema, typePath: string): void {
     type_path: typePath,
     output_dir: typeDef.output_dir,
     dir_mode: typeAsType.dir_mode,
-    name_field: typeDef.name_field ?? 'Name',
     filename: (typeDef as { filename?: string }).filename,
     fields: Object.fromEntries(
       Object.entries(fields).map(([name, field]) => [
@@ -179,7 +178,6 @@ function formatTypeForJson(
   const result: Record<string, unknown> = {
     output_dir: typeDef.output_dir,
     dir_mode: typeAsType.dir_mode,
-    name_field: typeDef.name_field,
   };
 
   // Add subtypes if present
@@ -335,9 +333,6 @@ function showTypeDetails(schema: Schema, typePath: string): void {
   }
   if ((typeDef as Type).dir_mode) {
     console.log(`  ${chalk.cyan('Dir Mode:')} ${(typeDef as Type).dir_mode}`);
-  }
-  if (typeDef.name_field) {
-    console.log(`  ${chalk.cyan('Name Field:')} ${typeDef.name_field}`);
   }
   if ((typeDef as { filename?: string }).filename) {
     console.log(`  ${chalk.cyan('Filename Pattern:')} ${(typeDef as { filename?: string }).filename}`);

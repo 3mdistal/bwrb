@@ -45,10 +45,6 @@
           "type": "string",
           "description": "Directory path relative to vault root where files of this type are created"
         },
-        "name_field": {
-          "type": "string",
-          "description": "Label for the name prompt (default: 'Name')"
-        },
         "frontmatter": {
           "type": "object",
           "description": "Frontmatter field definitions in order",
@@ -83,10 +79,6 @@
           }
         },
         "output_dir": { "type": "string" },
-        "name_field": {
-          "type": "string",
-          "description": "Name field for type"
-        },
         "frontmatter": {
           "$ref": "#/definitions/typeDefinition/properties/frontmatter"
         },

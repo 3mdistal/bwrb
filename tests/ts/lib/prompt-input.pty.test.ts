@@ -35,7 +35,7 @@ describePty('Text Input Prompt PTY tests', () => {
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Wait for the name prompt (idea name is required)
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
 
           // Type a name and press Enter
           await proc.typeAndEnter('My Test Idea');
@@ -66,7 +66,7 @@ describePty('Text Input Prompt PTY tests', () => {
         ['new', 'idea'],
         async (proc) => {
           // Wait for the name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
 
           // Press Enter without typing anything
           proc.write(Keys.ENTER);
@@ -91,7 +91,7 @@ describePty('Text Input Prompt PTY tests', () => {
 
       try {
         // Wait for the name prompt
-        await proc.waitFor('Idea name', 10000);
+        await proc.waitFor('Name', 10000);
 
         // Press Ctrl+C to cancel
         proc.write(Keys.CTRL_C);
@@ -123,7 +123,6 @@ describePty('Text Input Prompt PTY tests', () => {
         types: {
           task: {
             output_dir: 'Tasks',
-            name_field: 'Task name',
             frontmatter: {
               type: { value: 'task' },
               deadline: { prompt: 'input', label: 'Deadline' },
@@ -137,7 +136,7 @@ describePty('Text Input Prompt PTY tests', () => {
         ['new', 'task'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Task name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Test Task');
 
           // Wait for deadline prompt (optional)
@@ -165,7 +164,6 @@ describePty('Text Input Prompt PTY tests', () => {
         types: {
           note: {
             output_dir: 'Notes',
-            name_field: 'Note name',
             frontmatter: {
               type: { value: 'note' },
               category: { prompt: 'input', label: 'Category', default: 'general' },
@@ -179,7 +177,7 @@ describePty('Text Input Prompt PTY tests', () => {
         ['new', 'note'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Note name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Test Note');
 
           // Wait for category prompt
@@ -210,7 +208,7 @@ describePty('Text Input Prompt PTY tests', () => {
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
 
           // Type some text, then backspace and correct
           await proc.typeText('Test Ideaa');

@@ -31,7 +31,6 @@ const TEST_SCHEMA: Schema = {
     idea: {
       dir_mode: 'pooled',
       output_dir: 'Ideas',
-      name_field: 'Name',
       shared_fields: ['status'],
       frontmatter: {
         type: { value: 'idea' },
@@ -42,7 +41,6 @@ const TEST_SCHEMA: Schema = {
     task: {
       dir_mode: 'pooled',
       output_dir: 'Tasks',
-      name_field: 'Name',
       shared_fields: ['status', 'tags'],
       frontmatter: {
         type: { value: 'task' },

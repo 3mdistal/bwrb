@@ -17,7 +17,6 @@
       "subtypes": {
         "task": {
           "output_dir": "Objectives/Tasks",
-          "name_field": "Task name",
           "frontmatter": {
             "type": { "value": "objective" },
             "objective-type": { "value": "task" },
@@ -59,7 +58,6 @@
         },
         "milestone": {
           "output_dir": "Objectives/Milestones",
-          "name_field": "Milestone name",
           "frontmatter": {
             "type": { "value": "objective" },
             "objective-type": { "value": "milestone" },
@@ -82,7 +80,6 @@
     },
     "idea": {
       "output_dir": "Ideas",
-      "name_field": "Idea name",
       "frontmatter": {
         "type": { "value": "idea" },
         "status": { "prompt": "select", "enum": "status", "default": "raw" },
@@ -95,7 +92,6 @@
       "subtypes": {
         "person": {
           "output_dir": "Entities/People",
-          "name_field": "Person name",
           "frontmatter": {
             "type": { "value": "entity" },
             "entity-type": { "value": "person" }

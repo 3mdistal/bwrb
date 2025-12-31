@@ -47,7 +47,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
       try {
         // Wait for the task name prompt
-        await proc.waitFor('Task name', 10000);
+        await proc.waitFor('Name', 10000);
 
         // Enter a task name
         proc.write('Test Task for PTY\r');
@@ -104,7 +104,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
       try {
         // Wait for task name prompt
-        await proc.waitFor('Task name', 10000);
+        await proc.waitFor('Name', 10000);
         proc.write('PTY Test Task\r');
 
         // Wait for milestone prompt
@@ -147,7 +147,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
       try {
         // Wait for task name prompt
-        await proc.waitFor('Task name', 10000);
+        await proc.waitFor('Name', 10000);
         proc.write('Abort Test\r');
 
         // Wait for milestone prompt (a select prompt)
@@ -225,7 +225,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
       try {
         // Get to milestone prompt
-        await proc.waitFor('Task name', 10000);
+        await proc.waitFor('Name', 10000);
         proc.write('Navigation Test\r');
         await proc.waitFor('milestone', 10000);
 
@@ -272,7 +272,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
       });
 
       try {
-        await proc.waitFor('Task name', 10000);
+        await proc.waitFor('Name', 10000);
         proc.write('Arrow Nav Test\r');
         await proc.waitFor('milestone', 10000);
 
@@ -321,7 +321,6 @@ describePty('NumberedSelectPrompt PTY tests', () => {
       types: {
         item: {
           output_dir: 'Items',
-          name_field: 'Item name',
           frontmatter: {
             type: { value: 'item' },
             category: { prompt: 'select', enum: 'category', required: true },
@@ -336,7 +335,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
         ['new', 'item'],
         async (proc) => {
           // Wait for name prompt
-          await proc.waitFor('Item name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Pagination Test');
 
           // Wait for category prompt (15 items, so pagination)
@@ -361,7 +360,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
         ['new', 'item'],
         async (proc) => {
           // Wait for name prompt
-          await proc.waitFor('Item name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Page Nav Test');
 
           // Wait for category prompt
@@ -393,7 +392,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
         ['new', 'item'],
         async (proc) => {
           // Wait for name prompt
-          await proc.waitFor('Item name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Prev Page Test');
 
           // Wait for category prompt
@@ -428,7 +427,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
         ['new', 'item'],
         async (proc) => {
           // Wait for name prompt
-          await proc.waitFor('Item name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Page 2 Select');
 
           // Wait for category prompt
@@ -460,7 +459,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
         ['new', 'item'],
         async (proc) => {
           // Wait for name prompt
-          await proc.waitFor('Item name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Last Page Test');
 
           // Wait for category prompt
@@ -492,7 +491,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
         ['new', 'item'],
         async (proc) => {
           // Wait for name prompt
-          await proc.waitFor('Item name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('First Page Test');
 
           // Wait for category prompt
@@ -520,7 +519,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
         ['new', 'item'],
         async (proc) => {
           // Wait for name prompt
-          await proc.waitFor('Item name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Equals Key Test');
 
           // Wait for category prompt
@@ -557,7 +556,6 @@ describePty('NumberedSelectPrompt PTY tests', () => {
         types: {
           item: {
             output_dir: 'Items',
-            name_field: 'Item name',
             frontmatter: {
               type: { value: 'item' },
               ref: { prompt: 'dynamic', source: 'nonexistent', format: 'wikilink' },
@@ -571,7 +569,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
         ['new', 'item'],
         async (proc) => {
           // Wait for name prompt
-          await proc.waitFor('Item name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Empty Test');
 
           // Should show message about no options
@@ -597,7 +595,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
       try {
         // Wait for task name prompt
-        await proc.waitFor('Task name', 10000);
+        await proc.waitFor('Name', 10000);
         proc.write('Escape Test\r');
 
         // Wait for milestone prompt

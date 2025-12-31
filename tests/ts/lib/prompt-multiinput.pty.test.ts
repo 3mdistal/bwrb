@@ -36,7 +36,6 @@ const TASK_SCHEMA = {
   types: {
     task: {
       output_dir: 'Tasks',
-      name_field: 'Task name',
       frontmatter: {
         type: { value: 'task' },
         status: { prompt: 'select', enum: 'status', default: 'raw' },
@@ -71,7 +70,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
         ['new', 'task'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Task name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Test Task');
 
           // Wait for status selection
@@ -108,7 +107,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
         ['new', 'task'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Task name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Empty Steps Task');
 
           // Wait for status selection
@@ -143,7 +142,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
         ['new', 'task'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Task name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Cancel Test');
 
           // Wait for status selection
@@ -181,7 +180,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
         ['new', 'task'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Task name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Single Step Task');
 
           // Wait for status selection
@@ -214,7 +213,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
         ['new', 'task'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Task name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Whitespace Task');
 
           // Wait for status selection

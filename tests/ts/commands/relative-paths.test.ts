@@ -133,7 +133,7 @@ describe('relative vault path handling', () => {
   describe('new command (JSON mode)', () => {
     it('should create note with relative vault path', async () => {
       const json = JSON.stringify({
-        'Idea name': 'Relative Path Test Idea',
+        'name': 'Relative Path Test Idea',
         status: 'raw',
         priority: 'low',
       });
@@ -151,7 +151,7 @@ describe('relative vault path handling', () => {
 
     it('should create subtype note with relative vault path', async () => {
       const json = JSON.stringify({
-        'Task name': 'Relative Path Test Task',
+        'name': 'Relative Path Test Task',
         status: 'backlog',
       });
       const result = await runCLI([
@@ -171,7 +171,7 @@ describe('relative vault path handling', () => {
 
     it('should report validation errors with relative vault path', async () => {
       const json = JSON.stringify({
-        'Idea name': 'Bad Idea',
+        'name': 'Bad Idea',
         status: 'invalid-status', // Invalid enum value
       });
       const result = await runCLI(['--vault', relativeVaultPath, 'new', 'idea', '--json', json]);
@@ -242,7 +242,6 @@ describe('edge cases', () => {
           types: {
             idea: {
               output_dir: 'Ideas',
-              name_field: 'Idea name',
               frontmatter: {
                 type: { value: 'idea' },
                 status: { prompt: 'select', enum: 'status' },

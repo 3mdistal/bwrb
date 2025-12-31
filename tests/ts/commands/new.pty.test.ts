@@ -43,7 +43,6 @@ const FULL_SCHEMA = {
       subtypes: {
         task: {
           output_dir: 'Tasks',
-          name_field: 'Task name',
           frontmatter: {
             type: { value: 'objective' },
             'objective-type': { value: 'task' },
@@ -58,7 +57,6 @@ const FULL_SCHEMA = {
         },
         milestone: {
           output_dir: 'Milestones',
-          name_field: 'Milestone name',
           frontmatter: {
             type: { value: 'objective' },
             'objective-type': { value: 'milestone' },
@@ -70,7 +68,6 @@ const FULL_SCHEMA = {
     },
     idea: {
       output_dir: 'Ideas',
-      name_field: 'Idea name',
       frontmatter: {
         type: { value: 'idea' },
         status: { prompt: 'select', enum: 'status', default: 'raw' },
@@ -92,7 +89,7 @@ describePty('ovault new command PTY tests', () => {
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Complete Flow Test');
 
           // Status selection - options: (skip), raw, backlog, in-flight, settled
@@ -139,7 +136,7 @@ status: in-flight
         ['new', 'objective/task'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Task name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Full Task Flow');
 
           // Status selection - (skip) uses default 'raw'
@@ -212,7 +209,7 @@ status: in-flight
           await proc.waitForStable(100);
 
           // Should now be at task name prompt
-          await proc.waitFor('Task name', 10000);
+          await proc.waitFor('Name', 10000);
 
           proc.write(Keys.CTRL_C);
         },
@@ -232,7 +229,7 @@ status: in-flight
           await proc.waitForStable(100);
 
           // Should now ask for idea name
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Type Nav Test');
 
           // Complete remaining prompts
@@ -259,7 +256,7 @@ status: in-flight
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
 
           // Type partial name then cancel
           await proc.typeText('Partial');
@@ -287,7 +284,7 @@ status: in-flight
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Complete name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Selection Cancel');
 
           // Wait for status selection
@@ -312,7 +309,7 @@ status: in-flight
         ['new', 'objective/task'],
         async (proc, vaultPath) => {
           // Complete frontmatter prompts
-          await proc.waitFor('Task name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Body Cancel Test');
 
           await proc.waitFor('status', 10000);
@@ -391,7 +388,7 @@ defaults:
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Should go directly to name prompt (no template selection)
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Template Default Test');
 
           // Template provides defaults for all fields, so creation happens immediately
@@ -460,7 +457,7 @@ defaults:
           await proc.waitForStable(100);
 
           // Now name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Multi Template Test');
 
           // Template provides defaults for all fields, creation happens immediately
@@ -502,7 +499,7 @@ Template body content
           await proc.waitForStable(100);
 
           // Name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('No Template Test');
 
           // Complete prompts - no defaults from template
@@ -530,7 +527,7 @@ Template body content
         ['new', 'idea'],
         async (proc) => {
           // Wait for name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Skip Option Test');
 
           // Status is not required, should show skip option
@@ -551,7 +548,7 @@ Template body content
         ['new', 'idea'],
         async (proc, vaultPath) => {
           // Wait for name prompt
-          await proc.waitFor('Idea name', 10000);
+          await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Default Via Skip');
 
           // Select skip for status (should use default 'raw')

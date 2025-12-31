@@ -51,7 +51,6 @@ export const SubtypeSchema: z.ZodType<Subtype, z.ZodTypeDef, SubtypeInput> = z.l
   z.object({
     output_dir: z.string().optional(),
     filename: z.string().optional(),
-    name_field: z.string().optional(),
     shared_fields: z.array(z.string()).optional(), // Opt-in to shared fields
     field_overrides: z.record(FieldOverrideSchema).optional(), // Override shared field properties
     frontmatter: z.record(FieldSchema).optional(),
@@ -65,7 +64,6 @@ export const SubtypeSchema: z.ZodType<Subtype, z.ZodTypeDef, SubtypeInput> = z.l
 export const TypeSchema = z.object({
   output_dir: z.string().optional(), // Optional for parent types with subtypes
   dir_mode: z.enum(['pooled', 'instance-grouped']).optional().default('pooled'),
-  name_field: z.string().optional(),
   shared_fields: z.array(z.string()).optional(), // Opt-in to shared fields
   field_overrides: z.record(FieldOverrideSchema).optional(), // Override shared field properties
   frontmatter: z.record(FieldSchema).optional(),
@@ -115,7 +113,6 @@ export type DynamicSource = z.infer<typeof DynamicSourceSchema>;
 export type Subtype = {
   output_dir?: string | undefined;
   filename?: string | undefined;
-  name_field?: string | undefined;
   shared_fields?: string[] | undefined;
   field_overrides?: Record<string, FieldOverride> | undefined;
   frontmatter?: Record<string, Field> | undefined;
@@ -127,7 +124,6 @@ export type Subtype = {
 export type SubtypeInput = {
   output_dir?: string | undefined;
   filename?: string | undefined;
-  name_field?: string | undefined;
   shared_fields?: string[] | undefined;
   field_overrides?: Record<string, FieldOverride> | undefined;
   frontmatter?: Record<string, Field> | undefined;
