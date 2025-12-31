@@ -6,6 +6,14 @@ All notable changes to ovault are documented in this file.
 
 ### Added
 
+- **`ovault delete` command** (ovault-44z)
+  - Delete notes from the vault: `ovault delete [query]`
+  - Query resolution with picker support (fzf, numbered, or auto-detect)
+  - Interactive confirmation prompt (use `--force` to skip)
+  - Backlink detection warns if other notes link to the file being deleted
+  - JSON output mode with `--output json` (requires `--force`)
+  - Completes the CRUD cycle for notes: new, edit, list, open, delete
+
 - **`ovault template delete` command** (ovault-3gb)
   - Delete templates via CLI: `ovault template delete <type> <name>`
   - Interactive confirmation prompt (use `--force` to skip)

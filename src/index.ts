@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { newCommand } from './commands/new.js';
 import { editCommand } from './commands/edit.js';
+import { deleteCommand } from './commands/delete.js';
 import { listCommand } from './commands/list.js';
 import { openCommand } from './commands/open.js';
 import { searchCommand } from './commands/search.js';
@@ -21,6 +22,7 @@ program
 
 program.addCommand(newCommand);
 program.addCommand(editCommand);
+program.addCommand(deleteCommand);
 program.addCommand(listCommand);
 program.addCommand(openCommand);
 program.addCommand(searchCommand);
