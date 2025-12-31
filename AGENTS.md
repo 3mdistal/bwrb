@@ -63,6 +63,18 @@ PTY test locations:
 - `tests/ts/lib/*.pty.test.ts` - Prompt-level tests (input, confirm, select)
 - `tests/ts/commands/*.pty.test.ts` - Full command flow tests (new, edit, audit, template)
 
+## TypeScript Conventions
+
+- **Zod-first types**: Define Zod schemas, derive types with `z.infer<typeof Schema>`
+- **Named exports only**: No default exports; commands export as `export const fooCommand = new Command('foo')`
+- **ESM imports**: Always include `.js` extension; use `import type` for type-only imports
+- **Prompt cancellation**: All prompts return `T | null` where `null` means cancelled. Throw `UserCancelledError` (from `src/lib/errors.ts`) when null is returned
+- **JSON mode**: Commands support `--json <input>` and `--output json`. Use helpers from `src/lib/output.ts`:
+  - `printJson(jsonSuccess({ ... }))` / `printJson(jsonError(message))`
+  - `exitWithError(message, ExitCodes.X, jsonMode)`
+- **Exit codes**: Use constants from `ExitCodes` (SUCCESS=0, VALIDATION_ERROR=1, IO_ERROR=2, SCHEMA_ERROR=3)
+- **Error handling**: Catch `UserCancelledError` specially to print "Cancelled." and exit cleanly
+
 ## Issue Tracking
 
 This project uses Beads for issue tracking. Load the `beads` skill for commands.
