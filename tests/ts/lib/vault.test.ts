@@ -54,6 +54,24 @@ describe('vault', () => {
       const result = resolveVaultDir({});
       expect(result).toBe(process.cwd());
     });
+
+    it('should preserve relative path from --vault option', () => {
+      delete process.env['OVAULT_VAULT'];
+      const result = resolveVaultDir({ vault: './my-vault' });
+      expect(result).toBe('./my-vault');
+    });
+
+    it('should preserve relative path from env var', () => {
+      process.env['OVAULT_VAULT'] = '../other-vault';
+      const result = resolveVaultDir({});
+      expect(result).toBe('../other-vault');
+    });
+
+    it('should preserve dotted relative path', () => {
+      delete process.env['OVAULT_VAULT'];
+      const result = resolveVaultDir({ vault: '../../some/nested/vault' });
+      expect(result).toBe('../../some/nested/vault');
+    });
   });
 
   describe('listFilesInDir', () => {

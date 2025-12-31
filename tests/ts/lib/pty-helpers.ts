@@ -543,6 +543,52 @@ export async function withTempVault(
   }
 }
 
+/**
+ * Get a relative path from the project root to the vault.
+ * Useful for testing CLI with relative vault paths.
+ * @param vaultDir Absolute path to vault
+ * @returns Relative path from PROJECT_ROOT
+ */
+export function getRelativePath(vaultDir: string): string {
+  return path.relative(PROJECT_ROOT, vaultDir);
+}
+
+/**
+ * Helper to run a PTY test with a relative vault path.
+ * This tests the CLI's ability to handle relative paths correctly.
+ * 
+ * @param args ovault arguments
+ * @param fn Test function receiving the PtyProcess and absolute vault path
+ * @param files Files to create in the temp vault
+ * @param schema Schema to use (defaults to MINIMAL_SCHEMA)
+ */
+export async function withTempVaultRelative(
+  args: string[],
+  fn: (proc: PtyProcess, vaultPath: string) => Promise<void>,
+  files: TempVaultFile[] = [],
+  schema: object = MINIMAL_SCHEMA
+): Promise<void> {
+  const vaultPath = await createTempVault(files, schema);
+  const relativePath = getRelativePath(vaultPath);
+  try {
+    // Use relative path via OVAULT_VAULT env var
+    const proc = spawnOvault(args, { 
+      cwd: vaultPath,  // Still pass absolute path for internal use
+      env: { OVAULT_VAULT: relativePath }  // But set env var to relative
+    });
+    try {
+      await fn(proc, vaultPath);
+    } finally {
+      if (!proc.hasExited()) {
+        proc.kill();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+  } finally {
+    await cleanupTempVault(vaultPath);
+  }
+}
+
 // ============================================================================
 // Test Environment Detection
 // ============================================================================

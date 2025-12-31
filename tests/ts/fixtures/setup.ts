@@ -1,5 +1,5 @@
 import { mkdtemp, rm, mkdir, writeFile, cp } from 'fs/promises';
-import { join } from 'path';
+import { join, relative } from 'path';
 import { tmpdir } from 'os';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -7,8 +7,18 @@ import { dirname } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const PROJECT_ROOT = join(__dirname, '../../..');
+export const PROJECT_ROOT = join(__dirname, '../../..');
 const CLI_PATH = join(PROJECT_ROOT, 'dist/index.js');
+
+/**
+ * Get a relative path from the project root to the vault.
+ * Useful for testing CLI with relative --vault paths.
+ * @param vaultDir Absolute path to vault
+ * @returns Relative path from PROJECT_ROOT
+ */
+export function getRelativeVaultPath(vaultDir: string): string {
+  return relative(PROJECT_ROOT, vaultDir);
+}
 
 export const TEST_SCHEMA = {
   version: 2,
