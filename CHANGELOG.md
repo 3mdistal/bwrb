@@ -4,6 +4,15 @@ All notable changes to ovault are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`includeTemplates` option for PTY test helpers** (ovault-a8o)
+  - `withTempVault` and `withTempVaultRelative` now accept an options object with `includeTemplates`
+  - Set `includeTemplates: true` to copy all templates from the fixture vault
+  - Set `includeTemplates: ['idea', 'objective']` to copy only specific types
+  - New `copyFixtureTemplates()` utility for manual template copying
+  - Fully backwards compatible: existing tests using array syntax still work
+
 ### Fixed
 
 - **`search --text` now validates filter fields when `--type` is specified** (ovault-ywr)

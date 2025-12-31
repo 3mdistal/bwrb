@@ -413,14 +413,87 @@ export interface TempVaultFile {
 }
 
 /**
+ * Options for withTempVault and withTempVaultRelative helpers.
+ */
+export interface WithTempVaultOptions {
+  /** Files to create in the temp vault */
+  files?: TempVaultFile[];
+  /** Schema to use (defaults to MINIMAL_SCHEMA) */
+  schema?: object;
+  /**
+   * Include templates from the fixture vault.
+   * - true: Copy all templates
+   * - string[]: Copy only templates for specified types (e.g., ['idea', 'objective'])
+   */
+  includeTemplates?: boolean | string[];
+}
+
+// Path to the fixture vault templates
+const FIXTURE_TEMPLATES_PATH = path.join(TEST_VAULT_PATH, '.ovault', 'templates');
+
+/**
+ * Recursively copy a directory.
+ */
+async function copyDir(src: string, dest: string): Promise<void> {
+  await fs.mkdir(dest, { recursive: true });
+  const entries = await fs.readdir(src, { withFileTypes: true });
+  
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    
+    if (entry.isDirectory()) {
+      await copyDir(srcPath, destPath);
+    } else {
+      await fs.copyFile(srcPath, destPath);
+    }
+  }
+}
+
+/**
+ * Copy templates from the fixture vault to a target vault.
+ * @param targetVaultPath Destination vault path
+ * @param types Types to copy templates for (undefined = all)
+ */
+export async function copyFixtureTemplates(
+  targetVaultPath: string,
+  types?: string[]
+): Promise<void> {
+  const targetTemplatesPath = path.join(targetVaultPath, '.ovault', 'templates');
+  
+  // Ensure target templates directory exists
+  await fs.mkdir(targetTemplatesPath, { recursive: true });
+  
+  if (!types) {
+    // Copy all templates
+    await copyDir(FIXTURE_TEMPLATES_PATH, targetTemplatesPath);
+  } else {
+    // Copy only specified types
+    for (const type of types) {
+      const srcTypePath = path.join(FIXTURE_TEMPLATES_PATH, type);
+      const destTypePath = path.join(targetTemplatesPath, type);
+      
+      try {
+        await fs.access(srcTypePath);
+        await copyDir(srcTypePath, destTypePath);
+      } catch {
+        // Type directory doesn't exist in fixtures, skip silently
+      }
+    }
+  }
+}
+
+/**
  * Create a temporary vault directory with the given files.
  * @param files Array of files to create
  * @param schema Schema object to use (defaults to MINIMAL_SCHEMA)
+ * @param includeTemplates Whether to copy templates from fixture vault
  * @returns Path to the temporary vault
  */
 export async function createTempVault(
   files: TempVaultFile[] = [],
-  schema: object = MINIMAL_SCHEMA
+  schema: object = MINIMAL_SCHEMA,
+  includeTemplates?: boolean | string[]
 ): Promise<string> {
   // Create temp directory
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ovault-test-'));
@@ -441,6 +514,12 @@ export async function createTempVault(
         await fs.mkdir(path.join(tempDir, outputDir), { recursive: true });
       }
     }
+  }
+
+  // Copy templates from fixture vault if requested
+  if (includeTemplates) {
+    const types = Array.isArray(includeTemplates) ? includeTemplates : undefined;
+    await copyFixtureTemplates(tempDir, types);
   }
 
   // Create the files
@@ -516,18 +595,46 @@ export async function listVaultFiles(
 
 /**
  * Helper to run a PTY test with a temporary vault that gets cleaned up.
+ * 
  * @param args ovault arguments
  * @param fn Test function receiving the PtyProcess and vault path
- * @param files Files to create in the temp vault
- * @param schema Schema to use (defaults to MINIMAL_SCHEMA)
+ * @param optionsOrFiles Options object or files array (for backwards compatibility)
+ * @param legacySchema Schema to use (only when optionsOrFiles is an array)
+ * 
+ * @example New options-based API:
+ * ```ts
+ * await withTempVault(['new', 'idea'], async (proc, vaultPath) => {
+ *   // test code
+ * }, { includeTemplates: true, schema: MY_SCHEMA });
+ * ```
+ * 
+ * @example Legacy API (still supported):
+ * ```ts
+ * await withTempVault(['new', 'idea'], async (proc, vaultPath) => {
+ *   // test code
+ * }, [{ path: 'test.md', content: '...' }], MY_SCHEMA);
+ * ```
  */
 export async function withTempVault(
   args: string[],
   fn: (proc: PtyProcess, vaultPath: string) => Promise<void>,
-  files: TempVaultFile[] = [],
-  schema: object = MINIMAL_SCHEMA
+  optionsOrFiles: WithTempVaultOptions | TempVaultFile[] = [],
+  legacySchema?: object
 ): Promise<void> {
-  const vaultPath = await createTempVault(files, schema);
+  // Determine if using new options API or legacy array API
+  const isOptionsObject = !Array.isArray(optionsOrFiles) && typeof optionsOrFiles === 'object';
+  
+  const files = isOptionsObject 
+    ? (optionsOrFiles.files ?? []) 
+    : optionsOrFiles;
+  const schema = isOptionsObject 
+    ? (optionsOrFiles.schema ?? MINIMAL_SCHEMA) 
+    : (legacySchema ?? MINIMAL_SCHEMA);
+  const includeTemplates = isOptionsObject 
+    ? optionsOrFiles.includeTemplates 
+    : undefined;
+
+  const vaultPath = await createTempVault(files, schema, includeTemplates);
   try {
     const proc = spawnOvault(args, { cwd: vaultPath });
     try {
@@ -559,16 +666,36 @@ export function getRelativePath(vaultDir: string): string {
  * 
  * @param args ovault arguments
  * @param fn Test function receiving the PtyProcess and absolute vault path
- * @param files Files to create in the temp vault
- * @param schema Schema to use (defaults to MINIMAL_SCHEMA)
+ * @param optionsOrFiles Options object or files array (for backwards compatibility)
+ * @param legacySchema Schema to use (only when optionsOrFiles is an array)
+ * 
+ * @example New options-based API:
+ * ```ts
+ * await withTempVaultRelative(['new', 'idea'], async (proc, vaultPath) => {
+ *   // test code
+ * }, { includeTemplates: ['idea'] });
+ * ```
  */
 export async function withTempVaultRelative(
   args: string[],
   fn: (proc: PtyProcess, vaultPath: string) => Promise<void>,
-  files: TempVaultFile[] = [],
-  schema: object = MINIMAL_SCHEMA
+  optionsOrFiles: WithTempVaultOptions | TempVaultFile[] = [],
+  legacySchema?: object
 ): Promise<void> {
-  const vaultPath = await createTempVault(files, schema);
+  // Determine if using new options API or legacy array API
+  const isOptionsObject = !Array.isArray(optionsOrFiles) && typeof optionsOrFiles === 'object';
+  
+  const files = isOptionsObject 
+    ? (optionsOrFiles.files ?? []) 
+    : optionsOrFiles;
+  const schema = isOptionsObject 
+    ? (optionsOrFiles.schema ?? MINIMAL_SCHEMA) 
+    : (legacySchema ?? MINIMAL_SCHEMA);
+  const includeTemplates = isOptionsObject 
+    ? optionsOrFiles.includeTemplates 
+    : undefined;
+
+  const vaultPath = await createTempVault(files, schema, includeTemplates);
   const relativePath = getRelativePath(vaultPath);
   try {
     // Use relative path via OVAULT_VAULT env var
