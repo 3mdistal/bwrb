@@ -6,6 +6,14 @@ All notable changes to ovault are documented in this file.
 
 ### Added
 
+- **Comprehensive integration tests for edit command** (ovault-deg)
+  - New `edit.test.ts` with 27 tests covering file loading, type detection, body preservation, error handling, and JSON merge semantics
+  - Tests for subtype detection (objective/task, objective/milestone)
+  - Tests for body content preservation including checkboxes, special characters, wikilinks, and code blocks
+  - Tests for frontmatter order preservation per schema definition
+  - Edge case tests for paths with spaces, empty JSON patches, and deeply nested paths
+  - Note: `--open` flag is tested via help text only (avoids triggering Obsidian during tests)
+
 - **`includeTemplates` option for PTY test helpers** (ovault-a8o)
   - `withTempVault` and `withTempVaultRelative` now accept an options object with `includeTemplates`
   - Set `includeTemplates: true` to copy all templates from the fixture vault
