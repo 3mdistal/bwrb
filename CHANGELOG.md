@@ -4,6 +4,14 @@ All notable changes to ovault are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`search --text` now validates filter fields when `--type` is specified** (ovault-ywr)
+  - Simple filters like `--status=value` are now validated against the schema when using `--type`
+  - Unknown field names and invalid enum values produce helpful error messages
+  - Consistent behavior with the `list` command which already validates filters
+  - Without `--type`, filters are not validated (no schema context available)
+
 ### Added
 
 - **Template constraints** (ovault-31k)

@@ -27,7 +27,7 @@ import {
   type ContentMatch,
 } from '../lib/content-search.js';
 import { parseNote } from '../lib/frontmatter.js';
-import { parseFilters, applyFrontmatterFilters, type Filter } from '../lib/query.js';
+import { parseFilters, validateFilters, applyFrontmatterFilters, type Filter } from '../lib/query.js';
 
 // ============================================================================
 // Types
@@ -202,6 +202,21 @@ async function handleContentSearch(
   // Parse simple filters from remaining arguments (e.g., --status=done)
   const filterArgs = cmd.args.slice(1); // Skip the query argument
   const simpleFilters = parseFilters(filterArgs);
+
+  // Validate filters if type is specified (provides schema context for validation)
+  if (options.type && simpleFilters.length > 0) {
+    const validation = validateFilters(schema, options.type, simpleFilters);
+    if (!validation.valid) {
+      if (jsonMode) {
+        printJson(jsonError(validation.errors.join('; ')));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      for (const error of validation.errors) {
+        printError(error);
+      }
+      process.exit(1);
+    }
+  }
 
   // Run content search
   const searchResult = await searchContent({
