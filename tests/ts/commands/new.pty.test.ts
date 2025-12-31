@@ -373,13 +373,167 @@ status: in-flight
     }, 30000);
   });
 
-  // Template handling is tested in tests/ts/lib/template.test.ts
-  // PTY tests for templates are skipped as they require complex setup
-  // and the template system is well-covered by unit tests
-  describe.skip('template handling', () => {
-    it('should use default template when available', async () => {});
-    it('should prompt for template when multiple available and no default', async () => {});
-    it('should allow skipping template with [No template] option', async () => {});
+  describe('template handling', () => {
+    it('should use default template when available', async () => {
+      // Default template for ideas - should auto-apply without prompting for template
+      // Note: Template has defaults for all fields, so no prompts after name!
+      const defaultTemplate: TempVaultFile = {
+        path: '.ovault/templates/idea/default.md',
+        content: `---
+type: template
+template-for: idea
+description: Default idea template
+defaults:
+  status: raw
+  priority: medium
+---
+
+# {title}
+
+## Description
+
+[Your idea description here]
+`,
+      };
+
+      await withTempVault(
+        ['new', 'idea'],
+        async (proc, vaultPath) => {
+          // Should go directly to name prompt (no template selection)
+          await proc.waitFor('Idea name', 10000);
+          await proc.typeAndEnter('Template Default Test');
+
+          // Template provides defaults for all fields, so creation happens immediately
+          await proc.waitForStable(200);
+          await proc.waitFor('Created:', 5000);
+
+          // Verify file was created with template body
+          const content = await readVaultFile(vaultPath, 'Ideas/Template Default Test.md');
+          expect(content).toContain('type: idea');
+          expect(content).toContain('status: raw');
+          expect(content).toContain('priority: medium');
+          expect(content).toContain('## Description');
+          expect(content).toContain('[Your idea description here]');
+        },
+        [defaultTemplate],
+        FULL_SCHEMA
+      );
+    }, 30000);
+
+    it('should prompt for template when multiple available and no default', async () => {
+      // Two templates, neither is default.md
+      // quick has status default, detailed has priority default
+      const template1: TempVaultFile = {
+        path: '.ovault/templates/idea/quick.md',
+        content: `---
+type: template
+template-for: idea
+description: Quick idea capture
+defaults:
+  status: raw
+  priority: low
+---
+
+Quick idea notes:
+`,
+      };
+      const template2: TempVaultFile = {
+        path: '.ovault/templates/idea/detailed.md',
+        content: `---
+type: template
+template-for: idea
+description: Detailed idea template
+defaults:
+  status: backlog
+  priority: high
+---
+
+## Problem Statement
+
+## Proposed Solution
+`,
+      };
+
+      await withTempVault(
+        ['new', 'idea'],
+        async (proc, vaultPath) => {
+          // Should prompt for template selection first
+          await proc.waitFor('Select template', 10000);
+          
+          // Should show both template options
+          const output = proc.getOutput();
+          expect(output).toContain('quick');
+          expect(output).toContain('detailed');
+
+          // Select detailed (usually sorted, so detailed comes first)
+          proc.write('1');
+          await proc.waitForStable(100);
+
+          // Now name prompt
+          await proc.waitFor('Idea name', 10000);
+          await proc.typeAndEnter('Multi Template Test');
+
+          // Template provides defaults for all fields, creation happens immediately
+          await proc.waitForStable(200);
+          await proc.waitFor('Created:', 5000);
+
+          // Verify file was created with detailed template content
+          const content = await readVaultFile(vaultPath, 'Ideas/Multi Template Test.md');
+          expect(content).toContain('## Problem Statement');
+          expect(content).toContain('status: backlog');
+          expect(content).toContain('priority: high');
+        },
+        [template1, template2],
+        FULL_SCHEMA
+      );
+    }, 30000);
+
+    it('should allow skipping template with [No template] option', async () => {
+      // Single template (non-default), user chooses [No template]
+      const template1: TempVaultFile = {
+        path: '.ovault/templates/idea/quick.md',
+        content: `---
+type: template
+template-for: idea
+description: Quick idea
+---
+
+Template body content
+`,
+      };
+
+      await withTempVault(
+        ['new', 'idea'],
+        async (proc, vaultPath) => {
+          // Should prompt for template selection
+          await proc.waitFor('Select template', 10000);
+
+          // Select [No template] option (last option)
+          proc.write('2'); // quick=1, [No template]=2
+          await proc.waitForStable(100);
+
+          // Name prompt
+          await proc.waitFor('Idea name', 10000);
+          await proc.typeAndEnter('No Template Test');
+
+          // Complete prompts - no defaults from template
+          await proc.waitFor('status', 10000);
+          proc.write('1');
+          await proc.waitFor('priority', 10000);
+          proc.write('1');
+
+          // Wait for creation
+          await proc.waitForStable(200);
+          await proc.waitFor('Created:', 5000);
+
+          // Verify file was created WITHOUT template body
+          const content = await readVaultFile(vaultPath, 'Ideas/No Template Test.md');
+          expect(content).not.toContain('Template body content');
+        },
+        [template1],
+        FULL_SCHEMA
+      );
+    }, 30000);
   });
 
   describe('skip option for optional fields', () => {
