@@ -1,0 +1,289 @@
+# Pika Product Vision
+
+> Schema enforcement for Markdown. Type-safe personal knowledge management.
+
+---
+
+## What is Pika?
+
+Pika is a CLI tool that enforces strict schemas on Markdown/YAML files. It brings TypeScript-style type safety to personal knowledge management—your notes can't violate the schema, your queries always return valid data, and migrations are explicit.
+
+**One-liner:** Pika is the type system for your notes.
+
+---
+
+## The Three Circles
+
+Pika's functionality exists in concentric layers of priority:
+
+```
+┌─────────────────────────────────────────┐
+│                                         │
+│   ┌─────────────────────────────────┐   │
+│   │                                 │   │
+│   │   ┌─────────────────────────┐   │   │
+│   │   │                         │   │   │
+│   │   │        SCHEMA           │   │   │
+│   │   │   Type enforcement      │   │   │
+│   │   │   Validation            │   │   │
+│   │   │   Migration             │   │   │
+│   │   │                         │   │   │
+│   │   └─────────────────────────┘   │   │
+│   │              PKM                │   │
+│   │   Queries, organization,        │   │
+│   │   knowledge discovery           │   │
+│   │                                 │   │
+│   └─────────────────────────────────┘   │
+│                  AI                     │
+│   Optional automation, ingest,          │
+│   processing helpers                    │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+**Priority order:**
+1. **Schema** (core) — If this doesn't work, nothing works
+2. **PKM** (middle) — Makes the schema useful for knowledge work
+3. **AI** (outer) — Nice-to-have automation, never required
+
+---
+
+## Primary User
+
+**Pika is built for one person first: the author.**
+
+- Power user, developer, creative
+- Writes in Markdown, lives in the terminal
+- Uses Neovim (or similar) as primary editor
+- Wants to publish writing to the web
+- Tired of migrating between PKM tools
+- Needs strict organization without manual discipline
+
+If Pika works for this user, it will work for others. But it must work for this user first.
+
+**Secondary audiences (stretch goals):**
+- Neovim enthusiasts who want Obsidian-like PKM
+- Developers who want schema-enforced Markdown as CMS
+- Obsidian users who want CLI automation
+
+---
+
+## Core Philosophy
+
+### 1. Schema is King
+
+The schema is the source of truth. Notes must conform.
+
+- **Hard enforcement on CLI** — `pika new` refuses to create invalid notes
+- **Soft enforcement on external edits** — Files can drift, but `pika audit` catches it
+- **TypeScript analogy** — Like `tsc`, you can use Pika to fail builds on schema violations
+
+> "You won't be able to create notes that go off the schema."
+
+### 2. Composable, Not Monolithic
+
+Pika does one thing well: schema enforcement. It uses the existing ecosystem for everything else.
+
+- **Git** for version control (Pika doesn't manage commits)
+- **yq/yaql** for raw YAML queries (Pika provides schema-aware queries)
+- **ripgrep** for content search (Pika wraps it with type awareness)
+- **Neovim** for editing (Pika provides a plugin, not an editor)
+- **GitHub Actions** for automation (Pika is scriptable, not a scheduler)
+
+### 3. Portable and Offline
+
+Pika works anywhere, on anything.
+
+- No internet required for core functionality
+- Works on any folder of Markdown files (Git-backed or not)
+- No account, no cloud, no lock-in
+- Install and point at a folder—that's it
+
+### 4. Incrementally Adoptable
+
+You don't need a complete schema upfront. Start minimal, grow as needed.
+
+- Minimal viable schema: a single `meta` type
+- Audit existing files to discover what you have
+- Add types as patterns emerge
+- Bulk migrate when ready
+
+> "Like TypeScript, you can adopt it incrementally."
+
+### 5. Consistency Above All
+
+The CLI should be predictable and learnable.
+
+- Small command surface (target: <15 top-level commands)
+- Consistent flags across commands
+- JSON mode for every command (AI/scripting friendly)
+- No hidden modes or surprising behavior
+
+---
+
+## What Pika Is
+
+- A schema enforcement layer for Markdown/YAML
+- A CLI-first tool with JSON mode for automation
+- A query engine for typed notes
+- A validator and auditor for note hygiene
+- A migration tool for schema evolution
+- A Neovim plugin for in-editor PKM (secondary)
+
+## What Pika Is NOT
+
+- **Not a note-taking app** — Use Neovim, Obsidian, whatever you want
+- **Not a database** — Markdown files are the source of truth
+- **Not a sync service** — Use Git, iCloud, Syncthing
+- **Not version control** — Use Git
+- **Not a web app** — CLI only
+- **Not a TUI** — Minimal terminal UI, just prompts
+- **Not a CMS** — But it makes Markdown-as-CMS safer
+
+---
+
+## Success Criteria
+
+Pika succeeds when:
+
+1. **You stop thinking about it** — The schema holds, notes are valid, queries work
+2. **You stop switching PKMs** — This is the last migration
+3. **Daily notes get processed effortlessly** — Write freely, organize later
+4. **Nothing feels lost** — Every note is discoverable, every idea tracked
+5. **You write more than you tweak** — The tool serves the work, not vice versa
+
+Pika fails if:
+
+1. **Schema isn't enforced** — The core promise is broken
+2. **Schema is hard to migrate** — Types should evolve easily
+3. **Audit drift lasts** — Mismatches should be caught and fixed quickly
+4. **Codebase becomes unwieldy** — Simple internals, maintainable code
+5. **CLI is inconsistent** — Commands should be intuitive and predictable
+6. **It over-scopes** — Don't reinvent Git, yq, or ripgrep
+
+---
+
+## Inheritance Model
+
+Pika uses strict type inheritance (design in progress).
+
+**Principles:**
+- All types inherit from `meta` (global fields)
+- Inheritance is explicit and on by default
+- Child types inherit all parent fields
+- No hybrid/optional inheritance (learned from TANA's confusion)
+- Folder structure may mirror type hierarchy
+
+**Example hierarchy:**
+```
+meta
+├── reflection
+│   ├── daily-note
+│   ├── idea
+│   └── learning
+├── objective
+│   ├── goal
+│   ├── project
+│   ├── milestone
+│   └── task
+├── entity
+│   ├── person
+│   ├── place
+│   └── software
+└── draft
+    ├── chapter
+    └── scene
+```
+
+> "If we commit to inheritance, we go all in. Consistency above all."
+
+---
+
+## CLI Design
+
+### Command Surface
+
+Target: <15 top-level commands that cover all use cases.
+
+**Current commands:**
+- `pika new` — Create notes with schema-driven prompts
+- `pika edit` — Modify existing note frontmatter
+- `pika list` — Query notes by type and fields
+- `pika search` — Find notes by name or content
+- `pika open` — Open notes in editor/Obsidian
+- `pika delete` — Remove notes with backlink warnings
+- `pika audit` — Validate notes against schema
+- `pika bulk` — Batch frontmatter operations
+- `pika schema` — Inspect and manage schema
+- `pika template` — Manage note templates
+
+**Open questions:**
+- Merge `list` and `search`?
+- Merge `open` into `search`?
+- Add AI commands (`ingest`, `costs`)?
+
+### Design Principles
+
+1. **Consistent flags** — Same flag means same thing everywhere
+2. **JSON mode everywhere** — `--output json` on all commands
+3. **Dry-run default for destructive ops** — `--execute` to apply
+4. **Predictable nesting** — Subcommands only where natural (`schema show`, `template list`)
+
+---
+
+## Neovim Plugin
+
+`pika.nvim` brings full CLI functionality to Neovim.
+
+**Philosophy:**
+- Feature parity with CLI (for human-usable operations)
+- Lean on existing plugins (Telescope, nvim-cmp, Treesitter)
+- Minimal custom UI
+- CLI is source of truth (plugin wraps `--json` mode)
+
+**Future: LSP**
+- Real-time schema validation in editor
+- Wikilink completion
+- Frontmatter field suggestions
+- Diagnostic integration for type errors
+
+---
+
+## Roadmap Priorities
+
+### V1.0 (Core)
+
+1. **Schema enforcement** — Hard on CLI, soft audit on drift
+2. **Inheritance model** — Full, consistent type inheritance
+3. **Core commands** — new, edit, list, search, audit, bulk, schema, template
+4. **JSON mode** — Every command scriptable
+5. **Migration tooling** — Rename fields, change enums, refactor types
+6. **Neovim plugin (basic)** — Search, create, edit via CLI wrapper
+
+### Post-V1.0
+
+- LSP for real-time validation
+- AI ingest command
+- Schema discovery from existing files
+- Obsidian plugin
+- Cost tracking for AI operations
+
+---
+
+## Naming
+
+- **CLI command:** `pika`
+- **Product name:** Pika
+- **Config directory:** `.pika/`
+- **Neovim plugin:** `pika.nvim`
+- **Schema file:** `.pika/schema.json`
+
+---
+
+## The Meta-Goal
+
+Pika exists so you can stop thinking about PKM tools and start thinking about what you're writing.
+
+The schema holds. The notes are valid. The queries work. You write.
+
+That's it.
