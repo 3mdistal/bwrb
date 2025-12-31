@@ -6,6 +6,7 @@ import { TemplateFrontmatterSchema, type Template, type Schema, type Field, type
 import { getTypeDefByPath, getFieldsForType, getEnumValues, getFrontmatterOrder, getSubtypeKeys, hasSubtypes } from './schema.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
+import { evaluateTemplateDefault, validateDateExpression, isDateExpression } from './date-expression.js';
 
 /**
  * Template Discovery and Parsing
@@ -616,9 +617,22 @@ export async function validateTemplate(
         continue;
       }
       
-      // Validate value against field definition
+      // Validate date expression syntax if it looks like one
+      if (typeof value === 'string') {
+        const dateExprError = validateDateExpression(value);
+        if (dateExprError) {
+          issues.push({
+            severity: 'error',
+            message: dateExprError,
+            field: fieldName,
+          });
+          continue;
+        }
+      }
+      
+      // Validate value against field definition (skip for date expressions)
       const field = fields[fieldName];
-      if (field) {
+      if (field && !(typeof value === 'string' && isDateExpression(value))) {
         const valueIssues = validateFieldValue(schema, fieldName, field, value);
         issues.push(...valueIssues);
       }
@@ -1053,14 +1067,19 @@ export async function createScaffoldedInstances(
       // Build frontmatter with defaults
       let frontmatter: Record<string, unknown> = {};
       
-      // Apply instance-specific defaults first
+      // Apply instance-specific defaults first, evaluating date expressions
       if (instance.defaults) {
-        frontmatter = { ...instance.defaults };
+        for (const [key, value] of Object.entries(instance.defaults)) {
+          frontmatter[key] = evaluateTemplateDefault(value);
+        }
       }
       
       // Apply template defaults (template overrides instance defaults)
+      // Also evaluate date expressions
       if (instanceTemplate?.defaults) {
-        frontmatter = { ...frontmatter, ...instanceTemplate.defaults };
+        for (const [key, value] of Object.entries(instanceTemplate.defaults)) {
+          frontmatter[key] = evaluateTemplateDefault(value);
+        }
       }
       
       // Apply schema defaults for any missing required fields

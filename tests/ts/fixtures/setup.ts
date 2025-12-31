@@ -244,6 +244,29 @@ prompt-fields:
 `
   );
 
+  // Template with date expression defaults for testing
+  await writeFile(
+    join(vaultDir, '.ovault/templates/objective/task', 'weekly-review.md'),
+    `---
+type: template
+template-for: objective/task
+description: Weekly review task with auto-deadline
+defaults:
+  status: backlog
+  deadline: "today() + '7d'"
+---
+
+## Review Items
+
+- [ ] Check completed tasks
+- [ ] Review priorities
+- [ ] Plan next week
+
+## Notes
+
+`
+  );
+
   return vaultDir;
 }
 

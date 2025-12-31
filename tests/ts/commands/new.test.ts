@@ -172,4 +172,47 @@ describe('new command', () => {
       expect(output.success).toBe(true);
     });
   });
+
+  describe('date expression evaluation in templates', () => {
+    it('should evaluate date expressions in template defaults', async () => {
+      // Use the weekly-review template which has deadline: "today() + '7d'"
+      const result = await runCLI(
+        ['new', 'objective/task', '--json', '{"name": "Weekly Review Test"}', '--template', 'weekly-review'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.success).toBe(true);
+
+      // Read the created file
+      const content = await readFile(join(vaultDir, output.path), 'utf-8');
+      
+      // deadline should be a date string (YYYY-MM-DD), not the expression
+      expect(content).not.toContain("today()");
+      expect(content).toMatch(/deadline: \d{4}-\d{2}-\d{2}/);
+      
+      // The date should be 7 days from today
+      const today = new Date();
+      const expectedDate = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const expectedDateStr = expectedDate.toISOString().slice(0, 10);
+      expect(content).toContain(`deadline: ${expectedDateStr}`);
+    });
+
+    it('should allow JSON input to override date expression defaults', async () => {
+      // Template has deadline: "today() + '7d'" but JSON input overrides it
+      const result = await runCLI(
+        ['new', 'objective/task', '--json', '{"name": "Override Date", "deadline": "2030-01-15"}', '--template', 'weekly-review'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.success).toBe(true);
+
+      const content = await readFile(join(vaultDir, output.path), 'utf-8');
+      // Should use the JSON-provided date, not the expression
+      expect(content).toContain('deadline: 2030-01-15');
+    });
+  });
 });

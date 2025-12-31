@@ -57,6 +57,7 @@ import {
   validateConstraints,
   createScaffoldedInstances,
 } from '../lib/template.js';
+import { evaluateTemplateDefault } from '../lib/date-expression.js';
 import type { Schema, TypeDef, Field, BodySection, Template } from '../types/schema.js';
 import { UserCancelledError } from '../lib/errors.js';
 
@@ -284,8 +285,13 @@ async function createNoteFromJson(
   // Apply template defaults first, then JSON input overrides them
   let mergedInput = { ...frontmatterInput };
   if (template?.defaults) {
+    // Evaluate date expressions in template defaults (e.g., today() + '7d')
+    const evaluatedDefaults: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(template.defaults)) {
+      evaluatedDefaults[key] = evaluateTemplateDefault(value);
+    }
     // Template defaults are base, JSON input takes precedence
-    mergedInput = { ...template.defaults, ...frontmatterInput };
+    mergedInput = { ...evaluatedDefaults, ...frontmatterInput };
   }
 
   // Validate and apply defaults
@@ -923,7 +929,8 @@ async function buildNoteContent(
 
     if (hasTemplateDefault && !shouldPrompt) {
       // Use template default without prompting
-      frontmatter[fieldName] = templateDefault;
+      // Evaluate date expressions like today() + '7d'
+      frontmatter[fieldName] = evaluateTemplateDefault(templateDefault);
     } else {
       // Prompt as normal
       const value = await promptField(schema, vaultDir, fieldName, field);

@@ -1058,4 +1058,51 @@ Template body here.
     expect(content).toContain('## SEO Research');
     expect(content).toContain('Template body here.');
   });
+
+  it('evaluates date expressions in instance defaults', async () => {
+    // Use a fixed date for predictable testing
+    const originalDate = Date;
+    const fixedDate = new Date('2025-06-15T10:30:00.000Z');
+    global.Date = class extends originalDate {
+      constructor(...args: [] | [string | number | Date]) {
+        if (args.length === 0) {
+          super(fixedDate.getTime());
+        } else {
+          super(args[0]);
+        }
+      }
+      static now() { return fixedDate.getTime(); }
+    } as DateConstructor;
+
+    try {
+      const instances = [
+        { 
+          subtype: 'research', 
+          filename: 'Dated Research.md', 
+          defaults: { topic: "today() + '7d'" } 
+        },
+      ];
+
+      const result = await createScaffoldedInstances(
+        testSchema,
+        tempDir,
+        'draft',
+        join(tempDir, 'Drafts', 'My Project'),
+        instances,
+        { Name: 'My Project' }
+      );
+
+      expect(result.created).toHaveLength(1);
+      
+      // Read the file and check the date expression was evaluated
+      const content = await import('fs/promises').then(fs => 
+        fs.readFile(join(tempDir, 'Drafts', 'My Project', 'Dated Research.md'), 'utf-8')
+      );
+      // today() + '7d' from 2025-06-15 = 2025-06-22
+      // YAML serializes simple strings without quotes
+      expect(content).toContain('topic: 2025-06-22');
+    } finally {
+      global.Date = originalDate;
+    }
+  });
 });

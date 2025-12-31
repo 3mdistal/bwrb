@@ -416,9 +416,17 @@ function subtract(left: unknown, right: unknown): unknown {
 
 /**
  * Parse a duration literal (e.g., '7d', '1w', '2h') into milliseconds.
+ * 
+ * Supported units:
+ * - min: minutes
+ * - h: hours
+ * - d: days
+ * - w: weeks
+ * - mon: months (30 days)
+ * - y: years (365 days)
  */
 export function parseDuration(str: string): number | null {
-  const match = str.match(/^'?(\d+)(min|h|d|w|m|y)'?$/);
+  const match = str.match(/^'?(\d+)(min|h|d|w|mon|y)'?$/);
   if (!match) return null;
 
   const value = parseInt(match[1] ?? '0', 10);
@@ -429,7 +437,7 @@ export function parseDuration(str: string): number | null {
     h: 60 * 60 * 1000,
     d: 24 * 60 * 60 * 1000,
     w: 7 * 24 * 60 * 60 * 1000,
-    m: 30 * 24 * 60 * 60 * 1000,
+    mon: 30 * 24 * 60 * 60 * 1000,
     y: 365 * 24 * 60 * 60 * 1000,
   };
 

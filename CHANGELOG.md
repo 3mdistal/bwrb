@@ -6,6 +6,13 @@ All notable changes to ovault are documented in this file.
 
 ### Added
 
+- **Relative date expressions in template defaults** (ovault-gqj)
+  - Templates can now use dynamic date expressions like `today()` or `today() + '7d'` in defaults
+  - Supported functions: `today()` (YYYY-MM-DD), `now()` (YYYY-MM-DD HH:MM)
+  - Supports addition/subtraction with duration literals: `'7d'`, `'1w'`, `'2h'`, `'30min'`, `'1mon'`, `'1y'`
+  - Date expressions are validated during `ovault template validate`
+  - Example template default: `deadline: "today() + '7d'"` sets deadline to 7 days from creation
+
 - **`ovault delete` command** (ovault-44z)
   - Delete notes from the vault: `ovault delete [query]`
   - Query resolution with picker support (fzf, numbered, or auto-detect)
@@ -21,6 +28,12 @@ All notable changes to ovault are documented in this file.
   - Completes the template CRUD cycle (list, show, new, edit, delete)
 
 ### Breaking Changes
+
+- **Duration unit for months changed from `m` to `mon`** (ovault-gqj)
+  - Previously ambiguous: `m` could mean minutes or months
+  - Now uses `mon` for months (e.g., `'1mon'` instead of `'1m'`)
+  - Minutes remain `min` (e.g., `'30min'`)
+  - **Migration required**: Update any `--where` expressions using `'1m'`, `'2m'`, etc. to `'1mon'`, `'2mon'`
 
 - **Removed `name_field` from schema** (ovault-jxd)
   - The `name_field` property is no longer supported in schema definitions

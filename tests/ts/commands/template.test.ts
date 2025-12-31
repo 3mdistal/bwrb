@@ -188,6 +188,53 @@ Body
       expect(result.stdout).toContain("Did you mean 'status'");
     });
 
+    it('should accept valid date expressions in defaults', async () => {
+      // Create a template with valid date expression - use status which is a valid field
+      // Date expressions are valid values even for non-date fields
+      await writeFile(
+        join(vaultDir, '.ovault/templates/objective/task', 'dated.md'),
+        `---
+type: template
+template-for: objective/task
+defaults:
+  status: backlog
+  deadline: "today() + '7d'"
+---
+Body
+`
+      );
+
+      const result = await runCLI(['template', 'validate'], vaultDir);
+
+      // The dated.md template should be marked as valid
+      expect(result.stdout).toContain('dated.md');
+      expect(result.stdout).toContain('Valid');
+      // Overall validation should pass
+      expect(result.exitCode).toBe(0);
+    });
+
+    it('should reject invalid date expressions in defaults', async () => {
+      // Create a template with invalid date expression syntax
+      await writeFile(
+        join(vaultDir, '.ovault/templates/objective/task', 'bad-date.md'),
+        `---
+type: template
+template-for: objective/task
+defaults:
+  status: backlog
+  deadline: "today( + 7d"
+---
+Body
+`
+      );
+
+      const result = await runCLI(['template', 'validate'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Invalid');
+      expect(result.stdout).toContain('Invalid date expression');
+    });
+
     it('should output JSON format', async () => {
       const result = await runCLI(['template', 'validate', '--output', 'json'], vaultDir);
 
