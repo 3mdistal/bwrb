@@ -16,7 +16,7 @@ import {
 } from '../schema.js';
 import { parseNote } from '../frontmatter.js';
 import { suggestEnumValue, suggestFieldName } from '../validation.js';
-import type { LoadedSchema } from '../../types/schema.js';
+import type { LoadedSchema, Field } from '../../types/schema.js';
 import {
   type AuditIssue,
   type FileAuditResult,
@@ -33,8 +33,18 @@ import {
 import {
   discoverManagedFiles,
   collectAllMarkdownFilenames,
+  buildNotePathMap,
   findSimilarFiles,
 } from '../discovery.js';
+
+// Import ownership tracking
+import {
+  buildOwnershipIndex,
+  isNoteOwned,
+  canReference,
+  extractWikilinkReferences,
+  type OwnershipIndex,
+} from '../ownership.js';
 
 // ============================================================================
 // Main Audit Runner
@@ -59,11 +69,17 @@ export async function runAudit(
   // Build set of all markdown files for stale reference checking
   const allFiles = await collectAllMarkdownFilenames(vaultDir);
 
+  // Build map from note names to relative paths for ownership checking
+  const notePathMap = await buildNotePathMap(vaultDir);
+
+  // Build ownership index for ownership violation checking
+  const ownershipIndex = await buildOwnershipIndex(schema, vaultDir);
+
   // Audit each file
   const results: FileAuditResult[] = [];
 
   for (const file of filteredFiles) {
-    const issues = await auditFile(schema, vaultDir, file, options, allFiles);
+    const issues = await auditFile(schema, vaultDir, file, options, allFiles, ownershipIndex, notePathMap);
 
     // Apply issue filters
     let filteredIssues = issues;
@@ -98,7 +114,9 @@ export async function auditFile(
   _vaultDir: string,
   file: ManagedFile,
   options: AuditRunOptions,
-  allFiles?: Set<string>
+  allFiles?: Set<string>,
+  ownershipIndex?: OwnershipIndex,
+  notePathMap?: Map<string, string>
 ): Promise<AuditIssue[]> {
   const issues: AuditIssue[] = [];
 
@@ -281,6 +299,18 @@ export async function auditFile(
     issues.push(...bodyStaleIssues);
   }
 
+  // Check for ownership violations
+  if (ownershipIndex && notePathMap) {
+    const ownershipIssues = await checkOwnershipViolations(
+      file,
+      frontmatter,
+      fields,
+      ownershipIndex,
+      notePathMap
+    );
+    issues.push(...ownershipIssues);
+  }
+
   return issues;
 }
 
@@ -423,6 +453,102 @@ function checkBodyStaleReferences(body: string, allFiles: Set<string>): AuditIss
           staleIssue.similarFiles = similarFiles;
         }
         issues.push(staleIssue);
+      }
+    }
+  }
+  
+  return issues;
+}
+
+// ============================================================================
+// Ownership Violation Detection
+// ============================================================================
+
+/**
+ * Check for ownership violations in frontmatter references.
+ * 
+ * Detects:
+ * - owned-note-referenced: A note references an owned note via a schema field
+ * - owned-wrong-location: An owned note is not in the expected location
+ */
+async function checkOwnershipViolations(
+  file: ManagedFile,
+  frontmatter: Record<string, unknown>,
+  fields: Record<string, Field>,
+  ownershipIndex: OwnershipIndex,
+  notePathMap: Map<string, string>
+): Promise<AuditIssue[]> {
+  const issues: AuditIssue[] = [];
+  
+  // Check if this file is owned and in the wrong location
+  const ownedInfo = isNoteOwned(ownershipIndex, file.relativePath);
+  if (ownedInfo && file.ownership) {
+    // Note is owned - verify it's in the correct location
+    // The expected location is based on ownership relationship
+    const ownerDir = dirname(ownedInfo.ownerPath);
+    const expectedDir = `${ownerDir}/${ownedInfo.fieldName}`;
+    const actualDir = dirname(file.relativePath);
+    
+    // Normalize paths for comparison
+    const normalizedExpected = expectedDir.replace(/\/$/, '');
+    const normalizedActual = actualDir.replace(/\/$/, '');
+    
+    if (normalizedActual !== normalizedExpected) {
+      issues.push({
+        severity: 'error',
+        code: 'owned-wrong-location',
+        message: `Owned note in wrong location: expected in ${expectedDir}`,
+        expected: expectedDir,
+        autoFixable: false,
+        ownerPath: ownedInfo.ownerPath,
+        ownedNotePath: file.relativePath,
+      });
+    }
+  }
+  
+  // Check each wikilink field to see if it references an owned note
+  for (const [fieldName, field] of Object.entries(fields)) {
+    // Skip non-wikilink fields and owned fields (owner is allowed to reference its owned notes)
+    if (!field.format || (field.format !== 'wikilink' && field.format !== 'quoted-wikilink')) {
+      continue;
+    }
+    
+    // If this field is marked as owned, the current note IS the owner - skip
+    if (field.owned) {
+      continue;
+    }
+    
+    const value = frontmatter[fieldName];
+    if (!value) continue;
+    
+    // Extract wikilink references from the field value
+    const references = extractWikilinkReferences(value);
+    
+    for (const refName of references) {
+      // Look up the referenced note's path using the path map
+      const refPath = notePathMap.get(refName);
+      
+      if (!refPath) {
+        // Note not found - stale reference check handles this
+        continue;
+      }
+      
+      // Check if referenced note is owned
+      const validation = canReference(ownershipIndex, file.relativePath, refPath);
+      
+      if (!validation.valid) {
+        for (const error of validation.errors) {
+          issues.push({
+            severity: 'error',
+            code: 'owned-note-referenced',
+            message: `Cannot reference owned note '${refName}' - it is owned by '${error.details?.existingOwnerPath}'`,
+            field: fieldName,
+            value: value,
+            autoFixable: false,
+            ownerPath: error.details?.existingOwnerPath,
+            ownedNotePath: refPath,
+          });
+        }
       }
     }
   }

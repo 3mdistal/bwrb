@@ -10,6 +10,7 @@ import {
   validateNewOwned,
   extractWikilinkReferences,
 } from '../../../src/lib/ownership.js';
+import { runAudit } from '../../../src/lib/audit/detection.js';
 
 // Test vault with ownership schema
 const createTestVault = () => {
@@ -80,12 +81,20 @@ const createNote = (vaultDir: string, path: string, frontmatter: Record<string, 
   const dir = join(fullPath, '..');
   mkdirSync(dir, { recursive: true });
   
+  const formatValue = (v: unknown): string => {
+    if (typeof v === 'string' && v.includes('[[')) {
+      // Quote wikilinks so YAML doesn't interpret [[ as array start
+      return `"${v}"`;
+    }
+    return String(v);
+  };
+  
   const yaml = Object.entries(frontmatter)
     .map(([k, v]) => {
       if (Array.isArray(v)) {
-        return `${k}:\n${v.map(item => `  - ${item}`).join('\n')}`;
+        return `${k}:\n${v.map(item => `  - ${formatValue(item)}`).join('\n')}`;
       }
-      return `${k}: ${v}`;
+      return `${k}: ${formatValue(v)}`;
     })
     .join('\n');
   
@@ -420,5 +429,143 @@ describe('Wikilink Extraction', () => {
   it('should return empty for non-string values', () => {
     const refs = extractWikilinkReferences(123);
     expect(refs).toEqual([]);
+  });
+});
+
+describe('Ownership Audit Integration', () => {
+  let vaultDir: string;
+  
+  beforeEach(() => {
+    vaultDir = createTestVault();
+  });
+  
+  afterEach(() => {
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+  
+  describe('owned-note-referenced detection', () => {
+    it('should detect when a non-owner references an owned note', async () => {
+      // Create an owner with an owned note
+      mkdirSync(join(vaultDir, 'drafts', 'My Novel', 'research'), { recursive: true });
+      createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+        type: 'draft',
+        status: 'active',
+        research: '[[Character Notes]]',
+      });
+      createNote(vaultDir, 'drafts/My Novel/research/Character Notes.md', {
+        type: 'research',
+        status: 'raw',
+      });
+      
+      // Create another draft that tries to reference the owned note
+      createNote(vaultDir, 'drafts/Other Draft.md', {
+        type: 'draft',
+        status: 'raw',
+        related: '[[Character Notes]]', // 'related' is not an owned field, so this is an illegal reference
+      });
+      
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, { strict: false });
+      
+      // Find the issue for Other Draft
+      const otherDraftResult = results.find(r => r.relativePath.includes('Other Draft'));
+      expect(otherDraftResult).toBeDefined();
+      
+      const ownershipIssue = otherDraftResult?.issues.find(i => i.code === 'owned-note-referenced');
+      expect(ownershipIssue).toBeDefined();
+      expect(ownershipIssue?.field).toBe('related');
+      expect(ownershipIssue?.ownerPath).toBe('drafts/My Novel/My Novel.md');
+    });
+    
+    it('should not flag owner referencing its own owned notes', async () => {
+      // Create an owner with an owned note
+      mkdirSync(join(vaultDir, 'drafts', 'My Novel', 'research'), { recursive: true });
+      createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+        type: 'draft',
+        status: 'active',
+        research: '[[Character Notes]]', // Owner referencing its owned note - valid
+      });
+      createNote(vaultDir, 'drafts/My Novel/research/Character Notes.md', {
+        type: 'research',
+        status: 'raw',
+      });
+      
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, { strict: false });
+      
+      // The owner should have no ownership violations
+      const novelResult = results.find(r => r.relativePath.includes('My Novel/My Novel'));
+      
+      // Either no result (no issues) or no ownership issues
+      if (novelResult) {
+        const ownershipIssues = novelResult.issues.filter(i => i.code === 'owned-note-referenced');
+        expect(ownershipIssues).toHaveLength(0);
+      }
+    });
+    
+    it('should not flag standalone notes being referenced', async () => {
+      // Create a standalone research note (not in an owner's folder)
+      mkdirSync(join(vaultDir, 'research'), { recursive: true });
+      createNote(vaultDir, 'research/Fantasy Tropes.md', {
+        type: 'research',
+        status: 'raw',
+      });
+      
+      // Another note references the standalone note
+      mkdirSync(join(vaultDir, 'drafts'), { recursive: true });
+      createNote(vaultDir, 'drafts/My Draft.md', {
+        type: 'draft',
+        status: 'raw',
+        related: '[[Fantasy Tropes]]', // Referencing standalone - valid
+      });
+      
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, { strict: false });
+      
+      // No ownership issues
+      const draftResult = results.find(r => r.relativePath.includes('My Draft'));
+      
+      if (draftResult) {
+        const ownershipIssues = draftResult.issues.filter(i => i.code === 'owned-note-referenced');
+        expect(ownershipIssues).toHaveLength(0);
+      }
+    });
+  });
+  
+  describe('multiple references in single field', () => {
+    it('should detect multiple owned note references', async () => {
+      // Create an owner with multiple owned notes
+      mkdirSync(join(vaultDir, 'drafts', 'My Novel', 'research'), { recursive: true });
+      createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+        type: 'draft',
+        status: 'active',
+      });
+      createNote(vaultDir, 'drafts/My Novel/research/Character Notes.md', {
+        type: 'research',
+        status: 'raw',
+      });
+      createNote(vaultDir, 'drafts/My Novel/research/World Building.md', {
+        type: 'research',
+        status: 'raw',
+      });
+      
+      // Another draft references both owned notes
+      createNote(vaultDir, 'drafts/Other Draft.md', {
+        type: 'draft',
+        status: 'raw',
+        related: ['[[Character Notes]]', '[[World Building]]'],
+      });
+      
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, { strict: false });
+      
+      // Find the issue for Other Draft
+      const otherDraftResult = results.find(r => r.relativePath.includes('Other Draft'));
+      expect(otherDraftResult).toBeDefined();
+      
+      const ownershipIssues = otherDraftResult?.issues.filter(i => i.code === 'owned-note-referenced');
+      // Should find 2 issues, one for each owned note reference
+      expect(ownershipIssues?.length).toBe(2);
+    });
   });
 });
