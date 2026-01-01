@@ -331,4 +331,97 @@ describe('schema', () => {
       });
     });
   });
+
+  describe('recursive types', () => {
+    it('should auto-create parent field for recursive types', async () => {
+      // Create a test schema with recursive type
+      const { mkdtemp, writeFile, mkdir, rm } = await import('fs/promises');
+      const { tmpdir } = await import('os');
+      const { join } = await import('path');
+      
+      const tempDir = await mkdtemp(join(tmpdir(), 'pika-recursive-test-'));
+      try {
+        await mkdir(join(tempDir, '.pika'), { recursive: true });
+        await writeFile(
+          join(tempDir, '.pika/schema.json'),
+          JSON.stringify({
+            version: 2,
+            types: {
+              task: {
+                recursive: true,
+                fields: {
+                  title: { prompt: 'input' }
+                }
+              }
+            }
+          })
+        );
+        
+        const recursiveSchema = await loadSchema(tempDir);
+        const taskType = recursiveSchema.types.get('task');
+        
+        expect(taskType).toBeDefined();
+        expect(taskType!.recursive).toBe(true);
+        expect(taskType!.fields['parent']).toBeDefined();
+        expect(taskType!.fields['parent'].source).toBe('task');
+        expect(taskType!.fields['parent'].format).toBe('wikilink');
+        expect(taskType!.fields['parent'].required).toBe(false);
+        expect(taskType!.fieldOrder).toContain('parent');
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should not override existing parent field for recursive types', async () => {
+      const { mkdtemp, writeFile, mkdir, rm } = await import('fs/promises');
+      const { tmpdir } = await import('os');
+      const { join } = await import('path');
+      
+      const tempDir = await mkdtemp(join(tmpdir(), 'pika-recursive-test-'));
+      try {
+        await mkdir(join(tempDir, '.pika'), { recursive: true });
+        await writeFile(
+          join(tempDir, '.pika/schema.json'),
+          JSON.stringify({
+            version: 2,
+            types: {
+              task: {
+                recursive: true,
+                fields: {
+                  title: { prompt: 'input' },
+                  parent: {
+                    prompt: 'dynamic',
+                    source: 'task',
+                    format: 'quoted-wikilink',
+                    required: true,
+                    label: 'Parent Task'
+                  }
+                }
+              }
+            }
+          })
+        );
+        
+        const recursiveSchema = await loadSchema(tempDir);
+        const taskType = recursiveSchema.types.get('task');
+        
+        expect(taskType).toBeDefined();
+        expect(taskType!.recursive).toBe(true);
+        // Should preserve the explicit field definition
+        expect(taskType!.fields['parent'].format).toBe('quoted-wikilink');
+        expect(taskType!.fields['parent'].required).toBe(true);
+        expect(taskType!.fields['parent'].label).toBe('Parent Task');
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should not add parent field for non-recursive types', async () => {
+      // The test fixture schema has non-recursive types
+      const ideaType = schema.types.get('idea');
+      expect(ideaType).toBeDefined();
+      expect(ideaType!.recursive).toBe(false);
+      expect(ideaType!.fields['parent']).toBeUndefined();
+    });
+  });
 });

@@ -30,7 +30,8 @@ export type IssueCode =
   | 'stale-reference'
   | 'invalid-source-type'
   | 'owned-note-referenced'
-  | 'owned-wrong-location';
+  | 'owned-wrong-location'
+  | 'parent-cycle';
 
 /**
  * A single audit issue.
@@ -64,6 +65,8 @@ export interface AuditIssue {
   expectedType?: string | undefined;
   /** For invalid-source-type: the actual type of the referenced note */
   actualType?: string | undefined;
+  /** For parent-cycle: the cycle path showing the loop */
+  cyclePath?: string[] | undefined;
 }
 
 /**

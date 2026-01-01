@@ -192,7 +192,24 @@ export function resolveSchema(schema: Schema): LoadedSchema {
     type.fieldOrder = computeFieldOrder(types, type);
   }
   
-  // Fourth pass: build ownership map
+  // Fourth pass: add implied parent field for recursive types
+  for (const type of types.values()) {
+    if (type.recursive && !type.fields['parent']) {
+      // Auto-create the parent field for recursive types
+      type.fields['parent'] = {
+        prompt: 'dynamic',
+        source: type.name,
+        format: 'wikilink',
+        required: false,
+      };
+      // Add parent to field order if not already present
+      if (!type.fieldOrder.includes('parent')) {
+        type.fieldOrder.push('parent');
+      }
+    }
+  }
+  
+  // Fifth pass: build ownership map
   const ownership = buildOwnershipMap(types);
   
   return { raw: schema, types, enums, dynamicSources, ownership };

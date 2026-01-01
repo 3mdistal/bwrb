@@ -80,11 +80,14 @@ export async function runAudit(
   // Build map from note names to their types for context field validation
   const noteTypeMap = await buildNoteTypeMap(schema, vaultDir);
 
+  // Build parent map for cycle detection on recursive types
+  const parentMap = await buildParentMap(schema, vaultDir, filteredFiles);
+
   // Audit each file
   const results: FileAuditResult[] = [];
 
   for (const file of filteredFiles) {
-    const issues = await auditFile(schema, vaultDir, file, options, allFiles, ownershipIndex, notePathMap, noteTypeMap);
+    const issues = await auditFile(schema, vaultDir, file, options, allFiles, ownershipIndex, notePathMap, noteTypeMap, parentMap);
 
     // Apply issue filters
     let filteredIssues = issues;
@@ -122,7 +125,8 @@ export async function auditFile(
   allFiles?: Set<string>,
   ownershipIndex?: OwnershipIndex,
   notePathMap?: Map<string, string>,
-  noteTypeMap?: Map<string, string>
+  noteTypeMap?: Map<string, string>,
+  parentMap?: Map<string, string>
 ): Promise<AuditIssue[]> {
   const issues: AuditIssue[] = [];
 
@@ -324,6 +328,14 @@ export async function auditFile(
       notePathMap
     );
     issues.push(...ownershipIssues);
+  }
+
+  // Check for parent cycles in recursive types
+  if (parentMap && typeDef.recursive) {
+    const cycleIssue = checkParentCycle(file, parentMap);
+    if (cycleIssue) {
+      issues.push(cycleIssue);
+    }
   }
 
   return issues;
@@ -672,6 +684,86 @@ async function checkOwnershipViolations(
   }
   
   return issues;
+}
+
+// ============================================================================
+// Parent Cycle Detection
+// ============================================================================
+
+/**
+ * Build a map from note names to their parent note names for recursive types.
+ * Used to detect cycles in parent references (e.g., A -> B -> A).
+ */
+async function buildParentMap(
+  schema: LoadedSchema,
+  _vaultDir: string,
+  files: ManagedFile[]
+): Promise<Map<string, string>> {
+  const parentMap = new Map<string, string>();
+  
+  for (const file of files) {
+    try {
+      const { frontmatter } = await parseNote(file.path);
+      const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
+      if (!typePath) continue;
+      
+      const typeDef = getType(schema, typePath);
+      if (!typeDef?.recursive) continue;
+      
+      // Get the parent field value
+      const parentValue = frontmatter['parent'];
+      if (!parentValue) continue;
+      
+      // Extract the parent note name from the wikilink
+      const parentTarget = extractWikilinkTarget(String(parentValue));
+      if (parentTarget) {
+        const noteName = basename(file.path, '.md');
+        parentMap.set(noteName, parentTarget);
+      }
+    } catch {
+      // Skip files that can't be parsed
+    }
+  }
+  
+  return parentMap;
+}
+
+/**
+ * Check if a note is part of a parent cycle.
+ * Returns an AuditIssue if a cycle is detected, null otherwise.
+ */
+function checkParentCycle(
+  file: ManagedFile,
+  parentMap: Map<string, string>
+): AuditIssue | null {
+  const noteName = basename(file.path, '.md');
+  const visited = new Set<string>();
+  const path: string[] = [noteName];
+  
+  // Add the starting note to visited
+  visited.add(noteName);
+  
+  let current = parentMap.get(noteName);
+  
+  while (current) {
+    if (visited.has(current)) {
+      // Found a cycle that includes the original note
+      return {
+        severity: 'error',
+        code: 'parent-cycle',
+        message: `Parent cycle detected: ${path.join(' → ')} → ${current}`,
+        field: 'parent',
+        autoFixable: false,
+        cyclePath: [...path, current],
+      };
+    }
+    
+    visited.add(current);
+    path.push(current);
+    current = parentMap.get(current);
+  }
+  
+  return null;
 }
 
 // ============================================================================

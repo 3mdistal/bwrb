@@ -1752,4 +1752,156 @@ milestone: "[[Some Idea]]"
       expect(result.stdout).toContain('idea');
     });
   });
+
+  describe('parent cycle detection', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-cycle-'));
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      // Schema with a recursive type
+      const schemaWithRecursive = {
+        version: 2,
+        enums: {
+          status: ['raw', 'backlog', 'in-flight', 'settled']
+        },
+        types: {
+          task: {
+            recursive: true,
+            output_dir: 'Tasks',
+            fields: {
+              status: { prompt: 'select', enum: 'status', default: 'raw' }
+            }
+          }
+        }
+      };
+      await writeFile(
+        join(tempVaultDir, '.pika', 'schema.json'),
+        JSON.stringify(schemaWithRecursive, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Tasks'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect direct parent cycle (A -> A)', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Tasks', 'Self Referencing.md'),
+        `---
+type: task
+status: raw
+parent: "[[Self Referencing]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Parent cycle detected');
+      expect(result.stdout).toContain('Self Referencing');
+    });
+
+    it('should detect indirect parent cycle (A -> B -> A)', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Tasks', 'Task A.md'),
+        `---
+type: task
+status: raw
+parent: "[[Task B]]"
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'Tasks', 'Task B.md'),
+        `---
+type: task
+status: raw
+parent: "[[Task A]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Parent cycle detected');
+    });
+
+    it('should detect longer parent cycles (A -> B -> C -> A)', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Tasks', 'Task A.md'),
+        `---
+type: task
+status: raw
+parent: "[[Task B]]"
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'Tasks', 'Task B.md'),
+        `---
+type: task
+status: raw
+parent: "[[Task C]]"
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'Tasks', 'Task C.md'),
+        `---
+type: task
+status: raw
+parent: "[[Task A]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Parent cycle detected');
+    });
+
+    it('should not flag valid parent chains', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Tasks', 'Parent Task.md'),
+        `---
+type: task
+status: raw
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'Tasks', 'Child Task.md'),
+        `---
+type: task
+status: raw
+parent: "[[Parent Task]]"
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'Tasks', 'Grandchild Task.md'),
+        `---
+type: task
+status: raw
+parent: "[[Child Task]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('No issues found');
+    });
+  });
 });
