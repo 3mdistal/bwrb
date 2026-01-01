@@ -28,6 +28,14 @@ All notable changes to Pika are documented in this file.
     - `owned-wrong-location`: Owned note not in expected folder location
   - New schema field: `owned: true` on dynamic source fields declares child ownership
 
+- **Context field type validation in audit** (pika-taz)
+  - `pika audit` now validates that context fields (wikilink fields with `source` property) reference notes of the correct type
+  - New issue code: `invalid-source-type` - reports when a field references a note of the wrong type
+  - Example: If a task's `milestone` field has `source: "milestone"`, audit will error if it links to a task instead
+  - Supports parent types: `source: "objective"` accepts objectives and all descendants (task, milestone, etc.)
+  - Skips validation for legacy `dynamic_sources` (use type-based sources for validation)
+  - JSON output includes `expectedType` and `actualType` for debugging
+
 - **Custom plural names for folder computation** (pika-2e1)
   - Add `plural` property to type definitions for custom folder naming
   - Example: `"research": { "plural": "research" }` → folder is `research/` not `researches/`

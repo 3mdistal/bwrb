@@ -13,6 +13,7 @@ import {
   resolveTypeFromFrontmatter,
   getOutputDir,
   getTypeFamilies,
+  getDescendants,
 } from '../schema.js';
 import { parseNote } from '../frontmatter.js';
 import { suggestEnumValue, suggestFieldName } from '../validation.js';
@@ -34,6 +35,7 @@ import {
   discoverManagedFiles,
   collectAllMarkdownFilenames,
   buildNotePathMap,
+  buildNoteTypeMap,
   findSimilarFiles,
 } from '../discovery.js';
 
@@ -75,11 +77,14 @@ export async function runAudit(
   // Build ownership index for ownership violation checking
   const ownershipIndex = await buildOwnershipIndex(schema, vaultDir);
 
+  // Build map from note names to their types for context field validation
+  const noteTypeMap = await buildNoteTypeMap(schema, vaultDir);
+
   // Audit each file
   const results: FileAuditResult[] = [];
 
   for (const file of filteredFiles) {
-    const issues = await auditFile(schema, vaultDir, file, options, allFiles, ownershipIndex, notePathMap);
+    const issues = await auditFile(schema, vaultDir, file, options, allFiles, ownershipIndex, notePathMap, noteTypeMap);
 
     // Apply issue filters
     let filteredIssues = issues;
@@ -116,7 +121,8 @@ export async function auditFile(
   options: AuditRunOptions,
   allFiles?: Set<string>,
   ownershipIndex?: OwnershipIndex,
-  notePathMap?: Map<string, string>
+  notePathMap?: Map<string, string>,
+  noteTypeMap?: Map<string, string>
 ): Promise<AuditIssue[]> {
   const issues: AuditIssue[] = [];
 
@@ -268,6 +274,15 @@ export async function auditFile(
       if (staleIssue) {
         issues.push(staleIssue);
       }
+    }
+
+    // Check context field source types (wikilinks must point to correct type)
+    if (noteTypeMap && field.source && value && 
+        (field.format === 'wikilink' || field.format === 'quoted-wikilink')) {
+      const sourceIssues = checkContextFieldSource(
+        schema, fieldName, value, field.source, noteTypeMap
+      );
+      issues.push(...sourceIssues);
     }
   }
 
@@ -458,6 +473,109 @@ function checkBodyStaleReferences(body: string, allFiles: Set<string>): AuditIss
   }
   
   return issues;
+}
+
+// ============================================================================
+// Context Field Source Validation
+// ============================================================================
+
+/**
+ * Check if a context field value matches its source type constraint.
+ * 
+ * The source property can specify:
+ * - A type name (e.g., "milestone") - only that exact type is valid
+ * - A parent type name (e.g., "objective") - that type and all descendants are valid
+ * - "any" - any note is valid (no type checking)
+ * - A dynamic_source name (legacy) - skip validation (handled by separate migration)
+ * 
+ * Handles both single values and arrays (for multiple: true fields).
+ */
+function checkContextFieldSource(
+  schema: LoadedSchema,
+  fieldName: string,
+  value: unknown,
+  source: string,
+  noteTypeMap: Map<string, string>
+): AuditIssue[] {
+  const issues: AuditIssue[] = [];
+  
+  // Handle "any" source - no type restriction
+  if (source === 'any') return issues;
+  
+  // Check if source refers to a dynamic_source (legacy) - skip validation
+  // These will be migrated to type-based sources in a future update
+  if (schema.dynamicSources.has(source)) {
+    return issues;
+  }
+  
+  // Check if source is a valid type
+  const sourceType = schema.types.get(source);
+  if (!sourceType) {
+    // Source is not a known type - schema validation should catch this
+    return issues;
+  }
+  
+  // Get all valid types (source type + all descendants)
+  const validTypes = new Set([source, ...getDescendants(schema, source)]);
+  
+  // Handle array values (multiple: true fields)
+  const values = Array.isArray(value) ? value : [value];
+  
+  for (const v of values) {
+    const issue = checkSingleContextValue(
+      fieldName, v, source, validTypes, noteTypeMap
+    );
+    if (issue) {
+      issues.push(issue);
+    }
+  }
+  
+  return issues;
+}
+
+/**
+ * Check a single context field value against the source type constraint.
+ */
+function checkSingleContextValue(
+  fieldName: string,
+  value: unknown,
+  source: string,
+  validTypes: Set<string>,
+  noteTypeMap: Map<string, string>
+): AuditIssue | null {
+  const strValue = String(value);
+  const target = extractWikilinkTarget(strValue);
+  
+  if (!target) return null;
+  
+  // Look up the referenced note's type
+  const actualType = noteTypeMap.get(target);
+  if (!actualType) {
+    // Note doesn't exist or has no type - stale reference check handles this
+    return null;
+  }
+  
+  // Check if actual type is in the set of valid types
+  if (validTypes.has(actualType)) {
+    return null; // Valid
+  }
+  
+  // Type mismatch!
+  const validTypesArray = Array.from(validTypes);
+  const suggestion = suggestEnumValue(actualType, validTypesArray);
+  
+  return {
+    severity: 'error',
+    code: 'invalid-source-type',
+    message: `Type mismatch: '${fieldName}' expects ${source}${validTypesArray.length > 1 ? ' (or descendant)' : ''}, but '${target}' is ${actualType}`,
+    field: fieldName,
+    value: strValue,
+    expectedType: source,
+    actualType: actualType,
+    expected: validTypesArray.length > 1 ? validTypesArray : source,
+    ...(suggestion && { suggestion: `Did you mean to link to a ${suggestion}?` }),
+    autoFixable: false,
+  };
 }
 
 // ============================================================================

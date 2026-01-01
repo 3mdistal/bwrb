@@ -74,6 +74,8 @@ export function outputJsonResults(results: FileAuditResult[], summary: AuditSumm
         ...(i.similarFiles && { similarFiles: i.similarFiles }),
         ...(i.inBody !== undefined && { inBody: i.inBody }),
         ...(i.lineNumber !== undefined && { lineNumber: i.lineNumber }),
+        ...(i.expectedType && { expectedType: i.expectedType }),
+        ...(i.actualType && { actualType: i.actualType }),
       })),
     })),
     summary,
