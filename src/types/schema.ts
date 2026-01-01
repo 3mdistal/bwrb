@@ -79,7 +79,7 @@ export const AuditConfigSchema = z.object({
 });
 
 // Root schema
-export const OvaultSchema = z.object({
+export const PikaSchema = z.object({
   version: z.number().optional().default(1),
   shared_fields: z.record(FieldSchema).optional(),
   enums: z.record(z.array(z.string())).optional(),
@@ -132,7 +132,7 @@ export type SubtypeInput = {
   subtypes?: Record<string, SubtypeInput> | undefined;
 };
 export type Type = z.infer<typeof TypeSchema>;
-export type Schema = z.infer<typeof OvaultSchema>;
+export type Schema = z.infer<typeof PikaSchema>;
 
 // Type definition union (either a full Type or a Subtype)
 export type TypeDef = Type | Subtype;

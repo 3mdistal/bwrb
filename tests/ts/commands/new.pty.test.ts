@@ -1,5 +1,5 @@
 /**
- * PTY-based integration tests for the `ovault new` command.
+ * PTY-based integration tests for the `pika new` command.
  *
  * Tests full command flows including type navigation, template selection,
  * and cancellation behavior.
@@ -78,7 +78,7 @@ const FULL_SCHEMA = {
   },
 };
 
-describePty('ovault new command PTY tests', () => {
+describePty('pika new command PTY tests', () => {
   beforeAll(() => {
     expect(existsSync(TEST_VAULT_PATH)).toBe(true);
   });
@@ -366,7 +366,7 @@ status: in-flight
       // Default template for ideas - should auto-apply without prompting for template
       // Note: Template has defaults for all fields, so no prompts after name!
       const defaultTemplate: TempVaultFile = {
-        path: '.ovault/templates/idea/default.md',
+        path: '.pika/templates/idea/default.md',
         content: `---
 type: template
 template-for: idea
@@ -411,7 +411,7 @@ defaults:
       // Two templates, neither is default.md
       // quick has status default, detailed has priority default
       const template1: TempVaultFile = {
-        path: '.ovault/templates/idea/quick.md',
+        path: '.pika/templates/idea/quick.md',
         content: `---
 type: template
 template-for: idea
@@ -425,7 +425,7 @@ Quick idea notes:
 `,
       };
       const template2: TempVaultFile = {
-        path: '.ovault/templates/idea/detailed.md',
+        path: '.pika/templates/idea/detailed.md',
         content: `---
 type: template
 template-for: idea
@@ -477,7 +477,7 @@ defaults:
     it('should allow skipping template with [No template] option', async () => {
       // Single template (non-default), user chooses [No template]
       const template1: TempVaultFile = {
-        path: '.ovault/templates/idea/quick.md',
+        path: '.pika/templates/idea/quick.md',
         content: `---
 type: template
 template-for: idea

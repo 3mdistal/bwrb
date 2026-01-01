@@ -80,29 +80,29 @@ Output:
 
 Examples:
   # Preview changes (dry-run)
-  ovault bulk task --set status=done --where "status == 'in-progress'"
+  pika bulk task --set status=done --where "status == 'in-progress'"
 
   # Apply changes
-  ovault bulk task --set status=done --where "status == 'in-progress'" --execute
+  pika bulk task --set status=done --where "status == 'in-progress'" --execute
 
   # Multiple operations
-  ovault bulk task --set status=done --set "completion-date=2025-01-15" --execute
+  pika bulk task --set status=done --set "completion-date=2025-01-15" --execute
 
   # Rename a field across all files
-  ovault bulk idea --rename old-field=new-field --execute
+  pika bulk idea --rename old-field=new-field --execute
 
   # Append to a list field
-  ovault bulk task --append tags=urgent --where "priority == 'high'" --execute
+  pika bulk task --append tags=urgent --where "priority == 'high'" --execute
 
   # Create backup before changes
-  ovault bulk task --set status=archived --execute --backup
+  pika bulk task --set status=archived --execute --backup
 
   # Move files to archive (updates wikilinks automatically)
-  ovault bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
+  pika bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
 
   # Using simple filters
-  ovault bulk task --status=done --set archived=true --execute
-  ovault bulk idea --priority=high,critical --set urgent=true --execute`)
+  pika bulk task --status=done --set archived=true --execute
+  pika bulk idea --priority=high,critical --set urgent=true --execute`)
   .argument('<type>', 'Type path (e.g., idea, objective/task)')
   .option('--set <field=value...>', 'Set field value (or clear with --set field=)')
   .option('--rename <old=new...>', 'Rename field')

@@ -43,12 +43,12 @@ export const editCommand = new Command('edit')
   .option('--json <frontmatter>', 'Update note non-interactively with JSON (patch/merge semantics)')
   .addHelpText('after', `
 Examples:
-  ovault edit Ideas/My\\ Idea.md
-  ovault edit "Objectives/Tasks/My Task.md" --open
+  pika edit Ideas/My\\ Idea.md
+  pika edit "Objectives/Tasks/My Task.md" --open
 
 Non-interactive (JSON) mode:
-  ovault edit "Tasks/Fix bug.md" --json '{"status": "done"}'
-  ovault edit Ideas/Idea.md --json '{"priority": "high", "tags": ["urgent"]}'
+  pika edit "Tasks/Fix bug.md" --json '{"status": "done"}'
+  pika edit Ideas/Idea.md --json '{"priority": "high", "tags": ["urgent"]}'
   
 JSON mode uses patch/merge semantics:
   - Only fields present in JSON are updated

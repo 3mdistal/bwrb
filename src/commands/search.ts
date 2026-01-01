@@ -120,19 +120,19 @@ Content Search (--text):
 
 Examples:
   # Name search
-  ovault search "My Note"                    # Find by name
-  ovault search "My Note" --wikilink         # Output: [[My Note]]
+  pika search "My Note"                    # Find by name
+  pika search "My Note" --wikilink         # Output: [[My Note]]
   
   # Content search
-  ovault search "deploy" --text              # Search all notes for "deploy"
-  ovault search "deploy" -t --type task      # Search only in tasks
-  ovault search "TODO" -t --status!=done     # Simple filter syntax
-  ovault search "TODO" -t --where "status != 'done'"  # Expression filter
-  ovault search "error.*log" -t --regex      # Regex search
-  ovault search "deploy" -t --output json    # JSON output with matches
+  pika search "deploy" --text              # Search all notes for "deploy"
+  pika search "deploy" -t --type task      # Search only in tasks
+  pika search "TODO" -t --status!=done     # Simple filter syntax
+  pika search "TODO" -t --where "status != 'done'"  # Expression filter
+  pika search "error.*log" -t --regex      # Regex search
+  pika search "deploy" -t --output json    # JSON output with matches
   
   # Piping
-  ovault search "bug" -t --path | xargs -I {} code {}`)
+  pika search "bug" -t --path | xargs -I {} code {}`)
   .action(async (query: string | undefined, options: SearchOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 

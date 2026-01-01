@@ -228,14 +228,14 @@ describe('edge cases', () => {
 
     beforeAll(async () => {
       // Create vault in temp dir with space in name
-      spacedVaultDir = await mkdtemp(join(tmpdir(), 'ovault test vault '));
+      spacedVaultDir = await mkdtemp(join(tmpdir(), 'pika test vault '));
 
       // Create minimal vault structure
-      await mkdir(join(spacedVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(spacedVaultDir, '.pika'), { recursive: true });
       await mkdir(join(spacedVaultDir, 'Ideas'), { recursive: true });
 
       await writeFile(
-        join(spacedVaultDir, '.ovault', 'schema.json'),
+        join(spacedVaultDir, '.pika', 'schema.json'),
         JSON.stringify({
           version: 1,
           enums: { status: ['raw', 'done'] },

@@ -15,9 +15,9 @@ import { templateCommand } from './commands/template.js';
 const program = new Command();
 
 program
-  .name('ovault')
-  .description('Schema-driven template creation and editing for Obsidian vaults')
-  .version('2.0.0')
+  .name('pika')
+  .description('Schema-driven note management for markdown vaults')
+  .version('0.2.0')
   .option('-v, --vault <path>', 'Path to the vault directory');
 
 program.addCommand(newCommand);

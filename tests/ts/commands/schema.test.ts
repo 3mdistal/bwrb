@@ -121,10 +121,10 @@ describe('schema command', () => {
 
     it('should error on invalid schema', async () => {
       // Create a vault with invalid schema
-      const invalidVaultDir = await mkdtemp(join(tmpdir(), 'ovault-invalid-'));
-      await mkdir(join(invalidVaultDir, '.ovault'), { recursive: true });
+      const invalidVaultDir = await mkdtemp(join(tmpdir(), 'pika-invalid-'));
+      await mkdir(join(invalidVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(invalidVaultDir, '.ovault', 'schema.json'),
+        join(invalidVaultDir, '.pika', 'schema.json'),
         JSON.stringify({ invalid: 'schema' })
       );
 
@@ -140,7 +140,7 @@ describe('schema command', () => {
 
     it('should error when schema file is missing', async () => {
       // Create a vault with no schema
-      const noSchemaVaultDir = await mkdtemp(join(tmpdir(), 'ovault-noschema-'));
+      const noSchemaVaultDir = await mkdtemp(join(tmpdir(), 'pika-noschema-'));
 
       try {
         const result = await runCLI(['schema', 'validate'], noSchemaVaultDir);
@@ -153,10 +153,10 @@ describe('schema command', () => {
 
     it('should error on malformed JSON', async () => {
       // Create a vault with malformed JSON
-      const malformedVaultDir = await mkdtemp(join(tmpdir(), 'ovault-malformed-'));
-      await mkdir(join(malformedVaultDir, '.ovault'), { recursive: true });
+      const malformedVaultDir = await mkdtemp(join(tmpdir(), 'pika-malformed-'));
+      await mkdir(join(malformedVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(malformedVaultDir, '.ovault', 'schema.json'),
+        join(malformedVaultDir, '.pika', 'schema.json'),
         '{ invalid json'
       );
 

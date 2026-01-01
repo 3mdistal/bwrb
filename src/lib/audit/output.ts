@@ -141,7 +141,7 @@ export function outputTextResults(
 
   if (summary.totalErrors > 0) {
     console.log('');
-    console.log(chalk.dim("Run 'ovault audit --fix' to repair interactively."));
+    console.log(chalk.dim("Run 'pika audit --fix' to repair interactively."));
   }
 }
 
@@ -164,7 +164,7 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
 
   if (summary.remaining > 0 && autoMode) {
     console.log('');
-    console.log(chalk.dim("Run 'ovault audit --fix' to address remaining issues interactively."));
+    console.log(chalk.dim("Run 'pika audit --fix' to address remaining issues interactively."));
   }
 }
 

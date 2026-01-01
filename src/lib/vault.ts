@@ -11,8 +11,8 @@ export function resolveVaultDir(options: { vault?: string }): string {
   if (options.vault) {
     return options.vault;
   }
-  if (process.env['OVAULT_VAULT']) {
-    return process.env['OVAULT_VAULT'];
+  if (process.env['PIKA_VAULT']) {
+    return process.env['PIKA_VAULT'];
   }
   return process.cwd();
 }

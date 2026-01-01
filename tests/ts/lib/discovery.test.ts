@@ -47,9 +47,9 @@ describe('Discovery', () => {
   });
 
   describe('getExcludedDirectories', () => {
-    it('should always exclude .ovault', () => {
+    it('should always exclude .pika', () => {
       const excluded = getExcludedDirectories(schema);
-      expect(excluded.has('.ovault')).toBe(true);
+      expect(excluded.has('.pika')).toBe(true);
     });
 
     it('should include schema-configured exclusions', () => {
@@ -57,18 +57,18 @@ describe('Discovery', () => {
       expect(excluded.has('Templates')).toBe(true);
     });
 
-    it('should respect OVAULT_AUDIT_EXCLUDE env var', () => {
-      const originalEnv = process.env.OVAULT_AUDIT_EXCLUDE;
+    it('should respect PIKA_AUDIT_EXCLUDE env var', () => {
+      const originalEnv = process.env.PIKA_AUDIT_EXCLUDE;
       try {
-        process.env.OVAULT_AUDIT_EXCLUDE = 'Archive,Drafts/';
+        process.env.PIKA_AUDIT_EXCLUDE = 'Archive,Drafts/';
         const excluded = getExcludedDirectories(schema);
         expect(excluded.has('Archive')).toBe(true);
         expect(excluded.has('Drafts')).toBe(true); // Trailing slash normalized
       } finally {
         if (originalEnv === undefined) {
-          delete process.env.OVAULT_AUDIT_EXCLUDE;
+          delete process.env.PIKA_AUDIT_EXCLUDE;
         } else {
-          process.env.OVAULT_AUDIT_EXCLUDE = originalEnv;
+          process.env.PIKA_AUDIT_EXCLUDE = originalEnv;
         }
       }
     });

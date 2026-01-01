@@ -47,7 +47,7 @@ describe('audit command', () => {
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       // Schema with a required field that has NO default
       const schemaWithRequired = {
         ...TEST_SCHEMA,
@@ -63,7 +63,7 @@ describe('audit command', () => {
         },
       };
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(schemaWithRequired, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -96,9 +96,9 @@ priority: medium
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -148,9 +148,9 @@ priority: medium
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -222,9 +222,9 @@ tags:
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -256,9 +256,9 @@ priority: medium
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -308,9 +308,9 @@ status: raw
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -368,9 +368,9 @@ priority: medium
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -457,9 +457,9 @@ priority: medium
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -514,9 +514,9 @@ priority: medium
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-fix-test-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -636,9 +636,9 @@ priority: medium
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-fix-test-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -689,9 +689,9 @@ priority: medium
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-vaultwide-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -809,7 +809,7 @@ priority: medium
       expect(result.stdout).not.toContain('temp.tmp.md');
     });
 
-    it('should respect OVAULT_AUDIT_EXCLUDE env var', async () => {
+    it('should respect PIKA_AUDIT_EXCLUDE env var', async () => {
       // Create a directory that should be excluded via env var
       await mkdir(join(tempVaultDir, 'Archive'), { recursive: true });
       await writeFile(
@@ -832,8 +832,8 @@ priority: medium
       );
 
       // Set env var and run
-      const originalEnv = process.env.OVAULT_AUDIT_EXCLUDE;
-      process.env.OVAULT_AUDIT_EXCLUDE = 'Archive';
+      const originalEnv = process.env.PIKA_AUDIT_EXCLUDE;
+      process.env.PIKA_AUDIT_EXCLUDE = 'Archive';
 
       try {
         const result = await runCLI(['audit'], tempVaultDir);
@@ -844,9 +844,9 @@ priority: medium
       } finally {
         // Restore env
         if (originalEnv === undefined) {
-          delete process.env.OVAULT_AUDIT_EXCLUDE;
+          delete process.env.PIKA_AUDIT_EXCLUDE;
         } else {
-          process.env.OVAULT_AUDIT_EXCLUDE = originalEnv;
+          process.env.PIKA_AUDIT_EXCLUDE = originalEnv;
         }
       }
     });
@@ -860,7 +860,7 @@ priority: medium
         },
       };
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(schemaWithExclusions, null, 2)
       );
 
@@ -907,9 +907,9 @@ priority: medium
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-orphan-fix-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -1018,9 +1018,9 @@ title: Random note
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-allow-field-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -1097,10 +1097,10 @@ otherField: value
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-format-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       // Use schema with wikilink format field
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
@@ -1196,9 +1196,9 @@ milestone: "[[Q1 Release]]"
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-stale-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -1386,7 +1386,7 @@ Link with both: [[Missing Note#Section|Alias]]
 
     beforeEach(async () => {
       tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-schema-allow-'));
-      await mkdir(join(tempVaultDir, '.ovault'), { recursive: true });
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
     });
 
@@ -1403,7 +1403,7 @@ Link with both: [[Missing Note#Section|Alias]]
         },
       };
       await writeFile(
-        join(tempVaultDir, '.ovault', 'schema.json'),
+        join(tempVaultDir, '.pika', 'schema.json'),
         JSON.stringify(schemaWithAllowed, null, 2)
       );
 

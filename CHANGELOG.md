@@ -1,28 +1,40 @@
 # Changelog
 
-All notable changes to ovault are documented in this file.
+All notable changes to Pika are documented in this file.
 
 ## [Unreleased]
+
+### Breaking Changes
+
+- **Renamed project from ovault to pika**
+  - CLI command: `ovault` -> `pika`
+  - Config directory: `.ovault/` -> `.pika/`
+  - Environment variables: `OVAULT_*` -> `PIKA_*`
+    - `OVAULT_VAULT` -> `PIKA_VAULT`
+    - `OVAULT_DEFAULT_APP` -> `PIKA_DEFAULT_APP`
+    - `OVAULT_AUDIT_EXCLUDE` -> `PIKA_AUDIT_EXCLUDE`
+  - **Migration required**: Rename `.ovault/` to `.pika/` in your vaults
+  - **Migration required**: Update any scripts or shell configs using `OVAULT_*` environment variables
 
 ### Added
 
 - **Relative date expressions in template defaults** (ovault-gqj)
-  - Templates can now use dynamic date expressions like `today()` or `today() + '7d'` in defaults
-  - Supported functions: `today()` (YYYY-MM-DD), `now()` (YYYY-MM-DD HH:MM)
-  - Supports addition/subtraction with duration literals: `'7d'`, `'1w'`, `'2h'`, `'30min'`, `'1mon'`, `'1y'`
-  - Date expressions are validated during `ovault template validate`
-  - Example template default: `deadline: "today() + '7d'"` sets deadline to 7 days from creation
+   - Templates can now use dynamic date expressions like `today()` or `today() + '7d'` in defaults
+   - Supported functions: `today()` (YYYY-MM-DD), `now()` (YYYY-MM-DD HH:MM)
+   - Supports addition/subtraction with duration literals: `'7d'`, `'1w'`, `'2h'`, `'30min'`, `'1mon'`, `'1y'`
+   - Date expressions are validated during `pika template validate`
+   - Example template default: `deadline: "today() + '7d'"` sets deadline to 7 days from creation
 
-- **`ovault delete` command** (ovault-44z)
-  - Delete notes from the vault: `ovault delete [query]`
+- **`pika delete` command** (ovault-44z)
+   - Delete notes from the vault: `pika delete [query]`
   - Query resolution with picker support (fzf, numbered, or auto-detect)
   - Interactive confirmation prompt (use `--force` to skip)
   - Backlink detection warns if other notes link to the file being deleted
   - JSON output mode with `--output json` (requires `--force`)
   - Completes the CRUD cycle for notes: new, edit, list, open, delete
 
-- **`ovault template delete` command** (ovault-3gb)
-  - Delete templates via CLI: `ovault template delete <type> <name>`
+- **`pika template delete` command** (ovault-3gb)
+   - Delete templates via CLI: `pika template delete <type> <name>`
   - Interactive confirmation prompt (use `--force` to skip)
   - JSON output mode with `--output json`
   - Completes the template CRUD cycle (list, show, new, edit, delete)
@@ -33,13 +45,13 @@ All notable changes to ovault are documented in this file.
   - Previously ambiguous: `m` could mean minutes or months
   - Now uses `mon` for months (e.g., `'1mon'` instead of `'1m'`)
   - Minutes remain `min` (e.g., `'30min'`)
-  - **Migration required**: Update any `--where` expressions using `'1m'`, `'2m'`, etc. to `'1mon'`, `'2mon'`
+   - **Migration required**: Update any `--where` expressions using `'1m'`, `'2m'`, etc. to `'1mon'`, `'2mon'`
 
 - **Removed `name_field` from schema** (ovault-jxd)
-  - The `name_field` property is no longer supported in schema definitions
-  - All types now use a standard `"name"` field in JSON mode payloads
-  - Interactive prompts show "Name:" for all types instead of custom labels
-  - **Migration required**: Remove all `name_field` entries from your `.ovault/schema.json`
+   - The `name_field` property is no longer supported in schema definitions
+   - All types now use a standard `"name"` field in JSON mode payloads
+   - Interactive prompts show "Name:" for all types instead of custom labels
+   - **Migration required**: Remove all `name_field` entries from your `.pika/schema.json`
   - **JSON API change**: Use `{"name": "My Note"}` instead of `{"Task name": "My Note"}`
 
 ### Added
@@ -94,13 +106,13 @@ All notable changes to ovault are documented in this file.
 
 ### Breaking Changes
 
-- **Template location changed from `Templates/` to `.ovault/templates/`** (ovault-33b)
-  - Templates are now stored in `.ovault/templates/{type}/{subtype}/*.md`
+- **Template location changed from `Templates/` to `.pika/templates/`** (ovault-33b)
+   - Templates are now stored in `.pika/templates/{type}/{subtype}/*.md`
   - This keeps templates hidden from Obsidian's note browser and prevents accidental edits
   - Existing templates in `Templates/` will need to be migrated manually
 
 - **Renamed `link` command to `search`** (ovault-boe)
-  - `ovault link` is now `ovault search` with more flexible output options
+   - `pika link` is now `pika search` with more flexible output options
   - Default output is now just the note name (previously was wikilink `[[Name]]`)
   - Use `--wikilink` flag to get the old default behavior
   - Removed `--bare` flag (name-only output is now the default)
@@ -109,10 +121,10 @@ All notable changes to ovault are documented in this file.
 ### Added
 
 - **Body sections via `_body` in JSON mode** (ovault-slq)
-  - The `--json` flag for `ovault new` now accepts a `_body` field to populate body sections
+   - The `--json` flag for `pika new` now accepts a `_body` field to populate body sections
   - Eliminates the need to create a note, read it, then edit it to populate body content
   - Section content can be string (for paragraphs) or string[] (for bullets/checkboxes)
-  - Example: `ovault new task --json '{"Task name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'`
+   - Example: `pika new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'`
   - Validates section names against schema and provides helpful error messages with available sections
   - Works with templates: body input is merged into template body
 
@@ -127,7 +139,7 @@ All notable changes to ovault are documented in this file.
   - `-E, --regex` treats pattern as regex (default: literal string)
   - `-l, --limit <n>` caps maximum files returned (default: 100)
   - JSON output includes match details with line numbers and context
-  - Example: `ovault search "deploy" --text --type task --status!=done`
+   - Example: `pika search "deploy" --text --type task --status!=done`
 
 - **New `search` command output formats** (ovault-boe)
   - `--wikilink` - Output `[[Name]]` format for Obsidian links
@@ -144,11 +156,11 @@ All notable changes to ovault are documented in this file.
   - Use `--content` flag to include file contents in JSON output (opt-in to avoid large payloads)
 
 - **New `template` command for template management** (ovault-33b)
-  - `ovault template list [type]` - List all templates or filter by type
-  - `ovault template show <type> <name>` - Show template details
-  - `ovault template validate [type]` - Validate templates against schema with full error reporting
-  - `ovault template new <type>` - Create new templates interactively or via JSON
-  - `ovault template edit <type> <name>` - Edit existing templates interactively or via JSON
+   - `pika template list [type]` - List all templates or filter by type
+   - `pika template show <type> <name>` - Show template details
+   - `pika template validate [type]` - Validate templates against schema with full error reporting
+   - `pika template new <type>` - Create new templates interactively or via JSON
+   - `pika template edit <type> <name>` - Edit existing templates interactively or via JSON
   - Full validation: type path exists, defaults match field enums, prompt-fields reference valid fields
   - Typo suggestions using Levenshtein distance for field names and enum values
   - JSON mode support for all subcommands (`--output json` or `--json`)
@@ -229,8 +241,8 @@ Complete rewrite from shell scripts to TypeScript with significant new features.
   - Full JSON mode support for automation
 
 - **Navigation commands** (`open`, `link`)
-  - `ovault open [query]` - Open notes in Obsidian, editor, or system default
-  - `ovault link [query]` - Generate wikilinks with shortest unambiguous form
+  - `pika open [query]` - Open notes in Obsidian, editor, or system default
+   - `pika search [query]` - Find notes and generate wikilinks
   - Picker modes: fzf, numbered select, or auto-detect
   - `OVAULT_DEFAULT_APP` environment variable for default app mode
   - PR #10

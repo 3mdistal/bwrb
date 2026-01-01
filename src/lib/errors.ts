@@ -1,5 +1,5 @@
 /**
- * Shared error types for ovault commands.
+ * Shared error types for pika commands.
  */
 
 /**

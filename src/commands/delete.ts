@@ -125,11 +125,11 @@ Picker Modes:
   none        Error on ambiguity (for non-interactive use)
 
 Examples:
-  ovault delete                             # Browse all notes with picker
-  ovault delete "My Note"                   # Delete by basename
-  ovault delete Ideas/My\\ Note.md          # Delete by path
-  ovault delete "My Note" --force           # Skip confirmation
-  ovault delete "My Note" -o json --force   # Scripting mode
+  pika delete                             # Browse all notes with picker
+  pika delete "My Note"                   # Delete by basename
+  pika delete Ideas/My\\ Note.md          # Delete by path
+  pika delete "My Note" --force           # Skip confirmation
+  pika delete "My Note" -o json --force   # Scripting mode
 
 Note: Deletion is permanent. The file is removed from the filesystem.
       Use version control (git) to recover deleted notes if needed.`)

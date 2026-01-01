@@ -443,7 +443,7 @@ tags:
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Backup created');
-      expect(result.stdout).toContain('.ovault/backups');
+      expect(result.stdout).toContain('.pika/backups');
     });
   });
 

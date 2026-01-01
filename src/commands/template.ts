@@ -63,13 +63,13 @@ export const templateCommand = new Command('template')
   .description('Template management commands')
   .addHelpText('after', `
 Examples:
-  ovault template list                      # List all templates
-  ovault template list idea                 # List templates for idea type
-  ovault template show idea default         # Show template details
-  ovault template validate                  # Validate all templates
-  ovault template new idea                  # Create new template interactively
-  ovault template edit idea default         # Edit existing template
-  ovault template delete idea default       # Delete a template`);
+  pika template list                      # List all templates
+  pika template list idea                 # List templates for idea type
+  pika template show idea default         # Show template details
+  pika template validate                  # Validate all templates
+  pika template new idea                  # Create new template interactively
+  pika template edit idea default         # Edit existing template
+  pika template delete idea default       # Delete a template`);
 
 // ============================================================================
 // template list [type]
@@ -132,7 +132,7 @@ templateCommand
         } else {
           console.log('No templates found.');
         }
-        console.log(`\nTemplates are stored in: .ovault/templates/{type}/{subtype}/`);
+        console.log(`\nTemplates are stored in: .pika/templates/{type}/{subtype}/`);
         return;
       }
 

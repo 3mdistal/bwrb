@@ -1,10 +1,10 @@
-# ovault
+# pika
 
-Schema-driven template creation and editing for Obsidian vaults.
+Schema-driven note management for markdown vaults.
 
 ## Overview
 
-`ovault` is a CLI tool that creates and edits Obsidian markdown files based on a hierarchical type schema. It supports:
+`pika` is a CLI tool that creates and edits markdown files based on a hierarchical type schema. It supports:
 
 - Interactive type selection with subtype navigation
 - Dynamic frontmatter prompts (enums, text input, vault queries)
@@ -22,10 +22,10 @@ Schema-driven template creation and editing for Obsidian vaults.
 ### From source (development)
 
 ```sh
-cd ~/Developer/ovault
+cd ~/Developer/pika
 pnpm install
 pnpm build
-pnpm link --global  # Makes 'ovault' available globally
+pnpm link --global  # Makes 'pika' available globally
 ```
 
 ### Development mode
@@ -36,64 +36,64 @@ pnpm dev -- new idea  # Run without building
 
 ## Setup
 
-Create a `.ovault/schema.json` in each vault you want to use with ovault.
+Create a `.pika/schema.json` in each vault you want to use with pika.
 
 ## Usage
 
 ```sh
 # Vault path resolution (in order of precedence):
 # 1. --vault=<path> or -v <path> argument
-# 2. OVAULT_VAULT environment variable  
+# 2. PIKA_VAULT environment variable  
 # 3. Current working directory
 
 # Interactive mode - prompts for type selection
-ovault new
-ovault --vault=/path/to/vault new
+pika new
+pika --vault=/path/to/vault new
 
 # Direct creation - specify type
-ovault new objective    # Then select subtype (task/milestone/project/goal)
-ovault new idea         # Creates idea directly (no subtypes)
+pika new objective    # Then select subtype (task/milestone/project/goal)
+pika new idea         # Creates idea directly (no subtypes)
 
 # Templates
-ovault new task --template bug-report  # Use specific template
-ovault new task --default              # Use default.md template  
-ovault new task --no-template          # Skip templates, use schema only
+pika new task --template bug-report  # Use specific template
+pika new task --default              # Use default.md template  
+pika new task --no-template          # Skip templates, use schema only
 
 # Edit existing file
-ovault edit path/to/file.md
-ovault edit Objectives/Tasks/My\ Task.md
+pika edit path/to/file.md
+pika edit Objectives/Tasks/My\ Task.md
 
 # List objects by type
-ovault list idea                 # List all ideas (names only)
-ovault list objective            # List all objectives (tasks, milestones, etc.)
-ovault list objective/task       # List only tasks
-ovault list objective/milestone  # List only milestones
+pika list idea                 # List all ideas (names only)
+pika list objective            # List all objectives (tasks, milestones, etc.)
+pika list objective/task       # List only tasks
+pika list objective/milestone  # List only milestones
 
 # List output options
-ovault list --paths idea                       # Show vault-relative paths
-ovault list --fields=status,priority idea      # Show selected frontmatter fields in a table
-ovault list --paths --fields=status objective  # Combine paths + fields
+pika list --paths idea                       # Show vault-relative paths
+pika list --fields=status,priority idea      # Show selected frontmatter fields in a table
+pika list --paths --fields=status objective  # Combine paths + fields
 
 # Open a note by query (or browse all)
-ovault open                                    # Browse all notes with picker
-ovault open "My Note"                          # Open in Obsidian (default)
-ovault open "My Note" --app editor             # Open in $EDITOR
-ovault open "My Note" --app print              # Just print the path
-ovault open "Amb" --picker fzf                 # Use fzf for ambiguous matches
+pika open                                    # Browse all notes with picker
+pika open "My Note"                          # Open in Obsidian (default)
+pika open "My Note" --app editor             # Open in $EDITOR
+pika open "My Note" --app print              # Just print the path
+pika open "Amb" --picker fzf                 # Use fzf for ambiguous matches
 
 # Generate a wikilink (or browse all)
-ovault link                                    # Browse all notes with picker
-ovault link "My Note"                          # Output: [[My Note]]
-ovault link "My Note" --bare                   # Output: My Note (no brackets)
-ovault link "Amb" --output json                # JSON output for scripting
+pika search                                  # Browse all notes with picker
+pika search "My Note" --wikilink             # Output: [[My Note]]
+pika search "My Note"                        # Output: My Note (name only)
+pika search "Amb" --output json              # JSON output for scripting
 
 # Help
-ovault help
+pika help
 ```
 
 ## Schema Structure
 
-The schema file is expected at `<vault>/.ovault/schema.json`. It defines:
+The schema file is expected at `<vault>/.pika/schema.json`. It defines:
 
 ### Enums
 
@@ -136,7 +136,6 @@ Each leaf type requires:
 |-------|----------|-------------|
 | `output_dir` | Yes | Directory relative to vault root |
 | `frontmatter` | Yes | Field definitions |
-| `name_field` | No | Label for name prompt (default: "Name") |
 | `frontmatter_order` | No | Array specifying field order |
 | `body_sections` | No | Array of section definitions |
 
@@ -238,13 +237,13 @@ Content types: `none`, `paragraphs`, `bullets`, `checkboxes`
 
 ## Templates
 
-Templates provide reusable defaults and body structure for note creation. They're stored in `.ovault/templates/`, organized by type path.
+Templates provide reusable defaults and body structure for note creation. They're stored in `.pika/templates/`, organized by type path.
 
 ### Template Location
 
 ```
 my-vault/
-└── .ovault/
+└── .pika/
     ├── schema.json
     └── templates/
         ├── idea/
@@ -308,26 +307,26 @@ The template body becomes the note body, with variable substitution:
 
 ```sh
 # Auto-use default.md if it exists
-ovault new task
+pika new task
 
 # Use specific template
-ovault new task --template bug-report
+pika new task --template bug-report
 
 # Require default template (error if not found)
-ovault new task --default
+pika new task --default
 
 # Skip template system
-ovault new task --no-template
+pika new task --no-template
 
 # JSON mode with templates
-ovault new task --json '{"Task name": "Fix bug"}' --template bug-report
+pika new task --json '{"name": "Fix bug"}' --template bug-report
 ```
 
 ### Template Discovery
 
 Templates use **strict matching** - only templates in the exact type path directory are considered:
-- `objective/task` → `.ovault/templates/objective/task/*.md`
-- `idea` → `.ovault/templates/idea/*.md`
+- `objective/task` -> `.pika/templates/objective/task/*.md`
+- `idea` -> `.pika/templates/idea/*.md`
 
 There is no inheritance from parent types.
 
@@ -337,28 +336,28 @@ Use the `template` command to manage templates:
 
 ```sh
 # List all templates
-ovault template list
-ovault template list objective/task    # Filter by type
+pika template list
+pika template list objective/task    # Filter by type
 
 # Show template details
-ovault template show idea default
+pika template show idea default
 
 # Validate templates against schema
-ovault template validate               # All templates
-ovault template validate idea          # Templates for specific type
+pika template validate               # All templates
+pika template validate idea          # Templates for specific type
 
 # Create new template interactively
-ovault template new idea
-ovault template new objective/task --name bug-report
+pika template new idea
+pika template new objective/task --name bug-report
 
 # Create template from JSON
-ovault template new idea --name quick --json '{"defaults": {"status": "raw"}}'
+pika template new idea --name quick --json '{"defaults": {"status": "raw"}}'
 
 # Edit template interactively
-ovault template edit idea default
+pika template edit idea default
 
 # Edit template from JSON
-ovault template edit idea default --json '{"defaults": {"priority": "high"}}'
+pika template edit idea default --json '{"defaults": {"priority": "high"}}'
 ```
 
 ## Adding a New Type
@@ -374,7 +373,6 @@ ovault template edit idea default --json '{"defaults": {"priority": "high"}}'
      "types": {
        "my-type": {
          "output_dir": "My/Output/Dir",
-         "name_field": "Item name",
          "frontmatter": {
            "type": { "value": "my-type" },
            "status": { "prompt": "select", "enum": "status" }
@@ -401,9 +399,9 @@ The schema structure is defined by `schema.schema.json` (JSON Schema draft-07). 
 
 ## File Structure
 
-**ovault repo:**
+**pika repo:**
 ```
-ovault/
+pika/
 ├── src/
 │   ├── index.ts              # CLI entry point
 │   ├── commands/
@@ -430,24 +428,24 @@ ovault/
 **Each vault:**
 ```
 my-vault/
-└── .ovault/
+└── .pika/
     └── schema.json     # Vault-specific type definitions
 ```
 
 ## Navigation Commands
 
-### `ovault open [query]`
+### `pika open [query]`
 
 Open a note by name or path query. If no query is provided, shows a picker to browse all notes.
 
 ```sh
-ovault open                              # Browse all notes with picker
-ovault open "My Note"                    # Open in Obsidian (default)
-ovault open "my note"                    # Case-insensitive
-ovault open "Ideas/My Note"              # By path
-ovault open "My Note" --app editor       # Open in $VISUAL or $EDITOR
-ovault open "My Note" --app system       # Open with system default
-ovault open "My Note" --app print        # Just print the resolved path
+pika open                              # Browse all notes with picker
+pika open "My Note"                    # Open in Obsidian (default)
+pika open "my note"                    # Case-insensitive
+pika open "Ideas/My Note"              # By path
+pika open "My Note" --app editor       # Open in $VISUAL or $EDITOR
+pika open "My Note" --app system       # Open with system default
+pika open "My Note" --app print        # Just print the resolved path
 ```
 
 **App modes:**
@@ -456,9 +454,9 @@ ovault open "My Note" --app print        # Just print the resolved path
 - `system` - Open with system default handler
 - `print` - Just print the resolved path
 
-**Environment variable:** Set `OVAULT_DEFAULT_APP` to change the default app mode:
+**Environment variable:** Set `PIKA_DEFAULT_APP` to change the default app mode:
 ```sh
-export OVAULT_DEFAULT_APP=editor  # Always open in $EDITOR by default
+export PIKA_DEFAULT_APP=editor  # Always open in $EDITOR by default
 ```
 
 **Picker modes** (when query matches multiple files or no query):
@@ -469,29 +467,29 @@ export OVAULT_DEFAULT_APP=editor  # Always open in $EDITOR by default
 
 **JSON output** (implies `--picker none`):
 ```sh
-ovault open "My Note" --app print --output json
+pika open "My Note" --app print --output json
 ```
 
-### `ovault link [query]`
+### `pika search [query]`
 
-Generate a wikilink to a note. If no query is provided, shows a picker to browse all notes. Uses shortest unambiguous form:
+Find notes and generate wikilinks. If no query is provided, shows a picker to browse all notes. Uses shortest unambiguous form:
 - Basename if unique across vault: `[[My Note]]`
 - Full path if ambiguous: `[[Ideas/My Note]]`
 
 ```sh
-ovault link                              # Browse all notes with picker
-ovault link "My Note"                    # Output: [[My Note]]
-ovault link "My Note" --bare             # Output: My Note
-ovault link "Amb" --picker none --output json  # Scripting mode
+pika search                              # Browse all notes with picker
+pika search "My Note" --wikilink         # Output: [[My Note]]
+pika search "My Note"                    # Output: My Note
+pika search "Amb" --picker none --output json  # Scripting mode
 ```
 
 **Neovim/scripting example:**
 ```sh
 # Copy wikilink to clipboard (macOS)
-ovault link "My Note" | pbcopy
+pika search "My Note" --wikilink | pbcopy
 
 # Use in a Lua script
-local link = vim.fn.system("ovault link 'My Note' --picker none --bare")
+local link = vim.fn.system("pika search 'My Note' --picker none")
 ```
 
 ## Running Tests

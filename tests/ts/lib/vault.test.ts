@@ -27,48 +27,48 @@ describe('vault', () => {
   });
 
   describe('resolveVaultDir', () => {
-    const originalEnv = process.env['OVAULT_VAULT'];
+    const originalEnv = process.env['PIKA_VAULT'];
 
     afterEach(() => {
       if (originalEnv !== undefined) {
-        process.env['OVAULT_VAULT'] = originalEnv;
+        process.env['PIKA_VAULT'] = originalEnv;
       } else {
-        delete process.env['OVAULT_VAULT'];
+        delete process.env['PIKA_VAULT'];
       }
     });
 
     it('should use --vault option first', () => {
-      process.env['OVAULT_VAULT'] = '/env/path';
+      process.env['PIKA_VAULT'] = '/env/path';
       const result = resolveVaultDir({ vault: '/option/path' });
       expect(result).toBe('/option/path');
     });
 
     it('should use env var if no option', () => {
-      process.env['OVAULT_VAULT'] = '/env/path';
+      process.env['PIKA_VAULT'] = '/env/path';
       const result = resolveVaultDir({});
       expect(result).toBe('/env/path');
     });
 
     it('should use cwd as fallback', () => {
-      delete process.env['OVAULT_VAULT'];
+      delete process.env['PIKA_VAULT'];
       const result = resolveVaultDir({});
       expect(result).toBe(process.cwd());
     });
 
     it('should preserve relative path from --vault option', () => {
-      delete process.env['OVAULT_VAULT'];
+      delete process.env['PIKA_VAULT'];
       const result = resolveVaultDir({ vault: './my-vault' });
       expect(result).toBe('./my-vault');
     });
 
     it('should preserve relative path from env var', () => {
-      process.env['OVAULT_VAULT'] = '../other-vault';
+      process.env['PIKA_VAULT'] = '../other-vault';
       const result = resolveVaultDir({});
       expect(result).toBe('../other-vault');
     });
 
     it('should preserve dotted relative path', () => {
-      delete process.env['OVAULT_VAULT'];
+      delete process.env['PIKA_VAULT'];
       const result = resolveVaultDir({ vault: '../../some/nested/vault' });
       expect(result).toBe('../../some/nested/vault');
     });

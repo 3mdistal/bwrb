@@ -12,7 +12,7 @@ import { evaluateTemplateDefault, validateDateExpression, isDateExpression } fro
  * Template Discovery and Parsing
  * ==============================
  * 
- * Templates are markdown files stored in .ovault/templates/{type}/{subtype}/*.md
+ * Templates are markdown files stored in .pika/templates/{type}/{subtype}/*.md
  * They provide defaults, body structure, and filename patterns for note creation.
  * 
  * Key design decisions:
@@ -27,22 +27,22 @@ import { evaluateTemplateDefault, validateDateExpression, isDateExpression } fro
 
 /**
  * Get the template directory for a type path.
- * Templates are stored at .ovault/templates/{type}/{subtype}/...
+ * Templates are stored at .pika/templates/{type}/{subtype}/...
  * 
  * @example
- * getTemplateDir('/vault', 'objective/task') => '/vault/.ovault/templates/objective/task'
- * getTemplateDir('/vault', 'idea') => '/vault/.ovault/templates/idea'
+ * getTemplateDir('/vault', 'objective/task') => '/vault/.pika/templates/objective/task'
+ * getTemplateDir('/vault', 'idea') => '/vault/.pika/templates/idea'
  */
 export function getTemplateDir(vaultDir: string, typePath: string): string {
   const segments = typePath.split('/').filter(Boolean);
-  return join(vaultDir, '.ovault', 'templates', ...segments);
+  return join(vaultDir, '.pika', 'templates', ...segments);
 }
 
 /**
  * Get the root templates directory for a vault.
  */
 export function getTemplatesRoot(vaultDir: string): string {
-  return join(vaultDir, '.ovault', 'templates');
+  return join(vaultDir, '.pika', 'templates');
 }
 
 // ============================================================================
@@ -114,8 +114,8 @@ export async function parseTemplate(filePath: string): Promise<Template | null> 
  * 
  * @example
  * findTemplates('/vault', 'objective/task')
- * // Searches ONLY .ovault/templates/objective/task/*.md
- * // Does NOT search .ovault/templates/objective/*.md
+ * // Searches ONLY .pika/templates/objective/task/*.md
+ * // Does NOT search .pika/templates/objective/*.md
  */
 export async function findTemplates(
   vaultDir: string,

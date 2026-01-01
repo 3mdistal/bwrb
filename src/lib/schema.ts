@@ -1,8 +1,8 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { OvaultSchema, type Schema, type TypeDef, type Field, type FieldOverride, type Subtype } from '../types/schema.js';
+import { PikaSchema, type Schema, type TypeDef, type Field, type FieldOverride, type Subtype } from '../types/schema.js';
 
-const SCHEMA_PATH = '.ovault/schema.json';
+const SCHEMA_PATH = '.pika/schema.json';
 
 /**
  * Load and validate the schema from a vault directory.
@@ -11,7 +11,7 @@ export async function loadSchema(vaultDir: string): Promise<Schema> {
   const schemaPath = join(vaultDir, SCHEMA_PATH);
   const content = await readFile(schemaPath, 'utf-8');
   const json = JSON.parse(content) as unknown;
-  return OvaultSchema.parse(json);
+  return PikaSchema.parse(json);
 }
 
 /**

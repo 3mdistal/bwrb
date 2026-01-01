@@ -27,11 +27,11 @@ export const schemaCommand = new Command('schema')
   .description('Schema introspection commands')
   .addHelpText('after', `
 Examples:
-  ovault schema show              # Show all types
-  ovault schema show objective    # Show objective type details
-  ovault schema show objective/task  # Show task subtype details
-  ovault schema show task --output json  # Show as JSON for AI/scripting
-  ovault schema validate          # Validate schema structure`);
+  pika schema show              # Show all types
+  pika schema show objective    # Show objective type details
+  pika schema show objective/task  # Show task subtype details
+  pika schema show task --output json  # Show as JSON for AI/scripting
+  pika schema validate          # Validate schema structure`);
 
 // schema show
 schemaCommand

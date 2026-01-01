@@ -4,7 +4,7 @@
  * This module handles building an index of vault files and resolving
  * user queries to specific files. It scans all vault markdown except
  * excluded directories (respects schema.audit.ignored_directories,
- * .gitignore, and OVAULT_AUDIT_EXCLUDE env var).
+ * .gitignore, and PIKA_AUDIT_EXCLUDE env var).
  */
 
 import { basename } from 'path';
@@ -48,10 +48,10 @@ export type { ManagedFile };
  * Build an index of all vault files for fast lookup.
  * 
  * Scans all markdown files in the vault except:
- * - .ovault directory
+ * - .pika directory
  * - Hidden directories (starting with .)
  * - Directories in schema.audit.ignored_directories
- * - Directories in OVAULT_AUDIT_EXCLUDE env var
+ * - Directories in PIKA_AUDIT_EXCLUDE env var
  * - Files matching .gitignore patterns
  */
 export async function buildNoteIndex(schema: Schema, vaultDir: string): Promise<NoteIndex> {

@@ -30,9 +30,9 @@ export const listCommand = new Command('list')
   .description('List notes of a given type with optional filtering')
   .addHelpText('after', `
 Expression Filters (--where):
-  ovault list task --where "status == 'in-progress'"
-  ovault list task --where "priority < 3 && !isEmpty(deadline)"
-  ovault list task --where "deadline < today() + '7d'"
+  pika list task --where "status == 'in-progress'"
+  pika list task --where "priority < 3 && !isEmpty(deadline)"
+  pika list task --where "deadline < today() + '7d'"
 
 Simple Filters:
   --field=value        Include where field equals value
@@ -42,14 +42,14 @@ Simple Filters:
   --field!=            Include where field exists
 
 Examples:
-  ovault list idea --status=raw
-  ovault list objective/task --status!=settled
-  ovault list idea --fields=status,priority
-  ovault list task --where "status == 'done' && !isEmpty(tags)"
-  ovault list task --output json
+  pika list idea --status=raw
+  pika list objective/task --status!=settled
+  pika list idea --fields=status,priority
+  pika list task --where "status == 'done' && !isEmpty(tags)"
+  pika list task --output json
 
 Note: In zsh, use single quotes for expressions with '!' to avoid history expansion:
-  ovault list task --where '!isEmpty(deadline)'`)
+  pika list task --where '!isEmpty(deadline)'`)
   .argument('[type]', 'Type path (e.g., idea, objective/task)')
   .option('--paths', 'Show file paths instead of names')
   .option('--fields <fields>', 'Show frontmatter fields in a table (comma-separated)')
@@ -135,7 +135,7 @@ interface ListOptions {
  * Show list command usage.
  */
 function showListUsage(schema: Schema): void {
-  console.log('Usage: ovault list [options] <type>[/<subtype>] [filters...]');
+  console.log('Usage: pika list [options] <type>[/<subtype>] [filters...]');
   console.log('');
   console.log('Options:');
   console.log('  --paths              Show file paths instead of names');

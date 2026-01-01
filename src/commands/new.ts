@@ -73,7 +73,7 @@ interface NewCommandOptions {
 export const newCommand = new Command('new')
   .description('Create a new note (interactive type navigation if type omitted)')
   .argument('[type]', 'Type of note to create (e.g., idea, objective/task)')
-  .option('--open', 'Open the note after creation (uses OVAULT_DEFAULT_APP or Obsidian)')
+  .option('--open', 'Open the note after creation (uses PIKA_DEFAULT_APP or Obsidian)')
   .option('--json <frontmatter>', 'Create note non-interactively with JSON frontmatter')
   .option('--instance <name>', 'Parent instance name (for instance-grouped subtypes)')
   .option('--template <name>', 'Use a specific template')
@@ -81,23 +81,23 @@ export const newCommand = new Command('new')
   .option('--no-template', 'Skip template selection, use schema only')
   .addHelpText('after', `
 Examples:
-  ovault new                    # Interactive type selection
-  ovault new idea               # Create an idea
-  ovault new objective/task     # Create a task
-  ovault new draft --open       # Create and open (respects OVAULT_DEFAULT_APP)
+  pika new                    # Interactive type selection
+  pika new idea               # Create an idea
+  pika new objective/task     # Create a task
+  pika new draft --open       # Create and open (respects PIKA_DEFAULT_APP)
 
 Templates:
-  ovault new task --template bug-report  # Use specific template
-  ovault new task --default              # Use default.md template
-  ovault new task --no-template          # Skip templates, use schema only
+  pika new task --template bug-report  # Use specific template
+  pika new task --default              # Use default.md template
+  pika new task --no-template          # Skip templates, use schema only
 
 Non-interactive (JSON) mode:
-  ovault new idea --json '{"name": "My Idea", "status": "raw"}'
-  ovault new objective/task --json '{"name": "Fix bug", "status": "in-progress"}'
-  ovault new task --json '{"name": "Bug"}' --template bug-report
+  pika new idea --json '{"name": "My Idea", "status": "raw"}'
+  pika new objective/task --json '{"name": "Fix bug", "status": "in-progress"}'
+  pika new task --json '{"name": "Bug"}' --template bug-report
 
 Body sections (JSON mode):
-  ovault new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'
+  pika new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'
   The _body field accepts section names as keys, with string or string[] values.
 
 Template Discovery:
@@ -154,7 +154,7 @@ or create a parent instance folder.`)
         
         printJson(jsonSuccess({ path: relative(vaultDir, filePath) }));
         
-        // Open if requested (respects OVAULT_DEFAULT_APP)
+        // Open if requested (respects PIKA_DEFAULT_APP)
         if (options.open && filePath) {
           const { openNote } = await import('./open.js');
           await openNote(vaultDir, filePath);
@@ -219,7 +219,7 @@ or create a parent instance folder.`)
 
       const filePath = await createNote(schema, vaultDir, resolvedPath, typeDef, template);
 
-      // Open if requested (respects OVAULT_DEFAULT_APP)
+      // Open if requested (respects PIKA_DEFAULT_APP)
       if (options.open && filePath) {
         const { openNote } = await import('./open.js');
         await openNote(vaultDir, filePath);

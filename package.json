@@ -1,11 +1,11 @@
 {
-  "name": "ovault",
+  "name": "pika",
   "version": "0.2.0",
-  "description": "Schema-driven template creation and editing for Obsidian vaults",
+  "description": "Schema-driven note management for markdown vaults",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "ovault": "./dist/index.js"
+    "pika": "./dist/index.js"
   },
   "scripts": {
     "dev": "sh -c 'shift $([ \"$1\" = \"--\" ] && echo 1 || echo 0); exec tsx src/index.ts \"$@\"' --",
@@ -18,11 +18,12 @@
     "postinstall": "chmod +x node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true"
   },
   "keywords": [
-    "obsidian",
-    "vault",
+    "pika",
+    "pkm",
     "markdown",
     "frontmatter",
-    "cli"
+    "cli",
+    "schema"
   ],
   "author": "",
   "license": "MIT",

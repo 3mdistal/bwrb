@@ -22,14 +22,14 @@ describe('copyFixtureTemplates', () => {
       await copyFixtureTemplates(vaultPath);
       
       // Check that idea template exists
-      const ideaDefault = await vaultFileExists(vaultPath, '.ovault/templates/idea/default.md');
+      const ideaDefault = await vaultFileExists(vaultPath, '.pika/templates/idea/default.md');
       expect(ideaDefault).toBe(true);
       
       // Check that objective/task templates exist
-      const taskDefault = await vaultFileExists(vaultPath, '.ovault/templates/objective/task/default.md');
+      const taskDefault = await vaultFileExists(vaultPath, '.pika/templates/objective/task/default.md');
       expect(taskDefault).toBe(true);
       
-      const taskBugReport = await vaultFileExists(vaultPath, '.ovault/templates/objective/task/bug-report.md');
+      const taskBugReport = await vaultFileExists(vaultPath, '.pika/templates/objective/task/bug-report.md');
       expect(taskBugReport).toBe(true);
     } finally {
       await cleanupTempVault(vaultPath);
@@ -42,11 +42,11 @@ describe('copyFixtureTemplates', () => {
       await copyFixtureTemplates(vaultPath, ['idea']);
       
       // Idea template should exist
-      const ideaDefault = await vaultFileExists(vaultPath, '.ovault/templates/idea/default.md');
+      const ideaDefault = await vaultFileExists(vaultPath, '.pika/templates/idea/default.md');
       expect(ideaDefault).toBe(true);
       
       // Objective templates should NOT exist
-      const taskDefault = await vaultFileExists(vaultPath, '.ovault/templates/objective/task/default.md');
+      const taskDefault = await vaultFileExists(vaultPath, '.pika/templates/objective/task/default.md');
       expect(taskDefault).toBe(false);
     } finally {
       await cleanupTempVault(vaultPath);
@@ -60,7 +60,7 @@ describe('copyFixtureTemplates', () => {
       await copyFixtureTemplates(vaultPath, ['nonexistent-type']);
       
       // Templates directory should exist but be empty
-      const templatesDir = path.join(vaultPath, '.ovault', 'templates');
+      const templatesDir = path.join(vaultPath, '.pika', 'templates');
       const entries = await fs.readdir(templatesDir);
       expect(entries.length).toBe(0);
     } finally {
@@ -73,7 +73,7 @@ describe('copyFixtureTemplates', () => {
     try {
       await copyFixtureTemplates(vaultPath, ['idea']);
       
-      const content = await readVaultFile(vaultPath, '.ovault/templates/idea/default.md');
+      const content = await readVaultFile(vaultPath, '.pika/templates/idea/default.md');
       expect(content).toContain('type: template');
       expect(content).toContain('template-for: idea');
     } finally {
@@ -86,10 +86,10 @@ describe('createTempVault with includeTemplates', () => {
   it('should include all templates when includeTemplates is true', async () => {
     const vaultPath = await createTempVault([], MINIMAL_SCHEMA, true);
     try {
-      const ideaDefault = await vaultFileExists(vaultPath, '.ovault/templates/idea/default.md');
+      const ideaDefault = await vaultFileExists(vaultPath, '.pika/templates/idea/default.md');
       expect(ideaDefault).toBe(true);
       
-      const taskDefault = await vaultFileExists(vaultPath, '.ovault/templates/objective/task/default.md');
+      const taskDefault = await vaultFileExists(vaultPath, '.pika/templates/objective/task/default.md');
       expect(taskDefault).toBe(true);
     } finally {
       await cleanupTempVault(vaultPath);
@@ -99,10 +99,10 @@ describe('createTempVault with includeTemplates', () => {
   it('should include only specified templates when includeTemplates is array', async () => {
     const vaultPath = await createTempVault([], MINIMAL_SCHEMA, ['idea']);
     try {
-      const ideaDefault = await vaultFileExists(vaultPath, '.ovault/templates/idea/default.md');
+      const ideaDefault = await vaultFileExists(vaultPath, '.pika/templates/idea/default.md');
       expect(ideaDefault).toBe(true);
       
-      const taskDefault = await vaultFileExists(vaultPath, '.ovault/templates/objective/task/default.md');
+      const taskDefault = await vaultFileExists(vaultPath, '.pika/templates/objective/task/default.md');
       expect(taskDefault).toBe(false);
     } finally {
       await cleanupTempVault(vaultPath);
@@ -112,7 +112,7 @@ describe('createTempVault with includeTemplates', () => {
   it('should not include templates when includeTemplates is undefined', async () => {
     const vaultPath = await createTempVault();
     try {
-      const ideaDefault = await vaultFileExists(vaultPath, '.ovault/templates/idea/default.md');
+      const ideaDefault = await vaultFileExists(vaultPath, '.pika/templates/idea/default.md');
       expect(ideaDefault).toBe(false);
     } finally {
       await cleanupTempVault(vaultPath);
@@ -130,7 +130,7 @@ describe('createTempVault with includeTemplates', () => {
       expect(testFile).toBe(true);
       
       // Templates should also exist
-      const ideaDefault = await vaultFileExists(vaultPath, '.ovault/templates/idea/default.md');
+      const ideaDefault = await vaultFileExists(vaultPath, '.pika/templates/idea/default.md');
       expect(ideaDefault).toBe(true);
     } finally {
       await cleanupTempVault(vaultPath);
@@ -141,14 +141,14 @@ describe('createTempVault with includeTemplates', () => {
     // Create a custom template that overrides the fixture one
     const files: TempVaultFile[] = [
       { 
-        path: '.ovault/templates/idea/default.md', 
+        path: '.pika/templates/idea/default.md', 
         content: '---\ntype: template\ncustom: true\n---\nCustom body\n',
       },
     ];
     // Templates are copied first, then files are written on top
     const vaultPath = await createTempVault(files, MINIMAL_SCHEMA, true);
     try {
-      const content = await readVaultFile(vaultPath, '.ovault/templates/idea/default.md');
+      const content = await readVaultFile(vaultPath, '.pika/templates/idea/default.md');
       expect(content).toContain('custom: true');
       expect(content).toContain('Custom body');
     } finally {

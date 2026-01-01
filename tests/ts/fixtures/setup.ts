@@ -97,12 +97,12 @@ export const TEST_SCHEMA = {
 };
 
 export async function createTestVault(): Promise<string> {
-  const vaultDir = await mkdtemp(join(tmpdir(), 'ovault-test-'));
+  const vaultDir = await mkdtemp(join(tmpdir(), 'pika-test-'));
 
-  // Create .ovault directory and schema
-  await mkdir(join(vaultDir, '.ovault'), { recursive: true });
+  // Create .pika directory and schema
+  await mkdir(join(vaultDir, '.pika'), { recursive: true });
   await writeFile(
-    join(vaultDir, '.ovault', 'schema.json'),
+    join(vaultDir, '.pika', 'schema.json'),
     JSON.stringify(TEST_SCHEMA, null, 2)
   );
 
@@ -167,12 +167,12 @@ status: settled
 `
   );
 
-  // Create template directories and sample templates in .ovault/templates/
-  await mkdir(join(vaultDir, '.ovault/templates/idea'), { recursive: true });
-  await mkdir(join(vaultDir, '.ovault/templates/objective/task'), { recursive: true });
+  // Create template directories and sample templates in .pika/templates/
+  await mkdir(join(vaultDir, '.pika/templates/idea'), { recursive: true });
+  await mkdir(join(vaultDir, '.pika/templates/objective/task'), { recursive: true });
 
   await writeFile(
-    join(vaultDir, '.ovault/templates/idea', 'default.md'),
+    join(vaultDir, '.pika/templates/idea', 'default.md'),
     `---
 type: template
 template-for: idea
@@ -197,7 +197,7 @@ defaults:
   );
 
   await writeFile(
-    join(vaultDir, '.ovault/templates/objective/task', 'default.md'),
+    join(vaultDir, '.pika/templates/objective/task', 'default.md'),
     `---
 type: template
 template-for: objective/task
@@ -216,7 +216,7 @@ defaults:
   );
 
   await writeFile(
-    join(vaultDir, '.ovault/templates/objective/task', 'bug-report.md'),
+    join(vaultDir, '.pika/templates/objective/task', 'bug-report.md'),
     `---
 type: template
 template-for: objective/task
@@ -246,7 +246,7 @@ prompt-fields:
 
   // Template with date expression defaults for testing
   await writeFile(
-    join(vaultDir, '.ovault/templates/objective/task', 'weekly-review.md'),
+    join(vaultDir, '.pika/templates/objective/task', 'weekly-review.md'),
     `---
 type: template
 template-for: objective/task
@@ -281,7 +281,7 @@ export interface CLIResult {
 }
 
 /**
- * Run the ovault CLI with arguments and capture output.
+ * Run the pika CLI with arguments and capture output.
  * @param args CLI arguments (e.g., ['list', 'idea', '--status=raw'])
  * @param vaultDir Optional vault directory (passed via --vault)
  * @param stdin Optional stdin input for interactive commands

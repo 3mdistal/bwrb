@@ -2,7 +2,7 @@
  * Open command - open a note via query resolution.
  * 
  * Supports multiple output modes:
- * - obsidian: Open in Obsidian via URI scheme (default, or set OVAULT_DEFAULT_APP)
+ * - obsidian: Open in Obsidian via URI scheme (default, or set PIKA_DEFAULT_APP)
  * - editor: Open in $VISUAL or $EDITOR
  * - system: Open with system default (xdg-open/open/start)
  * - print: Just print the resolved path (for scripting)
@@ -58,16 +58,16 @@ Picker Modes:
   none        Error on ambiguity (for non-interactive use)
 
 Environment Variables:
-  OVAULT_DEFAULT_APP    Default app mode (obsidian, editor, system, print)
+  PIKA_DEFAULT_APP    Default app mode (obsidian, editor, system, print)
 
 Examples:
-  ovault open                        # Browse all notes with picker
-  ovault open "My Note"              # Open by basename
-  ovault open Ideas/My\\ Note.md     # Open by path
-  ovault open "my note"              # Case-insensitive match
-  ovault open "My Note" --app editor # Open in $EDITOR
-  ovault open "My Note" --app print  # Just print path
-  ovault open "Amb" --picker none --output json  # Scripting mode
+  pika open                        # Browse all notes with picker
+  pika open "My Note"              # Open by basename
+  pika open Ideas/My\\ Note.md     # Open by path
+  pika open "my note"              # Case-insensitive match
+  pika open "My Note" --app editor # Open in $EDITOR
+  pika open "My Note" --app print  # Just print path
+  pika open "Amb" --picker none --output json  # Scripting mode
 
 Note: Obsidian must be running for --app obsidian to work.
       For --app editor, set $VISUAL or $EDITOR environment variable.`)
@@ -159,7 +159,7 @@ Note: Obsidian must be running for --app obsidian to work.
 // ============================================================================
 
 /**
- * Open a note using the configured app mode (respects OVAULT_DEFAULT_APP).
+ * Open a note using the configured app mode (respects PIKA_DEFAULT_APP).
  * This is the shared entry point for opening notes from other commands.
  */
 export async function openNote(
@@ -167,7 +167,7 @@ export async function openNote(
   filePath: string,
   jsonMode: boolean = false
 ): Promise<void> {
-  const appMode = parseAppMode(undefined); // Uses OVAULT_DEFAULT_APP or defaults to obsidian
+  const appMode = parseAppMode(undefined); // Uses PIKA_DEFAULT_APP or defaults to obsidian
 
   switch (appMode) {
     case 'print':
@@ -188,7 +188,7 @@ export async function openNote(
 
 function parseAppMode(value: string | undefined): AppMode {
   // Use explicit value, then env var, then default to obsidian
-  const effectiveValue = value ?? process.env['OVAULT_DEFAULT_APP'];
+  const effectiveValue = value ?? process.env['PIKA_DEFAULT_APP'];
   
   if (!effectiveValue) return 'obsidian';
   

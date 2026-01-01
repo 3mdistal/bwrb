@@ -69,14 +69,14 @@ Issue Types:
   stale-reference   Wikilink points to non-existent file
 
 Examples:
-  ovault audit                      # Check all files (report only)
-  ovault audit objective/task       # Check only tasks
-  ovault audit --strict             # Error on unknown fields
-  ovault audit --path "Ideas/"      # Check specific directory
-  ovault audit --only missing-required
-  ovault audit --ignore unknown-field
-  ovault audit --output json        # JSON output for CI
-  ovault audit --allow-field custom # Allow specific extra field`)
+  pika audit                      # Check all files (report only)
+  pika audit objective/task       # Check only tasks
+  pika audit --strict             # Error on unknown fields
+  pika audit --path "Ideas/"      # Check specific directory
+  pika audit --only missing-required
+  pika audit --ignore unknown-field
+  pika audit --output json        # JSON output for CI
+  pika audit --allow-field custom # Allow specific extra field`)
   .argument('[type]', 'Type path to audit (e.g., idea, objective/task)')
   .option('--strict', 'Treat unknown fields as errors instead of warnings')
   .option('--path <path>', 'Limit audit to files matching path pattern')

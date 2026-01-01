@@ -55,8 +55,8 @@ export async function loadGitignore(vaultDir: string): Promise<Ignore | null> {
 export function getExcludedDirectories(schema: Schema): Set<string> {
   const excluded = new Set<string>();
   
-  // Always exclude .ovault
-  excluded.add('.ovault');
+  // Always exclude .pika
+  excluded.add('.pika');
   
   // Add schema-configured exclusions
   const schemaExclusions = schema.audit?.ignored_directories;
@@ -67,7 +67,7 @@ export function getExcludedDirectories(schema: Schema): Set<string> {
   }
   
   // Add env var exclusions (comma-separated)
-  const envExclusions = process.env.OVAULT_AUDIT_EXCLUDE;
+  const envExclusions = process.env.PIKA_AUDIT_EXCLUDE;
   if (envExclusions) {
     for (const dir of envExclusions.split(',')) {
       const trimmed = dir.trim().replace(/\/$/, '');
@@ -133,7 +133,7 @@ export async function collectAllMarkdownFiles(
  */
 export async function collectAllMarkdownFilenames(vaultDir: string): Promise<Set<string>> {
   const filenames = new Set<string>();
-  const excluded = new Set(['.ovault']);
+  const excluded = new Set(['.pika']);
   const gitignore = await loadGitignore(vaultDir);
   
   const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, gitignore);

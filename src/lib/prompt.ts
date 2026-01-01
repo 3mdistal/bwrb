@@ -6,7 +6,7 @@ import { numberedSelect } from './numberedSelect.js';
  * Prompt Module Architecture
  * ==========================
  * 
- * This module provides unified interactive prompts for ovault commands.
+ * This module provides unified interactive prompts for pika commands.
  * All prompt functions return `null` when the user cancels (Ctrl+C / Escape),
  * allowing callers to distinguish cancellation from valid input.
  * 
