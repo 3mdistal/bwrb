@@ -23,6 +23,44 @@ const SCHEMA_PATH = '.pika/schema.json';
 const META_TYPE = 'meta';
 
 // ============================================================================
+// Pluralization
+// ============================================================================
+
+/**
+ * Auto-pluralise a type name for folder naming.
+ * 
+ * Rules:
+ * - Words ending in 's', 'x', 'z', 'ch', 'sh' → add 'es' (bus → buses)
+ * - Words ending in consonant + 'y' → change 'y' to 'ies' (story → stories)
+ * - Special cases that don't pluralise (research, software, etc.) should use
+ *   the explicit 'plural' property in the schema
+ * - Everything else → add 's' (task → tasks)
+ */
+function autoPluralise(singular: string): string {
+  if (!singular) return singular;
+  
+  const lower = singular.toLowerCase();
+  
+  // Words ending in s, x, z, ch, sh → add 'es'
+  if (lower.endsWith('s') || lower.endsWith('x') || lower.endsWith('z') ||
+      lower.endsWith('ch') || lower.endsWith('sh')) {
+    return singular + 'es';
+  }
+  
+  // Words ending in consonant + y → change y to ies
+  if (lower.endsWith('y')) {
+    const beforeY = lower[lower.length - 2];
+    const vowels = ['a', 'e', 'i', 'o', 'u'];
+    if (beforeY && !vowels.includes(beforeY)) {
+      return singular.slice(0, -1) + 'ies';
+    }
+  }
+  
+  // Default: add 's'
+  return singular + 's';
+}
+
+// ============================================================================
 // Schema Loading
 // ============================================================================
 
@@ -130,6 +168,7 @@ export function resolveSchema(schema: Schema): LoadedSchema {
       outputDir: typeDef.output_dir,
       filename: typeDef.filename,
       ancestors: [],
+      plural: typeDef.plural ?? autoPluralise(name),
     });
   }
   
@@ -174,6 +213,7 @@ function createImplicitMeta(): ResolvedType {
     outputDir: undefined,
     filename: undefined,
     ancestors: [],
+    plural: META_TYPE, // 'meta' doesn't need pluralization
   };
 }
 
@@ -659,26 +699,70 @@ export function getEnumForField(
 
 /**
  * Get the output directory for a type.
+ * 
+ * Resolution order:
+ * 1. If the type has an explicit output_dir, use it
+ * 2. If an ancestor has an explicit output_dir, use it
+ * 3. Otherwise, compute from type hierarchy using pluralized names
+ * 
  * Accepts both type names (e.g., "task") and legacy paths (e.g., "objective/task").
  */
-export function getOutputDir(schema: LoadedSchema, typeName: string): string | undefined {
+export function getOutputDir(schema: LoadedSchema, typeName: string): string {
   // Handle legacy path format (e.g., "objective/task" -> "task")
   const segments = typeName.split('/').filter(Boolean);
   const resolvedName = segments[segments.length - 1] ?? typeName;
   
   const type = schema.types.get(resolvedName);
-  if (!type) return undefined;
+  if (!type) return autoPluralise(resolvedName); // Fallback for unknown types
   
   // If type has explicit output_dir, use it
   if (type.outputDir) return type.outputDir;
   
-  // Otherwise, check ancestors
+  // Otherwise, check ancestors for explicit output_dir
   for (const ancestorName of type.ancestors) {
     const ancestor = schema.types.get(ancestorName);
     if (ancestor?.outputDir) return ancestor.outputDir;
   }
   
-  return undefined;
+  // No explicit output_dir found - compute from type hierarchy
+  return computeDefaultOutputDir(schema, resolvedName);
+}
+
+/**
+ * Compute the default output directory from the type hierarchy.
+ * 
+ * Example: task (extends objective, extends meta) → "objectives/tasks"
+ * 
+ * The path is built by:
+ * 1. Taking the ancestor chain (excluding 'meta')
+ * 2. Adding the type itself
+ * 3. Using the plural form of each type name
+ * 4. Joining with '/'
+ */
+export function computeDefaultOutputDir(schema: LoadedSchema, typeName: string): string {
+  const type = schema.types.get(typeName);
+  if (!type) return autoPluralise(typeName);
+  
+  // Build chain: ancestors (excluding meta) + self
+  const chain = [...type.ancestors, typeName]
+    .filter(t => t !== META_TYPE);
+  
+  // Map each type name to its plural form
+  const plurals = chain.map(t => {
+    const typeObj = schema.types.get(t);
+    return typeObj?.plural ?? autoPluralise(t);
+  });
+  
+  return plurals.join('/');
+}
+
+/**
+ * Get the plural form of a type name.
+ * Returns the custom plural if defined, otherwise auto-pluralises.
+ */
+export function getPluralName(schema: LoadedSchema, typeName: string): string {
+  const type = schema.types.get(typeName);
+  return type?.plural ?? autoPluralise(typeName);
 }
 
 // ============================================================================

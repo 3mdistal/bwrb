@@ -91,6 +91,9 @@ export const TypeSchema = z.object({
   output_dir: z.string().optional(),
   // Filename pattern
   filename: z.string().optional(),
+  // Custom plural form for folder naming (e.g., "research" instead of "researches")
+  // If not specified, auto-pluralization is used (add 's', handle 'y' -> 'ies', etc.)
+  plural: z.string().optional(),
 });
 
 // ============================================================================
@@ -182,6 +185,8 @@ export interface ResolvedType {
   filename: string | undefined;
   /** List of ancestor type names (parent first, meta last) */
   ancestors: string[];
+  /** Plural form for folder naming (computed: custom or auto-pluralized) */
+  plural: string;
 }
 
 /**

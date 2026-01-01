@@ -28,6 +28,13 @@ All notable changes to Pika are documented in this file.
     - `owned-wrong-location`: Owned note not in expected folder location
   - New schema field: `owned: true` on dynamic source fields declares child ownership
 
+- **Custom plural names for folder computation** (pika-2e1)
+  - Add `plural` property to type definitions for custom folder naming
+  - Example: `"research": { "plural": "research" }` → folder is `research/` not `researches/`
+  - Auto-pluralization fallback for types without explicit plural (task → tasks, story → stories)
+  - Default folder paths now computed from type hierarchy when no `output_dir` specified
+  - Example: task (extends objective, extends meta) → `objectives/tasks/`
+
 - **Relative date expressions in template defaults** (ovault-gqj)
    - Templates can now use dynamic date expressions like `today()` or `today() + '7d'` in defaults
    - Supported functions: `today()` (YYYY-MM-DD), `now()` (YYYY-MM-DD HH:MM)

@@ -86,11 +86,30 @@
         "body_sections": {
           "type": "array",
           "items": { "$ref": "#/definitions/bodySection" }
-        }
+        },
+        "plural": {
+          "type": "string",
+          "description": "Custom plural form for folder naming (e.g., 'research' instead of 'researches')"
+        },
+        "extends": {
+          "type": "string",
+          "description": "Parent type name (v2 inheritance model)"
+        },
+        "fields": {
+          "type": "object",
+          "description": "Field definitions (v2 model, replaces frontmatter)",
+          "additionalProperties": {
+            "$ref": "#/definitions/frontmatterField"
+          }
+        },
+        "field_order": { "type": "array", "items": { "type": "string" }, "description": "Field ordering (v2 model)" },
+        "recursive": { "type": "boolean", "description": "Whether this type can contain instances of itself" }
       },
       "anyOf": [
         { "required": ["subtypes"] },
-        { "required": ["output_dir", "frontmatter"] }
+        { "required": ["output_dir", "frontmatter"] },
+        { "required": ["extends"] },
+        { "required": ["fields"] }
       ]
     },
     "frontmatterField": {

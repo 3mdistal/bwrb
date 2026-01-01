@@ -158,9 +158,10 @@ describe('vault', () => {
       expect(dir).toBe('Objectives/Tasks');
     });
 
-    it('should return undefined for unknown type', () => {
+    it('should compute default folder for unknown type', () => {
+      // Unknown types get auto-pluralized folder names as fallback
       const dir = getOutputDir(schema, 'unknown');
-      expect(dir).toBeUndefined();
+      expect(dir).toBe('unknowns');
     });
   });
 });

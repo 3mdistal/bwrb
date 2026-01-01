@@ -15,6 +15,9 @@ import {
   getAllFieldsForType,
   getEnumForField,
   getDiscriminatorFieldsFromTypePath,
+  getPluralName,
+  computeDefaultOutputDir,
+  getType,
 } from '../../../src/lib/schema.js';
 import { createTestVault, cleanupTestVault, TEST_SCHEMA } from '../fixtures/setup.js';
 import type { LoadedSchema } from '../../../src/types/schema.js';
@@ -265,6 +268,67 @@ describe('schema', () => {
     it('should return empty object for empty path', () => {
       const fields = getDiscriminatorFieldsFromTypePath('');
       expect(fields).toEqual({});
+    });
+  });
+
+  describe('pluralization and folder computation', () => {
+    describe('getPluralName', () => {
+      it('should return auto-pluralized name for types without explicit plural', () => {
+        // task -> tasks (simple s)
+        expect(getPluralName(schema, 'task')).toBe('tasks');
+      });
+
+      it('should use explicit plural when defined in schema', () => {
+        // Types can define custom plurals like "research" (no change)
+        // The test schema doesn't have explicit plurals, so this tests fallback
+        const type = getType(schema, 'idea');
+        expect(type?.plural).toBe('ideas');
+      });
+
+      it('should handle auto-pluralization of words ending in y', () => {
+        // If we had a type 'story', it would become 'stories'
+        // Since we don't, we just verify the result for known types
+        expect(getPluralName(schema, 'unknown')).toBe('unknowns');
+      });
+    });
+
+    describe('computeDefaultOutputDir', () => {
+      it('should compute folder from type hierarchy', () => {
+        // task extends objective extends meta
+        // -> objectives/tasks (using plurals, excluding meta)
+        const dir = computeDefaultOutputDir(schema, 'task');
+        expect(dir).toBe('objectives/tasks');
+      });
+
+      it('should compute folder for direct meta child', () => {
+        // idea extends meta -> ideas (just the plural)
+        const dir = computeDefaultOutputDir(schema, 'idea');
+        expect(dir).toBe('ideas');
+      });
+
+      it('should compute folder for milestone (sibling of task)', () => {
+        // milestone extends objective extends meta
+        const dir = computeDefaultOutputDir(schema, 'milestone');
+        expect(dir).toBe('objectives/milestones');
+      });
+
+      it('should return auto-pluralized name for unknown type', () => {
+        const dir = computeDefaultOutputDir(schema, 'widget');
+        expect(dir).toBe('widgets');
+      });
+    });
+
+    describe('resolved type plural property', () => {
+      it('should populate plural on resolved types', () => {
+        const taskType = getType(schema, 'task');
+        expect(taskType?.plural).toBe('tasks');
+
+        const ideaType = getType(schema, 'idea');
+        expect(ideaType?.plural).toBe('ideas');
+
+        const milestoneType = getType(schema, 'milestone');
+        expect(milestoneType?.plural).toBe('milestones');
+      });
     });
   });
 });

@@ -366,6 +366,10 @@ async function handleInteractiveFix(
       return handleFormatViolationFix(schema, result, issue);
     case 'stale-reference':
       return handleStaleReferenceFix(schema, result, issue);
+    case 'owned-note-referenced':
+      return handleOwnedNoteReferencedFix(schema, result, issue);
+    case 'owned-wrong-location':
+      return handleOwnedWrongLocationFix(schema, result, issue);
     default:
       // Truly non-fixable issues
       if (issue.suggestion) {
@@ -699,4 +703,92 @@ async function handleStaleReferenceFix(
   }
 }
 
+/**
+ * Handle owned-note-referenced fix.
+ * 
+ * This occurs when a note references an owned note via a schema field.
+ * Owned notes can only be referenced by their owner.
+ * 
+ * Options:
+ * 1. Clear the reference field
+ * 2. Skip (requires manual resolution)
+ * 
+ * Moving the owned note to shared space would require:
+ * - Removing it from owner's field
+ * - Moving the file
+ * - Updating the reference here
+ * This is too complex for automatic fix.
+ */
+async function handleOwnedNoteReferencedFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field) {
+    console.log(chalk.dim('    (Cannot fix - no field specified)'));
+    return 'skipped';
+  }
 
+  // Show context
+  console.log(chalk.dim(`    Owned by: ${issue.ownerPath}`));
+  console.log(chalk.dim('    Options: Clear reference or manually move the note to shared location'));
+
+  const options = ['[clear reference]', '[skip]', '[quit]'];
+  const selected = await promptSelection(
+    `    Action for reference to owned note:`,
+    options
+  );
+
+  if (selected === null || selected === '[quit]') {
+    return 'quit';
+  } else if (selected === '[clear reference]') {
+    // Clear the field
+    const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-enum' }, '');
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Cleared ${issue.field}`));
+      return 'fixed';
+    } else {
+      console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+      return 'failed';
+    }
+  }
+
+  console.log(chalk.dim('    → Skipped'));
+  return 'skipped';
+}
+
+/**
+ * Handle owned-wrong-location fix.
+ * 
+ * This occurs when an owned note is not in the expected location
+ * (e.g., should be in owner's folder but isn't).
+ * 
+ * Automatic fix would require:
+ * 1. Moving the file to correct location
+ * 2. Updating all wikilinks that reference the moved file
+ * 
+ * This is complex and risky, so we just provide guidance.
+ */
+async function handleOwnedWrongLocationFix(
+  _schema: LoadedSchema,
+  _result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  // Show context
+  console.log(chalk.dim(`    Expected location: ${issue.expected}`));
+  console.log(chalk.dim(`    Owner: ${issue.ownerPath}`));
+  console.log(chalk.dim('    To fix: Move the file manually and update any wikilinks'));
+
+  const options = ['[skip]', '[quit]'];
+  const selected = await promptSelection(
+    `    Action for misplaced owned note:`,
+    options
+  );
+
+  if (selected === null || selected === '[quit]') {
+    return 'quit';
+  }
+
+  console.log(chalk.dim('    → Skipped (manual fix required)'));
+  return 'skipped';
+}
