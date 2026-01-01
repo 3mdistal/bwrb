@@ -10,6 +10,50 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 
+// ============================================================================
+// Global Process Tracking (for cleanup on test timeout)
+// ============================================================================
+
+/**
+ * Track all active PTY processes for cleanup.
+ * When vitest times out a test, the finally block may not run,
+ * so we need global tracking to clean up orphaned processes.
+ */
+const activePtyProcesses = new Set<PtyProcess>();
+
+/**
+ * Kill all active PTY processes.
+ * Call this in afterEach hooks to clean up after timeouts.
+ */
+export function killAllPtyProcesses(): void {
+  for (const proc of activePtyProcesses) {
+    if (!proc.hasExited()) {
+      try {
+        proc.kill();
+      } catch {
+        // Ignore errors when killing (process may have already exited)
+      }
+    }
+  }
+  activePtyProcesses.clear();
+}
+
+/**
+ * Register a PTY process for tracking.
+ * Called automatically when creating a PtyProcess.
+ */
+function registerPtyProcess(proc: PtyProcess): void {
+  activePtyProcesses.add(proc);
+}
+
+/**
+ * Unregister a PTY process from tracking.
+ * Called automatically when the process exits.
+ */
+function unregisterPtyProcess(proc: PtyProcess): void {
+  activePtyProcesses.delete(proc);
+}
+
 // Path to the test vault fixture
 export const TEST_VAULT_PATH = path.resolve(
   import.meta.dirname,
@@ -74,6 +118,9 @@ export class PtyProcess {
   constructor(ptyProcess: pty.IPty) {
     this.ptyProcess = ptyProcess;
 
+    // Register for global tracking (cleanup on test timeout)
+    registerPtyProcess(this);
+
     // Collect all output
     ptyProcess.onData((data) => {
       this.output += data;
@@ -86,6 +133,8 @@ export class PtyProcess {
     this.exitPromise = new Promise((resolve) => {
       ptyProcess.onExit(({ exitCode }) => {
         this.exitCode = exitCode;
+        // Unregister from global tracking
+        unregisterPtyProcess(this);
         resolve(exitCode);
       });
     });
