@@ -18,6 +18,16 @@ All notable changes to Pika are documented in this file.
 
 ### Added
 
+- **Ownership model for colocated notes** (pika-9g9)
+  - Parent notes can declare ownership of child notes via `owned: true` on context fields
+  - Owned notes are automatically colocated with their owner (e.g., `drafts/My Novel/research/`)
+  - `pika new` prompts for owner selection when creating ownable note types
+  - Supports `--owner "[[Note Name]]"` and `--standalone` flags for non-interactive use
+  - `pika audit` detects ownership violations:
+    - `owned-note-referenced`: Non-owner referencing an owned note
+    - `owned-wrong-location`: Owned note not in expected folder location
+  - New schema field: `owned: true` on dynamic source fields declares child ownership
+
 - **Relative date expressions in template defaults** (ovault-gqj)
    - Templates can now use dynamic date expressions like `today()` or `today() + '7d'` in defaults
    - Supported functions: `today()` (YYYY-MM-DD), `now()` (YYYY-MM-DD HH:MM)
