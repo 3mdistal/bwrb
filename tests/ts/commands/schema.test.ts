@@ -49,11 +49,15 @@ describe('schema command', () => {
       expect(result.stdout).toContain('status');
     });
 
-    it('should show shared fields if defined', async () => {
+    it('should show enums when defined', async () => {
+      // Note: shared_fields is a v1 feature that gets resolved into individual types
+      // in the v2 model, so we no longer display a separate "Shared Fields:" section.
+      // Instead we verify the schema display works correctly with enums.
       const result = await runCLI(['schema', 'show'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Shared Fields:');
+      expect(result.stdout).toContain('Enums:');
+      expect(result.stdout).toContain('Types:');
     });
   });
 
@@ -72,7 +76,7 @@ describe('schema command', () => {
       const result = await runCLI(['schema', 'show', 'idea'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('type');
+      // Note: 'type' is not shown as a field since it's auto-injected in the new model
       expect(result.stdout).toContain('status');
       expect(result.stdout).toContain('priority');
     });

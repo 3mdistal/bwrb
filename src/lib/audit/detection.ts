@@ -7,16 +7,16 @@
 
 import { dirname, basename } from 'path';
 import {
-  getTypeDefByPath,
+  getType,
   getFieldsForType,
   getEnumValues,
-  resolveTypePathFromFrontmatter,
+  resolveTypeFromFrontmatter,
+  getOutputDir,
   getTypeFamilies,
 } from '../schema.js';
 import { parseNote } from '../frontmatter.js';
-import { getOutputDir } from '../vault.js';
 import { suggestEnumValue, suggestFieldName } from '../validation.js';
-import type { Schema } from '../../types/schema.js';
+import type { LoadedSchema } from '../../types/schema.js';
 import {
   type AuditIssue,
   type FileAuditResult,
@@ -44,7 +44,7 @@ import {
  * Run audit on all managed files.
  */
 export async function runAudit(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   options: AuditRunOptions
 ): Promise<FileAuditResult[]> {
@@ -94,7 +94,7 @@ export async function runAudit(
  * Audit a single file for issues.
  */
 export async function auditFile(
-  schema: Schema,
+  schema: LoadedSchema,
   _vaultDir: string,
   file: ManagedFile,
   options: AuditRunOptions,
@@ -132,7 +132,7 @@ export async function auditFile(
   }
 
   // Resolve full type path from frontmatter
-  const resolvedTypePath = resolveTypePathFromFrontmatter(schema, frontmatter);
+  const resolvedTypePath = resolveTypeFromFrontmatter(schema, frontmatter);
   if (!resolvedTypePath) {
     const knownTypes = getTypeFamilies(schema);
     const suggestion = suggestFieldName(String(typeValue), knownTypes);
@@ -149,7 +149,7 @@ export async function auditFile(
   }
 
   // Verify type definition exists
-  const typeDef = getTypeDefByPath(schema, resolvedTypePath);
+  const typeDef = getType(schema, resolvedTypePath);
   if (!typeDef) {
     issues.push({
       severity: 'error',
@@ -190,7 +190,7 @@ export async function auditFile(
   const allowedFields = new Set([
     ...ALLOWED_NATIVE_FIELDS,
     ...(options.allowedFields ?? []),
-    ...(schema.audit?.allowed_extra_fields ?? []),
+    ...(schema.raw.audit?.allowed_extra_fields ?? []),
   ]);
 
   // Check required fields

@@ -1,16 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestVault, cleanupTestVault, TEST_SCHEMA } from '../fixtures/setup.js';
+import { createTestVault, cleanupTestVault } from '../fixtures/setup.js';
 import { buildNoteIndex, resolveNoteQuery, getShortestWikilinkTarget, generateWikilink } from '../../../src/lib/navigation.js';
-import type { Schema } from '../../../src/types/schema.js';
+import { loadSchema } from '../../../src/lib/schema.js';
+import type { LoadedSchema } from '../../../src/types/schema.js';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 
 describe('Navigation', () => {
   let vaultDir: string;
-  const schema: Schema = TEST_SCHEMA as unknown as Schema;
+  let schema: LoadedSchema;
 
   beforeEach(async () => {
     vaultDir = await createTestVault();
+    schema = await loadSchema(vaultDir);
   });
 
   afterEach(async () => {

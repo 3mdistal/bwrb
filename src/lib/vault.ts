@@ -2,7 +2,8 @@ import { readdir, stat, mkdir } from 'fs/promises';
 import { join, basename } from 'path';
 import { existsSync } from 'fs';
 import { parseNote } from './frontmatter.js';
-import type { Schema, DynamicSource, FilterCondition, TypeDef, Subtype } from '../types/schema.js';
+import type { LoadedSchema, FilterCondition, DynamicSource, ResolvedType } from '../types/schema.js';
+import { getOutputDir as getOutputDirFromSchema, getType } from './schema.js';
 
 /**
  * Resolve vault directory from options, env, or cwd.
@@ -103,11 +104,11 @@ function matchesCondition(value: unknown, condition: FilterCondition): boolean {
  * Query a dynamic source and return matching note names.
  */
 export async function queryDynamicSource(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   sourceName: string
 ): Promise<string[]> {
-  const source: DynamicSource | undefined = schema.dynamic_sources?.[sourceName];
+  const source: DynamicSource | undefined = schema.dynamicSources.get(sourceName);
   if (!source) {
     return [];
   }
@@ -143,81 +144,53 @@ export async function queryDynamicSource(
 }
 
 /**
- * Get output directory for a type, walking up the type hierarchy.
+ * Get output directory for a type.
  */
 export function getOutputDir(
-  schema: Schema,
-  typePath: string
+  schema: LoadedSchema,
+  typeName: string
 ): string | undefined {
-  const segments = typePath.split('/').filter(Boolean);
-  let outputDir: string | undefined;
-
-  // Walk through segments, keeping track of most recent output_dir
-  let current: { output_dir?: string | undefined; subtypes?: Record<string, unknown> | undefined } | undefined;
-  
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i];
-    if (i === 0) {
-      current = segment ? schema.types[segment] : undefined;
-    } else if (current?.subtypes && segment) {
-      current = current.subtypes[segment] as typeof current;
-    }
-
-    if (current?.output_dir) {
-      outputDir = current.output_dir;
-    }
-  }
-
-  return outputDir;
+  return getOutputDirFromSchema(schema, typeName);
 }
 
 // ============================================================================
-// Directory Mode Support
+// Directory Mode Support (Legacy - to be removed when ownership is implemented)
 // ============================================================================
 
 /**
- * Get directory mode for a type (pooled or instance-grouped).
+ * Get directory mode for a type.
+ * In the new model, this is determined by ownership, not dir_mode.
+ * For now, return 'pooled' by default.
  */
 export function getDirMode(
-  schema: Schema,
-  typePath: string
+  _schema: LoadedSchema,
+  _typeName: string
 ): 'pooled' | 'instance-grouped' {
-  const segments = typePath.split('/').filter(Boolean);
-  if (segments.length === 0) return 'pooled';
-
-  // Get the root type
-  const rootTypeName = segments[0];
-  const rootType = rootTypeName ? schema.types[rootTypeName] : undefined;
-  if (!rootType) return 'pooled';
-
-  // dir_mode is defined at the root type level
-  return rootType.dir_mode ?? 'pooled';
+  // TODO: Implement based on ownership model
+  return 'pooled';
 }
 
 /**
- * Check if a type path is a subtype of an instance-grouped type.
+ * Check if a type is a subtype of an instance-grouped type.
+ * @deprecated Use ownership model instead
  */
 export function isInstanceGroupedSubtype(
-  schema: Schema,
-  typePath: string
+  _schema: LoadedSchema,
+  _typeName: string
 ): boolean {
-  const segments = typePath.split('/').filter(Boolean);
-  // Must be a subtype (more than one segment) and parent must be instance-grouped
-  if (segments.length <= 1) return false;
-  return getDirMode(schema, typePath) === 'instance-grouped';
+  // In new model, this is determined by ownership
+  return false;
 }
 
 /**
- * Get the parent type name for an instance-grouped subtype.
- * For instance-grouped types, the parent type name is the instance field.
+ * Get the parent type name for an owned type.
  */
 export function getParentTypeName(
-  _schema: Schema,
-  typePath: string
+  schema: LoadedSchema,
+  typeName: string
 ): string | undefined {
-  const segments = typePath.split('/').filter(Boolean);
-  if (segments.length <= 1) return undefined;
-  return segments[0];
+  const type = getType(schema, typeName);
+  return type?.parent;
 }
 
 /**
@@ -365,26 +338,12 @@ function formatDate(date: Date, format: string): string {
 }
 
 /**
- * Get the filename pattern for a subtype.
+ * Get the filename pattern for a type.
  */
 export function getFilenamePattern(
-  schema: Schema,
-  typePath: string
+  schema: LoadedSchema,
+  typeName: string
 ): string | undefined {
-  const segments = typePath.split('/').filter(Boolean);
-  if (segments.length <= 1) return undefined;
-
-  // Navigate to the subtype
-  let current: TypeDef | Subtype | undefined;
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i];
-    if (i === 0) {
-      current = segment ? schema.types[segment] : undefined;
-    } else if (current?.subtypes && segment) {
-      current = current.subtypes[segment];
-    }
-  }
-
-  // filename is only on Subtype, not on root Type
-  return (current as Subtype | undefined)?.filename;
+  const type: ResolvedType | undefined = getType(schema, typeName);
+  return type?.filename;
 }

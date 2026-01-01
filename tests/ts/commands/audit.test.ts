@@ -960,15 +960,14 @@ Task content
       const result = await runCLI(['audit', 'objective/task', '--fix', '--auto'], tempVaultDir);
 
       expect(result.stdout).toContain('Auto-fixing');
-      expect(result.stdout).toContain('type: objective');
-      expect(result.stdout).toContain('objective-type: task');
+      // In the new inheritance model, we use a single 'type: task' field instead of 'type: objective' + 'objective-type: task'
+      expect(result.stdout).toContain('type: task');
       expect(result.stdout).toContain('Fixed: 1 issues');
 
       // Verify the file was actually fixed
       const { readFile } = await import('fs/promises');
       const content = await readFile(join(tempVaultDir, 'Objectives', 'Tasks', 'Missing Type.md'), 'utf-8');
-      expect(content).toContain('type: objective');
-      expect(content).toContain('objective-type: task');
+      expect(content).toContain('type: task');
     });
 
     it('should mark orphan-file as auto-fixable when inferred type is available', async () => {

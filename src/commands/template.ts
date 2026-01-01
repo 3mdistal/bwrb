@@ -34,7 +34,7 @@ import {
   jsonError,
   ExitCodes,
 } from '../lib/output.js';
-import type { Schema, Field, Template } from '../types/schema.js';
+import type { LoadedSchema, Field, Template } from '../types/schema.js';
 import { UserCancelledError } from '../lib/errors.js';
 
 interface TemplateListOptions {
@@ -450,7 +450,7 @@ templateCommand
  * Create a template from JSON input.
  */
 async function createTemplateFromJson(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
   options: TemplateNewOptions
@@ -535,7 +535,7 @@ async function createTemplateFromJson(
  * Create a template interactively.
  */
 async function createTemplateInteractive(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
   options: TemplateNewOptions
@@ -679,7 +679,7 @@ async function createTemplateInteractive(
  * Prompt for a field default value.
  */
 async function promptFieldDefault(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   fieldName: string,
   field: Field
@@ -821,7 +821,7 @@ templateCommand
  * Edit a template from JSON input (patch/merge semantics).
  */
 async function editTemplateFromJson(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   template: Template,
   jsonInput: string
@@ -932,7 +932,7 @@ async function editTemplateFromJson(
  * Edit a template interactively.
  */
 async function editTemplateInteractive(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   template: Template
 ): Promise<void> {
@@ -1099,7 +1099,7 @@ function formatDefaultValue(value: unknown): string {
  * Returns 'CLEAR' if user wants to remove the default.
  */
 async function promptFieldDefaultEdit(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   fieldName: string,
   field: Field,

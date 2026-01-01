@@ -21,7 +21,7 @@ export function getRelativeVaultPath(vaultDir: string): string {
 }
 
 export const TEST_SCHEMA = {
-  version: 2,
+  version: 1,
   shared_fields: {
     status: {
       prompt: 'select',

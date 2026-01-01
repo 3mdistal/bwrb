@@ -8,7 +8,7 @@
  */
 
 import { basename } from 'path';
-import type { Schema } from '../types/schema.js';
+import type { LoadedSchema } from '../types/schema.js';
 import {
   discoverManagedFiles,
   findSimilarFiles,
@@ -54,7 +54,7 @@ export type { ManagedFile };
  * - Directories in PIKA_AUDIT_EXCLUDE env var
  * - Files matching .gitignore patterns
  */
-export async function buildNoteIndex(schema: Schema, vaultDir: string): Promise<NoteIndex> {
+export async function buildNoteIndex(schema: LoadedSchema, vaultDir: string): Promise<NoteIndex> {
   // Pass no typePath to get vault-wide scan
   const files = await discoverManagedFiles(schema, vaultDir);
   

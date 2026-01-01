@@ -33,29 +33,36 @@ export function parseFrontmatter(content: string): Record<string, unknown> {
 
 /**
  * Serialize frontmatter to YAML string (without delimiters).
+ * Always puts 'type' first if present.
  */
 export function serializeFrontmatter(
   data: Record<string, unknown>,
   order?: string[]
 ): string {
-  // If order is specified, reorder the keys
-  if (order && order.length > 0) {
-    const ordered: Record<string, unknown> = {};
-    for (const key of order) {
-      if (key in data) {
-        ordered[key] = data[key];
-      }
-    }
-    // Add any remaining keys not in order
-    for (const key of Object.keys(data)) {
-      if (!(key in ordered)) {
-        ordered[key] = data[key];
-      }
-    }
-    return stringify(ordered).trimEnd();
+  const ordered: Record<string, unknown> = {};
+  
+  // Always put 'type' first if it exists
+  if ('type' in data) {
+    ordered['type'] = data['type'];
   }
-
-  return stringify(data).trimEnd();
+  
+  // If order is specified, add keys in that order
+  if (order && order.length > 0) {
+    for (const key of order) {
+      if (key in data && key !== 'type') {
+        ordered[key] = data[key];
+      }
+    }
+  }
+  
+  // Add any remaining keys not yet in ordered
+  for (const key of Object.keys(data)) {
+    if (!(key in ordered)) {
+      ordered[key] = data[key];
+    }
+  }
+  
+  return stringify(ordered).trimEnd();
 }
 
 /**

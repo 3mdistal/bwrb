@@ -4,7 +4,7 @@
  * This module contains all type definitions for the audit system.
  */
 
-import type { Schema } from '../../types/schema.js';
+import type { LoadedSchema } from '../../types/schema.js';
 
 // ============================================================================
 // Issue Types
@@ -135,14 +135,14 @@ export interface AuditRunOptions {
   /** Vault directory path for resolving wikilink references */
   vaultDir?: string | undefined;
   /** Schema for looking up field formats */
-  schema?: Schema | undefined;
+  schema?: LoadedSchema | undefined;
 }
 
 /**
  * Context passed to fix operations.
  */
 export interface FixContext {
-  schema: Schema;
+  schema: LoadedSchema;
   vaultDir: string;
 }
 

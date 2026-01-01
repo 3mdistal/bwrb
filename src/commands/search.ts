@@ -166,7 +166,7 @@ async function handleContentSearch(
   query: string | undefined,
   options: SearchOptions,
   vaultDir: string,
-  schema: import('../types/schema.js').Schema,
+  schema: import('../types/schema.js').LoadedSchema,
   jsonMode: boolean,
   cmd: Command
 ): Promise<void> {
@@ -358,7 +358,7 @@ async function handleNameSearch(
   query: string | undefined,
   options: SearchOptions,
   vaultDir: string,
-  schema: import('../types/schema.js').Schema,
+  schema: import('../types/schema.js').LoadedSchema,
   jsonMode: boolean,
   _cmd: Command
 ): Promise<void> {

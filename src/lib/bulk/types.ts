@@ -2,7 +2,7 @@
  * Type definitions for bulk operations.
  */
 
-import type { Schema } from '../../types/schema.js';
+import type { LoadedSchema } from '../../types/schema.js';
 
 /**
  * Types of bulk operations.
@@ -107,7 +107,7 @@ export interface BulkOptions {
   quiet: boolean;
   jsonMode: boolean;
   vaultDir: string;
-  schema: Schema;
+  schema: LoadedSchema;
 }
 
 /**

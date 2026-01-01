@@ -16,7 +16,8 @@ import {
   validateConstraintSyntax,
   createScaffoldedInstances,
 } from '../../../src/lib/template.js';
-import type { Schema } from '../../../src/types/schema.js';
+import { resolveSchema } from '../../../src/lib/schema.js';
+import type { Schema, LoadedSchema } from '../../../src/types/schema.js';
 
 describe('template library', () => {
   let tempDir: string;
@@ -577,9 +578,9 @@ constraints:
 type: template
 template-for: draft
 instances:
-  - subtype: version
+  - type: version
     filename: "Draft v1.md"
-  - subtype: research
+  - type: research
     filename: "SEO Research.md"
     template: seo
     defaults:
@@ -595,9 +596,9 @@ instances:
       expect(template).not.toBeNull();
       expect(template?.instances).toBeDefined();
       expect(template?.instances).toHaveLength(2);
-      expect(template?.instances?.[0]).toEqual({ subtype: 'version', filename: 'Draft v1.md' });
+      expect(template?.instances?.[0]).toEqual({ type: 'version', filename: 'Draft v1.md' });
       expect(template?.instances?.[1]).toEqual({
-        subtype: 'research',
+        type: 'research',
         filename: 'SEO Research.md',
         template: 'seo',
         defaults: { status: 'inbox' },
@@ -860,34 +861,35 @@ describe('validateConstraintSyntax', () => {
 
 describe('createScaffoldedInstances', () => {
   let tempDir: string;
+  let schema: LoadedSchema;
 
-  // Minimal schema with instance-grouped type and subtypes
-  const testSchema: Schema = {
-    version: 1,
+  // V2 schema with inheritance-based types
+  const testSchemaRaw: Schema = {
+    version: 2,
     types: {
       draft: {
         output_dir: 'Drafts',
-        dir_mode: 'instance-grouped',
-        frontmatter: {
+        fields: {
           Name: { prompt: 'input', required: true },
           status: { prompt: 'select', enum: 'status', default: 'draft' },
         },
-        subtypes: {
-          version: {
-            frontmatter: {
-              version: { prompt: 'input', default: '1' },
-            },
-          },
-          research: {
-            frontmatter: {
-              topic: { prompt: 'input' },
-            },
-          },
-          notes: {
-            frontmatter: {
-              source: { prompt: 'input' },
-            },
-          },
+      },
+      version: {
+        extends: 'draft',
+        fields: {
+          version: { prompt: 'input', default: '1' },
+        },
+      },
+      research: {
+        extends: 'draft',
+        fields: {
+          topic: { prompt: 'input' },
+        },
+      },
+      notes: {
+        extends: 'draft',
+        fields: {
+          source: { prompt: 'input' },
         },
       },
     },
@@ -900,6 +902,8 @@ describe('createScaffoldedInstances', () => {
     tempDir = await mkdtemp(join(tmpdir(), 'scaffold-test-'));
     // Create instance folder
     await mkdir(join(tempDir, 'Drafts', 'My Project'), { recursive: true });
+    // Resolve schema for use in tests
+    schema = resolveSchema(testSchemaRaw);
   });
 
   afterEach(async () => {
@@ -908,12 +912,12 @@ describe('createScaffoldedInstances', () => {
 
   it('creates all specified instance files', async () => {
     const instances = [
-      { subtype: 'version', filename: 'Draft v1.md' },
-      { subtype: 'research', filename: 'Research.md' },
+      { type: 'version', filename: 'Draft v1.md' },
+      { type: 'research', filename: 'Research.md' },
     ];
 
     const result = await createScaffoldedInstances(
-      testSchema,
+      schema,
       tempDir,
       'draft',
       join(tempDir, 'Drafts', 'My Project'),
@@ -936,12 +940,12 @@ describe('createScaffoldedInstances', () => {
     );
 
     const instances = [
-      { subtype: 'notes', filename: 'Existing.md' },
-      { subtype: 'version', filename: 'New.md' },
+      { type: 'notes', filename: 'Existing.md' },
+      { type: 'version', filename: 'New.md' },
     ];
 
     const result = await createScaffoldedInstances(
-      testSchema,
+      schema,
       tempDir,
       'draft',
       join(tempDir, 'Drafts', 'My Project'),
@@ -957,11 +961,11 @@ describe('createScaffoldedInstances', () => {
 
   it('applies instance-specific defaults', async () => {
     const instances = [
-      { subtype: 'research', filename: 'SEO.md', defaults: { topic: 'SEO Analysis' } },
+      { type: 'research', filename: 'SEO.md', defaults: { topic: 'SEO Analysis' } },
     ];
 
     const result = await createScaffoldedInstances(
-      testSchema,
+      schema,
       tempDir,
       'draft',
       join(tempDir, 'Drafts', 'My Project'),
@@ -978,13 +982,13 @@ describe('createScaffoldedInstances', () => {
     expect(content).toContain('topic: SEO Analysis');
   });
 
-  it('reports errors for unknown subtypes', async () => {
+  it('reports errors for unknown types', async () => {
     const instances = [
-      { subtype: 'nonexistent', filename: 'Bad.md' },
+      { type: 'nonexistent', filename: 'Bad.md' },
     ];
 
     const result = await createScaffoldedInstances(
-      testSchema,
+      schema,
       tempDir,
       'draft',
       join(tempDir, 'Drafts', 'My Project'),
@@ -995,16 +999,16 @@ describe('createScaffoldedInstances', () => {
     expect(result.created).toHaveLength(0);
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]?.subtype).toBe('nonexistent');
-    expect(result.errors[0]?.message).toContain('Unknown subtype');
+    expect(result.errors[0]?.message).toContain('Unknown type');
   });
 
   it('uses default filename when not specified', async () => {
     const instances = [
-      { subtype: 'version' }, // No filename specified
+      { type: 'version' }, // No filename specified
     ];
 
     const result = await createScaffoldedInstances(
-      testSchema,
+      schema,
       tempDir,
       'draft',
       join(tempDir, 'Drafts', 'My Project'),
@@ -1013,18 +1017,18 @@ describe('createScaffoldedInstances', () => {
     );
 
     expect(result.created).toHaveLength(1);
-    // Default filename should be "{subtype}.md"
+    // Default filename should be "{type}.md"
     expect(existsSync(join(tempDir, 'Drafts', 'My Project', 'version.md'))).toBe(true);
   });
 
   it('loads and applies template if specified', async () => {
-    // Create a template for the research subtype
-    await mkdir(join(tempDir, '.pika', 'templates', 'draft', 'research'), { recursive: true });
+    // Create a template for the research type
+    await mkdir(join(tempDir, '.pika', 'templates', 'research'), { recursive: true });
     await writeFile(
-      join(tempDir, '.pika', 'templates', 'draft', 'research', 'seo.md'),
+      join(tempDir, '.pika', 'templates', 'research', 'seo.md'),
       `---
 type: template
-template-for: draft/research
+template-for: research
 defaults:
   topic: SEO Template Default
 ---
@@ -1036,11 +1040,11 @@ Template body here.
     );
 
     const instances = [
-      { subtype: 'research', filename: 'SEO Research.md', template: 'seo' },
+      { type: 'research', filename: 'SEO Research.md', template: 'seo' },
     ];
 
     const result = await createScaffoldedInstances(
-      testSchema,
+      schema,
       tempDir,
       'draft',
       join(tempDir, 'Drafts', 'My Project'),
@@ -1077,14 +1081,14 @@ Template body here.
     try {
       const instances = [
         { 
-          subtype: 'research', 
+          type: 'research', 
           filename: 'Dated Research.md', 
           defaults: { topic: "today() + '7d'" } 
         },
       ];
 
       const result = await createScaffoldedInstances(
-        testSchema,
+        schema,
         tempDir,
         'draft',
         join(tempDir, 'Drafts', 'My Project'),

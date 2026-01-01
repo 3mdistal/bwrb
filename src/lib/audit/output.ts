@@ -175,7 +175,7 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
 /**
  * Show available types when invalid type is specified.
  */
-export function showAvailableTypes(schema: import('../../types/schema.js').Schema): void {
+export function showAvailableTypes(schema: import('../../types/schema.js').LoadedSchema): void {
   // Import dynamically to avoid circular deps
   const { getTypeFamilies, getTypeDefByPath, hasSubtypes, getSubtypeKeys } = require('../schema.js');
   

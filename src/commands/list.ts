@@ -17,7 +17,7 @@ import {
   jsonError,
   ExitCodes,
 } from '../lib/output.js';
-import type { Schema } from '../types/schema.js';
+import type { LoadedSchema } from '../types/schema.js';
 
 interface ListCommandOptions {
   paths?: boolean;
@@ -134,7 +134,7 @@ interface ListOptions {
 /**
  * Show list command usage.
  */
-function showListUsage(schema: Schema): void {
+function showListUsage(schema: LoadedSchema): void {
   console.log('Usage: pika list [options] <type>[/<subtype>] [filters...]');
   console.log('');
   console.log('Options:');
@@ -166,7 +166,7 @@ function showListUsage(schema: Schema): void {
  * List objects by type path.
  */
 async function listObjects(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
   options: ListOptions
@@ -234,7 +234,7 @@ async function listObjects(
  * Recursively collect files for a type path.
  */
 async function collectFilesForType(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   typePath: string
 ): Promise<string[]> {

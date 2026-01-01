@@ -2,8 +2,8 @@ import { readdir } from 'fs/promises';
 import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
-import { TemplateFrontmatterSchema, type Template, type Schema, type Field, type Constraint, type InstanceScaffold } from '../types/schema.js';
-import { getTypeDefByPath, getFieldsForType, getEnumValues, getFrontmatterOrder, getSubtypeKeys, hasSubtypes } from './schema.js';
+import { TemplateFrontmatterSchema, type Template, type LoadedSchema, type Field, type Constraint, type InstanceScaffold } from '../types/schema.js';
+import { getType, getFieldsForType, getEnumValues } from './schema.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
 import { evaluateTemplateDefault, validateDateExpression, isDateExpression } from './date-expression.js';
@@ -495,10 +495,10 @@ function findClosestMatch(target: string, options: string[]): string | undefined
 }
 
 /**
- * Validate a field value against its field definition.
+ * Validate field value against its field definition.
  */
 function validateFieldValue(
-  schema: Schema,
+  schema: LoadedSchema,
   fieldName: string,
   field: Field,
   value: unknown
@@ -561,7 +561,7 @@ function validateFieldValue(
  * 
  * Performs full validation:
  * 1. Frontmatter schema validity
- * 2. Type path exists in schema
+ * 2. Type name exists in schema
  * 3. Defaults reference valid fields
  * 4. Default values match field types/enums
  * 5. prompt-fields reference valid fields
@@ -570,18 +570,18 @@ function validateFieldValue(
 export async function validateTemplate(
   vaultDir: string,
   template: Template,
-  schema: Schema
+  schema: LoadedSchema
 ): Promise<TemplateValidationResult> {
   const issues: TemplateValidationIssue[] = [];
   const relativePath = relative(vaultDir, template.path);
   
-  // 1. Check type path exists
-  const typeDef = getTypeDefByPath(schema, template.templateFor);
+  // 1. Check type exists
+  const typeDef = getType(schema, template.templateFor);
   if (!typeDef) {
     issues.push({
       severity: 'error',
       message: `Type '${template.templateFor}' not found in schema`,
-      suggestion: 'Check the template-for field matches a valid type path',
+      suggestion: 'Check the template-for field matches a valid type name',
     });
     
     // Can't do further validation without a valid type
@@ -746,23 +746,24 @@ export async function validateTemplate(
   
   // 7. Validate instances (for parent templates)
   if (template.instances) {
-    // Get valid subtypes for this parent type
-    const validSubtypes = hasSubtypes(typeDef) ? getSubtypeKeys(typeDef) : [];
+    // Get valid child types for this parent
+    const validChildTypes = typeDef.children;
     
     for (const instance of template.instances) {
-      // Check subtype exists
-      if (!validSubtypes.includes(instance.subtype)) {
-        const suggestion = findClosestMatch(instance.subtype, validSubtypes);
+      // Check instance type exists
+      const instanceType = getType(schema, instance.type);
+      if (!instanceType) {
+        const suggestion = findClosestMatch(instance.type, validChildTypes);
         const issue: TemplateValidationIssue = {
           severity: 'error',
-          message: `Unknown subtype '${instance.subtype}' in instances`,
+          message: `Unknown type '${instance.type}' in instances`,
         };
         if (suggestion) {
           issue.suggestion = `Did you mean '${suggestion}'?`;
-        } else if (validSubtypes.length > 0) {
-          issue.suggestion = `Valid subtypes: ${validSubtypes.join(', ')}`;
+        } else if (validChildTypes.length > 0) {
+          issue.suggestion = `Valid child types: ${validChildTypes.join(', ')}`;
         } else {
-          issue.suggestion = `Type '${template.templateFor}' has no subtypes`;
+          issue.suggestion = `Type '${template.templateFor}' has no child types`;
         }
         issues.push(issue);
         continue;
@@ -772,22 +773,21 @@ export async function validateTemplate(
       if (instance.template !== undefined && instance.template.trim() === '') {
         issues.push({
           severity: 'warning',
-          message: `Empty template name for instance subtype '${instance.subtype}'`,
+          message: `Empty template name for instance type '${instance.type}'`,
         });
       }
       
-      // Validate defaults against subtype schema if provided
+      // Validate defaults against instance type schema if provided
       if (instance.defaults) {
-        const subtypePath = `${template.templateFor}/${instance.subtype}`;
-        const subtypeFields = getFieldsForType(schema, subtypePath);
-        const subtypeFieldNames = Object.keys(subtypeFields);
+        const instanceFields = getFieldsForType(schema, instance.type);
+        const instanceFieldNames = Object.keys(instanceFields);
         
         for (const fieldName of Object.keys(instance.defaults)) {
-          if (!subtypeFieldNames.includes(fieldName)) {
-            const suggestion = findClosestMatch(fieldName, subtypeFieldNames);
+          if (!instanceFieldNames.includes(fieldName)) {
+            const suggestion = findClosestMatch(fieldName, instanceFieldNames);
             const issue: TemplateValidationIssue = {
               severity: 'warning',
-              message: `Unknown field '${fieldName}' in instance defaults for '${instance.subtype}'`,
+              message: `Unknown field '${fieldName}' in instance defaults for '${instance.type}'`,
               field: fieldName,
             };
             if (suggestion) {
@@ -817,11 +817,11 @@ export async function validateTemplate(
  */
 export async function validateAllTemplates(
   vaultDir: string,
-  schema: Schema,
-  typePath?: string
+  schema: LoadedSchema,
+  typeName?: string
 ): Promise<TemplateValidationResult[]> {
-  const templates = typePath 
-    ? await findTemplates(vaultDir, typePath)
+  const templates = typeName 
+    ? await findTemplates(vaultDir, typeName)
     : await findAllTemplates(vaultDir);
   
   const results: TemplateValidationResult[] = [];
@@ -972,7 +972,7 @@ export function validateConstraintSyntax(
  * Error from instance scaffolding.
  */
 export interface ScaffoldError {
-  /** Subtype that failed */
+  /** Type that failed (kept as 'subtype' for API compatibility) */
   subtype: string;
   /** Filename if specified */
   filename?: string | undefined;
@@ -996,11 +996,11 @@ export interface ScaffoldResult {
  * Create scaffolded instance files from a parent template.
  * 
  * When a parent template has an `instances` array, this function creates
- * all the specified subtype files within the instance folder.
+ * all the specified type files within the instance folder.
  * 
  * @param schema - The vault schema
  * @param vaultDir - Path to vault directory
- * @param parentTypePath - Type path of parent (e.g., "draft")
+ * @param _parentTypeName - Type name of parent (e.g., "draft") - unused in new model
  * @param instanceDir - Path to instance folder
  * @param instances - Instance definitions from template
  * @param parentFrontmatter - Frontmatter from parent note (for variable substitution)
@@ -1013,16 +1013,16 @@ export interface ScaffoldResult {
  *   'draft',
  *   '/vault/Drafts/My Project',
  *   [
- *     { subtype: 'version', filename: 'Draft v1.md' },
- *     { subtype: 'research', filename: 'SEO.md', template: 'seo' },
+ *     { type: 'version', filename: 'Draft v1.md' },
+ *     { type: 'research', filename: 'SEO.md', template: 'seo' },
  *   ],
  *   { Name: 'My Project', status: 'draft' }
  * );
  */
 export async function createScaffoldedInstances(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
-  parentTypePath: string,
+  _parentTypeName: string,
   instanceDir: string,
   instances: InstanceScaffold[],
   parentFrontmatter: Record<string, unknown>
@@ -1033,22 +1033,19 @@ export async function createScaffoldedInstances(
   
   for (const instance of instances) {
     try {
-      // Build full subtype path (e.g., "draft/version")
-      const subtypePath = `${parentTypePath}/${instance.subtype}`;
-      
-      // Validate subtype exists
-      const subtypeDef = getTypeDefByPath(schema, subtypePath);
-      if (!subtypeDef) {
+      // Validate type exists
+      const instanceType = getType(schema, instance.type);
+      if (!instanceType) {
         errors.push({
-          subtype: instance.subtype,
+          subtype: instance.type,
           filename: instance.filename,
-          message: `Unknown subtype: ${instance.subtype}`,
+          message: `Unknown type: ${instance.type}`,
         });
         continue;
       }
       
       // Determine filename
-      const filename = instance.filename ?? `${instance.subtype}.md`;
+      const filename = instance.filename ?? `${instance.type}.md`;
       const filePath = join(instanceDir, filename);
       
       // Skip if file exists (warn but continue)
@@ -1057,10 +1054,10 @@ export async function createScaffoldedInstances(
         continue;
       }
       
-      // Load instance template if specified (resolve by name against subtype's template dir)
+      // Load instance template if specified
       let instanceTemplate: Template | null = null;
       if (instance.template) {
-        instanceTemplate = await findTemplateByName(vaultDir, subtypePath, instance.template);
+        instanceTemplate = await findTemplateByName(vaultDir, instance.type, instance.template);
         // If not found, don't error - just continue without template
       }
       
@@ -1083,7 +1080,7 @@ export async function createScaffoldedInstances(
       }
       
       // Apply schema defaults for any missing required fields
-      frontmatter = applyDefaults(schema, subtypePath, frontmatter);
+      frontmatter = applyDefaults(schema, instance.type, frontmatter);
       
       // Generate body
       let body = '';
@@ -1092,13 +1089,12 @@ export async function createScaffoldedInstances(
           ...parentFrontmatter,
           ...frontmatter,
         });
-      } else if (subtypeDef.body_sections && subtypeDef.body_sections.length > 0) {
-        body = generateBodySections(subtypeDef.body_sections);
+      } else if (instanceType.bodySections && instanceType.bodySections.length > 0) {
+        body = generateBodySections(instanceType.bodySections);
       }
       
-      // Get field order from subtype definition
-      const fieldOrder = getFrontmatterOrder(subtypeDef);
-      const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
+      // Get field order from type definition
+      const orderedFields = instanceType.fieldOrder.length > 0 ? instanceType.fieldOrder : Object.keys(frontmatter);
       
       // Write file
       await writeNote(filePath, frontmatter, body, orderedFields);
@@ -1106,7 +1102,7 @@ export async function createScaffoldedInstances(
       
     } catch (e) {
       errors.push({
-        subtype: instance.subtype,
+        subtype: instance.type,
         filename: instance.filename,
         message: (e as Error).message,
       });

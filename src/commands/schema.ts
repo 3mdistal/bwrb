@@ -17,7 +17,7 @@ import {
   jsonError,
   ExitCodes,
 } from '../lib/output.js';
-import type { Schema, Type, TypeDef, Field, BodySection } from '../types/schema.js';
+import type { LoadedSchema, Field, BodySection, ResolvedType } from '../types/schema.js';
 
 interface SchemaShowOptions {
   output?: string;
@@ -105,23 +105,19 @@ schemaCommand
 /**
  * Output schema as JSON for AI/scripting usage.
  */
-function outputSchemaJson(schema: Schema): void {
+function outputSchemaJson(schema: LoadedSchema): void {
+  const raw = schema.raw;
   const output: Record<string, unknown> = {
-    version: schema.version ?? 1,
-    enums: schema.enums ?? {},
-    shared_fields: schema.shared_fields 
-      ? Object.fromEntries(
-          Object.entries(schema.shared_fields).map(([name, field]) => [
-            name,
-            formatFieldForJson(schema, field),
-          ])
-        )
-      : {},
+    version: raw.version ?? 2,
+    enums: raw.enums ?? {},
     types: Object.fromEntries(
-      getTypeFamilies(schema).map(family => [
-        family,
-        formatTypeForJson(schema, family, schema.types[family]!),
-      ])
+      getTypeFamilies(schema).map(family => {
+        const typeDef = getTypeDefByPath(schema, family);
+        return [
+          family,
+          typeDef ? formatTypeForJson(schema, family, typeDef) : {},
+        ];
+      })
     ),
   };
 
@@ -131,7 +127,7 @@ function outputSchemaJson(schema: Schema): void {
 /**
  * Output specific type details as JSON.
  */
-function outputTypeDetailsJson(schema: Schema, typePath: string): void {
+function outputTypeDetailsJson(schema: LoadedSchema, typePath: string): void {
   const typeDef = getTypeDefByPath(schema, typePath);
   if (!typeDef) {
     printJson(jsonError(`Unknown type: ${typePath}`));
@@ -139,13 +135,11 @@ function outputTypeDetailsJson(schema: Schema, typePath: string): void {
   }
 
   const fields = getFieldsForType(schema, typePath);
-  const typeAsType = typeDef as Type;
 
   const output: Record<string, unknown> = {
     type_path: typePath,
-    output_dir: typeDef.output_dir,
-    dir_mode: typeAsType.dir_mode,
-    filename: (typeDef as { filename?: string }).filename,
+    output_dir: typeDef.outputDir,
+    filename: typeDef.filename,
     fields: Object.fromEntries(
       Object.entries(fields).map(([name, field]) => [
         name,
@@ -153,8 +147,8 @@ function outputTypeDetailsJson(schema: Schema, typePath: string): void {
       ])
     ),
     subtypes: hasSubtypes(typeDef) ? getSubtypeKeys(typeDef) : undefined,
-    body_sections: typeDef.body_sections 
-      ? formatBodySectionsForJson(typeDef.body_sections)
+    body_sections: typeDef.bodySections 
+      ? formatBodySectionsForJson(typeDef.bodySections)
       : undefined,
   };
 
@@ -170,23 +164,24 @@ function outputTypeDetailsJson(schema: Schema, typePath: string): void {
  * Format a type definition for JSON output.
  */
 function formatTypeForJson(
-  schema: Schema,
+  schema: LoadedSchema,
   typePath: string,
-  typeDef: TypeDef
+  typeDef: ResolvedType
 ): Record<string, unknown> {
-  const typeAsType = typeDef as Type;
   const result: Record<string, unknown> = {
-    output_dir: typeDef.output_dir,
-    dir_mode: typeAsType.dir_mode,
+    output_dir: typeDef.outputDir,
   };
 
-  // Add subtypes if present
+  // Add subtypes if present (children in new model)
   if (hasSubtypes(typeDef)) {
     result.subtypes = Object.fromEntries(
-      getSubtypeKeys(typeDef).map(subtype => [
-        subtype,
-        formatTypeForJson(schema, `${typePath}/${subtype}`, typeDef.subtypes![subtype]!),
-      ])
+      getSubtypeKeys(typeDef).map(subtype => {
+        const childTypeDef = getTypeDefByPath(schema, `${typePath}/${subtype}`);
+        return [
+          subtype,
+          childTypeDef ? formatTypeForJson(schema, `${typePath}/${subtype}`, childTypeDef) : {},
+        ];
+      })
     );
   }
 
@@ -196,7 +191,7 @@ function formatTypeForJson(
 /**
  * Format a field for JSON output with resolved enum values.
  */
-function formatFieldForJson(schema: Schema, field: Field): Record<string, unknown> {
+function formatFieldForJson(schema: LoadedSchema, field: Field): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
   // Determine type
@@ -248,23 +243,15 @@ function formatBodySectionsForJson(sections: BodySection[]): unknown[] {
 /**
  * Show a tree view of all types in the schema.
  */
-function showSchemaTree(schema: Schema): void {
+function showSchemaTree(schema: LoadedSchema): void {
   console.log(chalk.bold('\nSchema Types\n'));
 
-  // Show shared fields if any
-  if (schema.shared_fields && Object.keys(schema.shared_fields).length > 0) {
-    console.log(chalk.cyan('Shared Fields:'));
-    for (const [name, field] of Object.entries(schema.shared_fields)) {
-      const type = getFieldType(field);
-      console.log(`  ${chalk.yellow(name)}: ${type}`);
-    }
-    console.log('');
-  }
-
+  const raw = schema.raw;
+  
   // Show enums if any
-  if (schema.enums && Object.keys(schema.enums).length > 0) {
+  if (raw.enums && Object.keys(raw.enums).length > 0) {
     console.log(chalk.cyan('Enums:'));
-    for (const [name, values] of Object.entries(schema.enums)) {
+    for (const [name, values] of Object.entries(raw.enums)) {
       console.log(`  ${chalk.yellow(name)}: ${values.join(', ')}`);
     }
     console.log('');
@@ -273,7 +260,7 @@ function showSchemaTree(schema: Schema): void {
   // Show types
   console.log(chalk.cyan('Types:'));
   for (const family of getTypeFamilies(schema)) {
-    const typeDef = schema.types[family];
+    const typeDef = getTypeDefByPath(schema, family);
     if (!typeDef) continue;
     printTypeTree(schema, family, typeDef, 0);
   }
@@ -283,31 +270,27 @@ function showSchemaTree(schema: Schema): void {
  * Recursively print a type tree.
  */
 function printTypeTree(
-  schema: Schema,
+  schema: LoadedSchema,
   typePath: string,
-  typeDef: TypeDef,
+  typeDef: ResolvedType,
   depth: number
 ): void {
   const indent = '  '.repeat(depth + 1);
   const typeName = typePath.split('/').pop() ?? typePath;
-  const dirMode = (typeDef as Type).dir_mode;
-  const outputDir = typeDef.output_dir;
+  const outputDir = typeDef.outputDir;
 
   // Build type label
   let label = chalk.green(typeName);
-  if (dirMode === 'instance-grouped') {
-    label += chalk.gray(' [instance-grouped]');
-  }
   if (outputDir) {
     label += chalk.gray(` -> ${outputDir}`);
   }
 
   console.log(`${indent}${label}`);
 
-  // Show subtypes
+  // Show subtypes (children in new model)
   if (hasSubtypes(typeDef)) {
     for (const subtype of getSubtypeKeys(typeDef)) {
-      const subDef = typeDef.subtypes?.[subtype];
+      const subDef = getTypeDefByPath(schema, `${typePath}/${subtype}`);
       if (subDef) {
         printTypeTree(schema, `${typePath}/${subtype}`, subDef, depth + 1);
       }
@@ -318,7 +301,7 @@ function printTypeTree(
 /**
  * Show detailed information about a specific type.
  */
-function showTypeDetails(schema: Schema, typePath: string): void {
+function showTypeDetails(schema: LoadedSchema, typePath: string): void {
   const typeDef = getTypeDefByPath(schema, typePath);
   if (!typeDef) {
     printError(`Unknown type: ${typePath}`);
@@ -328,26 +311,14 @@ function showTypeDetails(schema: Schema, typePath: string): void {
   console.log(chalk.bold(`\nType: ${typePath}\n`));
 
   // Basic info
-  if (typeDef.output_dir) {
-    console.log(`  ${chalk.cyan('Output Dir:')} ${typeDef.output_dir}`);
+  if (typeDef.outputDir) {
+    console.log(`  ${chalk.cyan('Output Dir:')} ${typeDef.outputDir}`);
   }
-  if ((typeDef as Type).dir_mode) {
-    console.log(`  ${chalk.cyan('Dir Mode:')} ${(typeDef as Type).dir_mode}`);
+  if (typeDef.filename) {
+    console.log(`  ${chalk.cyan('Filename Pattern:')} ${typeDef.filename}`);
   }
-  if ((typeDef as { filename?: string }).filename) {
-    console.log(`  ${chalk.cyan('Filename Pattern:')} ${(typeDef as { filename?: string }).filename}`);
-  }
-
-  // Shared fields opt-in
-  const sharedFields = (typeDef as { shared_fields?: string[] }).shared_fields;
-  if (sharedFields && sharedFields.length > 0) {
-    console.log(`  ${chalk.cyan('Shared Fields:')} ${sharedFields.join(', ')}`);
-  }
-
-  // Field overrides
-  const overrides = (typeDef as { field_overrides?: Record<string, unknown> }).field_overrides;
-  if (overrides && Object.keys(overrides).length > 0) {
-    console.log(`  ${chalk.cyan('Field Overrides:')} ${Object.keys(overrides).join(', ')}`);
+  if (typeDef.parent) {
+    console.log(`  ${chalk.cyan('Extends:')} ${typeDef.parent}`);
   }
 
   // Frontmatter fields
@@ -359,7 +330,7 @@ function showTypeDetails(schema: Schema, typePath: string): void {
     }
   }
 
-  // Subtypes
+  // Subtypes (children in new model)
   if (hasSubtypes(typeDef)) {
     console.log(`\n  ${chalk.cyan('Subtypes:')}`);
     for (const subtype of getSubtypeKeys(typeDef)) {
@@ -368,9 +339,9 @@ function showTypeDetails(schema: Schema, typePath: string): void {
   }
 
   // Body sections
-  if (typeDef.body_sections && typeDef.body_sections.length > 0) {
+  if (typeDef.bodySections && typeDef.bodySections.length > 0) {
     console.log(`\n  ${chalk.cyan('Body Sections:')}`);
-    for (const section of typeDef.body_sections) {
+    for (const section of typeDef.bodySections) {
       console.log(`    ${chalk.yellow(section.title)} (h${section.level ?? 2})`);
     }
   }
@@ -382,7 +353,7 @@ function showTypeDetails(schema: Schema, typePath: string): void {
  * Print details for a single field.
  */
 function printFieldDetails(
-  schema: Schema,
+  schema: LoadedSchema,
   name: string,
   field: Field,
   indent: string
@@ -392,7 +363,7 @@ function printFieldDetails(
 
   // Show enum values if applicable
   if (field.enum) {
-    const values = schema.enums?.[field.enum] ?? [];
+    const values = getEnumValues(schema, field.enum);
     if (values.length > 0) {
       line += chalk.gray(` (${values.slice(0, 5).join(', ')}${values.length > 5 ? '...' : ''})`);
     }

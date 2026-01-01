@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestVault, cleanupTestVault, TEST_SCHEMA } from '../fixtures/setup.js';
+import { createTestVault, cleanupTestVault } from '../fixtures/setup.js';
 import {
   loadGitignore,
   getExcludedDirectories,
@@ -13,16 +13,18 @@ import {
   levenshteinDistance,
   type ManagedFile,
 } from '../../../src/lib/discovery.js';
-import type { Schema } from '../../../src/types/schema.js';
+import { loadSchema } from '../../../src/lib/schema.js';
+import type { LoadedSchema } from '../../../src/types/schema.js';
 import { writeFile, mkdir, rm } from 'fs/promises';
 import { join } from 'path';
 
 describe('Discovery', () => {
   let vaultDir: string;
-  const schema: Schema = TEST_SCHEMA as unknown as Schema;
+  let schema: LoadedSchema;
 
   beforeEach(async () => {
     vaultDir = await createTestVault();
+    schema = await loadSchema(vaultDir);
   });
 
   afterEach(async () => {

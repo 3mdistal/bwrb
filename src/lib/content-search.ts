@@ -6,7 +6,7 @@
  */
 
 import { spawn } from 'child_process';
-import type { Schema } from '../types/schema.js';
+import type { LoadedSchema } from '../types/schema.js';
 import type { ManagedFile } from './discovery.js';
 import { discoverManagedFiles } from './discovery.js';
 
@@ -20,7 +20,7 @@ export interface ContentSearchOptions {
   /** Vault directory */
   vaultDir: string;
   /** Schema for type filtering */
-  schema: Schema;
+  schema: LoadedSchema;
   /** Optional type path to restrict search (e.g., 'idea', 'objective/task') */
   typePath?: string;
   /** Number of context lines to show (default: 2) */

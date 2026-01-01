@@ -1,4 +1,4 @@
-import type { Schema, Field } from '../types/schema.js';
+import type { LoadedSchema, Field } from '../types/schema.js';
 import { getFieldsForType, getEnumValues } from './schema.js';
 
 /**
@@ -47,14 +47,14 @@ export interface ValidationOptions {
  * Returns validation result with errors and warnings.
  */
 export function validateFrontmatter(
-  schema: Schema,
-  typePath: string,
+  schema: LoadedSchema,
+  typeName: string,
   frontmatter: Record<string, unknown>,
   options: ValidationOptions = {}
 ): ValidationResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationError[] = [];
-  const fields = getFieldsForType(schema, typePath);
+  const fields = getFieldsForType(schema, typeName);
   const fieldNames = new Set(Object.keys(fields));
   const providedFields = new Set(Object.keys(frontmatter));
 
@@ -128,14 +128,21 @@ export function validateFrontmatter(
 
 /**
  * Apply defaults to frontmatter for missing fields.
+ * Also injects the 'type' field with the type name.
  */
 export function applyDefaults(
-  schema: Schema,
-  typePath: string,
+  schema: LoadedSchema,
+  typeName: string,
   frontmatter: Record<string, unknown>
 ): Record<string, unknown> {
   const result = { ...frontmatter };
-  const fields = getFieldsForType(schema, typePath);
+  const fields = getFieldsForType(schema, typeName);
+
+  // Always inject the type field with the type name
+  // In the new inheritance model, type is auto-injected, not a field definition
+  if (!result['type']) {
+    result['type'] = typeName;
+  }
 
   for (const [fieldName, field] of Object.entries(fields)) {
     const value = result[fieldName];
@@ -220,7 +227,7 @@ function validateFieldType(
 /**
  * Get expected values description for a field.
  */
-function getFieldExpected(schema: Schema, field: Field): string[] | undefined {
+function getFieldExpected(schema: LoadedSchema, field: Field): string[] | undefined {
   if (field.enum) {
     const values = getEnumValues(schema, field.enum);
     if (values.length > 0) return values;

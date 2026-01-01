@@ -1,4 +1,4 @@
-import type { Schema } from '../types/schema.js';
+import type { LoadedSchema } from '../types/schema.js';
 import { getAllFieldsForType, getEnumForField, getEnumValues } from './schema.js';
 import { matchesExpression, buildEvalContext } from './expression.js';
 import { printError } from './prompt.js';
@@ -96,20 +96,20 @@ export function matchesAllFilters(
 }
 
 /**
- * Validate that a field name is valid for a type path.
+ * Validate that a field name is valid for a type.
  */
 export function validateFieldForType(
-  schema: Schema,
-  typePath: string,
+  schema: LoadedSchema,
+  typeName: string,
   fieldName: string
 ): { valid: boolean; error?: string } {
-  const validFields = getAllFieldsForType(schema, typePath);
+  const validFields = getAllFieldsForType(schema, typeName);
 
   if (!validFields.has(fieldName)) {
     const fieldList = Array.from(validFields).join(', ');
     return {
       valid: false,
-      error: `Unknown field '${fieldName}' for type '${typePath}'. Valid fields: ${fieldList}`,
+      error: `Unknown field '${fieldName}' for type '${typeName}'. Valid fields: ${fieldList}`,
     };
   }
 
@@ -120,8 +120,8 @@ export function validateFieldForType(
  * Validate that filter values are valid for a field (if it's an enum field).
  */
 export function validateFilterValues(
-  schema: Schema,
-  typePath: string,
+  schema: LoadedSchema,
+  typeName: string,
   fieldName: string,
   values: string[]
 ): { valid: boolean; error?: string } {
@@ -130,7 +130,7 @@ export function validateFilterValues(
     return { valid: true };
   }
 
-  const enumName = getEnumForField(schema, typePath, fieldName);
+  const enumName = getEnumForField(schema, typeName, fieldName);
   if (!enumName) {
     // Not an enum field, any value is valid
     return { valid: true };
@@ -151,25 +151,25 @@ export function validateFilterValues(
 }
 
 /**
- * Validate all filters for a type path.
+ * Validate all filters for a type.
  */
 export function validateFilters(
-  schema: Schema,
-  typePath: string,
+  schema: LoadedSchema,
+  typeName: string,
   filters: Filter[]
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
   for (const filter of filters) {
     // Validate field name
-    const fieldResult = validateFieldForType(schema, typePath, filter.field);
+    const fieldResult = validateFieldForType(schema, typeName, filter.field);
     if (!fieldResult.valid && fieldResult.error) {
       errors.push(fieldResult.error);
       continue;
     }
 
     // Validate filter values
-    const valuesResult = validateFilterValues(schema, typePath, filter.field, filter.values);
+    const valuesResult = validateFilterValues(schema, typeName, filter.field, filter.values);
     if (!valuesResult.valid && valuesResult.error) {
       errors.push(valuesResult.error);
     }

@@ -10,12 +10,12 @@ import { readdir, readFile } from 'fs/promises';
 import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import {
-  getTypeDefByPath,
-  hasSubtypes,
-  getSubtypeKeys,
+  getType,
+  getDescendants,
+  getOutputDir as getOutputDirFromSchema,
 } from './schema.js';
-import { getOutputDir, getDirMode } from './vault.js';
-import type { Schema } from '../types/schema.js';
+import { getDirMode } from './vault.js';
+import type { LoadedSchema } from '../types/schema.js';
 
 // ============================================================================
 // Types
@@ -52,14 +52,14 @@ export async function loadGitignore(vaultDir: string): Promise<Ignore | null> {
  * Get directories to exclude from vault-wide audit.
  * Combines defaults, schema config, and env var.
  */
-export function getExcludedDirectories(schema: Schema): Set<string> {
+export function getExcludedDirectories(schema: LoadedSchema): Set<string> {
   const excluded = new Set<string>();
   
   // Always exclude .pika
   excluded.add('.pika');
   
   // Add schema-configured exclusions
-  const schemaExclusions = schema.audit?.ignored_directories;
+  const schemaExclusions = schema.raw.audit?.ignored_directories;
   if (schemaExclusions) {
     for (const dir of schemaExclusions) {
       excluded.add(dir.replace(/\/$/, '')); // Normalize trailing slash
@@ -153,13 +153,13 @@ export async function collectAllMarkdownFilenames(vaultDir: string): Promise<Set
  * When a type is specified, only scans that type's directories.
  */
 export async function discoverManagedFiles(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
-  typePath?: string
+  typeName?: string
 ): Promise<ManagedFile[]> {
-  if (typePath) {
+  if (typeName) {
     // Specific type - only check that type's files
-    return collectFilesForType(schema, vaultDir, typePath);
+    return collectFilesForType(schema, vaultDir, typeName);
   }
   
   // No type specified - scan entire vault
@@ -169,37 +169,48 @@ export async function discoverManagedFiles(
 }
 
 /**
- * Recursively collect files for a type path.
+ * Collect files for a type (and optionally its descendants).
  */
 export async function collectFilesForType(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
-  typePath: string
+  typeName: string
 ): Promise<ManagedFile[]> {
-  const typeDef = getTypeDefByPath(schema, typePath);
-  if (!typeDef) return [];
+  const type = getType(schema, typeName);
+  if (!type) return [];
 
-  if (hasSubtypes(typeDef)) {
-    // Recurse into subtypes
-    const files: ManagedFile[] = [];
-    for (const subtype of getSubtypeKeys(typeDef)) {
-      const subFiles = await collectFilesForType(schema, vaultDir, `${typePath}/${subtype}`);
-      files.push(...subFiles);
+  const files: ManagedFile[] = [];
+  
+  // Collect files for this type
+  const outputDir = getOutputDirFromSchema(schema, typeName);
+  if (outputDir) {
+    const dirMode = getDirMode(schema, typeName);
+    if (dirMode === 'instance-grouped') {
+      const typeFiles = await collectInstanceGroupedFiles(vaultDir, outputDir, typeName);
+      files.push(...typeFiles);
+    } else {
+      const typeFiles = await collectPooledFiles(vaultDir, outputDir, typeName);
+      files.push(...typeFiles);
     }
-    return files;
+  }
+  
+  // Also collect files for all descendants
+  const descendants = getDescendants(schema, typeName);
+  for (const descendantName of descendants) {
+    const descendantDir = getOutputDirFromSchema(schema, descendantName);
+    if (descendantDir) {
+      const dirMode = getDirMode(schema, descendantName);
+      if (dirMode === 'instance-grouped') {
+        const descendantFiles = await collectInstanceGroupedFiles(vaultDir, descendantDir, descendantName);
+        files.push(...descendantFiles);
+      } else {
+        const descendantFiles = await collectPooledFiles(vaultDir, descendantDir, descendantName);
+        files.push(...descendantFiles);
+      }
+    }
   }
 
-  // Leaf type - collect files from output_dir
-  const outputDir = getOutputDir(schema, typePath);
-  if (!outputDir) return [];
-
-  const dirMode = getDirMode(schema, typePath);
-
-  if (dirMode === 'instance-grouped') {
-    return collectInstanceGroupedFiles(vaultDir, outputDir, typePath);
-  } else {
-    return collectPooledFiles(vaultDir, outputDir, typePath);
-  }
+  return files;
 }
 
 /**

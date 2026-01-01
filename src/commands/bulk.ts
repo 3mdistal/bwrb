@@ -30,7 +30,7 @@ import {
 import { buildOperation, formatChange } from '../lib/bulk/operations.js';
 import { executeBulk } from '../lib/bulk/execute.js';
 import type { BulkOperation, BulkResult, FileChange } from '../lib/bulk/types.js';
-import type { Schema } from '../types/schema.js';
+import type { LoadedSchema } from '../types/schema.js';
 
 interface BulkCommandOptions {
   set?: string[];
@@ -323,7 +323,7 @@ Examples:
  * Returns an error message if invalid, null if valid.
  */
 function validateEnumValue(
-  schema: Schema,
+  schema: LoadedSchema,
   typePath: string,
   field: string,
   value: unknown
@@ -349,7 +349,7 @@ function validateEnumValue(
 /**
  * Show available types.
  */
-function showAvailableTypes(schema: Schema): void {
+function showAvailableTypes(schema: LoadedSchema): void {
   console.log('\nAvailable types:');
   for (const family of getTypeFamilies(schema)) {
     console.log(`  ${family}`);

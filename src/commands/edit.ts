@@ -28,7 +28,7 @@ import {
   jsonError,
   ExitCodes,
 } from '../lib/output.js';
-import type { Schema, Field, BodySection } from '../types/schema.js';
+import type { LoadedSchema, Field, BodySection } from '../types/schema.js';
 import { UserCancelledError } from '../lib/errors.js';
 
 interface EditCommandOptions {
@@ -119,7 +119,7 @@ JSON mode uses patch/merge semantics:
  * Edit a note from JSON input (non-interactive mode with merge semantics).
  */
 async function editNoteFromJson(
-  schema: Schema,
+  schema: LoadedSchema,
   _vaultDir: string,
   filePath: string,
   jsonInput: string
@@ -211,7 +211,7 @@ function mergeFrontmatter(
  * Edit an existing note's frontmatter (interactive mode).
  */
 async function editNote(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   filePath: string
 ): Promise<void> {
@@ -265,7 +265,7 @@ async function editNote(
 
   // Check for missing body sections
   let updatedBody = body;
-  const bodySections = typeDef.body_sections;
+  const bodySections = typeDef.bodySections;
   if (bodySections && bodySections.length > 0) {
     const addSections = await promptConfirm('\nCheck for missing sections?');
     if (addSections === null) {
@@ -286,7 +286,7 @@ async function editNote(
  * Throws UserCancelledError if user cancels any prompt.
  */
 async function promptFieldEdit(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   fieldName: string,
   field: Field,

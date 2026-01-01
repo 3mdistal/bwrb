@@ -6,16 +6,21 @@
 
 import chalk from 'chalk';
 import {
-  getTypeDefByPath,
+  getType,
   getFieldsForType,
   getEnumValues,
-  resolveTypePathFromFrontmatter,
+  resolveTypeFromFrontmatter,
   getDiscriminatorFieldsFromTypePath,
   getEnumForField,
+  hasSubtypes,
 } from '../schema.js';
 import { parseNote, writeNote } from '../frontmatter.js';
 import { promptSelection, promptConfirm, promptInput } from '../prompt.js';
-import type { Schema } from '../../types/schema.js';
+import type { LoadedSchema } from '../../types/schema.js';
+
+// Alias for backward compatibility
+const resolveTypePathFromFrontmatter = resolveTypeFromFrontmatter;
+const getTypeDefByPath = getType;
 import {
   type AuditIssue,
   type FileAuditResult,
@@ -33,7 +38,7 @@ import {
  * Apply a single fix to a file.
  */
 export async function applyFix(
-  schema: Schema,
+  schema: LoadedSchema,
   filePath: string,
   issue: AuditIssue,
   newValue?: unknown
@@ -98,7 +103,7 @@ export async function applyFix(
     // Get the type path to determine frontmatter order
     const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
     const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
-    const order = typeDef?.frontmatter_order;
+    const order = typeDef?.fieldOrder;
 
     await writeNote(filePath, frontmatter, parsed.body, order);
     return { file: filePath, issue, action: 'fixed' };
@@ -112,7 +117,7 @@ export async function applyFix(
  * Remove a field from a file's frontmatter.
  */
 export async function removeField(
-  schema: Schema,
+  schema: LoadedSchema,
   filePath: string,
   fieldName: string
 ): Promise<FixResult> {
@@ -134,7 +139,7 @@ export async function removeField(
     // Get frontmatter order if available
     const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
     const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
-    const order = typeDef?.frontmatter_order;
+    const order = typeDef?.fieldOrder;
 
     await writeNote(filePath, frontmatter, parsed.body, order);
     return {
@@ -157,7 +162,7 @@ export async function removeField(
  * Get the default value for a missing required field.
  */
 export function getDefaultValue(
-  schema: Schema,
+  schema: LoadedSchema,
   frontmatter: Record<string, unknown>,
   fieldName: string
 ): unknown | undefined {
@@ -178,7 +183,7 @@ export function getDefaultValue(
  */
 export async function runAutoFix(
   results: FileAuditResult[],
-  schema: Schema,
+  schema: LoadedSchema,
   _vaultDir: string
 ): Promise<FixSummary> {
   console.log(chalk.bold('Auditing vault...\n'));
@@ -285,7 +290,7 @@ export async function runAutoFix(
  */
 export async function runInteractiveFix(
   results: FileAuditResult[],
-  schema: Schema,
+  schema: LoadedSchema,
   _vaultDir: string
 ): Promise<FixSummary> {
   console.log(chalk.bold('Auditing vault...\n'));
@@ -344,7 +349,7 @@ export async function runInteractiveFix(
  * Returns the outcome: 'fixed', 'skipped', 'failed', or 'quit'.
  */
 async function handleInteractiveFix(
-  schema: Schema,
+  schema: LoadedSchema,
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
@@ -372,7 +377,7 @@ async function handleInteractiveFix(
 }
 
 async function handleOrphanFileFix(
-  schema: Schema,
+  schema: LoadedSchema,
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
@@ -458,7 +463,7 @@ async function handleOrphanFileFix(
 }
 
 async function handleMissingRequiredFix(
-  schema: Schema,
+  schema: LoadedSchema,
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
@@ -538,7 +543,7 @@ async function handleMissingRequiredFix(
 }
 
 async function handleInvalidEnumFix(
-  schema: Schema,
+  schema: LoadedSchema,
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
@@ -571,7 +576,7 @@ async function handleInvalidEnumFix(
 }
 
 async function handleUnknownFieldFix(
-  schema: Schema,
+  schema: LoadedSchema,
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
@@ -605,7 +610,7 @@ async function handleUnknownFieldFix(
 }
 
 async function handleFormatViolationFix(
-  schema: Schema,
+  schema: LoadedSchema,
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
@@ -636,7 +641,7 @@ async function handleFormatViolationFix(
 }
 
 async function handleStaleReferenceFix(
-  schema: Schema,
+  schema: LoadedSchema,
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
@@ -694,5 +699,4 @@ async function handleStaleReferenceFix(
   }
 }
 
-// Import hasSubtypes for the orphan file handler
-import { hasSubtypes } from '../schema.js';
+

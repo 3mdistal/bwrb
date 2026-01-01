@@ -9,23 +9,23 @@ import {
   formatResultsJson,
   type ContentSearchResult,
 } from '../../../src/lib/content-search.js';
-import type { Schema } from '../../../src/types/schema.js';
+import { resolveSchema } from '../../../src/lib/schema.js';
+import type { Schema, LoadedSchema } from '../../../src/types/schema.js';
 
-// Minimal test schema
-const TEST_SCHEMA: Schema = {
+// Minimal test schema (v2 format)
+const schema_RAW: Schema = {
+  version: 2,
   types: {
     note: {
       output_dir: 'Notes',
-      frontmatter: {
-        type: { type: 'literal', value: 'note' },
-        status: { type: 'enum', enum: 'status' },
+      fields: {
+        status: { prompt: 'select', enum: 'status' },
       },
     },
     task: {
       output_dir: 'Tasks',
-      frontmatter: {
-        type: { type: 'literal', value: 'task' },
-        status: { type: 'enum', enum: 'status' },
+      fields: {
+        status: { prompt: 'select', enum: 'status' },
       },
     },
   },
@@ -36,6 +36,7 @@ const TEST_SCHEMA: Schema = {
 
 describe('content-search', () => {
   let vaultDir: string;
+  let schema: LoadedSchema;
 
   beforeAll(async () => {
     // Create a temporary vault for testing
@@ -47,8 +48,11 @@ describe('content-search', () => {
     // Write schema
     await writeFile(
       join(vaultDir, '.pika', 'schema.json'),
-      JSON.stringify(TEST_SCHEMA, null, 2)
+      JSON.stringify(schema_RAW, null, 2)
     );
+
+    // Resolve the schema
+    schema = resolveSchema(schema_RAW);
 
     // Create test notes with searchable content
     await writeFile(
@@ -140,7 +144,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'deployment',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
       });
 
       expect(result.success).toBe(true);
@@ -152,7 +156,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'deploy',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
         typePath: 'task',
       });
 
@@ -167,7 +171,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'xyznonexistent123',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
       });
 
       expect(result.success).toBe(true);
@@ -179,7 +183,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'DEPLOYMENT',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
         caseSensitive: false,
       });
 
@@ -191,14 +195,14 @@ All tests have been written and are passing.
       const resultInsensitive = await searchContent({
         pattern: 'DEPLOYMENT',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
         caseSensitive: false,
       });
 
       const resultSensitive = await searchContent({
         pattern: 'DEPLOYMENT',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
         caseSensitive: true,
       });
 
@@ -210,7 +214,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'deploy.*production',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
         regex: true,
       });
 
@@ -222,7 +226,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'deployment',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
         contextLines: 2,
       });
 
@@ -242,7 +246,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'deployment',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
         contextLines: 0,
       });
 
@@ -260,7 +264,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'type',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
         limit: 2,
       });
 
@@ -272,7 +276,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'type',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
         limit: 1,
       });
 
@@ -282,7 +286,7 @@ All tests have been written and are passing.
         const fullResult = await searchContent({
           pattern: 'type',
           vaultDir,
-          schema: TEST_SCHEMA,
+          schema: schema,
           limit: 100,
         });
         if (fullResult.results.length > 1) {
@@ -295,7 +299,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: '',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
       });
 
       expect(result.success).toBe(false);
@@ -306,7 +310,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'deploy',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
       });
 
       expect(result.success).toBe(true);
@@ -325,7 +329,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'deployment',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
         contextLines: 0,
       });
 
@@ -338,7 +342,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'deployment',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
         contextLines: 1,
       });
 
@@ -354,7 +358,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'deployment',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
       });
 
       const json = formatResultsJson(result);
@@ -381,7 +385,7 @@ All tests have been written and are passing.
       const result = await searchContent({
         pattern: 'deployment',
         vaultDir,
-        schema: TEST_SCHEMA,
+        schema: schema,
         contextLines: 1,
       });
 

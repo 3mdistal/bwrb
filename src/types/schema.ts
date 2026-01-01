@@ -1,16 +1,36 @@
 import { z } from 'zod';
 
-// Field definition for frontmatter
+// ============================================================================
+// Field Definition
+// ============================================================================
+
+/**
+ * Field definition for type frontmatter.
+ * Fields can be static values, prompted inputs, or dynamic queries.
+ */
 export const FieldSchema = z.object({
+  // Prompt type (how the field is collected)
   prompt: z.enum(['input', 'select', 'multi-input', 'date', 'dynamic']).optional(),
+  // Static value (no prompting)
   value: z.string().optional(),
+  // Enum reference for select prompts
   enum: z.string().optional(),
+  // Type name for dynamic prompts (replaces dynamic_sources)
   source: z.string().optional(),
+  // Whether the field is required
   required: z.boolean().optional(),
+  // Default value
   default: z.union([z.string(), z.array(z.string())]).optional(),
+  // How list values are formatted in YAML
   list_format: z.enum(['yaml-array', 'comma-separated']).optional(),
+  // Prompt label override
   label: z.string().optional(),
+  // Wikilink formatting
   format: z.enum(['plain', 'wikilink', 'quoted-wikilink']).optional(),
+  // Whether this field can hold multiple values (for context fields)
+  multiple: z.boolean().optional(),
+  // Whether children referenced by this field are owned (colocate with parent)
+  owned: z.boolean().optional(),
 });
 
 // Body section definition
@@ -25,6 +45,10 @@ export const BodySectionSchema: z.ZodType<BodySection, z.ZodTypeDef, BodySection
   })
 );
 
+// ============================================================================
+// Dynamic Sources (Legacy - to be deprecated)
+// ============================================================================
+
 // Filter condition for dynamic sources
 export const FilterConditionSchema = z.object({
   equals: z.string().optional(),
@@ -33,64 +57,81 @@ export const FilterConditionSchema = z.object({
   not_in: z.array(z.string()).optional(),
 });
 
-// Dynamic source definition
+// Dynamic source definition (legacy - will be replaced by type-based sources)
 export const DynamicSourceSchema = z.object({
   dir: z.string(),
   filter: z.record(FilterConditionSchema).optional(),
 });
 
-// Field override definition (for overriding shared field properties)
-export const FieldOverrideSchema = z.object({
-  default: z.union([z.string(), z.array(z.string())]).optional(),
-  required: z.boolean().optional(),
-  label: z.string().optional(),
-});
+// ============================================================================
+// Type Definition (New Inheritance Model)
+// ============================================================================
 
-// Subtype definition (recursive via Type)
-export const SubtypeSchema: z.ZodType<Subtype, z.ZodTypeDef, SubtypeInput> = z.lazy(() =>
-  z.object({
-    output_dir: z.string().optional(),
-    filename: z.string().optional(),
-    shared_fields: z.array(z.string()).optional(), // Opt-in to shared fields
-    field_overrides: z.record(FieldOverrideSchema).optional(), // Override shared field properties
-    frontmatter: z.record(FieldSchema).optional(),
-    frontmatter_order: z.array(z.string()).optional(),
-    body_sections: z.array(BodySectionSchema).optional(),
-    subtypes: z.record(SubtypeSchema).optional(),
-  })
-);
-
-// Type definition
+/**
+ * Type definition with inheritance support.
+ * 
+ * Key differences from legacy model:
+ * - Flat structure with 'extends' instead of nested 'subtypes'
+ * - 'fields' instead of 'frontmatter'
+ * - 'field_order' instead of 'frontmatter_order'
+ * - Single 'type' field in frontmatter (no more '{type}-type' pattern)
+ */
 export const TypeSchema = z.object({
-  output_dir: z.string().optional(), // Optional for parent types with subtypes
-  dir_mode: z.enum(['pooled', 'instance-grouped']).optional().default('pooled'),
-  shared_fields: z.array(z.string()).optional(), // Opt-in to shared fields
-  field_overrides: z.record(FieldOverrideSchema).optional(), // Override shared field properties
-  frontmatter: z.record(FieldSchema).optional(),
-  frontmatter_order: z.array(z.string()).optional(),
+  // Parent type name (implicit 'meta' if not specified)
+  extends: z.string().optional(),
+  // Field definitions (merged with ancestors at load time)
+  fields: z.record(FieldSchema).optional(),
+  // Explicit field ordering (optional - defaults to definition order)
+  field_order: z.array(z.string()).optional(),
+  // Body section definitions
   body_sections: z.array(BodySectionSchema).optional(),
-  subtypes: z.record(SubtypeSchema).optional(),
+  // Whether this type can contain instances of itself
+  recursive: z.boolean().optional(),
+  // Output directory (computed from hierarchy if not specified)
+  output_dir: z.string().optional(),
+  // Filename pattern
+  filename: z.string().optional(),
 });
 
-// Audit configuration schema
+// ============================================================================
+// Audit Configuration
+// ============================================================================
+
 export const AuditConfigSchema = z.object({
   ignored_directories: z.array(z.string()).optional(),
   allowed_extra_fields: z.array(z.string()).optional(),
 });
 
-// Root schema
+// ============================================================================
+// Root Schema
+// ============================================================================
+
+/**
+ * Pika schema - the root configuration for a vault.
+ * 
+ * Version 2 uses the new inheritance model:
+ * - Flat types with 'extends' for inheritance
+ * - 'fields' instead of 'frontmatter'
+ * - Implicit 'meta' root type
+ */
 export const PikaSchema = z.object({
-  version: z.number().optional().default(1),
-  shared_fields: z.record(FieldSchema).optional(),
+  // Schema version (2 = inheritance model)
+  version: z.number().optional().default(2),
+  // Enum definitions
   enums: z.record(z.array(z.string())).optional(),
+  // Dynamic sources (legacy - for backward compatibility)
   dynamic_sources: z.record(DynamicSourceSchema).optional(),
+  // Type definitions (flat with 'extends')
   types: z.record(TypeSchema),
+  // Audit configuration
   audit: AuditConfigSchema.optional(),
 });
 
-// Inferred types
+// ============================================================================
+// Inferred Types
+// ============================================================================
+
 export type Field = z.infer<typeof FieldSchema>;
-export type FieldOverride = z.infer<typeof FieldOverrideSchema>;
 export type BodySection = {
   title: string;
   level?: number | undefined;
@@ -99,7 +140,6 @@ export type BodySection = {
   prompt_label?: string | undefined;
   children?: BodySection[] | undefined;
 };
-// Input type for BodySection (allows missing level which gets defaulted)
 export type BodySectionInput = {
   title: string;
   level?: number | undefined;
@@ -110,32 +150,53 @@ export type BodySectionInput = {
 };
 export type FilterCondition = z.infer<typeof FilterConditionSchema>;
 export type DynamicSource = z.infer<typeof DynamicSourceSchema>;
-export type Subtype = {
-  output_dir?: string | undefined;
-  filename?: string | undefined;
-  shared_fields?: string[] | undefined;
-  field_overrides?: Record<string, FieldOverride> | undefined;
-  frontmatter?: Record<string, Field> | undefined;
-  frontmatter_order?: string[] | undefined;
-  body_sections?: BodySection[] | undefined;
-  subtypes?: Record<string, Subtype> | undefined;
-};
-// Input type for Subtype
-export type SubtypeInput = {
-  output_dir?: string | undefined;
-  filename?: string | undefined;
-  shared_fields?: string[] | undefined;
-  field_overrides?: Record<string, FieldOverride> | undefined;
-  frontmatter?: Record<string, Field> | undefined;
-  frontmatter_order?: string[] | undefined;
-  body_sections?: BodySectionInput[] | undefined;
-  subtypes?: Record<string, SubtypeInput> | undefined;
-};
 export type Type = z.infer<typeof TypeSchema>;
 export type Schema = z.infer<typeof PikaSchema>;
 
-// Type definition union (either a full Type or a Subtype)
-export type TypeDef = Type | Subtype;
+// ============================================================================
+// Resolved Type (Computed at Load Time)
+// ============================================================================
+
+/**
+ * A resolved type with computed inheritance.
+ * This is created by the schema loader after parsing the raw schema.
+ */
+export interface ResolvedType {
+  /** Type name (unique identifier) */
+  name: string;
+  /** Parent type name (undefined only for 'meta') */
+  parent: string | undefined;
+  /** Direct child type names */
+  children: string[];
+  /** Computed effective fields (merged from ancestors) */
+  fields: Record<string, Field>;
+  /** Field ordering */
+  fieldOrder: string[];
+  /** Body section definitions */
+  bodySections: BodySection[];
+  /** Whether this type can self-nest */
+  recursive: boolean;
+  /** Output directory (explicit or computed) */
+  outputDir: string | undefined;
+  /** Filename pattern */
+  filename: string | undefined;
+  /** List of ancestor type names (parent first, meta last) */
+  ancestors: string[];
+}
+
+/**
+ * A loaded schema with resolved inheritance tree.
+ */
+export interface LoadedSchema {
+  /** Original raw schema */
+  raw: Schema;
+  /** Resolved types indexed by name */
+  types: Map<string, ResolvedType>;
+  /** Enum definitions */
+  enums: Map<string, string[]>;
+  /** Dynamic sources (legacy) */
+  dynamicSources: Map<string, DynamicSource>;
+}
 
 // ============================================================================
 // Template Types
@@ -161,11 +222,11 @@ export type Constraint = z.infer<typeof ConstraintSchema>;
  * Allows creating multiple related files when creating an instance-grouped parent.
  */
 export const InstanceScaffoldSchema = z.object({
-  /** Which subtype to create (e.g., "version", "research") */
-  subtype: z.string(),
+  /** Which type to create (e.g., "chapter", "research") */
+  type: z.string(),
   /** Override the default filename */
   filename: z.string().optional(),
-  /** Template name to use for this instance (resolved against subtype's template dir) */
+  /** Template name to use for this instance */
   template: z.string().optional(),
   /** Additional defaults for this instance */
   defaults: z.record(z.unknown()).optional(),
@@ -180,7 +241,8 @@ export type InstanceScaffold = z.infer<typeof InstanceScaffoldSchema>;
  */
 export const TemplateFrontmatterSchema = z.object({
   type: z.literal('template'),
-  'template-for': z.string(), // Type path (e.g., "objective/task")
+  // Type name this template is for (e.g., "task")
+  'template-for': z.string(),
   description: z.string().optional(),
   defaults: z.record(z.unknown()).optional(),
   constraints: z.record(ConstraintSchema).optional(),
@@ -199,7 +261,7 @@ export interface Template {
   path: string;
   /** Template name (filename without .md) */
   name: string;
-  /** Type path this template is for (e.g., "objective/task") */
+  /** Type name this template is for (e.g., "task") */
   templateFor: string;
   /** Human-readable description */
   description?: string;
@@ -216,3 +278,90 @@ export interface Template {
   /** Template body content (markdown after frontmatter) */
   body: string;
 }
+
+// ============================================================================
+// Legacy Types (For Migration Support)
+// ============================================================================
+
+/**
+ * Field override definition (legacy - for old shared_fields model).
+ * @deprecated Use field inheritance instead
+ */
+export const FieldOverrideSchema = z.object({
+  default: z.union([z.string(), z.array(z.string())]).optional(),
+  required: z.boolean().optional(),
+  label: z.string().optional(),
+});
+
+export type FieldOverride = z.infer<typeof FieldOverrideSchema>;
+
+/**
+ * Legacy subtype definition (for v1 schema migration).
+ * @deprecated Use flat types with 'extends' instead
+ */
+export const LegacySubtypeSchema: z.ZodType<LegacySubtype, z.ZodTypeDef, LegacySubtypeInput> = z.lazy(() =>
+  z.object({
+    output_dir: z.string().optional(),
+    filename: z.string().optional(),
+    shared_fields: z.array(z.string()).optional(),
+    field_overrides: z.record(FieldOverrideSchema).optional(),
+    frontmatter: z.record(FieldSchema).optional(),
+    frontmatter_order: z.array(z.string()).optional(),
+    body_sections: z.array(BodySectionSchema).optional(),
+    subtypes: z.record(LegacySubtypeSchema).optional(),
+  })
+);
+
+/**
+ * Legacy type definition (for v1 schema migration).
+ * @deprecated Use flat types with 'extends' instead
+ */
+export const LegacyTypeSchema = z.object({
+  output_dir: z.string().optional(),
+  dir_mode: z.enum(['pooled', 'instance-grouped']).optional().default('pooled'),
+  shared_fields: z.array(z.string()).optional(),
+  field_overrides: z.record(FieldOverrideSchema).optional(),
+  frontmatter: z.record(FieldSchema).optional(),
+  frontmatter_order: z.array(z.string()).optional(),
+  body_sections: z.array(BodySectionSchema).optional(),
+  subtypes: z.record(LegacySubtypeSchema).optional(),
+});
+
+/**
+ * Legacy schema (v1 format with nested subtypes).
+ * @deprecated Use PikaSchema (v2) instead
+ */
+export const LegacyPikaSchema = z.object({
+  version: z.literal(1).optional(),
+  shared_fields: z.record(FieldSchema).optional(),
+  enums: z.record(z.array(z.string())).optional(),
+  dynamic_sources: z.record(DynamicSourceSchema).optional(),
+  types: z.record(LegacyTypeSchema),
+  audit: AuditConfigSchema.optional(),
+});
+
+export type LegacySubtype = {
+  output_dir?: string | undefined;
+  filename?: string | undefined;
+  shared_fields?: string[] | undefined;
+  field_overrides?: Record<string, FieldOverride> | undefined;
+  frontmatter?: Record<string, Field> | undefined;
+  frontmatter_order?: string[] | undefined;
+  body_sections?: BodySection[] | undefined;
+  subtypes?: Record<string, LegacySubtype> | undefined;
+};
+export type LegacySubtypeInput = {
+  output_dir?: string | undefined;
+  filename?: string | undefined;
+  shared_fields?: string[] | undefined;
+  field_overrides?: Record<string, FieldOverride> | undefined;
+  frontmatter?: Record<string, Field> | undefined;
+  frontmatter_order?: string[] | undefined;
+  body_sections?: BodySectionInput[] | undefined;
+  subtypes?: Record<string, LegacySubtypeInput> | undefined;
+};
+export type LegacyType = z.infer<typeof LegacyTypeSchema>;
+export type LegacySchema = z.infer<typeof LegacyPikaSchema>;
+
+// Type definition union for backward compatibility
+export type TypeDef = Type | LegacyType | LegacySubtype;

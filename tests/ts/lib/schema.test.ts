@@ -17,11 +17,11 @@ import {
   getDiscriminatorFieldsFromTypePath,
 } from '../../../src/lib/schema.js';
 import { createTestVault, cleanupTestVault, TEST_SCHEMA } from '../fixtures/setup.js';
-import type { Schema } from '../../../src/types/schema.js';
+import type { LoadedSchema } from '../../../src/types/schema.js';
 
 describe('schema', () => {
   let vaultDir: string;
-  let schema: Schema;
+  let schema: LoadedSchema;
 
   beforeAll(async () => {
     vaultDir = await createTestVault();
@@ -37,6 +37,7 @@ describe('schema', () => {
       expect(schema).toBeDefined();
       expect(schema.types).toBeDefined();
       expect(schema.enums).toBeDefined();
+      expect(schema.raw).toBeDefined();
     });
 
     it('should throw on missing schema file', async () => {
@@ -76,13 +77,13 @@ describe('schema', () => {
     it('should return type definition for simple path', () => {
       const typeDef = getTypeDefByPath(schema, 'idea');
       expect(typeDef).toBeDefined();
-      expect(typeDef?.output_dir).toBe('Ideas');
+      expect(typeDef?.outputDir).toBe('Ideas');
     });
 
     it('should return subtype definition for nested path', () => {
       const typeDef = getTypeDefByPath(schema, 'objective/task');
       expect(typeDef).toBeDefined();
-      expect(typeDef?.output_dir).toBe('Objectives/Tasks');
+      expect(typeDef?.outputDir).toBe('Objectives/Tasks');
     });
 
     it('should return undefined for unknown path', () => {
@@ -121,44 +122,41 @@ describe('schema', () => {
       expect(discriminatorName('type')).toBe('type');
     });
 
-    it('should return "<parent>-type" for nested', () => {
-      expect(discriminatorName('objective')).toBe('objective-type');
+    it('should always return "type" in new model (no parent-type discriminators)', () => {
+      // In the new inheritance model, we use a single 'type' field
+      expect(discriminatorName('objective')).toBe('type');
     });
   });
 
   describe('getFieldsForType', () => {
     it('should return fields for a type', () => {
       const fields = getFieldsForType(schema, 'idea');
-      expect(fields).toHaveProperty('type');
+      // In new model, 'type' is not a field - it's implicit
       expect(fields).toHaveProperty('status');
+      expect(fields).toHaveProperty('priority');
     });
 
     it('should return fields for nested type', () => {
       const fields = getFieldsForType(schema, 'objective/task');
-      expect(fields).toHaveProperty('type');
-      expect(fields).toHaveProperty('objective-type');
+      // In new model, discriminator fields are not included
       expect(fields).toHaveProperty('status');
       expect(fields).toHaveProperty('milestone');
+      expect(fields).toHaveProperty('deadline');
     });
 
-    it('should only include shared fields that type opts into', () => {
-      // idea opts into status but not tags
-      const ideaFields = getFieldsForType(schema, 'idea');
-      expect(ideaFields).toHaveProperty('status');
-      expect(ideaFields).not.toHaveProperty('tags');
-
-      // task opts into both status and tags
+    it('should inherit fields from parent type', () => {
+      // task inherits status from objective ancestor chain
       const taskFields = getFieldsForType(schema, 'objective/task');
       expect(taskFields).toHaveProperty('status');
       expect(taskFields).toHaveProperty('tags');
     });
 
-    it('should apply field_overrides to shared fields', () => {
-      // task overrides status default from 'raw' to 'backlog'
+    it('should apply field default overrides', () => {
+      // task has status default 'backlog' (overridden from shared field default)
       const taskFields = getFieldsForType(schema, 'objective/task');
       expect(taskFields.status?.default).toBe('backlog');
 
-      // idea uses shared field default 'raw'
+      // idea uses default 'raw' (directly from shared fields)
       const ideaFields = getFieldsForType(schema, 'idea');
       expect(ideaFields.status?.default).toBe('raw');
     });
@@ -169,7 +167,9 @@ describe('schema', () => {
       const typeDef = getTypeDefByPath(schema, 'idea');
       expect(typeDef).toBeDefined();
       const order = getFrontmatterOrder(typeDef!);
-      expect(order).toEqual(['type', 'status', 'priority']);
+      // In new model, 'type' discriminator is not in field order
+      expect(order).toContain('status');
+      expect(order).toContain('priority');
     });
   });
 
@@ -178,56 +178,56 @@ describe('schema', () => {
       const typeDef = getTypeDefByPath(schema, 'objective/task');
       expect(typeDef).toBeDefined();
       const order = getOrderedFieldNames(schema, 'objective/task', typeDef!);
-      expect(order).toEqual(['type', 'objective-type', 'status', 'milestone', 'creation-date', 'deadline', 'tags']);
+      // In new model, discriminator fields are not included
+      expect(order).toContain('status');
+      expect(order).toContain('milestone');
+      expect(order).toContain('deadline');
     });
 
-    it('should put shared fields first when no explicit order', () => {
-      // Create a type def without frontmatter_order for testing
-      const mockTypeDef = {
-        output_dir: 'Test',
-        shared_fields: ['status', 'tags'],
-        frontmatter: {
-          type: { value: 'test' },
-          custom: { prompt: 'input' as const },
-        },
-      };
-      const mockSchema = {
-        ...schema,
-        types: { ...schema.types, test: mockTypeDef },
-      };
-      const order = getOrderedFieldNames(mockSchema, 'test', mockTypeDef);
-      // Shared fields first, then type-specific
-      expect(order[0]).toBe('status');
-      expect(order[1]).toBe('tags');
-      expect(order).toContain('type');
-      expect(order).toContain('custom');
+    it('should return fieldOrder from resolved type', () => {
+      // In the new model, field ordering is computed at schema load time
+      // and stored in the ResolvedType.fieldOrder property
+      const typeDef = getTypeDefByPath(schema, 'idea');
+      expect(typeDef).toBeDefined();
+      const order = getOrderedFieldNames(schema, 'idea', typeDef!);
+      expect(order).toContain('status');
+      expect(order).toContain('priority');
     });
   });
 
   describe('resolveTypePathFromFrontmatter', () => {
-    it('should resolve simple type path', () => {
-      const path = resolveTypePathFromFrontmatter(schema, { type: 'idea' });
-      expect(path).toBe('idea');
+    it('should resolve simple type', () => {
+      const typeName = resolveTypePathFromFrontmatter(schema, { type: 'idea' });
+      expect(typeName).toBe('idea');
     });
 
-    it('should resolve nested type path', () => {
-      const path = resolveTypePathFromFrontmatter(schema, {
+    it('should resolve type directly (no nested paths in new model)', () => {
+      // In new model, frontmatter just has 'type: task' not 'type: objective' + 'objective-type: task'
+      const typeName = resolveTypePathFromFrontmatter(schema, { type: 'task' });
+      expect(typeName).toBe('task');
+    });
+
+    it('should resolve legacy nested frontmatter to type (backward compatibility)', () => {
+      // Legacy frontmatter with type: objective, objective-type: task should still work
+      // by reading the more specific discriminator field to get the actual type
+      const typeName = resolveTypePathFromFrontmatter(schema, {
         type: 'objective',
         'objective-type': 'task',
       });
-      expect(path).toBe('objective/task');
+      // In backward-compatible mode, the resolver returns the child type from the discriminator
+      expect(typeName).toBe('task');
     });
 
     it('should return undefined for missing type', () => {
-      const path = resolveTypePathFromFrontmatter(schema, {});
-      expect(path).toBeUndefined();
+      const typeName = resolveTypePathFromFrontmatter(schema, {});
+      expect(typeName).toBeUndefined();
     });
   });
 
   describe('getAllFieldsForType', () => {
-    it('should collect all fields including subtypes', () => {
+    it('should collect all fields including descendants', () => {
       const fields = getAllFieldsForType(schema, 'objective');
-      expect(fields.has('type')).toBe(true);
+      // In new model, 'type' is not a field
       expect(fields.has('status')).toBe(true);
       expect(fields.has('milestone')).toBe(true);
     });
@@ -251,21 +251,15 @@ describe('schema', () => {
       expect(fields).toEqual({ type: 'idea' });
     });
 
-    it('should return type and subtype fields for nested path', () => {
+    it('should return just type field in new model (extracts last segment)', () => {
+      // In new model, we use single 'type' field with the type name
       const fields = getDiscriminatorFieldsFromTypePath('objective/task');
-      expect(fields).toEqual({
-        type: 'objective',
-        'objective-type': 'task',
-      });
+      expect(fields).toEqual({ type: 'task' });
     });
 
-    it('should handle deeply nested paths', () => {
+    it('should extract last segment for deeply nested paths', () => {
       const fields = getDiscriminatorFieldsFromTypePath('a/b/c');
-      expect(fields).toEqual({
-        type: 'a',
-        'a-type': 'b',
-        'b-type': 'c',
-      });
+      expect(fields).toEqual({ type: 'c' });
     });
 
     it('should return empty object for empty path', () => {

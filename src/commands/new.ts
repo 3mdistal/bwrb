@@ -58,7 +58,7 @@ import {
   createScaffoldedInstances,
 } from '../lib/template.js';
 import { evaluateTemplateDefault } from '../lib/date-expression.js';
-import type { Schema, TypeDef, Field, BodySection, Template } from '../types/schema.js';
+import type { LoadedSchema, Field, BodySection, Template, ResolvedType } from '../types/schema.js';
 import { UserCancelledError } from '../lib/errors.js';
 
 interface NewCommandOptions {
@@ -245,7 +245,7 @@ or create a parent instance folder.`)
  * Create a note from JSON input (non-interactive mode).
  */
 async function createNoteFromJson(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
   jsonInput: string,
@@ -391,10 +391,10 @@ async function createNoteFromJson(
  * Create a pooled note from JSON input.
  */
 async function createPooledNoteFromJson(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
-  typeDef: TypeDef,
+  typeDef: ResolvedType,
   frontmatter: Record<string, unknown>,
   itemName: string,
   template?: Template | null,
@@ -428,10 +428,10 @@ async function createPooledNoteFromJson(
  * Create an instance parent from JSON input.
  */
 async function createInstanceParentFromJson(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
-  typeDef: TypeDef,
+  typeDef: ResolvedType,
   frontmatter: Record<string, unknown>,
   instanceName: string,
   template?: Template | null,
@@ -481,10 +481,10 @@ async function createInstanceParentFromJson(
  * Create an instance-grouped subtype note from JSON input.
  */
 async function createInstanceGroupedNoteFromJson(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
-  typeDef: TypeDef,
+  typeDef: ResolvedType,
   frontmatter: Record<string, unknown>,
   instanceName?: string,
   template?: Template | null,
@@ -552,12 +552,12 @@ async function createInstanceGroupedNoteFromJson(
  * 3. Fall back to empty schema body_sections
  */
 function generateBodyForJson(
-  typeDef: TypeDef,
+  typeDef: ResolvedType,
   frontmatter: Record<string, unknown>,
   template?: Template | null,
   bodyInput?: Record<string, unknown>
 ): string {
-  const sections = typeDef.body_sections ?? [];
+  const sections = typeDef.bodySections ?? [];
   
   // Parse body input if provided
   let sectionContent: Map<string, string[]> | undefined;
@@ -592,7 +592,7 @@ function generateBodyForJson(
  * Interactively resolve a full type path, navigating through subtypes.
  */
 async function resolveTypePath(
-  schema: Schema,
+  schema: LoadedSchema,
   initialPath?: string
 ): Promise<string | undefined> {
   let typePath = initialPath;
@@ -631,10 +631,10 @@ async function resolveTypePath(
  * Returns the file path of the created note.
  */
 async function createNote(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
-  typeDef: TypeDef,
+  typeDef: ResolvedType,
   template?: Template | null
 ): Promise<string> {
   const segments = typePath.split('/');
@@ -667,10 +667,10 @@ async function createNote(
  * Create a note in pooled mode (standard flat directory).
  */
 async function createPooledNote(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
-  typeDef: TypeDef,
+  typeDef: ResolvedType,
   template?: Template | null
 ): Promise<string> {
   // Get output directory
@@ -714,10 +714,10 @@ async function createPooledNote(
  * Create the parent/index note for an instance-grouped type.
  */
 async function createInstanceParent(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
-  typeDef: TypeDef,
+  typeDef: ResolvedType,
   template?: Template | null
 ): Promise<string> {
   // Get output directory (e.g., "Drafts")
@@ -798,10 +798,10 @@ async function createInstanceParent(
  * Create a note for a subtype within an instance-grouped parent.
  */
 async function createInstanceGroupedNote(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
-  typeDef: TypeDef,
+  typeDef: ResolvedType,
   template?: Template | null
 ): Promise<string> {
   const parentTypeName = getParentTypeName(schema, typePath);
@@ -903,16 +903,20 @@ async function createInstanceGroupedNote(
  * - Template body is used instead of schema body_sections
  */
 async function buildNoteContent(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
-  typeDef: TypeDef,
+  typeDef: ResolvedType,
   template?: Template | null
 ): Promise<{ frontmatter: Record<string, unknown>; body: string; orderedFields: string[] }> {
   const frontmatter: Record<string, unknown> = {};
   const fields = getFieldsForType(schema, typePath);
   const fieldOrder = getFrontmatterOrder(typeDef);
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(fields);
+
+  // Always inject the type field with the type name
+  // In the new inheritance model, type is auto-injected, not a field definition
+  frontmatter['type'] = typeDef.name;
 
   // Get template defaults and prompt-fields
   const templateDefaults = template?.defaults ?? {};
@@ -956,7 +960,7 @@ async function buildNoteContent(
   // If we have a template body, use it as the base and merge in prompted sections
   // If no template, prompt for schema body_sections from scratch
   let body = '';
-  const bodySections = typeDef.body_sections;
+  const bodySections = typeDef.bodySections;
   const promptableSections = bodySections?.filter(s => s.prompt === 'multi-input') ?? [];
   
   if (template?.body) {
@@ -982,27 +986,10 @@ async function buildNoteContent(
 /**
  * Get output directory for a type, walking up the hierarchy.
  */
-function getOutputDirForType(schema: Schema, typePath: string): string | undefined {
-  const segments = typePath.split('/').filter(Boolean);
-  let outputDir: string | undefined;
-
-  type TypeLike = { output_dir?: string | undefined; subtypes?: Record<string, TypeLike> | undefined };
-  let current: TypeLike | undefined;
-
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i];
-    if (i === 0) {
-      current = segment ? schema.types[segment] : undefined;
-    } else if (current?.subtypes && segment) {
-      current = current.subtypes[segment];
-    }
-
-    if (current?.output_dir) {
-      outputDir = current.output_dir;
-    }
-  }
-
-  return outputDir;
+function getOutputDirForType(schema: LoadedSchema, typePath: string): string | undefined {
+  // Use the type's outputDir from the resolved type
+  const typeDef = getTypeDefByPath(schema, typePath);
+  return typeDef?.outputDir;
 }
 
 /**
@@ -1010,7 +997,7 @@ function getOutputDirForType(schema: Schema, typePath: string): string | undefin
  * Throws UserCancelledError if user cancels any prompt.
  */
 async function promptField(
-  schema: Schema,
+  schema: LoadedSchema,
   vaultDir: string,
   fieldName: string,
   field: Field
