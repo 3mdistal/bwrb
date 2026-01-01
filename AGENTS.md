@@ -57,7 +57,7 @@ pnpm typecheck        # Type checking
 
 Tests live in `tests/ts/` with fixtures in `tests/fixtures/vault/`. Run `pnpm test` before committing.
 
-**Always use `pnpm test`** - never run `vitest` or `npx vitest` directly. The npm script uses `vitest run` which exits after tests complete. Running vitest directly starts watch mode, which leaves orphaned node processes.
+**Always use `pnpm test`** - this runs `vitest run` which exits after tests complete. Running `vitest` directly (without `run`) starts watch mode, which is interactive and not suitable for CI or scripting.
 
 **PTY tests**: Tests in `tests/ts/**/*.pty.test.ts` use node-pty to spawn real terminal processes. These are slower (~1s each) but catch interactive UI bugs that unit tests miss. PTY tests automatically skip when node-pty is incompatible (e.g., Node.js 25+).
 
