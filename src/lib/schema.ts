@@ -14,6 +14,9 @@ import {
   type LegacyType,
   type LegacySubtype,
   type FieldOverride,
+  type OwnershipMap,
+  type OwnedFieldInfo,
+  type OwnerInfo,
 } from '../types/schema.js';
 
 const SCHEMA_PATH = '.pika/schema.json';
@@ -150,7 +153,10 @@ export function resolveSchema(schema: Schema): LoadedSchema {
     type.fieldOrder = computeFieldOrder(types, type);
   }
   
-  return { raw: schema, types, enums, dynamicSources };
+  // Fourth pass: build ownership map
+  const ownership = buildOwnershipMap(types);
+  
+  return { raw: schema, types, enums, dynamicSources, ownership };
 }
 
 /**
@@ -320,6 +326,50 @@ function computeFieldOrder(
   }
   
   return order;
+}
+
+// ============================================================================
+// Ownership Map Building
+// ============================================================================
+
+/**
+ * Build the ownership map from resolved types.
+ * Scans all fields with `owned: true` and builds bidirectional lookup maps.
+ */
+function buildOwnershipMap(types: Map<string, ResolvedType>): OwnershipMap {
+  const canBeOwnedBy = new Map<string, OwnerInfo[]>();
+  const owns = new Map<string, OwnedFieldInfo[]>();
+  
+  for (const [ownerTypeName, ownerType] of types) {
+    for (const [fieldName, field] of Object.entries(ownerType.fields)) {
+      // Check if this field declares ownership
+      if (field.owned === true && field.source) {
+        const childType = field.source;
+        const multiple = field.multiple ?? false;
+        
+        // Add to owner's "owns" list
+        const ownerOwns = owns.get(ownerTypeName) ?? [];
+        ownerOwns.push({
+          fieldName,
+          ownerType: ownerTypeName,
+          childType,
+          multiple,
+        });
+        owns.set(ownerTypeName, ownerOwns);
+        
+        // Add to child's "canBeOwnedBy" list
+        const childOwners = canBeOwnedBy.get(childType) ?? [];
+        childOwners.push({
+          ownerType: ownerTypeName,
+          fieldName,
+          multiple,
+        });
+        canBeOwnedBy.set(childType, childOwners);
+      }
+    }
+  }
+  
+  return { canBeOwnedBy, owns };
 }
 
 // ============================================================================
@@ -722,4 +772,46 @@ export function getDiscriminatorFieldsFromTypePath(
   const segments = parseTypePath(typePath);
   const typeName = segments[segments.length - 1];
   return typeName ? { type: typeName } : {};
+}
+
+// ============================================================================
+// Ownership API
+// ============================================================================
+
+/**
+ * Check if a type can be owned by any other type.
+ * Returns true if any type has an `owned: true` field that references this type.
+ */
+export function canTypeBeOwned(schema: LoadedSchema, typeName: string): boolean {
+  return schema.ownership.canBeOwnedBy.has(typeName);
+}
+
+/**
+ * Get all types that can own a given child type.
+ * Returns owner info sorted alphabetically by owner type name.
+ */
+export function getOwnerTypes(schema: LoadedSchema, childTypeName: string): OwnerInfo[] {
+  const owners = schema.ownership.canBeOwnedBy.get(childTypeName) ?? [];
+  // Sort alphabetically by owner type name
+  return [...owners].sort((a, b) => a.ownerType.localeCompare(b.ownerType));
+}
+
+/**
+ * Get all owned fields for a given owner type.
+ * Returns info about what child types this type can own.
+ */
+export function getOwnedFields(schema: LoadedSchema, ownerTypeName: string): OwnedFieldInfo[] {
+  return schema.ownership.owns.get(ownerTypeName) ?? [];
+}
+
+/**
+ * Check if a specific type owns another specific type.
+ */
+export function doesTypeOwn(
+  schema: LoadedSchema,
+  ownerTypeName: string,
+  childTypeName: string
+): boolean {
+  const ownedFields = schema.ownership.owns.get(ownerTypeName) ?? [];
+  return ownedFields.some(f => f.childType === childTypeName);
 }

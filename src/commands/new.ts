@@ -27,6 +27,11 @@ import {
   generateFilename,
   getFilenamePattern,
   getOutputDir,
+  typeCanBeOwned,
+  getPossibleOwnerTypes,
+  findOwnerNotes,
+  ensureOwnedOutputDir,
+  type OwnerNoteRef,
 } from '../lib/vault.js';
 import {
   promptSelection,
@@ -68,6 +73,8 @@ interface NewCommandOptions {
   template?: string;
   default?: boolean;
   noTemplate?: boolean;
+  owner?: string;
+  standalone?: boolean;
 }
 
 export const newCommand = new Command('new')
@@ -79,6 +86,8 @@ export const newCommand = new Command('new')
   .option('--template <name>', 'Use a specific template')
   .option('--default', 'Use the default template for the type')
   .option('--no-template', 'Skip template selection, use schema only')
+  .option('--owner <wikilink>', 'Owner note for owned types (e.g., "[[My Novel]]")')
+  .option('--standalone', 'Create as standalone (skip owner selection for ownable types)')
   .addHelpText('after', `
 Examples:
   pika new                    # Interactive type selection
@@ -90,6 +99,11 @@ Templates:
   pika new task --template bug-report  # Use specific template
   pika new task --default              # Use default.md template
   pika new task --no-template          # Skip templates, use schema only
+
+Ownership:
+  pika new research                        # Prompted: standalone or owned?
+  pika new research --standalone           # Create in shared location
+  pika new research --owner "[[My Novel]]" # Create owned by specific note
 
 Non-interactive (JSON) mode:
   pika new idea --json '{"name": "My Idea", "status": "raw"}'
@@ -217,7 +231,10 @@ or create a parent instance folder.`)
         }
       }
 
-      const filePath = await createNote(schema, vaultDir, resolvedPath, typeDef, template);
+      const filePath = await createNote(schema, vaultDir, resolvedPath, typeDef, template, {
+        owner: options.owner,
+        standalone: options.standalone,
+      });
 
       // Open if requested (respects PIKA_DEFAULT_APP)
       if (options.open && filePath) {
@@ -627,6 +644,16 @@ async function resolveTypePath(
 }
 
 /**
+ * Ownership decision result from user prompt or flags.
+ */
+interface OwnershipDecision {
+  /** Whether the note will be owned */
+  isOwned: boolean;
+  /** The owner note reference (if owned) */
+  owner?: OwnerNoteRef;
+}
+
+/**
  * Create a new note with the given type.
  * Returns the file path of the created note.
  */
@@ -635,18 +662,34 @@ async function createNote(
   vaultDir: string,
   typePath: string,
   typeDef: ResolvedType,
-  template?: Template | null
+  template?: Template | null,
+  options?: { owner?: string | undefined; standalone?: boolean | undefined }
 ): Promise<string> {
   const segments = typePath.split('/');
-  const typeName = segments[0] ?? typePath;
+  const displayTypeName = segments[0] ?? typePath;  // For header display
+  const typeName = typeDef.name;  // For ownership checks
   const dirMode = getDirMode(schema, typePath);
   const isSubtype = isInstanceGroupedSubtype(schema, typePath);
 
-  printInfo(`\n=== New ${typeName} ===`);
+  printInfo(`\n=== New ${displayTypeName} ===`);
   
   // Show template info if using one
   if (template) {
     printInfo(`Using template: ${template.name}${template.description ? ` - ${template.description}` : ''}`);
+  }
+
+  // Check if this type can be owned
+  const canBeOwned = typeCanBeOwned(schema, typeName);
+  
+  if (canBeOwned && !options?.standalone) {
+    // Determine ownership (prompt or use --owner flag)
+    const ownershipDecision = await resolveOwnership(schema, vaultDir, typeName, options?.owner);
+    
+    if (ownershipDecision.isOwned && ownershipDecision.owner) {
+      // Create as owned note
+      return await createOwnedNote(schema, vaultDir, typePath, typeDef, template, ownershipDecision.owner);
+    }
+    // Fall through to standard creation if standalone
   }
 
   // Handle instance-grouped subtypes differently
@@ -981,6 +1024,172 @@ async function buildNoteContent(
   }
 
   return { frontmatter, body, orderedFields };
+}
+
+// ============================================================================
+// Ownership Flow
+// ============================================================================
+
+/**
+ * Resolve ownership for a note that can be owned.
+ * Either uses --owner flag, or prompts interactively.
+ */
+async function resolveOwnership(
+  schema: LoadedSchema,
+  vaultDir: string,
+  typeName: string,
+  ownerArg?: string
+): Promise<OwnershipDecision> {
+  // If --owner flag provided, parse and find the owner
+  if (ownerArg) {
+    const owner = await findOwnerFromArg(schema, vaultDir, typeName, ownerArg);
+    if (!owner) {
+      throw new Error(`Owner not found: ${ownerArg}`);
+    }
+    return { isOwned: true, owner };
+  }
+  
+  // Get possible owner types for this child type
+  const ownerTypes = getPossibleOwnerTypes(schema, typeName);
+  if (ownerTypes.length === 0) {
+    // No owner types defined - shouldn't happen if canBeOwned was true
+    return { isOwned: false };
+  }
+  
+  // Check if any owners exist
+  let hasAnyOwners = false;
+  for (const ownerInfo of ownerTypes) {
+    const owners = await findOwnerNotes(schema, vaultDir, ownerInfo.ownerType);
+    if (owners.length > 0) {
+      hasAnyOwners = true;
+      break;
+    }
+  }
+  
+  // If no owners exist, default to standalone
+  if (!hasAnyOwners) {
+    return { isOwned: false };
+  }
+  
+  // Build ownership options for prompt
+  // Format: "Standalone (shared)" and "Owned by a {type}" for each owner type
+  const options: string[] = ['Standalone (shared)'];
+  for (const ownerInfo of ownerTypes) {
+    options.push(`Owned by a ${ownerInfo.ownerType}`);
+  }
+  
+  const selected = await promptSelection('This type can be owned. Create as:', options);
+  if (selected === null) {
+    throw new UserCancelledError();
+  }
+  
+  if (selected === 'Standalone (shared)') {
+    return { isOwned: false };
+  }
+  
+  // Extract owner type from selection
+  const match = selected.match(/^Owned by a (.+)$/);
+  if (!match) {
+    return { isOwned: false };
+  }
+  
+  const selectedOwnerType = match[1]!;
+  
+  // Now prompt for which specific owner instance
+  const owners = await findOwnerNotes(schema, vaultDir, selectedOwnerType);
+  if (owners.length === 0) {
+    printWarning(`No ${selectedOwnerType} notes found. Creating as standalone.`);
+    return { isOwned: false };
+  }
+  
+  const ownerOptions = owners.map(o => o.ownerName);
+  const selectedOwner = await promptSelection(`Select ${selectedOwnerType}:`, ownerOptions);
+  if (selectedOwner === null) {
+    throw new UserCancelledError();
+  }
+  
+  const owner = owners.find(o => o.ownerName === selectedOwner);
+  if (!owner) {
+    throw new Error(`Owner not found: ${selectedOwner}`);
+  }
+  
+  return { isOwned: true, owner };
+}
+
+/**
+ * Find an owner from a --owner argument (wikilink format).
+ */
+async function findOwnerFromArg(
+  schema: LoadedSchema,
+  vaultDir: string,
+  childTypeName: string,
+  ownerArg: string
+): Promise<OwnerNoteRef | undefined> {
+  // Parse wikilink format: "[[Note Name]]" or just "Note Name"
+  const ownerName = ownerArg.replace(/^\[\[/, '').replace(/\]\]$/, '').replace(/^"/, '').replace(/"$/, '');
+  
+  // Get possible owner types
+  const ownerTypes = getPossibleOwnerTypes(schema, childTypeName);
+  
+  // Search for the owner in each possible owner type
+  for (const ownerInfo of ownerTypes) {
+    const owners = await findOwnerNotes(schema, vaultDir, ownerInfo.ownerType);
+    const match = owners.find(o => o.ownerName === ownerName);
+    if (match) {
+      return match;
+    }
+  }
+  
+  return undefined;
+}
+
+/**
+ * Create a note that is owned by another note.
+ * Owned notes live in: {owner_folder}/{child_type}/
+ */
+async function createOwnedNote(
+  schema: LoadedSchema,
+  vaultDir: string,
+  typePath: string,
+  typeDef: ResolvedType,
+  template: Template | null | undefined,
+  owner: OwnerNoteRef
+): Promise<string> {
+  const typeName = typeDef.name;
+  
+  printInfo(`Creating ${typeName} owned by ${owner.ownerName}`);
+  
+  // Prompt for name
+  const itemName = await promptRequired('Name');
+  if (itemName === null) {
+    throw new UserCancelledError();
+  }
+  
+  // Build frontmatter and body (may throw UserCancelledError)
+  const { frontmatter, body, orderedFields } = await buildNoteContent(schema, vaultDir, typePath, typeDef, template);
+  
+  // Ensure the owned output directory exists
+  const outputDir = await ensureOwnedOutputDir(owner.ownerPath, typeName);
+  
+  // Create file path
+  const filePath = join(outputDir, `${itemName}.md`);
+  
+  if (existsSync(filePath)) {
+    printWarning(`\nWarning: File already exists: ${filePath}`);
+    const overwrite = await promptConfirm('Overwrite?');
+    if (overwrite === null) {
+      throw new UserCancelledError();
+    }
+    if (overwrite === false) {
+      console.log('Aborted.');
+      process.exit(1);
+    }
+  }
+  
+  await writeNote(filePath, frontmatter, body, orderedFields);
+  printSuccess(`\n✓ Created: ${relative(vaultDir, filePath)}`);
+  printInfo(`  Owned by: ${owner.ownerName}`);
+  return filePath;
 }
 
 /**

@@ -13,9 +13,11 @@ import {
   getType,
   getDescendants,
   getOutputDir as getOutputDirFromSchema,
+  getOwnedFields,
+  canTypeBeOwned,
 } from './schema.js';
 import { getDirMode } from './vault.js';
-import type { LoadedSchema } from '../types/schema.js';
+import type { LoadedSchema, OwnedFieldInfo } from '../types/schema.js';
 
 // ============================================================================
 // Types
@@ -29,6 +31,15 @@ export interface ManagedFile {
   relativePath: string;
   expectedType?: string;
   instance?: string;
+  /** If this file is owned, info about the owner */
+  ownership?: {
+    /** Path to the owner note (relative to vault) */
+    ownerPath: string;
+    /** Type of the owner */
+    ownerType: string;
+    /** Field on owner that declares ownership */
+    fieldName: string;
+  };
 }
 
 // ============================================================================
@@ -148,6 +159,25 @@ export async function collectAllMarkdownFilenames(vaultDir: string): Promise<Set
 }
 
 /**
+ * Build a map from note basenames to their full relative paths.
+ * Used for resolving wikilink references to actual file paths.
+ */
+export async function buildNotePathMap(vaultDir: string): Promise<Map<string, string>> {
+  const pathMap = new Map<string, string>();
+  const excluded = new Set(['.pika']);
+  const gitignore = await loadGitignore(vaultDir);
+  
+  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, gitignore);
+  for (const file of allFiles) {
+    // Map basename (without .md) to relative path (with .md)
+    const noteName = basename(file.relativePath, '.md');
+    pathMap.set(noteName, file.relativePath);
+  }
+  
+  return pathMap;
+}
+
+/**
  * Discover files to audit.
  * When no type is specified, scans the entire vault.
  * When a type is specified, only scans that type's directories.
@@ -170,6 +200,7 @@ export async function discoverManagedFiles(
 
 /**
  * Collect files for a type (and optionally its descendants).
+ * Now includes owned notes that live with their owners.
  */
 export async function collectFilesForType(
   schema: LoadedSchema,
@@ -181,33 +212,15 @@ export async function collectFilesForType(
 
   const files: ManagedFile[] = [];
   
-  // Collect files for this type
-  const outputDir = getOutputDirFromSchema(schema, typeName);
-  if (outputDir) {
-    const dirMode = getDirMode(schema, typeName);
-    if (dirMode === 'instance-grouped') {
-      const typeFiles = await collectInstanceGroupedFiles(vaultDir, outputDir, typeName);
-      files.push(...typeFiles);
-    } else {
-      const typeFiles = await collectPooledFiles(vaultDir, outputDir, typeName);
-      files.push(...typeFiles);
-    }
-  }
+  // Collect files for this type (including owned)
+  const typeFiles = await collectFilesForTypeWithOwnership(schema, vaultDir, typeName);
+  files.push(...typeFiles);
   
-  // Also collect files for all descendants
+  // Also collect files for all descendants (including owned)
   const descendants = getDescendants(schema, typeName);
   for (const descendantName of descendants) {
-    const descendantDir = getOutputDirFromSchema(schema, descendantName);
-    if (descendantDir) {
-      const dirMode = getDirMode(schema, descendantName);
-      if (dirMode === 'instance-grouped') {
-        const descendantFiles = await collectInstanceGroupedFiles(vaultDir, descendantDir, descendantName);
-        files.push(...descendantFiles);
-      } else {
-        const descendantFiles = await collectPooledFiles(vaultDir, descendantDir, descendantName);
-        files.push(...descendantFiles);
-      }
-    }
+    const descendantFiles = await collectFilesForTypeWithOwnership(schema, vaultDir, descendantName);
+    files.push(...descendantFiles);
   }
 
   return files;
@@ -274,6 +287,118 @@ export async function collectInstanceGroupedFiles(
     }
   }
 
+  return files;
+}
+
+// ============================================================================
+// Ownership-Aware Discovery
+// ============================================================================
+
+/**
+ * Collect owned files for an owner type.
+ * Owned notes live in: {owner_folder}/{child_type}/
+ */
+export async function collectOwnedFiles(
+  schema: LoadedSchema,
+  vaultDir: string,
+  ownerTypeName: string
+): Promise<ManagedFile[]> {
+  const ownedFields = getOwnedFields(schema, ownerTypeName);
+  if (ownedFields.length === 0) return [];
+  
+  const ownerOutputDir = getOutputDirFromSchema(schema, ownerTypeName);
+  if (!ownerOutputDir) return [];
+  
+  const files: ManagedFile[] = [];
+  const fullOwnerDir = join(vaultDir, ownerOutputDir);
+  
+  if (!existsSync(fullOwnerDir)) return [];
+  
+  // Scan owner directory for owner folders (e.g., drafts/My Novel/)
+  const entries = await readdir(fullOwnerDir, { withFileTypes: true });
+  
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      // Check if this folder has an owner note (e.g., drafts/My Novel/My Novel.md)
+      const ownerNotePath = join(fullOwnerDir, entry.name, `${entry.name}.md`);
+      const relativeOwnerPath = join(ownerOutputDir, entry.name, `${entry.name}.md`);
+      
+      if (!existsSync(ownerNotePath)) continue;
+      
+      // For each owned field, look for the child type subfolder
+      for (const ownedField of ownedFields) {
+        const childTypeFolder = join(fullOwnerDir, entry.name, ownedField.childType);
+        
+        if (!existsSync(childTypeFolder)) continue;
+        
+        const childEntries = await readdir(childTypeFolder, { withFileTypes: true });
+        
+        for (const childEntry of childEntries) {
+          if (childEntry.isFile() && childEntry.name.endsWith('.md')) {
+            const fullPath = join(childTypeFolder, childEntry.name);
+            const relativePath = join(ownerOutputDir, entry.name, ownedField.childType, childEntry.name);
+            
+            files.push({
+              path: fullPath,
+              relativePath,
+              expectedType: ownedField.childType,
+              ownership: {
+                ownerPath: relativeOwnerPath,
+                ownerType: ownerTypeName,
+                fieldName: ownedField.fieldName,
+              },
+            });
+          }
+        }
+      }
+    }
+  }
+  
+  return files;
+}
+
+/**
+ * Collect all files for a type, including:
+ * - Notes in the type's output_dir (pooled or instance-grouped)
+ * - Owned notes that live with their owners
+ */
+export async function collectFilesForTypeWithOwnership(
+  schema: LoadedSchema,
+  vaultDir: string,
+  typeName: string
+): Promise<ManagedFile[]> {
+  const type = getType(schema, typeName);
+  if (!type) return [];
+
+  const files: ManagedFile[] = [];
+  
+  // Collect files in the type's output_dir (non-owned notes)
+  const outputDir = getOutputDirFromSchema(schema, typeName);
+  if (outputDir) {
+    const dirMode = getDirMode(schema, typeName);
+    if (dirMode === 'instance-grouped') {
+      const typeFiles = await collectInstanceGroupedFiles(vaultDir, outputDir, typeName);
+      files.push(...typeFiles);
+    } else {
+      const typeFiles = await collectPooledFiles(vaultDir, outputDir, typeName);
+      files.push(...typeFiles);
+    }
+  }
+  
+  // If this type can be owned, also collect owned instances
+  if (canTypeBeOwned(schema, typeName)) {
+    // Find all owner types and collect owned files from each
+    for (const [ownerTypeName, ownedFields] of schema.ownership.owns) {
+      const ownsThisType = ownedFields.some((f: OwnedFieldInfo) => f.childType === typeName);
+      if (ownsThisType) {
+        const ownedFiles = await collectOwnedFiles(schema, vaultDir, ownerTypeName);
+        // Filter to only files of this type
+        const relevantFiles = ownedFiles.filter(f => f.expectedType === typeName);
+        files.push(...relevantFiles);
+      }
+    }
+  }
+  
   return files;
 }
 

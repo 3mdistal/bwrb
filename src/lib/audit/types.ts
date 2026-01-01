@@ -27,7 +27,9 @@ export type IssueCode =
   | 'wrong-directory'
   | 'type-mismatch'
   | 'format-violation'
-  | 'stale-reference';
+  | 'stale-reference'
+  | 'owned-note-referenced'
+  | 'owned-wrong-location';
 
 /**
  * A single audit issue.
@@ -53,6 +55,10 @@ export interface AuditIssue {
   inBody?: boolean | undefined;
   /** For stale-reference: the line number in the file (for body references) */
   lineNumber?: number | undefined;
+  /** For owned-note-referenced: path to the owner note */
+  ownerPath?: string | undefined;
+  /** For owned-note-referenced: the note that was improperly referenced */
+  ownedNotePath?: string | undefined;
 }
 
 /**
