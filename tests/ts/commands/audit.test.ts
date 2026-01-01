@@ -46,7 +46,7 @@ describe('audit command', () => {
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       // Schema with a required field that has NO default
       const schemaWithRequired = {
@@ -95,7 +95,7 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
@@ -147,7 +147,7 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
@@ -221,7 +221,7 @@ tags:
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
@@ -255,7 +255,7 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
@@ -307,7 +307,7 @@ status: raw
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
@@ -367,7 +367,7 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
@@ -456,7 +456,7 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-test-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
@@ -513,7 +513,7 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-fix-test-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-fix-test-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
@@ -635,7 +635,7 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-fix-test-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-fix-test-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
@@ -688,7 +688,7 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-vaultwide-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-vaultwide-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
@@ -906,7 +906,7 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-orphan-fix-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-orphan-fix-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
@@ -1017,7 +1017,7 @@ title: Random note
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-allow-field-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-allow-field-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
@@ -1096,7 +1096,7 @@ otherField: value
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-format-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-format-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       // Use schema with wikilink format field
       await writeFile(
@@ -1195,7 +1195,7 @@ milestone: "[[Q1 Release]]"
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-stale-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-stale-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
@@ -1385,7 +1385,7 @@ Link with both: [[Missing Note#Section|Alias]]
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'ovault-audit-schema-allow-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-schema-allow-'));
       await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
     });

@@ -1,14 +1,14 @@
-# Neovim Plugin for ovault
+# Neovim Plugin for Pika
 
 > Native Neovim integration with full CLI feature parity
 
-**Beads Issue:** `ovault-tic`
+**Beads Issue:** `pika-tic`
 
 ---
 
 ## Overview
 
-A Neovim plugin (`ovault.nvim`) that brings the full power of ovault into the editor. The goal is **feature parity with the CLI** for human-usable operations, making Neovim a complete PKM (Personal Knowledge Management) environment.
+A Neovim plugin (`pika.nvim`) that brings the full power of pika into the editor. The goal is **feature parity with the CLI** for human-usable operations, making Neovim a complete PKM (Personal Knowledge Management) environment.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -21,7 +21,7 @@ A Neovim plugin (`ovault.nvim`) that brings the full power of ovault into the ed
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────┐
-│                    ovault.nvim                           │
+│                    pika.nvim                             │
 │  • CLI wrapper (--json mode)                            │
 │  • Native Lua for hot paths                             │
 │  • UI component library                                 │
@@ -29,7 +29,7 @@ A Neovim plugin (`ovault.nvim`) that brings the full power of ovault into the ed
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────┐
-│                    ovault CLI                            │
+│                    pika CLI                              │
 │  • JSON mode for all commands                           │
 │  • Single source of truth for logic                     │
 └─────────────────────────────────────────────────────────┘
@@ -52,7 +52,7 @@ A Neovim plugin (`ovault.nvim`) that brings the full power of ovault into the ed
 **Hybrid approach:**
 - **CLI with `--json`** for complex operations (new, edit, audit, bulk)
 - **Native Lua** for hot paths (search picker, list display, wikilink completion)
-- **Shared schema understanding** via parsed JSON from `ovault schema show --output json`
+- **Shared schema understanding** via parsed JSON from `pika schema show --output json`
 
 ---
 
@@ -60,15 +60,15 @@ A Neovim plugin (`ovault.nvim`) that brings the full power of ovault into the ed
 
 | CLI Command | Neovim Command | Implementation |
 |-------------|----------------|----------------|
-| `ovault new [type]` | `:OvaultNew [type]` | CLI + floating inputs |
-| `ovault edit <file>` | `:OvaultEdit` | CLI + floating inputs |
-| `ovault list <type>` | `:OvaultList <type>` | CLI + buffer/Telescope |
-| `ovault search <query>` | `:OvaultSearch` | CLI + Telescope |
-| `ovault open <file>` | `:OvaultOpen` | Native `:edit` |
-| `ovault audit` | `:OvaultAudit` | CLI + diagnostics |
-| `ovault bulk` | `:OvaultBulk` | CLI + preview buffer |
-| `ovault schema show` | `:OvaultSchema` | CLI + floating window |
-| `ovault template list` | `:OvaultTemplates` | CLI + Telescope |
+| `pika new [type]` | `:PikaNew [type]` | CLI + floating inputs |
+| `pika edit <file>` | `:PikaEdit` | CLI + floating inputs |
+| `pika list <type>` | `:PikaList <type>` | CLI + buffer/Telescope |
+| `pika search <query>` | `:PikaSearch` | CLI + Telescope |
+| `pika open <file>` | `:PikaOpen` | Native `:edit` |
+| `pika audit` | `:PikaAudit` | CLI + diagnostics |
+| `pika bulk` | `:PikaBulk` | CLI + preview buffer |
+| `pika schema show` | `:PikaSchema` | CLI + floating window |
+| `pika template list` | `:PikaTemplates` | CLI + Telescope |
 
 ---
 
@@ -77,11 +77,11 @@ A Neovim plugin (`ovault.nvim`) that brings the full power of ovault into the ed
 ### 1.1 Core Infrastructure
 
 ```lua
--- lua/ovault/init.lua
+-- lua/pika/init.lua
 local M = {}
 
 M.setup = function(opts)
-  -- Vault detection (find .ovault/schema.json)
+  -- Vault detection (find .pika/schema.json)
   -- CLI path configuration
   -- Keybinding setup
 end
@@ -91,44 +91,44 @@ return M
 
 **Deliverables:**
 - [ ] Plugin structure with lazy.nvim/packer support
-- [ ] Vault detection (walk up to find `.ovault/`)
-- [ ] CLI wrapper module (`lua/ovault/cli.lua`)
+- [ ] Vault detection (walk up to find `.pika/`)
+- [ ] CLI wrapper module (`lua/pika/cli.lua`)
 - [ ] JSON response parser
 - [ ] Error handling with `vim.notify`
 
 ### 1.2 Basic Commands
 
-**`:OvaultOpen [query]`** — Open note by name
-- Uses `ovault search --json` for resolution
+**`:PikaOpen [query]`** — Open note by name
+- Uses `pika search --json` for resolution
 - Falls back to Telescope if ambiguous
 - Direct `:edit` for exact match
 
-**`:OvaultList <type>`** — List notes in buffer
-- Calls `ovault list <type> --output json`
+**`:PikaList <type>`** — List notes in buffer
+- Calls `pika list <type> --output json`
 - Renders in scratch buffer or quickfix
 - Supports `--where` expressions
 
-**`:OvaultSchema`** — Show schema tree
-- Calls `ovault schema show`
+**`:PikaSchema`** — Show schema tree
+- Calls `pika schema show`
 - Floating window with type hierarchy
 
 ### 1.3 Telescope Integration
 
 ```lua
--- lua/telescope/_extensions/ovault.lua
+-- lua/telescope/_extensions/pika.lua
 return require("telescope").register_extension({
   exports = {
-    search = require("ovault.telescope.search"),
-    list = require("ovault.telescope.list"),
-    types = require("ovault.telescope.types"),
+    search = require("pika.telescope.search"),
+    list = require("pika.telescope.list"),
+    types = require("pika.telescope.types"),
   },
 })
 ```
 
 **Pickers:**
-- `Telescope ovault search` — Note search with wikilink output
-- `Telescope ovault list` — Filtered list with type selection
-- `Telescope ovault types` — Type hierarchy navigation
+- `Telescope pika search` — Note search with wikilink output
+- `Telescope pika list` — Filtered list with type selection
+- `Telescope pika types` — Type hierarchy navigation
 
 ---
 
@@ -139,7 +139,7 @@ return require("telescope").register_extension({
 Custom UI for schema-driven prompts:
 
 ```lua
--- lua/ovault/ui/input.lua
+-- lua/pika/ui/input.lua
 local M = {}
 
 -- Single line input with validation
@@ -161,7 +161,7 @@ end
 return M
 ```
 
-### 2.2 `:OvaultNew [type]`
+### 2.2 `:PikaNew [type]`
 
 Interactive note creation:
 
@@ -169,12 +169,12 @@ Interactive note creation:
 2. Navigate subtypes if needed
 3. Prompt for template if multiple available
 4. Show floating inputs for each field (respecting schema order)
-5. Call `ovault new <type> --json '{...}'`
+5. Call `pika new <type> --json '{...}'`
 6. Open created file
 
 **Flow diagram:**
 ```
-:OvaultNew
+:PikaNew
     │
     ├─► Type picker (Telescope)
     │       │
@@ -192,27 +192,27 @@ Interactive note creation:
     │   └── ... (dynamic fields)
     │       │
     │       ▼
-    └─► ovault new --json → :edit <path>
+    └─► pika new --json → :edit <path>
 ```
 
-### 2.3 `:OvaultEdit`
+### 2.3 `:PikaEdit`
 
 Edit frontmatter of current buffer:
 
 1. Detect type from frontmatter
 2. Show current values with edit prompts
-3. Call `ovault edit <path> --json '{...}'`
+3. Call `pika edit <path> --json '{...}'`
 4. Refresh buffer
 
 ---
 
 ## Phase 3: Advanced Features (Weeks 8-10)
 
-### 3.1 `:OvaultAudit` with Diagnostics
+### 3.1 `:PikaAudit` with Diagnostics
 
 ```lua
 -- Register diagnostic namespace
-local ns = vim.diagnostic.get_namespace("ovault")
+local ns = vim.diagnostic.get_namespace("pika")
 
 -- Run audit and populate diagnostics
 M.audit = function()
@@ -227,7 +227,7 @@ M.audit = function()
           and vim.diagnostic.severity.ERROR
           or vim.diagnostic.severity.WARN,
         message = issue.message,
-        source = "ovault",
+        source = "pika",
       })
     end
     vim.diagnostic.set(ns, bufnr, diagnostics)
@@ -238,25 +238,25 @@ end
 **Features:**
 - Populate `vim.diagnostic` for all open buffers
 - Quickfix list with all issues
-- `:OvaultAuditFix` for interactive fixing
+- `:PikaAuditFix` for interactive fixing
 
-### 3.2 `:OvaultBulk`
+### 3.2 `:PikaBulk`
 
 Bulk operations with preview:
 
 1. Show matching files in preview buffer
 2. Display proposed changes
 3. Confirm before execution
-4. Call `ovault bulk --execute`
+4. Call `pika bulk --execute`
 
 ### 3.3 Wikilink Completion
 
 ```lua
--- lua/ovault/completion.lua
+-- lua/pika/completion.lua
 -- Integrates with nvim-cmp or built-in completion
 
 -- Trigger on [[ 
--- Call ovault search --json with prefix
+-- Call pika search --json with prefix
 -- Return completion items with wikilink format
 ```
 
@@ -266,17 +266,17 @@ Bulk operations with preview:
 
 ### 4.1 Dashboard Integration
 
-Saved queries (linked issue: `ovault-48g`):
+Saved queries (linked issue: `pika-48g`):
 
 ```lua
-:OvaultDashboard           -- Show saved query list
-:OvaultDashboardSave       -- Save current list query
-:OvaultDashboardRun <name> -- Run saved query
+:PikaDashboard           -- Show saved query list
+:PikaDashboardSave       -- Save current list query
+:PikaDashboardRun <name> -- Run saved query
 ```
 
 ### 4.2 Formatted Table Output
 
-Better list display (linked issue: `ovault-hvf`):
+Better list display (linked issue: `pika-hvf`):
 
 - Aligned columns in buffer
 - Sortable headers
@@ -284,19 +284,19 @@ Better list display (linked issue: `ovault-hvf`):
 
 ### 4.3 Wikilink Insertion Picker
 
-Fuzzy finder for links (linked issue: `ovault-ng6`):
+Fuzzy finder for links (linked issue: `pika-ng6`):
 
 ```lua
-:OvaultLink           -- Insert [[wikilink]] at cursor
-:OvaultLinkVisual     -- Wrap selection in [[]]
+:PikaLink           -- Insert [[wikilink]] at cursor
+:PikaLinkVisual     -- Wrap selection in [[]]
 ```
 
 ### 4.4 Status Line Integration
 
 ```lua
 -- For lualine, etc.
-require("ovault").statusline()
--- Returns: "ovault: Tasks (12 active)"
+require("pika").statusline()
+-- Returns: "pika: Tasks (12 active)"
 ```
 
 ---
@@ -325,7 +325,7 @@ tests/
 ├── integration/
 │   ├── minimal_init.lua    -- Minimal plugin config
 │   ├── fixtures/           -- Test vault with schema
-│   ├── commands_spec.lua   -- :Ovault* commands
+│   ├── commands_spec.lua   -- :Pika* commands
 │   └── telescope_spec.lua  -- Picker behavior
 ```
 
@@ -357,7 +357,7 @@ nvim --headless -c "PlenaryBustedDirectory tests/integration"
 
 **Required:**
 - Neovim 0.9+ (for `vim.ui`, floating windows, diagnostics API)
-- `ovault` CLI installed and in PATH
+- `pika` CLI installed and in PATH
 
 **Optional:**
 - `telescope.nvim` — Enhanced pickers
@@ -369,9 +369,9 @@ nvim --headless -c "PlenaryBustedDirectory tests/integration"
 ## Configuration
 
 ```lua
-require("ovault").setup({
-  -- Path to ovault CLI (default: "ovault")
-  cli_path = "ovault",
+require("pika").setup({
+  -- Path to pika CLI (default: "pika")
+  cli_path = "pika",
   
   -- Vault path (default: auto-detect from cwd)
   vault_path = nil,
@@ -381,10 +381,10 @@ require("ovault").setup({
   
   -- Keymaps (default: none, user configures)
   keymaps = {
-    new = "<leader>on",
-    search = "<leader>os",
-    list = "<leader>ol",
-    edit = "<leader>oe",
+    new = "<leader>pn",
+    search = "<leader>ps",
+    list = "<leader>pl",
+    edit = "<leader>pe",
   },
   
   -- Open created notes automatically
@@ -405,7 +405,7 @@ require("ovault").setup({
 | Week | Milestone | Deliverables |
 |------|-----------|--------------|
 | 1 | Setup | Plugin structure, CLI wrapper, error handling |
-| 2 | Basic commands | `:OvaultOpen`, `:OvaultSchema` |
+| 2 | Basic commands | `:PikaOpen`, `:PikaSchema` |
 | 3 | Telescope | Search picker, type picker |
 | 4 | List command | Buffer display, quickfix |
 | 5 | UI components | Floating input, select, multi-input |
@@ -422,10 +422,10 @@ require("ovault").setup({
 
 ## Related Issues
 
-- `ovault-tic` — Parent issue: Create Neovim plugin for ovault integration
-- `ovault-ng6` — Fuzzy finder window for wikilink insertion
-- `ovault-hvf` — Formatted table output for list queries
-- `ovault-48g` — Dashboard integration for saved queries
+- `pika-tic` — Parent issue: Create Neovim plugin for pika integration
+- `pika-ng6` — Fuzzy finder window for wikilink insertion
+- `pika-hvf` — Formatted table output for list queries
+- `pika-48g` — Dashboard integration for saved queries
 
 ---
 
@@ -441,7 +441,7 @@ Detect Obsidian sync conflicts and surface them.
 
 ### Mobile Companion
 
-If ovault ever has a mobile story, the Neovim plugin could share config/saved queries.
+If pika ever has a mobile story, the Neovim plugin could share config/saved queries.
 
 ### LSP Integration
 

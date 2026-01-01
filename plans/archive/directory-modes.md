@@ -6,7 +6,7 @@
 
 ## Overview
 
-ovault supports two directory organization patterns:
+pika supports two directory organization patterns:
 
 1. **Pooled** (default): All notes of a type live in one folder
 2. **Instance-grouped**: Notes are grouped under parent instances
@@ -63,11 +63,11 @@ Ideas/
 ### CLI Behavior
 
 ```bash
-ovault new objective/task
+pika new objective/task
 # Title: Fix bug #123
 # → Creates: Objectives/Tasks/Fix bug #123.md
 
-ovault list objective/task
+pika list objective/task
 # Lists all tasks from Objectives/Tasks/
 ```
 
@@ -152,7 +152,7 @@ For instance-grouped types, the **parent type is always the instance field** for
 When creating a subtype, the user specifies which parent instance it belongs to:
 
 ```bash
-ovault new draft/version --set draft="Q1 Blog Post"
+pika new draft/version --set draft="Q1 Blog Post"
 ```
 
 #### Parent Note (Index File)
@@ -169,13 +169,13 @@ This pattern works beautifully with the **Folder Notes** Obsidian plugin, which 
 For instance-grouped types, the **folder IS the entity**. The parent note is metadata for that entity.
 
 ```bash
-ovault list draft
+pika list draft
 # Lists all draft instances (folders):
 #   Q1 Blog Post
 #   Technical Guide
 #   Annual Report
 
-ovault list draft/version
+pika list draft/version
 # Lists all version files across all drafts
 ```
 
@@ -184,7 +184,7 @@ ovault list draft/version
 #### Creating a Parent Instance
 
 ```bash
-ovault new draft
+pika new draft
 # Title: Q1 Blog Post
 # Status: in-progress
 # → Creates: Drafts/Q1 Blog Post/Q1 Blog Post.md
@@ -193,7 +193,7 @@ ovault new draft
 #### Creating a Subtype
 
 ```bash
-ovault new draft/version
+pika new draft/version
 # No draft specified. Select or create a draft:
 #   1. Q1 Blog Post
 #   2. Technical Guide
@@ -201,27 +201,27 @@ ovault new draft/version
 # > 1
 # → Creates: Drafts/Q1 Blog Post/Draft v2.md
 
-ovault new draft/version --set draft="Q1 Blog Post"
+pika new draft/version --set draft="Q1 Blog Post"
 # → Creates: Drafts/Q1 Blog Post/Draft v3.md
 ```
 
 #### Listing Instances
 
 ```bash
-ovault list draft
+pika list draft
 # TYPE   NAME              STATUS        FILES
 # draft  Q1 Blog Post      in-progress   4
 # draft  Technical Guide   planning      2
 # draft  Annual Report     done          5
 
-ovault list draft --instances
+pika list draft --instances
 # Just instance names (for scripting)
 ```
 
 #### Listing Subtypes
 
 ```bash
-ovault list draft/version
+pika list draft/version
 # DRAFT            FILENAME        CANONICAL
 # Q1 Blog Post     Draft v1.md     false
 # Q1 Blog Post     Draft v2.md     true
@@ -393,7 +393,7 @@ This gives you the best of both worlds — project-specific files together, but 
 Directories are created based on schema `output_dir`:
 
 ```bash
-ovault new objective/task
+pika new objective/task
 # Creates Objectives/Tasks/ if it doesn't exist
 # Creates Objectives/Tasks/My Task.md
 ```
@@ -403,12 +403,12 @@ ovault new objective/task
 Instance directories are created when needed:
 
 ```bash
-ovault new draft --title "Q1 Blog Post"
+pika new draft --title "Q1 Blog Post"
 # Creates Drafts/ if it doesn't exist
 # Creates Drafts/Q1 Blog Post/ if it doesn't exist
 # Creates Drafts/Q1 Blog Post/Q1 Blog Post.md
 
-ovault new draft/version --set draft="Q1 Blog Post"
+pika new draft/version --set draft="Q1 Blog Post"
 # Drafts/Q1 Blog Post/ already exists
 # Creates Drafts/Q1 Blog Post/Draft v1.md
 ```
@@ -439,13 +439,13 @@ If you're moving from pooled to instance-grouped (or vice versa):
 
 ```bash
 # 1. Update schema
-ovault schema edit-type draft --dir-mode instance-grouped
+pika schema edit-type draft --dir-mode instance-grouped
 
 # 2. Check what needs to change
-ovault audit draft
+pika audit draft
 
 # 3. Bulk move files (future feature)
-ovault bulk draft/version --reorg
+pika bulk draft/version --reorg
 ```
 
 The `--reorg` flag would restructure files to match the new directory mode.

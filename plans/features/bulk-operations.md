@@ -6,7 +6,7 @@
 
 ## Overview
 
-The `ovault bulk` command performs mass changes across notes matching filter criteria:
+The `pika bulk` command performs mass changes across notes matching filter criteria:
 
 - Set or clear field values
 - Rename fields (for migrations)
@@ -19,7 +19,7 @@ The `ovault bulk` command performs mass changes across notes matching filter cri
 ## Command Syntax
 
 ```bash
-ovault bulk <type> [options]
+pika bulk <type> [options]
 
 # Operations
 --set <field>=<value>       # Set field value
@@ -50,7 +50,7 @@ ovault bulk <type> [options]
 All bulk operations are dry-run by default for safety:
 
 ```bash
-ovault bulk task --set status=done --where "status == 'in-progress'"
+pika bulk task --set status=done --where "status == 'in-progress'"
 
 # Dry run - no changes will be made
 # 
@@ -72,28 +72,28 @@ ovault bulk task --set status=done --where "status == 'in-progress'"
 
 ```bash
 # Set single field
-ovault bulk task --set status=done --where "status == 'in-progress'" --execute
+pika bulk task --set status=done --where "status == 'in-progress'" --execute
 
 # Set multiple fields
-ovault bulk task --set status=done --set "completion-date=$(date +%Y-%m-%d)" --where "status == 'in-progress'" --execute
+pika bulk task --set status=done --set "completion-date=$(date +%Y-%m-%d)" --where "status == 'in-progress'" --execute
 
 # Set with special values
-ovault bulk task --set deadline=today --where "isEmpty(deadline)" --execute
-ovault bulk task --set "milestone=[[Q1 Release]]" --where "type == 'task'" --execute
+pika bulk task --set deadline=today --where "isEmpty(deadline)" --execute
+pika bulk task --set "milestone=[[Q1 Release]]" --where "type == 'task'" --execute
 ```
 
 ### Clear Field
 
 ```bash
 # Remove field entirely
-ovault bulk task --set deadline= --where "status == 'done'" --execute
+pika bulk task --set deadline= --where "status == 'done'" --execute
 ```
 
 ### Rename Field
 
 ```bash
 # For schema migrations
-ovault bulk objective --rename old-field=new-field --execute
+pika bulk objective --rename old-field=new-field --execute
 
 # All affected files:
 #   Objectives/Tasks/Task A.md
@@ -104,14 +104,14 @@ ovault bulk objective --rename old-field=new-field --execute
 
 ```bash
 # Explicit deletion (same as --set field=)
-ovault bulk task --delete legacy-field --execute
+pika bulk task --delete legacy-field --execute
 ```
 
 ### Move Files
 
 ```bash
 # Move to different directory
-ovault bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
+pika bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
 
 # Output:
 #   Moving 15 files...
@@ -123,7 +123,7 @@ ovault bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
 
 ```bash
 # Add tag to all matching files
-ovault bulk task --append tags=urgent --where "priority == 'critical'" --execute
+pika bulk task --append tags=urgent --where "priority == 'critical'" --execute
 
 # Before: tags: [bug]
 # After:  tags: [bug, urgent]
@@ -133,31 +133,31 @@ ovault bulk task --append tags=urgent --where "priority == 'critical'" --execute
 
 ```bash
 # Remove tag from files
-ovault bulk task --remove tags=legacy --where "contains(tags, 'legacy')" --execute
+pika bulk task --remove tags=legacy --where "contains(tags, 'legacy')" --execute
 ```
 
 ---
 
 ## Filter Expressions
 
-Filters use the same expression syntax as `ovault list`:
+Filters use the same expression syntax as `pika list`:
 
 ```bash
 # Simple equality
-ovault bulk task --set status=done --where "status == 'in-progress'"
+pika bulk task --set status=done --where "status == 'in-progress'"
 
 # Comparison operators
-ovault bulk task --set priority=high --where "priority < 2"
+pika bulk task --set priority=high --where "priority < 2"
 
 # Boolean logic
-ovault bulk task --set status=backlog --where "status == 'inbox' && isEmpty(deadline)"
+pika bulk task --set status=backlog --where "status == 'inbox' && isEmpty(deadline)"
 
 # Functions
-ovault bulk task --set status=overdue --where "deadline < today()"
-ovault bulk idea --move Archive/Ideas --where "contains(tags, 'archived')"
+pika bulk task --set status=overdue --where "deadline < today()"
+pika bulk idea --move Archive/Ideas --where "contains(tags, 'archived')"
 
 # Multiple --where (AND logic)
-ovault bulk task --set status=done --where "status == 'in-progress'" --where "scope == 'day'"
+pika bulk task --set status=done --where "status == 'in-progress'" --where "scope == 'day'"
 ```
 
 ---
@@ -167,20 +167,20 @@ ovault bulk task --set status=done --where "status == 'in-progress'" --where "sc
 ### Specific Type
 
 ```bash
-ovault bulk objective/task --set status=done ...
+pika bulk objective/task --set status=done ...
 ```
 
 ### Parent Type (All Subtypes)
 
 ```bash
-ovault bulk objective --set status=done ...
+pika bulk objective --set status=done ...
 # Affects both tasks and milestones
 ```
 
 ### All Types
 
 ```bash
-ovault bulk --all --set status=done --where "status == 'in-progress'" ...
+pika bulk --all --set status=done --where "status == 'in-progress'" ...
 # Warning: This affects ALL managed files. Are you sure? [y/N]
 ```
 
@@ -191,17 +191,17 @@ ovault bulk --all --set status=done --where "status == 'in-progress'" ...
 ### 1. Dry-Run by Default
 
 ```bash
-ovault bulk task --set status=done --where "status == 'in-progress'"
+pika bulk task --set status=done --where "status == 'in-progress'"
 # Shows what would change, doesn't change anything
 ```
 
 ### 2. Backup Option
 
 ```bash
-ovault bulk task --set status=done --where "status == 'in-progress'" --execute --backup
+pika bulk task --set status=done --where "status == 'in-progress'" --execute --backup
 
 # Creating backup...
-#   Backup saved to .ovault/backups/2025-01-15T10-30-00/
+#   Backup saved to .pika/backups/2025-01-15T10-30-00/
 # 
 # Applying changes...
 #   ✓ Updated 12 files
@@ -209,7 +209,7 @@ ovault bulk task --set status=done --where "status == 'in-progress'" --execute -
 
 Restore from backup:
 ```bash
-ovault backup restore 2025-01-15T10-30-00
+pika backup restore 2025-01-15T10-30-00
 # Restoring 12 files from backup...
 # ✓ Restored
 ```
@@ -217,7 +217,7 @@ ovault backup restore 2025-01-15T10-30-00
 ### 3. Git Status Warning
 
 ```bash
-ovault bulk task --set status=done --where "status == 'in-progress'" --execute
+pika bulk task --set status=done --where "status == 'in-progress'" --execute
 
 # ⚠ Warning: You have uncommitted changes in your vault.
 # Bulk operations will modify files. Consider committing first.
@@ -233,7 +233,7 @@ ovault bulk task --set status=done --where "status == 'in-progress'" --execute
 
 ```bash
 # Apply to first 5 matches only
-ovault bulk task --set status=done --where "status == 'in-progress'" --execute --limit 5
+pika bulk task --set status=done --where "status == 'in-progress'" --execute --limit 5
 
 # Updated 5 of 12 matching files.
 # Run without --limit to update remaining 7 files.
@@ -242,7 +242,7 @@ ovault bulk task --set status=done --where "status == 'in-progress'" --execute -
 ### 5. Confirmation for Large Operations
 
 ```bash
-ovault bulk task --set status=archived --execute
+pika bulk task --set status=archived --execute
 
 # This will modify 247 files.
 # Are you sure? [y/N]
@@ -255,7 +255,7 @@ ovault bulk task --set status=archived --execute
 When `--move` relocates files, wikilinks are automatically updated:
 
 ```bash
-ovault bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
+pika bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
 
 # Moving 5 files...
 #   Ideas/Old Idea 1.md → Archive/Ideas/Old Idea 1.md
@@ -295,7 +295,7 @@ If using Obsidian's "shortest path when possible" setting:
 ### Default (Interactive)
 
 ```bash
-ovault bulk task --set status=done --where "status == 'in-progress'" --execute
+pika bulk task --set status=done --where "status == 'in-progress'" --execute
 
 # Applying changes to 12 files...
 #   ✓ Objectives/Tasks/Task A.md
@@ -308,7 +308,7 @@ ovault bulk task --set status=done --where "status == 'in-progress'" --execute
 ### Verbose
 
 ```bash
-ovault bulk task --set status=done --where "status == 'in-progress'" --execute --verbose
+pika bulk task --set status=done --where "status == 'in-progress'" --execute --verbose
 
 # Applying changes...
 # 
@@ -326,7 +326,7 @@ ovault bulk task --set status=done --where "status == 'in-progress'" --execute -
 ### Quiet
 
 ```bash
-ovault bulk task --set status=done --where "status == 'in-progress'" --execute --quiet
+pika bulk task --set status=done --where "status == 'in-progress'" --execute --quiet
 
 # ✓ Updated 12 files
 ```
@@ -334,7 +334,7 @@ ovault bulk task --set status=done --where "status == 'in-progress'" --execute -
 ### JSON (for scripting)
 
 ```bash
-ovault bulk task --set status=done --where "status == 'in-progress'" --execute --format json
+pika bulk task --set status=done --where "status == 'in-progress'" --execute --format json
 
 # {
 #   "success": true,
@@ -353,21 +353,21 @@ ovault bulk task --set status=done --where "status == 'in-progress'" --execute -
 ### Operating on Parent Type
 
 ```bash
-ovault bulk draft --set status=archived --where "status == 'done'" --execute
+pika bulk draft --set status=archived --where "status == 'done'" --execute
 # Only affects parent notes (Drafts/X/X.md)
 ```
 
 ### Operating on Subtypes
 
 ```bash
-ovault bulk draft/version --set canonical=false --execute
+pika bulk draft/version --set canonical=false --execute
 # Affects all version files across all drafts
 ```
 
 ### Moving Entire Instances
 
 ```bash
-ovault bulk draft --move Archive/Drafts --where "status == 'archived'" --execute
+pika bulk draft --move Archive/Drafts --where "status == 'archived'" --execute
 
 # This will move entire draft instances (parent + subtypes):
 #   Drafts/Old Project/ → Archive/Drafts/Old Project/
@@ -386,44 +386,44 @@ ovault bulk draft --move Archive/Drafts --where "status == 'archived'" --execute
 
 ```bash
 # 1. Check current usage
-ovault list task --where "status == 'wip'" --count
+pika list task --where "status == 'wip'" --count
 # 47 files
 
 # 2. Bulk update
-ovault bulk task --set status=in-progress --where "status == 'wip'" --execute --backup
+pika bulk task --set status=in-progress --where "status == 'wip'" --execute --backup
 
 # 3. Update schema
-ovault schema edit-enum status --remove wip
+pika schema edit-enum status --remove wip
 ```
 
 ### Cleanup: Archive Old Items
 
 ```bash
 # Archive settled ideas
-ovault bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
+pika bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
 
 # Archive completed tasks older than 30 days
-ovault bulk task --move Archive/Tasks --where "status == 'done' && completion-date < today() - '30d'" --execute
+pika bulk task --move Archive/Tasks --where "status == 'done' && completion-date < today() - '30d'" --execute
 ```
 
 ### Tagging: Add Tags Based on Criteria
 
 ```bash
 # Tag all high-priority items
-ovault bulk task --append tags=priority --where "priority == 'high' || priority == 'critical'" --execute
+pika bulk task --append tags=priority --where "priority == 'high' || priority == 'critical'" --execute
 
 # Tag overdue items
-ovault bulk task --append tags=overdue --where "deadline < today() && status != 'done'" --execute
+pika bulk task --append tags=overdue --where "deadline < today() && status != 'done'" --execute
 ```
 
 ### Field Migration: Rename or Remove
 
 ```bash
 # Rename field across all types
-ovault bulk --all --rename assignee=owner --execute
+pika bulk --all --rename assignee=owner --execute
 
 # Remove deprecated field
-ovault bulk --all --delete legacy-notes --execute
+pika bulk --all --delete legacy-notes --execute
 ```
 
 ---
@@ -496,7 +496,7 @@ async function findWikilinks(
 ### Backup Structure
 
 ```
-.ovault/
+.pika/
   backups/
     2025-01-15T10-30-00/
       manifest.json           # What was backed up and why

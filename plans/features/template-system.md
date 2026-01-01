@@ -263,15 +263,15 @@ Empty sections indicate expected content type:
 
 ```bash
 # Use default template
-ovault new task --default
+pika new task --default
 # → Uses Templates/objective/task/default.md
 
 # Specify template
-ovault new task --template bug-report
+pika new task --template bug-report
 # → Uses Templates/objective/task/bug-report.md
 
 # Interactive selection (if multiple templates)
-ovault new task
+pika new task
 # Multiple templates found:
 #   1. default
 #   2. bug-report
@@ -283,20 +283,20 @@ ovault new task
 
 ```bash
 # Skip template, use schema only
-ovault new task --no-template
+pika new task --no-template
 ```
 
 ### List Templates
 
 ```bash
-ovault template list
+pika template list
 # TYPE           TEMPLATE         DESCRIPTION
 # objective/task default          Standard task
 # objective/task bug-report       Bug report with reproduction steps
 # objective/task feature-request  Feature request with acceptance criteria
 # idea           default          Quick idea capture
 
-ovault template list task
+pika template list task
 # TEMPLATE         DESCRIPTION
 # default          Standard task
 # bug-report       Bug report with reproduction steps
@@ -377,7 +377,7 @@ Blog post for Builder.io about [topic].
 ### CLI Behavior
 
 ```bash
-ovault new draft --template builder-blog --set title="Q1 Feature Announcement"
+pika new draft --template builder-blog --set title="Q1 Feature Announcement"
 
 # Creating draft: Q1 Feature Announcement
 # 
@@ -487,7 +487,7 @@ Templates can **narrow** but not **loosen** schema requirements:
 ### On Load
 
 ```bash
-ovault template validate
+pika template validate
 
 # Validating templates...
 # 
@@ -503,7 +503,7 @@ ovault template validate
 
 ### On Use
 
-If a template has validation errors, `ovault new` will:
+If a template has validation errors, `pika new` will:
 1. Warn about the errors
 2. Offer to continue without template
 3. Or abort
@@ -515,7 +515,7 @@ If a template has validation errors, `ovault new` will:
 ### Create Template
 
 ```bash
-ovault template new task
+pika template new task
 # Template name: quick-task
 # Description: Fast task capture with minimal fields
 # 
@@ -535,7 +535,7 @@ Templates are just markdown files — edit in Obsidian or any editor.
 ### Audit Templates
 
 ```bash
-ovault audit --templates
+pika audit --templates
 
 # Template Issues:
 #   Templates/draft/version/old.md

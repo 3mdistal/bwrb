@@ -30,7 +30,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
   describe('number key selection', () => {
     it('should select immediately on number key press without re-rendering', async () => {
-      // This test verifies the fix for ovault-18j:
+      // This test verifies the fix for pika-18j:
       // "Numbered select prompt renders repeatedly when selecting options"
       //
       // The bug: pressing a number key caused the options to render again
@@ -180,7 +180,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
   describe('first render preserves prior output', () => {
     it('should not erase output printed before the prompt', async () => {
-      // This test verifies the fix from ovault-h4h description:
+      // This test verifies the fix from pika-h4h description:
       // "on first render, it called clearPrompt() which erased lines
       //  printed BEFORE the prompt started"
 
@@ -258,8 +258,8 @@ describePty('NumberedSelectPrompt PTY tests', () => {
       }
     }, 30000);
 
-    it('should not re-render excessively during arrow navigation (ovault-18j)', async () => {
-      // This test verifies the fix for ovault-18j:
+    it('should not re-render excessively during arrow navigation (pika-18j)', async () => {
+      // This test verifies the fix for pika-18j:
       // Arrow key navigation should use differential updates, only changing
       // the specific lines affected (old selection and new selection),
       // rather than clearing and re-rendering the entire prompt.

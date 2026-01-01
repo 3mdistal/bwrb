@@ -6,7 +6,7 @@
 
 ## Overview
 
-ovault serves as a **harness** for AI agents, not an agent itself. It provides:
+pika serves as a **harness** for AI agents, not an agent itself. It provides:
 
 1. **Prompt/Agent storage** — Manage AI assets in the vault
 2. **Workflow definitions** — Multi-step AI pipelines
@@ -24,7 +24,7 @@ ovault serves as a **harness** for AI agents, not an agent itself. It provides:
            │                │              ▲
            ▼                ▼              │
 ┌─────────────────────────────────────────────────┐
-│                    ovault                        │
+│                    pika                        │
 │  • Reads workflow definitions                   │
 │  • Manages execution state                      │
 │  • Writes results back to vault                 │
@@ -81,7 +81,7 @@ You are a skilled summarizer. Given the following content, provide a concise sum
 {
   "types": {
     "prompt": {
-      "output_dir": ".ovault/prompts",
+      "output_dir": ".pika/prompts",
       "frontmatter": {
         "type": { "value": "prompt" },
         "model": {
@@ -118,7 +118,7 @@ Agents are notes that combine prompts with tools and configuration:
 ```yaml
 ---
 type: agent
-system-prompt: "[[.ovault/prompts/Research Assistant]]"
+system-prompt: "[[.pika/prompts/Research Assistant]]"
 tools:
   - web-search
   - summarize
@@ -170,16 +170,16 @@ max-cost: 0.50
 ## Steps
 
 1. **Search** → sources
-   Prompt: [[.ovault/prompts/Web Search]]
+   Prompt: [[.pika/prompts/Web Search]]
    Input: {topic}
    
 2. **Summarize** → summaries
-   Prompt: [[.ovault/prompts/Summarize Content]]
+   Prompt: [[.pika/prompts/Summarize Content]]
    Input: {sources}
    For each: source in sources
    
 3. **Synthesize** → summary
-   Prompt: [[.ovault/prompts/Synthesize Research]]
+   Prompt: [[.pika/prompts/Synthesize Research]]
    Input: {summaries}
 
 ## Config
@@ -206,22 +206,22 @@ model: claude-sonnet-4-20250514
 
 ```bash
 # Run workflow with inputs
-ovault run Workflows/research.md --topic "AI agents" --depth "comprehensive"
+pika run Workflows/research.md --topic "AI agents" --depth "comprehensive"
 
 # Dry run (show what would execute)
-ovault run Workflows/research.md --topic "AI agents" --dry-run
+pika run Workflows/research.md --topic "AI agents" --dry-run
 
 # Check running workflows
-ovault run --status
+pika run --status
 
 # Cancel running workflow
-ovault run --cancel <workflow-id>
+pika run --cancel <workflow-id>
 ```
 
 ### Execution Flow
 
 ```bash
-ovault run Workflows/research.md --topic "AI agents"
+pika run Workflows/research.md --topic "AI agents"
 
 # Starting workflow: Research: AI agents
 # 
@@ -287,7 +287,7 @@ status: completed
 
 ### Cost Storage
 
-Costs are logged to `.ovault/logs/costs.json`:
+Costs are logged to `.pika/logs/costs.json`:
 
 ```json
 {
@@ -314,7 +314,7 @@ Costs are logged to `.ovault/logs/costs.json`:
 
 ```bash
 # View spending summary
-ovault costs
+pika costs
 
 # Spending Summary
 # 
@@ -328,16 +328,16 @@ ovault costs
 #   analysis: $0.30
 
 # Filter by period
-ovault costs --period week
-ovault costs --period month
-ovault costs --period "2025-01"
+pika costs --period week
+pika costs --period month
+pika costs --period "2025-01"
 
 # Filter by workflow
-ovault costs --workflow research
+pika costs --workflow research
 
 # Set budget alerts
-ovault costs --set-alert daily=5.00
-ovault costs --set-alert monthly=50.00
+pika costs --set-alert daily=5.00
+pika costs --set-alert monthly=50.00
 ```
 
 ### Cost Limits
@@ -352,7 +352,7 @@ max-cost: 0.50
 ```
 
 ```bash
-ovault run Workflows/expensive.md
+pika run Workflows/expensive.md
 
 # Step 3/5: Analysis
 #   ⚠ Cost limit approaching: $0.45 / $0.50
@@ -368,8 +368,8 @@ ovault run Workflows/expensive.md
 Store API key securely:
 
 ```bash
-ovault config set openrouter-api-key <key>
-# Stored in ~/.ovault/config.json (not in vault)
+pika config set openrouter-api-key <key>
+# Stored in ~/.pika/config.json (not in vault)
 ```
 
 Or via environment:
@@ -509,7 +509,7 @@ Process lists with `for each`:
 ### Step Failure
 
 ```bash
-ovault run Workflows/research.md --topic "AI agents"
+pika run Workflows/research.md --topic "AI agents"
 
 # Step 2/3: Summarize
 #   ✗ Failed: API error (rate limit)
@@ -527,7 +527,7 @@ ovault run Workflows/research.md --topic "AI agents"
 ### Cost Overrun
 
 ```bash
-ovault run Workflows/expensive.md
+pika run Workflows/expensive.md
 
 # Step 4/5: Analysis
 #   ✗ Cost limit exceeded: $0.52 > $0.50
@@ -576,31 +576,31 @@ Step 3: Synthesize - Rate limit exceeded
 
 ```bash
 # Prompts
-ovault new prompt                     # Create prompt
-ovault list prompt                    # List prompts
-ovault run-prompt <prompt> --input "text"  # Test prompt
+pika new prompt                     # Create prompt
+pika list prompt                    # List prompts
+pika run-prompt <prompt> --input "text"  # Test prompt
 
 # Agents
-ovault new agent                      # Create agent
-ovault list agent                     # List agents
+pika new agent                      # Create agent
+pika list agent                     # List agents
 
 # Workflows
-ovault new workflow                   # Create workflow
-ovault list workflow                  # List workflows
-ovault run <workflow> [--inputs]      # Execute workflow
-ovault run --status                   # Show running workflows
-ovault run --cancel <id>              # Cancel workflow
-ovault run --dry-run                  # Preview execution
+pika new workflow                   # Create workflow
+pika list workflow                  # List workflows
+pika run <workflow> [--inputs]      # Execute workflow
+pika run --status                   # Show running workflows
+pika run --cancel <id>              # Cancel workflow
+pika run --dry-run                  # Preview execution
 
 # Costs
-ovault costs                          # Spending summary
-ovault costs --period <period>        # Filter by time
-ovault costs --workflow <name>        # Filter by workflow
-ovault costs --set-alert <limit>      # Set budget alert
+pika costs                          # Spending summary
+pika costs --period <period>        # Filter by time
+pika costs --workflow <name>        # Filter by workflow
+pika costs --set-alert <limit>      # Set budget alert
 
 # Config
-ovault config set openrouter-api-key <key>
-ovault config get openrouter-api-key
+pika config set openrouter-api-key <key>
+pika config get openrouter-api-key
 ```
 
 ---
@@ -628,9 +628,9 @@ schedule: "0 9 * * 1"  # Every Monday at 9am
 ```
 
 ```bash
-ovault schedule list
-ovault schedule enable <workflow>
-ovault schedule disable <workflow>
+pika schedule list
+pika schedule enable <workflow>
+pika schedule disable <workflow>
 ```
 
 ### Streaming
@@ -638,7 +638,7 @@ ovault schedule disable <workflow>
 Real-time output during execution:
 
 ```bash
-ovault run Workflows/writing.md --stream
+pika run Workflows/writing.md --stream
 # Shows output as it's generated
 ```
 

@@ -6,7 +6,7 @@
 
 ## Overview
 
-The `ovault ingest` command uses AI to scan notes (especially daily notes, journals, meeting notes) and extract structured data:
+The `pika ingest` command uses AI to scan notes (especially daily notes, journals, meeting notes) and extract structured data:
 
 - **Tasks** — Action items, TODOs, things to do
 - **Ideas** — Creative thoughts, concepts, possibilities
@@ -24,7 +24,7 @@ This bridges the gap between free-form journaling and structured knowledge manag
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                   ovault ingest                              │
+│                   pika ingest                              │
 │  • Sends note + schema context to AI                        │
 │  • Receives structured extraction proposals                 │
 │  • Presents interactive approval flow                       │
@@ -45,29 +45,29 @@ This bridges the gap between free-form journaling and structured knowledge manag
 
 ```bash
 # Ingest a specific file
-ovault ingest "Daily Notes/2025-12-30.md"
+pika ingest "Daily Notes/2025-12-30.md"
 
 # Ingest multiple files
-ovault ingest "Daily Notes/2025-12-*.md"
+pika ingest "Daily Notes/2025-12-*.md"
 
 # Ingest all notes of a type
-ovault ingest --type daily-note
+pika ingest --type daily-note
 
 # Ingest notes marked for processing
-ovault ingest --pending
+pika ingest --pending
 
 # Dry run (show what would be extracted, don't prompt)
-ovault ingest "Daily Notes/2025-12-30.md" --dry-run
+pika ingest "Daily Notes/2025-12-30.md" --dry-run
 
 # Auto-accept high-confidence extractions
-ovault ingest "Daily Notes/2025-12-30.md" --auto
+pika ingest "Daily Notes/2025-12-30.md" --auto
 
 # JSON output for scripting
-ovault ingest "Daily Notes/2025-12-30.md" --output json
+pika ingest "Daily Notes/2025-12-30.md" --output json
 
 # Limit extraction types
-ovault ingest --extract tasks,ideas  # Skip entities
-ovault ingest --extract entities     # Only entities
+pika ingest --extract tasks,ideas  # Skip entities
+pika ingest --extract entities     # Only entities
 ```
 
 ---
@@ -176,10 +176,10 @@ ai-extractions:
 When the schema changes (new type added, fields modified), notes processed under an older schema version are marked `needs-review`:
 
 ```bash
-ovault schema add-type place
+pika schema add-type place
 # Notes with ai-schema-version < current marked for re-processing
 
-ovault ingest --pending
+pika ingest --pending
 # Finds notes with ai-process-stage: to-process OR needs-review
 ```
 
@@ -188,7 +188,7 @@ ovault ingest --pending
 ## Interactive Approval Flow
 
 ```bash
-ovault ingest "Daily Notes/2025-12-30.md"
+pika ingest "Daily Notes/2025-12-30.md"
 
 # Scanning Daily Notes/2025-12-30.md...
 # 
@@ -300,7 +300,7 @@ ovault ingest "Daily Notes/2025-12-30.md"
 For high-confidence extractions, `--auto` accepts automatically:
 
 ```bash
-ovault ingest "Daily Notes/2025-12-30.md" --auto
+pika ingest "Daily Notes/2025-12-30.md" --auto
 
 # Scanning Daily Notes/2025-12-30.md...
 # 
@@ -320,8 +320,8 @@ ovault ingest "Daily Notes/2025-12-30.md" --auto
 ### Confidence Thresholds
 
 ```bash
-ovault ingest --auto --threshold 0.7  # Lower threshold
-ovault ingest --auto --threshold 0.9  # Higher threshold
+pika ingest --auto --threshold 0.7  # Lower threshold
+pika ingest --auto --threshold 0.9  # Higher threshold
 ```
 
 Or configure in schema:
@@ -339,7 +339,7 @@ Or configure in schema:
 
 ## Entity Matching
 
-When AI extracts an entity, ovault searches for existing matches:
+When AI extracts an entity, pika searches for existing matches:
 
 ### Match Strategies
 
@@ -367,7 +367,7 @@ Select match or [n]ew entity:
 For scripting and integration:
 
 ```bash
-ovault ingest "Daily Notes/2025-12-30.md" --output json --dry-run
+pika ingest "Daily Notes/2025-12-30.md" --output json --dry-run
 ```
 
 ```json
@@ -413,20 +413,20 @@ Uses the same API infrastructure as agentic workflows (Phase 6):
 
 ```bash
 # Use OpenRouter (default)
-ovault ingest "note.md"
+pika ingest "note.md"
 
 # Use opencode run (leverages existing subscription)
-ovault ingest "note.md" --provider opencode
+pika ingest "note.md" --provider opencode
 
 # Direct Anthropic API
-ovault ingest "note.md" --provider anthropic
+pika ingest "note.md" --provider anthropic
 ```
 
 ### Model Selection
 
 ```bash
-ovault ingest "note.md" --model claude-3-5-haiku  # Fast, cheap
-ovault ingest "note.md" --model claude-sonnet-4   # Better quality
+pika ingest "note.md" --model claude-3-5-haiku  # Fast, cheap
+pika ingest "note.md" --model claude-sonnet-4   # Better quality
 ```
 
 Or configure default:
@@ -511,7 +511,7 @@ If AI returns malformed JSON:
 Ingest operations log to the same cost tracking system as workflows:
 
 ```bash
-ovault costs --command ingest
+pika costs --command ingest
 
 # Ingest Costs (last 7 days):
 #   
@@ -532,24 +532,24 @@ ovault costs --command ingest
 
 ```bash
 # Process yesterday's daily note each morning
-ovault ingest "Daily Notes/$(date -d yesterday +%Y-%m-%d).md"
+pika ingest "Daily Notes/$(date -d yesterday +%Y-%m-%d).md"
 ```
 
 ### Catch-Up Processing
 
 ```bash
 # Process all unprocessed daily notes
-ovault ingest --type daily-note --pending
+pika ingest --type daily-note --pending
 
 # Process last 7 days
-ovault ingest "Daily Notes/2025-12-2*.md" --auto
+pika ingest "Daily Notes/2025-12-2*.md" --auto
 ```
 
 ### Cron Integration
 
 ```bash
 # In crontab: process daily note at 9am
-0 9 * * * cd ~/vault && ovault ingest --type daily-note --pending --auto
+0 9 * * * cd ~/vault && pika ingest --type daily-note --pending --auto
 ```
 
 ---
@@ -605,18 +605,18 @@ ovault ingest "Daily Notes/2025-12-2*.md" --auto
 ### With Audit
 
 ```bash
-ovault audit --fix
+pika audit --fix
 # After fixing issues, suggests:
-# "3 notes have ai-process-stage: to-process. Run 'ovault ingest --pending'?"
+# "3 notes have ai-process-stage: to-process. Run 'pika ingest --pending'?"
 ```
 
 ### With Schema Changes
 
 ```bash
-ovault schema add-type place
+pika schema add-type place
 # "12 processed notes may contain place entities. Mark for re-processing? [Y/n]"
 
-ovault ingest --pending --extract entities
+pika ingest --pending --extract entities
 # Re-processes only entity extraction on marked notes
 ```
 
@@ -624,7 +624,7 @@ ovault ingest --pending --extract entities
 
 ```bash
 # Mark all daily notes for processing
-ovault bulk daily-note --set ai-process-stage=to-process
+pika bulk daily-note --set ai-process-stage=to-process
 ```
 
 ---
@@ -632,9 +632,9 @@ ovault bulk daily-note --set ai-process-stage=to-process
 ## CLI Reference
 
 ```bash
-ovault ingest <files...>              # Process specific files
-ovault ingest --type <type>           # Process all of a type
-ovault ingest --pending               # Process to-process/needs-review notes
+pika ingest <files...>              # Process specific files
+pika ingest --type <type>           # Process all of a type
+pika ingest --pending               # Process to-process/needs-review notes
 
 # Options
 --dry-run                             # Show extractions without prompting
@@ -654,7 +654,7 @@ ovault ingest --pending               # Process to-process/needs-review notes
 ### API Errors
 
 ```
-ovault ingest "note.md"
+pika ingest "note.md"
 
 # ✗ API error: Rate limit exceeded
 #   Retry in 60 seconds? [Y/n]
@@ -674,7 +674,7 @@ ai-partial-extractions:
 ```
 
 ```bash
-ovault ingest "note.md"
+pika ingest "note.md"
 # "Previous processing incomplete. Resume from extraction 3? [Y/n]"
 ```
 
@@ -687,7 +687,7 @@ ovault ingest "note.md"
 For sensitive vaults, support local models:
 
 ```bash
-ovault ingest "note.md" --provider ollama --model llama3
+pika ingest "note.md" --provider ollama --model llama3
 ```
 
 ### Content Filtering

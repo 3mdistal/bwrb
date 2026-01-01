@@ -6,12 +6,12 @@
 
 ## Overview
 
-ovault's query system provides powerful filtering capabilities compatible with Obsidian Bases. This enables:
+pika's query system provides powerful filtering capabilities compatible with Obsidian Bases. This enables:
 
-- Complex filters in `ovault list`
-- Conditions in `ovault bulk`
+- Complex filters in `pika list`
+- Conditions in `pika bulk`
 - Validation rules in templates
-- Future: `ovault base` for generating Bases queries
+- Future: `pika base` for generating Bases queries
 
 ---
 
@@ -21,34 +21,34 @@ ovault's query system provides powerful filtering capabilities compatible with O
 
 ```bash
 # Equality
-ovault list task --where "status == 'in-progress'"
-ovault list task --where "priority == 'high'"
+pika list task --where "status == 'in-progress'"
+pika list task --where "priority == 'high'"
 
 # Inequality
-ovault list task --where "status != 'done'"
+pika list task --where "status != 'done'"
 
 # Numeric comparison
-ovault list task --where "priority < 3"
-ovault list task --where "priority >= 2"
+pika list task --where "priority < 3"
+pika list task --where "priority >= 2"
 
 # String comparison (lexicographic)
-ovault list task --where "title < 'M'"
+pika list task --where "title < 'M'"
 ```
 
 ### Boolean Logic
 
 ```bash
 # AND
-ovault list task --where "status == 'in-progress' && priority == 'high'"
+pika list task --where "status == 'in-progress' && priority == 'high'"
 
 # OR
-ovault list task --where "status == 'done' || status == 'cancelled'"
+pika list task --where "status == 'done' || status == 'cancelled'"
 
 # NOT
-ovault list task --where "!isEmpty(deadline)"
+pika list task --where "!isEmpty(deadline)"
 
 # Grouped
-ovault list task --where "(status == 'inbox' || status == 'backlog') && priority == 'critical'"
+pika list task --where "(status == 'inbox' || status == 'backlog') && priority == 'critical'"
 ```
 
 ### Multiple --where Clauses
@@ -56,9 +56,9 @@ ovault list task --where "(status == 'inbox' || status == 'backlog') && priority
 Multiple `--where` flags are ANDed together:
 
 ```bash
-ovault list task --where "status == 'in-progress'" --where "priority == 'high'"
+pika list task --where "status == 'in-progress'" --where "priority == 'high'"
 # Equivalent to:
-ovault list task --where "status == 'in-progress' && priority == 'high'"
+pika list task --where "status == 'in-progress' && priority == 'high'"
 ```
 
 ---
@@ -136,8 +136,8 @@ Durations can be added/subtracted from dates:
 | `'30min'` | 30 minutes |
 
 ```bash
-ovault list task --where "deadline < today() + '7d'"
-ovault list task --where "file.mtime > now() - '24h'"
+pika list task --where "deadline < today() + '7d'"
+pika list task --where "file.mtime > now() - '24h'"
 ```
 
 ### Null/Empty Functions
@@ -173,9 +173,9 @@ ovault list task --where "file.mtime > now() - '24h'"
 Access frontmatter fields directly by name:
 
 ```bash
-ovault list task --where "status == 'done'"
-ovault list task --where "priority < 3"
-ovault list task --where "contains(tags, 'urgent')"
+pika list task --where "status == 'done'"
+pika list task --where "priority < 3"
+pika list task --where "contains(tags, 'urgent')"
 ```
 
 ### File Properties
@@ -193,8 +193,8 @@ Access file metadata via `file.*`:
 | `file.mtime` | Modification time |
 
 ```bash
-ovault list task --where "file.mtime > now() - '24h'"
-ovault list task --where "inFolder('Archive/')"
+pika list task --where "file.mtime > now() - '24h'"
+pika list task --where "inFolder('Archive/')"
 ```
 
 ### Nested Access
@@ -202,7 +202,7 @@ ovault list task --where "inFolder('Archive/')"
 For nested frontmatter (if supported):
 
 ```bash
-ovault list task --where "metadata.author == 'alice'"
+pika list task --where "metadata.author == 'alice'"
 ```
 
 ---
@@ -229,38 +229,38 @@ The query engine handles type coercion:
 
 ```bash
 # Overdue tasks
-ovault list task --where "deadline < today() && status != 'done'"
+pika list task --where "deadline < today() && status != 'done'"
 
 # High priority inbox items
-ovault list task --where "status == 'inbox' && (priority == 'high' || priority == 'critical')"
+pika list task --where "status == 'inbox' && (priority == 'high' || priority == 'critical')"
 
 # Recently modified
-ovault list --all --where "file.mtime > now() - '24h'"
+pika list --all --where "file.mtime > now() - '24h'"
 
 # Tasks without deadlines
-ovault list task --where "isEmpty(deadline) && status != 'done'"
+pika list task --where "isEmpty(deadline) && status != 'done'"
 
 # Tasks for this week
-ovault list task --where "scope == 'week' && status != 'done'"
+pika list task --where "scope == 'week' && status != 'done'"
 
 # Items with specific tag
-ovault list --all --where "contains(tags, 'review')"
+pika list --all --where "contains(tags, 'review')"
 
 # Drafts in progress
-ovault list draft --where "status == 'drafting' || status == 'revising'"
+pika list draft --where "status == 'drafting' || status == 'revising'"
 ```
 
 ### Bulk Operations
 
 ```bash
 # Mark overdue as urgent
-ovault bulk task --append tags=overdue --where "deadline < today() && status != 'done'" --execute
+pika bulk task --append tags=overdue --where "deadline < today() && status != 'done'" --execute
 
 # Archive old completed tasks
-ovault bulk task --move Archive/Tasks --where "status == 'done' && file.mtime < now() - '30d'" --execute
+pika bulk task --move Archive/Tasks --where "status == 'done' && file.mtime < now() - '30d'" --execute
 
 # Set default priority
-ovault bulk task --set priority=medium --where "isEmpty(priority)" --execute
+pika bulk task --set priority=medium --where "isEmpty(priority)" --execute
 ```
 
 ### Template Constraints
@@ -280,7 +280,7 @@ constraints:
 
 ## Bases Compatibility
 
-ovault queries align with Obsidian Bases syntax for easy mental model sharing:
+pika queries align with Obsidian Bases syntax for easy mental model sharing:
 
 ### Bases Syntax
 
@@ -293,16 +293,16 @@ filters:
         gte: 2
 ```
 
-### ovault Equivalent
+### pika Equivalent
 
 ```bash
-ovault list task --where "status == 'in-progress' && priority >= 2"
+pika list task --where "status == 'in-progress' && priority >= 2"
 ```
 
 ### Future: Base Generation
 
 ```bash
-ovault base task --where "status == 'in-progress'" --where "priority >= 2"
+pika base task --where "status == 'in-progress'" --where "priority >= 2"
 
 # Output:
 # filters:
@@ -319,7 +319,7 @@ ovault base task --where "status == 'in-progress'" --where "priority >= 2"
 ### Syntax Errors
 
 ```bash
-ovault list task --where "status = 'done'"
+pika list task --where "status = 'done'"
 # Error: Invalid operator '=' at position 7
 # Did you mean '=='?
 # 
@@ -330,7 +330,7 @@ ovault list task --where "status = 'done'"
 ### Unknown Fields
 
 ```bash
-ovault list task --where "stauts == 'done'"
+pika list task --where "stauts == 'done'"
 # Warning: Unknown field 'stauts'. Did you mean 'status'?
 # No results found.
 ```
@@ -338,7 +338,7 @@ ovault list task --where "stauts == 'done'"
 ### Type Errors
 
 ```bash
-ovault list task --where "deadline == 'not-a-date'"
+pika list task --where "deadline == 'not-a-date'"
 # Warning: Cannot compare date field 'deadline' with non-date value
 ```
 

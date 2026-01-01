@@ -1,4 +1,4 @@
-# ovault Roadmap
+# pika Roadmap
 
 > Schema-driven management for Obsidian vaults — evolving into a comprehensive CLI for structured note management, auditing, and agentic workflows.
 
@@ -6,7 +6,7 @@
 
 ## Vision
 
-ovault is a CLI tool that brings structure, consistency, and automation to Obsidian vaults. It provides:
+pika is a CLI tool that brings structure, consistency, and automation to Obsidian vaults. It provides:
 
 1. **Schema-driven note creation** — Types, subtypes, and fields defined in a central schema
 2. **Flexible organization** — Both pooled and instance-grouped directory structures
@@ -19,10 +19,10 @@ ovault is a CLI tool that brings structure, consistency, and automation to Obsid
 ## Current State (v1 — Shell)
 
 **Implemented:**
-- `ovault new [type]` — Interactive note creation with schema-driven frontmatter
-- `ovault edit <file>` — Edit existing frontmatter fields
-- `ovault list [options] <type>` — List/filter objects with table output
-- `ovault help` — Usage documentation
+- `pika new [type]` — Interactive note creation with schema-driven frontmatter
+- `pika edit <file>` — Edit existing frontmatter fields
+- `pika list [options] <type>` — List/filter objects with table output
+- `pika help` — Usage documentation
 - Hierarchical type/subtype navigation
 - Dynamic sources for field queries (e.g., active milestones)
 - Multi-vault support via `--vault` flag and `OVAULT_VAULT` env var
@@ -73,9 +73,9 @@ See: [features/directory-modes.md](features/directory-modes.md)
 ### 1.3 Open in Obsidian
 
 ```bash
-ovault open <file>                    # Open file in Obsidian
-ovault new idea --open                # Create and open
-ovault edit Tasks/My\ Task.md --open  # Edit and open
+pika open <file>                    # Open file in Obsidian
+pika new idea --open                # Create and open
+pika edit Tasks/My\ Task.md --open  # Edit and open
 ```
 
 Uses Obsidian's URI scheme: `obsidian://open?vault=NAME&file=PATH`
@@ -85,9 +85,9 @@ Uses Obsidian's URI scheme: `obsidian://open?vault=NAME&file=PATH`
 Full expression-based filtering compatible with Obsidian Bases:
 
 ```bash
-ovault list task --where "status == 'in-progress'"
-ovault list task --where "priority < 3 && !isEmpty(deadline)"
-ovault list task --where "deadline < today() + '7d'"
+pika list task --where "status == 'in-progress'"
+pika list task --where "priority < 3 && !isEmpty(deadline)"
+pika list task --where "deadline < today() + '7d'"
 ```
 
 See: [features/query-system.md](features/query-system.md)
@@ -95,9 +95,9 @@ See: [features/query-system.md](features/query-system.md)
 ### 1.5 Schema Show Command
 
 ```bash
-ovault schema show                    # Tree view of all types
-ovault schema show objective/task     # Show specific type definition
-ovault schema validate                # Validate schema structure
+pika schema show                    # Tree view of all types
+pika schema show objective/task     # Show specific type definition
+pika schema validate                # Validate schema structure
 ```
 
 ---
@@ -109,11 +109,11 @@ ovault schema validate                # Validate schema structure
 Validate files against schema and surface mismatches:
 
 ```bash
-ovault audit                      # Check all files (report only)
-ovault audit objective/task       # Check specific type
-ovault audit --fix                # Interactive repair mode
-ovault audit --fix --auto         # Automatic fixes where unambiguous
-ovault audit --strict             # Error on unknown fields
+pika audit                      # Check all files (report only)
+pika audit objective/task       # Check specific type
+pika audit --fix                # Interactive repair mode
+pika audit --fix --auto         # Automatic fixes where unambiguous
+pika audit --strict             # Error on unknown fields
 ```
 
 See: [features/audit-command.md](features/audit-command.md)
@@ -123,9 +123,9 @@ See: [features/audit-command.md](features/audit-command.md)
 Mass changes across filtered file sets:
 
 ```bash
-ovault bulk task --set status=done --where "status == 'in-progress'"
-ovault bulk idea --move Archive/Ideas --where "status == 'settled'"
-ovault bulk objective --rename old-field=new-field
+pika bulk task --set status=done --where "status == 'in-progress'"
+pika bulk idea --move Archive/Ideas --where "status == 'settled'"
+pika bulk objective --rename old-field=new-field
 ```
 
 Features:
@@ -145,9 +145,9 @@ See: [features/bulk-operations.md](features/bulk-operations.md)
 Markdown-based templates with defaults and body structure:
 
 ```bash
-ovault new task                           # Prompts for template if multiple
-ovault new task --template bug-report     # Use specific template
-ovault new task --default                 # Use default template
+pika new task                           # Prompts for template if multiple
+pika new task --template bug-report     # Use specific template
+pika new task --default                 # Use default template
 ```
 
 Templates live in `Templates/{type}/{subtype}/{name}.md`.
@@ -199,22 +199,22 @@ Full CLI for schema manipulation — never touch JSON directly:
 
 ```bash
 # Type management
-ovault schema add-type writing
-ovault schema edit-type writing
-ovault schema remove-type writing
+pika schema add-type writing
+pika schema edit-type writing
+pika schema remove-type writing
 
 # Field management
-ovault schema add-field deadline task
-ovault schema edit-field deadline task
+pika schema add-field deadline task
+pika schema edit-field deadline task
 
 # Enum management
-ovault schema add-enum priority
-ovault schema edit-enum status --add archived
-ovault schema edit-enum status --rename wip=in-progress
+pika schema add-enum priority
+pika schema edit-enum status --add archived
+pika schema edit-enum status --rename wip=in-progress
 
 # Migration
-ovault schema diff                # Show pending changes
-ovault schema apply               # Apply migrations to files
+pika schema diff                # Show pending changes
+pika schema apply               # Apply migrations to files
 ```
 
 See: [features/schema-management.md](features/schema-management.md)
@@ -237,17 +237,17 @@ Define recurring task/project creation:
 ```
 
 ```bash
-ovault recur list                 # Show configured recurrences
-ovault recur spawn                # Create due instances
-ovault recur spawn --dry-run      # Preview
+pika recur list                 # Show configured recurrences
+pika recur spawn                # Create due instances
+pika recur spawn --dry-run      # Preview
 ```
 
 ### 5.2 Output Formats
 
 ```bash
-ovault list task --format=json
-ovault list task --format=csv
-ovault list task --format=dataview
+pika list task --format=json
+pika list task --format=csv
+pika list task --format=dataview
 ```
 
 ---
@@ -259,23 +259,23 @@ ovault list task --format=dataview
 Schema types for managing AI assets:
 
 ```bash
-ovault new prompt --set model=claude-sonnet
-ovault new agent --set tools="web-search,summarize"
+pika new prompt --set model=claude-sonnet
+pika new agent --set tools="web-search,summarize"
 ```
 
 ### 6.2 Workflow Execution
 
 ```bash
-ovault run Workflows/blog-research.md --topic="AI agents"
-ovault run --status  # Show running/completed workflows
+pika run Workflows/blog-research.md --topic="AI agents"
+pika run --status  # Show running/completed workflows
 ```
 
 ### 6.3 Cost Tracking
 
 ```bash
-ovault costs                      # Spending summary
-ovault costs --period=week        # This week's usage
-ovault costs --workflow=research  # By workflow type
+pika costs                      # Spending summary
+pika costs --period=week        # This week's usage
+pika costs --workflow=research  # By workflow type
 ```
 
 See: [features/agentic-workflows.md](features/agentic-workflows.md)
@@ -289,8 +289,8 @@ See: [features/agentic-workflows.md](features/agentic-workflows.md)
 Broader markdown hygiene (separate from schema audit):
 
 ```bash
-ovault lint                   # Check all files
-ovault lint --fix             # Auto-fix where possible
+pika lint                   # Check all files
+pika lint --fix             # Auto-fix where possible
 ```
 
 Checks: broken wikilinks, orphan files, duplicate filenames, heading hierarchy
@@ -300,7 +300,7 @@ Checks: broken wikilinks, orphan files, duplicate filenames, heading hierarchy
 Generate Obsidian Bases queries from CLI filters:
 
 ```bash
-ovault base task --where "status == 'in-progress'" --where "scope == 'week'"
+pika base task --where "status == 'in-progress'" --where "scope == 'week'"
 # Outputs .base file or dataview query
 ```
 
@@ -340,7 +340,7 @@ ovault base task --where "status == 'in-progress'" --where "scope == 'week'"
 
 ### Schema Location
 
-`.ovault/schema.json` in vault root
+`.pika/schema.json` in vault root
 
 ### Key Design Decisions
 
@@ -350,7 +350,7 @@ ovault base task --where "status == 'in-progress'" --where "scope == 'week'"
 | Parent type = instance field | For instance-grouped, parent type names the instance |
 | Parent note for instances | Folder name matches parent note name (Folder Notes plugin compatible) |
 | Templates are markdown | Manage templates in Obsidian like any other note |
-| User manages git | ovault warns about dirty state but doesn't auto-commit |
+| User manages git | pika warns about dirty state but doesn't auto-commit |
 | Auto-apply deterministic migrations | Enum renames, field additions with defaults |
 | Prompt for non-deterministic | Field removal, type changes |
 

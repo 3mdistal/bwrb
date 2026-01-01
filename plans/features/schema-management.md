@@ -6,7 +6,7 @@
 
 ## Overview
 
-The `ovault schema` command provides full CLI control over the schema:
+The `pika schema` command provides full CLI control over the schema:
 
 - Explore types, fields, and enums
 - Add, edit, and remove types
@@ -21,40 +21,40 @@ The goal is to **never require direct JSON editing**.
 
 ```bash
 # Exploration
-ovault schema show                          # Tree view of all types
-ovault schema show objective/task           # Show specific type
-ovault schema validate                      # Validate schema structure
+pika schema show                          # Tree view of all types
+pika schema show objective/task           # Show specific type
+pika schema validate                      # Validate schema structure
 
 # Type management
-ovault schema add-type <name>               # Create new type
-ovault schema edit-type <name>              # Modify type settings
-ovault schema remove-type <name>            # Remove type
+pika schema add-type <name>               # Create new type
+pika schema edit-type <name>              # Modify type settings
+pika schema remove-type <name>            # Remove type
 
 # Subtype management
-ovault schema add-subtype <type> <name>     # Add subtype
-ovault schema edit-subtype <type/subtype>   # Modify subtype
-ovault schema remove-subtype <type/subtype> # Remove subtype
+pika schema add-subtype <type> <name>     # Add subtype
+pika schema edit-subtype <type/subtype>   # Modify subtype
+pika schema remove-subtype <type/subtype> # Remove subtype
 
 # Field management
-ovault schema add-field <name> <type>       # Add field to type
-ovault schema edit-field <name> <type>      # Modify field
-ovault schema remove-field <name> <type>    # Remove field
+pika schema add-field <name> <type>       # Add field to type
+pika schema edit-field <name> <type>      # Modify field
+pika schema remove-field <name> <type>    # Remove field
 
 # Shared fields
-ovault schema add-shared-field <name>       # Create shared field
-ovault schema edit-shared-field <name>      # Modify shared field
-ovault schema remove-shared-field <name>    # Remove shared field
+pika schema add-shared-field <name>       # Create shared field
+pika schema edit-shared-field <name>      # Modify shared field
+pika schema remove-shared-field <name>    # Remove shared field
 
 # Enum management
-ovault schema add-enum <name>               # Create new enum
-ovault schema edit-enum <name> [options]    # Modify enum
-ovault schema remove-enum <name>            # Remove enum
-ovault schema list-enums                    # List all enums
+pika schema add-enum <name>               # Create new enum
+pika schema edit-enum <name> [options]    # Modify enum
+pika schema remove-enum <name>            # Remove enum
+pika schema list-enums                    # List all enums
 
 # Migration
-ovault schema diff                          # Show pending migrations
-ovault schema apply                         # Apply migrations
-ovault schema history                       # Show migration history
+pika schema diff                          # Show pending migrations
+pika schema apply                         # Apply migrations
+pika schema history                       # Show migration history
 ```
 
 ---
@@ -64,7 +64,7 @@ ovault schema history                       # Show migration history
 ### Show All Types
 
 ```bash
-ovault schema show
+pika schema show
 
 # Schema v3
 # 
@@ -102,7 +102,7 @@ ovault schema show
 ### Show Specific Type
 
 ```bash
-ovault schema show objective/task
+pika schema show objective/task
 
 # Type: objective/task
 # 
@@ -128,7 +128,7 @@ ovault schema show objective/task
 ### Validate Schema
 
 ```bash
-ovault schema validate
+pika schema validate
 
 # Validating schema...
 # 
@@ -149,7 +149,7 @@ ovault schema validate
 ### Add Type
 
 ```bash
-ovault schema add-type project
+pika schema add-type project
 
 # Creating new type: project
 # 
@@ -202,7 +202,7 @@ ovault schema add-type project
 ### Edit Type
 
 ```bash
-ovault schema edit-type project
+pika schema edit-type project
 
 # Editing type: project
 # 
@@ -226,7 +226,7 @@ ovault schema edit-type project
 ### Remove Type
 
 ```bash
-ovault schema remove-type project
+pika schema remove-type project
 
 # ⚠ Warning: Removing type 'project'
 # 
@@ -241,7 +241,7 @@ ovault schema remove-type project
 # 
 # ✓ Removed type 'project'
 # 
-# Tip: Run 'ovault audit' to find orphaned files.
+# Tip: Run 'pika audit' to find orphaned files.
 ```
 
 ---
@@ -251,7 +251,7 @@ ovault schema remove-type project
 ### Add Field
 
 ```bash
-ovault schema add-field deadline task
+pika schema add-field deadline task
 
 # Adding field 'deadline' to objective/task
 # 
@@ -278,7 +278,7 @@ ovault schema add-field deadline task
 ### Edit Field
 
 ```bash
-ovault schema edit-field priority task
+pika schema edit-field priority task
 
 # Editing field 'priority' in objective/task
 # 
@@ -306,7 +306,7 @@ ovault schema edit-field priority task
 ### Remove Field
 
 ```bash
-ovault schema remove-field legacy-notes task
+pika schema remove-field legacy-notes task
 
 # ⚠ Warning: Removing field 'legacy-notes' from objective/task
 # 
@@ -320,7 +320,7 @@ ovault schema remove-field legacy-notes task
 # ✓ Removed field 'legacy-notes' from schema
 # 
 # Note: 23 files still have 'legacy-notes' field.
-# Run 'ovault bulk task --delete legacy-notes --execute' to remove from files.
+# Run 'pika bulk task --delete legacy-notes --execute' to remove from files.
 ```
 
 ---
@@ -330,7 +330,7 @@ ovault schema remove-field legacy-notes task
 ### Add Shared Field
 
 ```bash
-ovault schema add-shared-field priority
+pika schema add-shared-field priority
 
 # Creating shared field: priority
 # 
@@ -364,7 +364,7 @@ ovault schema add-shared-field priority
 ### Edit Shared Field
 
 ```bash
-ovault schema edit-shared-field status
+pika schema edit-shared-field status
 
 # Editing shared field: status
 # 
@@ -403,7 +403,7 @@ ovault schema edit-shared-field status
 ### Add Enum
 
 ```bash
-ovault schema add-enum scope
+pika schema add-enum scope
 
 # Creating enum: scope
 # 
@@ -416,7 +416,7 @@ ovault schema add-enum scope
 
 ```bash
 # Add value
-ovault schema edit-enum status --add archived
+pika schema edit-enum status --add archived
 
 # Adding 'archived' to enum 'status'
 # Current: inbox, backlog, planned, in-progress, done, cancelled
@@ -425,7 +425,7 @@ ovault schema edit-enum status --add archived
 # ✓ Added 'archived' to enum 'status'
 
 # Rename value
-ovault schema edit-enum status --rename in-flight=in-progress
+pika schema edit-enum status --rename in-flight=in-progress
 
 # Renaming in enum 'status': in-flight → in-progress
 # 
@@ -437,7 +437,7 @@ ovault schema edit-enum status --rename in-flight=in-progress
 # ✓ Renamed 'in-flight' to 'in-progress'
 
 # Remove value
-ovault schema edit-enum status --remove deprecated
+pika schema edit-enum status --remove deprecated
 
 # Removing 'deprecated' from enum 'status'
 # 
@@ -462,7 +462,7 @@ ovault schema edit-enum status --remove deprecated
 # ✓ Removed 'deprecated' from enum 'status'
 
 # Reorder values
-ovault schema edit-enum priority --reorder
+pika schema edit-enum priority --reorder
 
 # Current order: low, medium, high, critical
 # 
@@ -474,7 +474,7 @@ ovault schema edit-enum priority --reorder
 ### List Enums
 
 ```bash
-ovault schema list-enums
+pika schema list-enums
 
 # Enums:
 #   status      inbox, backlog, planned, in-progress, done, cancelled
@@ -497,14 +497,14 @@ ovault schema list-enums
 ### How It Works
 
 1. Schema changes that affect existing files create **pending migrations**
-2. `ovault schema diff` shows what migrations are pending
-3. `ovault schema apply` executes migrations
-4. Migrations are logged in `.ovault/migrations/`
+2. `pika schema diff` shows what migrations are pending
+3. `pika schema apply` executes migrations
+4. Migrations are logged in `.pika/migrations/`
 
 ### Schema Diff
 
 ```bash
-ovault schema diff
+pika schema diff
 
 # Pending migrations:
 # 
@@ -520,13 +520,13 @@ ovault schema diff
 #    Affects: 12 files
 #    Auto-applicable: no (needs replacement value)
 # 
-# Run 'ovault schema apply' to execute migrations.
+# Run 'pika schema apply' to execute migrations.
 ```
 
 ### Schema Apply
 
 ```bash
-ovault schema apply
+pika schema apply
 
 # Applying migrations...
 # 
@@ -603,7 +603,7 @@ The schema tracks version and migration history:
 ### View History
 
 ```bash
-ovault schema history
+pika schema history
 
 # Schema migration history:
 # 
@@ -633,7 +633,7 @@ ovault schema history
 ### Invalid Operation
 
 ```bash
-ovault schema remove-enum status
+pika schema remove-enum status
 
 # ✗ Cannot remove enum 'status'
 #   It is used by shared field 'status'
@@ -646,7 +646,7 @@ ovault schema remove-enum status
 ### Circular Reference
 
 ```bash
-ovault schema add-field parent task --type dynamic --source tasks
+pika schema add-field parent task --type dynamic --source tasks
 
 # ⚠ Warning: This creates a self-referential field
 #   'task.parent' references 'tasks' (which are tasks)
@@ -672,7 +672,7 @@ interface Schema {
 }
 
 async function loadSchema(vaultPath: string): Promise<Schema> {
-  const schemaPath = path.join(vaultPath, '.ovault', 'schema.json');
+  const schemaPath = path.join(vaultPath, '.pika', 'schema.json');
   const content = await fs.readFile(schemaPath, 'utf-8');
   const raw = JSON.parse(content);
   
@@ -691,7 +691,7 @@ async function saveSchema(vaultPath: string, schema: Schema): Promise<void> {
     description: currentMigrationDescription,
   });
   
-  const schemaPath = path.join(vaultPath, '.ovault', 'schema.json');
+  const schemaPath = path.join(vaultPath, '.pika', 'schema.json');
   await fs.writeFile(schemaPath, JSON.stringify(schema, null, 2));
 }
 ```

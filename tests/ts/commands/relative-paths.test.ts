@@ -3,7 +3,7 @@
  *
  * These tests verify that all CLI commands work correctly when
  * the --vault option is given a relative path instead of an absolute path.
- * This is important because users may run ovault from various directories
+ * This is important because users may run pika from various directories
  * and use relative paths like `--vault ./my-vault` or `--vault ../vaults/work`.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';

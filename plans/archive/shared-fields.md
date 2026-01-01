@@ -142,7 +142,7 @@ With `frontmatter_order`, you can customize:
 Shared fields are prompted like any other field:
 
 ```bash
-ovault new idea
+pika new idea
 # Title: My Idea
 # Status: [inbox] backlog, planned, in-progress, done, cancelled
 # Scopes (comma-separated): personal, q1-2025
@@ -155,9 +155,9 @@ ovault new idea
 Shared fields are available for filtering and display:
 
 ```bash
-ovault list idea --where "status == 'in-progress'"
-ovault list --all --where "isEmpty(scopes)"
-ovault list task --fields status,title,deadline
+pika list idea --where "status == 'in-progress'"
+pika list --all --where "isEmpty(scopes)"
+pika list task --fields status,title,deadline
 ```
 
 ### Editing Notes
@@ -165,7 +165,7 @@ ovault list task --fields status,title,deadline
 Shared fields can be edited like any other:
 
 ```bash
-ovault edit Ideas/My\ Idea.md --set status=done
+pika edit Ideas/My\ Idea.md --set status=done
 ```
 
 ---
@@ -206,7 +206,7 @@ Audit should verify shared fields:
 ### Example Output
 
 ```bash
-ovault audit
+pika audit
 
 # Shared Field Issues:
 #   Ideas/Old Idea.md
@@ -220,7 +220,7 @@ ovault audit
 ### Auto-Fix
 
 ```bash
-ovault audit --fix --auto
+pika audit --fix --auto
 
 # Fixing shared field issues...
 #   Ideas/Old Idea.md
@@ -237,7 +237,7 @@ ovault audit --fix --auto
 ### Adding a Shared Field
 
 ```bash
-ovault schema add-shared-field priority
+pika schema add-shared-field priority
 
 # Field name: priority
 # Prompt type: select
@@ -260,7 +260,7 @@ ovault schema add-shared-field priority
 ### Modifying a Shared Field
 
 ```bash
-ovault schema edit-shared-field status --default planned
+pika schema edit-shared-field status --default planned
 
 # Updated default for 'status': inbox → planned
 # 
@@ -271,7 +271,7 @@ ovault schema edit-shared-field status --default planned
 ### Removing a Shared Field
 
 ```bash
-ovault schema remove-shared-field scopes
+pika schema remove-shared-field scopes
 
 # Warning: 'scopes' is used by 3 types:
 #   - idea
@@ -295,14 +295,14 @@ If you have existing per-type status fields:
 ### 1. Create Shared Field
 
 ```bash
-ovault schema add-shared-field status
+pika schema add-shared-field status
 # Define the canonical version
 ```
 
 ### 2. Audit Inconsistencies
 
 ```bash
-ovault audit --check-shared-migration status
+pika audit --check-shared-migration status
 
 # Status field migration analysis:
 #   
@@ -324,15 +324,15 @@ ovault audit --check-shared-migration status
 ### 3. Bulk Update
 
 ```bash
-ovault bulk task --set status=inbox --where "status == 'raw'" --execute
-ovault bulk task --set status=in-progress --where "status == 'in-flight'" --execute
-ovault bulk task --set status=done --where "status == 'complete'" --execute
+pika bulk task --set status=inbox --where "status == 'raw'" --execute
+pika bulk task --set status=in-progress --where "status == 'in-flight'" --execute
+pika bulk task --set status=done --where "status == 'complete'" --execute
 ```
 
 ### 4. Update Schema
 
 ```bash
-ovault schema edit-type task --use-shared-field status
+pika schema edit-type task --use-shared-field status
 # Removes type-specific status, adds to shared_fields list
 ```
 

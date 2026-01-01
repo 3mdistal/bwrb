@@ -624,9 +624,9 @@ Pika validates schemas on load:
 
 ---
 
-## Migration from ovault
+## Migration from Legacy Schema
 
-### Old Model (ovault)
+### Old Model (Legacy)
 
 ```json
 {
@@ -659,7 +659,7 @@ Pika validates schemas on load:
 
 ### Key Changes
 
-| ovault | Pika |
+| Legacy | New |
 |--------|------|
 | Nested `subtypes` | Flat types with `extends` |
 | `output_dir` explicit | Computed from hierarchy + ownership |

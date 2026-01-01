@@ -6,7 +6,7 @@
 
 ## Overview
 
-The `ovault audit` command validates files against the schema and reports issues:
+The `pika audit` command validates files against the schema and reports issues:
 
 - Missing required fields
 - Invalid enum values
@@ -21,12 +21,12 @@ The `ovault audit` command validates files against the schema and reports issues
 ## Command Syntax
 
 ```bash
-ovault audit                      # Check all files (report only)
-ovault audit objective/task       # Check specific type
-ovault audit --fix                # Interactive repair mode
-ovault audit --fix --auto         # Automatic fixes where unambiguous
-ovault audit --strict             # Error on unknown fields
-ovault audit --templates          # Also audit templates
+pika audit                      # Check all files (report only)
+pika audit objective/task       # Check specific type
+pika audit --fix                # Interactive repair mode
+pika audit --fix --auto         # Automatic fixes where unambiguous
+pika audit --strict             # Error on unknown fields
+pika audit --templates          # Also audit templates
 ```
 
 ---
@@ -150,7 +150,7 @@ Drafts/Q1 Blog Post/Research.md
 ### Default: Report Only
 
 ```bash
-ovault audit
+pika audit
 
 # Auditing vault...
 # 
@@ -171,13 +171,13 @@ ovault audit
 #   Total errors: 5
 #   Total warnings: 1
 # 
-# Run 'ovault audit --fix' to repair interactively.
+# Run 'pika audit --fix' to repair interactively.
 ```
 
 ### Interactive Fix Mode
 
 ```bash
-ovault audit --fix
+pika audit --fix
 
 # Auditing vault...
 # 
@@ -209,7 +209,7 @@ ovault audit --fix
 ### Auto-Fix Mode
 
 ```bash
-ovault audit --fix --auto
+pika audit --fix --auto
 
 # Auditing vault...
 # 
@@ -232,13 +232,13 @@ ovault audit --fix --auto
 #   Auto-fixed: 3 issues
 #   Manual review needed: 2 issues
 # 
-# Run 'ovault audit --fix' to address remaining issues.
+# Run 'pika audit --fix' to address remaining issues.
 ```
 
 ### Strict Mode
 
 ```bash
-ovault audit --strict
+pika audit --strict
 
 # Unknown fields are now errors:
 # 
@@ -255,26 +255,26 @@ ovault audit --strict
 ### By Type
 
 ```bash
-ovault audit objective/task      # Only tasks
-ovault audit objective           # Tasks and milestones
-ovault audit draft               # All draft instances
-ovault audit draft/version       # Only draft versions
+pika audit objective/task      # Only tasks
+pika audit objective           # Tasks and milestones
+pika audit draft               # All draft instances
+pika audit draft/version       # Only draft versions
 ```
 
 ### By Directory
 
 ```bash
-ovault audit --path "Objectives/Tasks/"
-ovault audit --path "Drafts/Q1 Blog Post/"
+pika audit --path "Objectives/Tasks/"
+pika audit --path "Drafts/Q1 Blog Post/"
 ```
 
 ### By Issue Type
 
 ```bash
-ovault audit --only missing-required
-ovault audit --only invalid-enum
-ovault audit --only unknown-field
-ovault audit --ignore unknown-field
+pika audit --only missing-required
+pika audit --only invalid-enum
+pika audit --only unknown-field
+pika audit --ignore unknown-field
 ```
 
 ---
@@ -304,8 +304,8 @@ These fields are always allowed (Obsidian native):
 ### Command-Line Override
 
 ```bash
-ovault audit --allow-field custom-field
-ovault audit --strict --allow-field custom-field
+pika audit --allow-field custom-field
+pika audit --strict --allow-field custom-field
 ```
 
 ---
@@ -341,23 +341,23 @@ ovault audit --strict --allow-field custom-field
 ### Pre-Bulk Check
 
 ```bash
-ovault bulk task --set status=done --where "status == 'in-progress'"
+pika bulk task --set status=done --where "status == 'in-progress'"
 # Warning: 3 files have audit issues that may affect this operation.
-# Run 'ovault audit objective/task' first? [Y/n]
+# Run 'pika audit objective/task' first? [Y/n]
 ```
 
 ### Post-Schema-Change
 
 ```bash
-ovault schema edit-enum status --rename wip=in-progress
-# Schema updated. Run 'ovault audit' to check for issues.
+pika schema edit-enum status --rename wip=in-progress
+# Schema updated. Run 'pika audit' to check for issues.
 ```
 
 ### CI/CD Integration
 
 ```bash
-ovault audit --format json > audit-report.json
-ovault audit --format junit > audit-report.xml
+pika audit --format json > audit-report.json
+pika audit --format junit > audit-report.xml
 ```
 
 ---
@@ -369,7 +369,7 @@ For instance-grouped types, additional checks:
 ### Parent Note Check
 
 ```bash
-ovault audit draft
+pika audit draft
 
 # Checking draft instances...
 # 
@@ -385,7 +385,7 @@ ovault audit draft
 ### Subtype Validation
 
 ```bash
-ovault audit draft/version
+pika audit draft/version
 
 # Checking draft/version files...
 # 

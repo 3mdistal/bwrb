@@ -1,12 +1,12 @@
 # TypeScript Migration
 
-> Phase 0: Migrate ovault from Bash to TypeScript
+> Phase 0: Migrate pika from Bash to TypeScript
 
 ---
 
 ## Overview
 
-The current ovault implementation is written in Bash. While functional, this limits:
+The current pika implementation is written in Bash. While functional, this limits:
 
 - **Testing**: No good test framework for shell scripts
 - **Type Safety**: Easy to introduce bugs, hard to refactor
@@ -58,7 +58,7 @@ For vault operations (1K-10K files):
 ### Project Structure
 
 ```
-ovault/
+pika/
 ├── src/
 │   ├── index.ts              # CLI entry point
 │   ├── commands/
@@ -187,11 +187,11 @@ Given the codebase is ~1000 lines of shell (which translates to ~500-800 lines o
 
 ### Phase 0.3: Commands
 
-1. Port `ovault new` → `src/commands/new.ts`
-2. Port `ovault edit` → `src/commands/edit.ts`
-3. Port `ovault list` → `src/commands/list.ts`
-4. Add `ovault open` → `src/commands/open.ts`
-5. Add `ovault help` → handled by Commander
+1. Port `pika new` → `src/commands/new.ts`
+2. Port `pika edit` → `src/commands/edit.ts`
+3. Port `pika list` → `src/commands/list.ts`
+4. Add `pika open` → `src/commands/open.ts`
+5. Add `pika help` → handled by Commander
 
 ### Phase 0.4: Testing
 
@@ -215,30 +215,30 @@ The CLI interface remains the same, but with improved consistency:
 
 ```bash
 # Core commands
-ovault new <type>                    # Create new note
-ovault edit <file>                   # Edit existing note
-ovault list <type> [options]         # List notes
-ovault open <file>                   # Open in Obsidian
+pika new <type>                    # Create new note
+pika edit <file>                   # Edit existing note
+pika list <type> [options]         # List notes
+pika open <file>                   # Open in Obsidian
 
 # Audit & bulk (Phase 2)
-ovault audit [type] [options]        # Validate notes
-ovault bulk <type> [options]         # Mass operations
+pika audit [type] [options]        # Validate notes
+pika bulk <type> [options]         # Mass operations
 
 # Schema management (Phase 4)
-ovault schema show [type]            # View schema
-ovault schema validate               # Validate schema
-ovault schema add-type <name>        # Add type
-ovault schema add-field <name> <type># Add field
-ovault schema edit-enum <name>       # Modify enum
+pika schema show [type]            # View schema
+pika schema validate               # Validate schema
+pika schema add-type <name>        # Add type
+pika schema add-field <name> <type># Add field
+pika schema edit-enum <name>       # Modify enum
 
 # Templates (Phase 3)
-ovault template list [type]          # List templates
-ovault template new <type>           # Create template
+pika template list [type]          # List templates
+pika template new <type>           # Create template
 
 # Global options
-ovault --vault <path>                # Specify vault
-ovault --version                     # Show version
-ovault --help                        # Show help
+pika --vault <path>                # Specify vault
+pika --version                     # Show version
+pika --help                        # Show help
 ```
 
 ---
@@ -253,7 +253,7 @@ import { describe, it, expect } from 'vitest';
 import { loadSchema, getTypeConfig, getFieldsForType } from '../src/lib/schema';
 
 describe('loadSchema', () => {
-  it('should load and validate schema from .ovault/schema.json', async () => {
+  it('should load and validate schema from .pika/schema.json', async () => {
     const schema = await loadSchema('/path/to/vault');
     expect(schema.version).toBeGreaterThan(0);
     expect(schema.types).toBeDefined();
@@ -287,11 +287,11 @@ import { execSync } from 'child_process';
 import { mkdtemp, rm, readFile } from 'fs/promises';
 import { join } from 'path';
 
-describe('ovault new', () => {
+describe('pika new', () => {
   let testVault: string;
 
   beforeEach(async () => {
-    testVault = await mkdtemp('/tmp/ovault-test-');
+    testVault = await mkdtemp('/tmp/pika-test-');
     // Copy test fixtures
   });
 
@@ -301,7 +301,7 @@ describe('ovault new', () => {
 
   it('should create a new task with prompted fields', async () => {
     // Use expect-test or similar for CLI testing
-    const result = execSync(`ovault new objective/task --vault ${testVault}`, {
+    const result = execSync(`pika new objective/task --vault ${testVault}`, {
       input: 'Test Task\nmilestone-1\n',
     });
     
@@ -319,7 +319,7 @@ Migrate existing fixtures from `tests/fixtures/` and expand:
 tests/
 ├── fixtures/
 │   ├── vault/                    # Test vault with notes
-│   │   ├── .ovault/
+│   │   ├── .pika/
 │   │   │   └── schema.json
 │   │   ├── Ideas/
 │   │   ├── Objectives/
@@ -351,26 +351,26 @@ npm run build         # Build for production
 
 ```json
 {
-  "name": "ovault",
+  "name": "pika",
   "version": "2.0.0",
   "bin": {
-    "ovault": "./dist/index.js"
+    "pika": ".//dist/index.js"
   }
 }
 ```
 
 Users install with:
 ```bash
-npm install -g ovault
+npm install -g pika
 # or
-npx ovault new idea
+npx pika new idea
 ```
 
 ### Single Binary (Optional)
 
 Using Bun:
 ```bash
-bun build src/index.ts --compile --outfile ovault
+bun build src/index.ts --compile --outfile pika
 ```
 
 Or pkg:
@@ -389,10 +389,10 @@ npx pkg dist/index.js --targets node18-macos-arm64
 - [ ] Port frontmatter parsing (`lib/body.sh` → `lib/frontmatter.ts`)
 - [ ] Port list functionality (`lib/list.sh` → `lib/vault.ts`)
 - [ ] Port query parsing (`lib/query.sh` → `lib/query.ts`)
-- [ ] Port `ovault new` command
-- [ ] Port `ovault edit` command
-- [ ] Port `ovault list` command
-- [ ] Add `ovault open` command
+- [ ] Port `pika new` command
+- [ ] Port `pika edit` command
+- [ ] Port `pika list` command
+- [ ] Add `pika open` command
 - [ ] Port existing tests
 - [ ] Add new unit tests (>80% coverage)
 - [ ] Add integration tests
