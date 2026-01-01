@@ -2,8 +2,14 @@ import { readdir, stat, mkdir } from 'fs/promises';
 import { join, basename } from 'path';
 import { existsSync } from 'fs';
 import { parseNote } from './frontmatter.js';
-import type { LoadedSchema, FilterCondition, DynamicSource, ResolvedType } from '../types/schema.js';
-import { getOutputDir as getOutputDirFromSchema, getType } from './schema.js';
+import type { LoadedSchema, FilterCondition, DynamicSource, ResolvedType, OwnerInfo } from '../types/schema.js';
+import { 
+  getOutputDir as getOutputDirFromSchema, 
+  getType, 
+  canTypeBeOwned, 
+  getOwnerTypes,
+  resolveTypeFromFrontmatter,
+} from './schema.js';
 
 /**
  * Resolve vault directory from options, env, or cwd.
@@ -346,4 +352,173 @@ export function getFilenamePattern(
 ): string | undefined {
   const type: ResolvedType | undefined = getType(schema, typeName);
   return type?.filename;
+}
+
+// ============================================================================
+// Ownership-Based Path Computation
+// ============================================================================
+
+/**
+ * Reference to an owner note for path computation.
+ */
+export interface OwnerNoteRef {
+  /** The owner type name (e.g., "draft") */
+  ownerType: string;
+  /** The owner note's name (used for folder name) */
+  ownerName: string;
+  /** The owner note's path (for computing owned note location) */
+  ownerPath: string;
+}
+
+/**
+ * Check if a type can be owned by any other type.
+ */
+export function typeCanBeOwned(schema: LoadedSchema, typeName: string): boolean {
+  return canTypeBeOwned(schema, typeName);
+}
+
+/**
+ * Get all owner types for a child type, sorted alphabetically.
+ */
+export function getPossibleOwnerTypes(schema: LoadedSchema, childTypeName: string): OwnerInfo[] {
+  return getOwnerTypes(schema, childTypeName);
+}
+
+/**
+ * Compute the output directory for an owned note.
+ * Owned notes live in: {owner_folder}/{child_type}/
+ * 
+ * Example: If "My Novel" is a draft at "drafts/My Novel/My Novel.md",
+ * and research is owned by draft, then owned research goes to:
+ * "drafts/My Novel/research/"
+ * 
+ * @param ownerPath - Absolute path to the owner note file
+ * @param childTypeName - The type name of the owned child (e.g., "research")
+ * @returns The absolute path to the directory where owned notes should live
+ */
+export function computeOwnedOutputDir(
+  ownerPath: string,
+  childTypeName: string
+): string {
+  // Owner path is like: /vault/drafts/My Novel/My Novel.md
+  // We want: /vault/drafts/My Novel/research/
+  const ownerDir = join(ownerPath, '..'); // Get parent directory of owner note
+  return join(ownerDir, childTypeName);
+}
+
+/**
+ * Compute the relative output directory for an owned note (relative to vault).
+ * 
+ * @param vaultDir - The vault root directory
+ * @param ownerPath - Absolute path to the owner note file
+ * @param childTypeName - The type name of the owned child
+ * @returns Path relative to vault root
+ */
+export function computeOwnedOutputDirRelative(
+  vaultDir: string,
+  ownerPath: string,
+  childTypeName: string
+): string {
+  const fullPath = computeOwnedOutputDir(ownerPath, childTypeName);
+  const { relative } = require('path');
+  return relative(vaultDir, fullPath);
+}
+
+/**
+ * Find all notes of a given owner type in the vault.
+ * Used for presenting owner selection options.
+ * 
+ * @param schema - The loaded schema
+ * @param vaultDir - The vault root directory  
+ * @param ownerTypeName - The type of owner to find (e.g., "draft")
+ * @returns List of owner note references
+ */
+export async function findOwnerNotes(
+  schema: LoadedSchema,
+  vaultDir: string,
+  ownerTypeName: string
+): Promise<OwnerNoteRef[]> {
+  const ownerType = getType(schema, ownerTypeName);
+  if (!ownerType) return [];
+  
+  const outputDir = getOutputDirFromSchema(schema, ownerTypeName);
+  if (!outputDir) return [];
+  
+  const results: OwnerNoteRef[] = [];
+  const fullDir = join(vaultDir, outputDir);
+  
+  if (!existsSync(fullDir)) return [];
+  
+  // Scan the output directory for notes of this type
+  // Owner notes can be:
+  // 1. Flat: drafts/My Novel.md (note name is filename)
+  // 2. In folders: drafts/My Novel/My Novel.md (note name matches folder)
+  
+  const entries = await readdir(fullDir, { withFileTypes: true });
+  
+  for (const entry of entries) {
+    if (entry.isFile() && entry.name.endsWith('.md')) {
+      // Flat structure: drafts/My Novel.md
+      const filePath = join(fullDir, entry.name);
+      const noteName = basename(entry.name, '.md');
+      
+      // Verify it's the right type
+      if (await isNoteOfType(filePath, schema, ownerTypeName)) {
+        results.push({
+          ownerType: ownerTypeName,
+          ownerName: noteName,
+          ownerPath: filePath,
+        });
+      }
+    } else if (entry.isDirectory()) {
+      // Folder structure: drafts/My Novel/My Novel.md
+      const folderPath = join(fullDir, entry.name);
+      const expectedNotePath = join(folderPath, `${entry.name}.md`);
+      
+      if (existsSync(expectedNotePath)) {
+        // Verify it's the right type
+        if (await isNoteOfType(expectedNotePath, schema, ownerTypeName)) {
+          results.push({
+            ownerType: ownerTypeName,
+            ownerName: entry.name,
+            ownerPath: expectedNotePath,
+          });
+        }
+      }
+    }
+  }
+  
+  // Sort alphabetically by owner name
+  results.sort((a, b) => a.ownerName.localeCompare(b.ownerName));
+  
+  return results;
+}
+
+/**
+ * Check if a note file is of a specific type.
+ */
+async function isNoteOfType(
+  filePath: string,
+  schema: LoadedSchema,
+  expectedType: string
+): Promise<boolean> {
+  try {
+    const { frontmatter } = await parseNote(filePath);
+    const actualType = resolveTypeFromFrontmatter(schema, frontmatter);
+    return actualType === expectedType;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ensure the owned output directory exists, creating it if necessary.
+ */
+export async function ensureOwnedOutputDir(
+  ownerPath: string,
+  childTypeName: string
+): Promise<string> {
+  const dir = computeOwnedOutputDir(ownerPath, childTypeName);
+  await mkdir(dir, { recursive: true });
+  return dir;
 }

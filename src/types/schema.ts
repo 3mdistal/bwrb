@@ -196,6 +196,51 @@ export interface LoadedSchema {
   enums: Map<string, string[]>;
   /** Dynamic sources (legacy) */
   dynamicSources: Map<string, DynamicSource>;
+  /** Ownership relationships: which types can own which child types */
+  ownership: OwnershipMap;
+}
+
+// ============================================================================
+// Ownership Types
+// ============================================================================
+
+/**
+ * Information about an owned field on a parent type.
+ * The parent declares ownership via `owned: true` on a field.
+ */
+export interface OwnedFieldInfo {
+  /** The field name on the owner type (e.g., "research") */
+  fieldName: string;
+  /** The owner type name (e.g., "draft") */
+  ownerType: string;
+  /** The child type that can be owned (from field.source) */
+  childType: string;
+  /** Whether the field can hold multiple values */
+  multiple: boolean;
+}
+
+/**
+ * Information about how a child type can be owned.
+ * Computed from schema for quick lookup.
+ */
+export interface OwnerInfo {
+  /** Type that can own this child type */
+  ownerType: string;
+  /** Field on owner that declares ownership */
+  fieldName: string;
+  /** Whether the owner can have multiple of this child */
+  multiple: boolean;
+}
+
+/**
+ * Map of ownership relationships in the schema.
+ * Enables quick lookup of "who can own this type?" and "what does this type own?"
+ */
+export interface OwnershipMap {
+  /** Map from child type → list of possible owners */
+  canBeOwnedBy: Map<string, OwnerInfo[]>;
+  /** Map from owner type → list of owned field info */
+  owns: Map<string, OwnedFieldInfo[]>;
 }
 
 // ============================================================================
