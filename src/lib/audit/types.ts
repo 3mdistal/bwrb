@@ -28,6 +28,7 @@ export type IssueCode =
   | 'type-mismatch'
   | 'format-violation'
   | 'stale-reference'
+  | 'invalid-source-type'
   | 'owned-note-referenced'
   | 'owned-wrong-location';
 
@@ -59,6 +60,10 @@ export interface AuditIssue {
   ownerPath?: string | undefined;
   /** For owned-note-referenced: the note that was improperly referenced */
   ownedNotePath?: string | undefined;
+  /** For invalid-source-type: the expected type(s) from field.source */
+  expectedType?: string | undefined;
+  /** For invalid-source-type: the actual type of the referenced note */
+  actualType?: string | undefined;
 }
 
 /**

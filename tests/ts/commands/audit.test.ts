@@ -1428,4 +1428,328 @@ unknownField: should warn
       expect(result.stdout).toContain('unknownField');
     });
   });
+
+  describe('context field source type validation', () => {
+    let tempVaultDir: string;
+
+    // V2 schema with type-based sources
+    const V2_SCHEMA = {
+      version: 2,
+      enums: {
+        status: ['raw', 'backlog', 'in-flight', 'settled'],
+      },
+      types: {
+        objective: {
+          fields: {
+            status: { prompt: 'select', enum: 'status', default: 'raw' },
+          },
+        },
+        milestone: {
+          extends: 'objective',
+        },
+        task: {
+          extends: 'objective',
+          fields: {
+            milestone: {
+              prompt: 'dynamic',
+              source: 'milestone',  // Type-based source
+              format: 'wikilink',
+            },
+            parent: {
+              prompt: 'dynamic',
+              source: 'objective',  // Accepts objective or any descendant
+              format: 'wikilink',
+            },
+          },
+        },
+        idea: {
+          fields: {
+            status: { prompt: 'select', enum: 'status', default: 'raw' },
+          },
+        },
+      },
+    };
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-context-'));
+      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.pika', 'schema.json'),
+        JSON.stringify(V2_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'objectives/milestones'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'objectives/tasks'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect type mismatch when context field references wrong type', async () => {
+      // Create a task (wrong type for milestone field)
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Some Task.md'),
+        `---
+type: task
+status: backlog
+---
+`
+      );
+
+      // Create another task that incorrectly references the first task as a milestone
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Bad Ref.md'),
+        `---
+type: task
+status: backlog
+milestone: "[[Some Task]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const badRefFile = output.files.find((f: { path: string }) => f.path.includes('Bad Ref.md'));
+      expect(badRefFile).toBeDefined();
+      const sourceIssue = badRefFile.issues.find((i: { code: string }) => i.code === 'invalid-source-type');
+      expect(sourceIssue).toBeDefined();
+      expect(sourceIssue.field).toBe('milestone');
+      expect(sourceIssue.expectedType).toBe('milestone');
+      expect(sourceIssue.actualType).toBe('task');
+    });
+
+    it('should not report error when context field references correct type', async () => {
+      // Create a milestone (correct type)
+      await writeFile(
+        join(tempVaultDir, 'objectives/milestones', 'Q1 Release.md'),
+        `---
+type: milestone
+status: in-flight
+---
+`
+      );
+
+      // Create a task that correctly references the milestone
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Good Ref.md'),
+        `---
+type: task
+status: backlog
+milestone: "[[Q1 Release]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain('invalid-source-type');
+    });
+
+    it('should accept descendant types when source is parent type', async () => {
+      // Create a task (descendant of objective)
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Parent Task.md'),
+        `---
+type: task
+status: in-flight
+---
+`
+      );
+
+      // Create another task that references the first via parent field (source: objective)
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Child Task.md'),
+        `---
+type: task
+status: backlog
+parent: "[[Parent Task]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain('invalid-source-type');
+    });
+
+    it('should skip validation for non-existent references (stale-reference handles those)', async () => {
+      // Create a task that references a non-existent milestone
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Orphan Ref.md'),
+        `---
+type: task
+status: backlog
+milestone: "[[Non Existent]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const orphanFile = output.files.find((f: { path: string }) => f.path.includes('Orphan Ref.md'));
+      expect(orphanFile).toBeDefined();
+      
+      // Should have stale-reference but NOT invalid-source-type
+      const staleIssue = orphanFile.issues.find((i: { code: string }) => i.code === 'stale-reference');
+      expect(staleIssue).toBeDefined();
+      
+      const sourceIssue = orphanFile.issues.find((i: { code: string }) => i.code === 'invalid-source-type');
+      expect(sourceIssue).toBeUndefined();
+    });
+
+    it('should skip validation for legacy dynamic_sources', async () => {
+      // Create a schema with legacy dynamic_sources
+      const legacySchema = {
+        ...TEST_SCHEMA,  // Uses dynamic_sources
+      };
+      await writeFile(
+        join(tempVaultDir, '.pika', 'schema.json'),
+        JSON.stringify(legacySchema, null, 2)
+      );
+
+      // Create directories for legacy schema
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+
+      // Create an idea (wrong type for milestone field which uses dynamic_source)
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Some Idea.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+`
+      );
+
+      // Create a task referencing the idea as milestone (would be wrong type, but uses dynamic_source)
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Task With Legacy.md'),
+        `---
+type: objective
+objective-type: task
+status: backlog
+milestone: "[[Some Idea]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'objective/task', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const taskFile = output.files.find((f: { path: string }) => f.path.includes('Task With Legacy.md'));
+      
+      // Should NOT have invalid-source-type (legacy dynamic_sources are skipped)
+      if (taskFile) {
+        const sourceIssue = taskFile.issues.find((i: { code: string }) => i.code === 'invalid-source-type');
+        expect(sourceIssue).toBeUndefined();
+      }
+    });
+
+    it('should validate all values when field has multiple values', async () => {
+      // Update schema to have a multiple wikilink field
+      const schemaWithMultiple = {
+        ...V2_SCHEMA,
+        types: {
+          ...V2_SCHEMA.types,
+          task: {
+            ...V2_SCHEMA.types.task,
+            fields: {
+              ...V2_SCHEMA.types.task.fields,
+              milestones: {
+                prompt: 'dynamic',
+                source: 'milestone',
+                format: 'wikilink',
+                multiple: true,
+              },
+            },
+          },
+        },
+      };
+      await writeFile(
+        join(tempVaultDir, '.pika', 'schema.json'),
+        JSON.stringify(schemaWithMultiple, null, 2)
+      );
+
+      // Create a milestone
+      await writeFile(
+        join(tempVaultDir, 'objectives/milestones', 'Good Milestone.md'),
+        `---
+type: milestone
+status: in-flight
+---
+`
+      );
+
+      // Create an idea (wrong type)
+      await writeFile(
+        join(tempVaultDir, 'ideas', 'Bad Idea.md'),
+        `---
+type: idea
+status: raw
+---
+`
+      );
+
+      // Create a task with array of milestones, one valid and one invalid
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Multi Ref.md'),
+        `---
+type: task
+status: backlog
+milestones:
+  - "[[Good Milestone]]"
+  - "[[Bad Idea]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const taskFile = output.files.find((f: { path: string }) => f.path.includes('Multi Ref.md'));
+      expect(taskFile).toBeDefined();
+      
+      const sourceIssues = taskFile.issues.filter((i: { code: string }) => i.code === 'invalid-source-type');
+      expect(sourceIssues.length).toBe(1);
+      expect(sourceIssues[0].actualType).toBe('idea');
+    });
+
+    it('should include helpful error message with type info', async () => {
+      // Create an idea (wrong type)
+      await writeFile(
+        join(tempVaultDir, 'ideas', 'Some Idea.md'),
+        `---
+type: idea
+status: raw
+---
+`
+      );
+
+      // Create a task that incorrectly references an idea as milestone
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Wrong Type.md'),
+        `---
+type: task
+status: backlog
+milestone: "[[Some Idea]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Type mismatch');
+      expect(result.stdout).toContain('milestone');
+      expect(result.stdout).toContain('idea');
+    });
+  });
 });

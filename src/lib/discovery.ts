@@ -15,8 +15,10 @@ import {
   getOutputDir as getOutputDirFromSchema,
   getOwnedFields,
   canTypeBeOwned,
+  resolveTypeFromFrontmatter,
 } from './schema.js';
 import { getDirMode } from './vault.js';
+import { parseNote } from './frontmatter.js';
 import type { LoadedSchema, OwnedFieldInfo } from '../types/schema.js';
 
 // ============================================================================
@@ -175,6 +177,36 @@ export async function buildNotePathMap(vaultDir: string): Promise<Map<string, st
   }
   
   return pathMap;
+}
+
+/**
+ * Build a map from note basenames to their resolved type names.
+ * Used for context field validation (checking that wikilinks point to correct types).
+ */
+export async function buildNoteTypeMap(
+  schema: LoadedSchema,
+  vaultDir: string
+): Promise<Map<string, string>> {
+  const typeMap = new Map<string, string>();
+  const excluded = new Set(['.pika']);
+  const gitignore = await loadGitignore(vaultDir);
+  
+  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, gitignore);
+  
+  for (const file of allFiles) {
+    const noteName = basename(file.relativePath, '.md');
+    try {
+      const { frontmatter } = await parseNote(file.path);
+      const typeName = resolveTypeFromFrontmatter(schema, frontmatter);
+      if (typeName) {
+        typeMap.set(noteName, typeName);
+      }
+    } catch {
+      // Skip files that can't be parsed
+    }
+  }
+  
+  return typeMap;
 }
 
 /**
