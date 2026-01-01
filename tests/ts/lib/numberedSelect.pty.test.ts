@@ -543,22 +543,17 @@ describePty('NumberedSelectPrompt PTY tests', () => {
 
   describe('empty choice handling', () => {
     it('should handle empty choices gracefully', async () => {
-      // Schema with dynamic source that returns no results
+      // Schema with type-based source that returns no results (type doesn't exist)
       const emptySchema = {
         version: 1,
         enums: {},
-        dynamic_sources: {
-          nonexistent: {
-            dir: 'NonexistentDir',
-            filter: {},
-          },
-        },
         types: {
           item: {
             output_dir: 'Items',
             frontmatter: {
               type: { value: 'item' },
-              ref: { prompt: 'dynamic', source: 'nonexistent', format: 'wikilink' },
+              // Reference a type that doesn't exist - will return no results
+              ref: { prompt: 'dynamic', source: 'nonexistent_type', format: 'wikilink' },
             },
             frontmatter_order: ['type', 'ref'],
           },

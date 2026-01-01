@@ -7,7 +7,6 @@ import {
   type Type,
   type Field,
   type BodySection,
-  type DynamicSource,
   type ResolvedType,
   type LoadedSchema,
   type LegacySchema,
@@ -134,19 +133,11 @@ function isLegacySchema(json: unknown): boolean {
 export function resolveSchema(schema: Schema): LoadedSchema {
   const types = new Map<string, ResolvedType>();
   const enums = new Map<string, string[]>();
-  const dynamicSources = new Map<string, DynamicSource>();
   
   // Copy enums
   if (schema.enums) {
     for (const [name, values] of Object.entries(schema.enums)) {
       enums.set(name, values);
-    }
-  }
-  
-  // Copy dynamic sources
-  if (schema.dynamic_sources) {
-    for (const [name, source] of Object.entries(schema.dynamic_sources)) {
-      dynamicSources.set(name, source);
     }
   }
   
@@ -212,7 +203,7 @@ export function resolveSchema(schema: Schema): LoadedSchema {
   // Fifth pass: build ownership map
   const ownership = buildOwnershipMap(types);
   
-  return { raw: schema, types, enums, dynamicSources, ownership };
+  return { raw: schema, types, enums, ownership };
 }
 
 /**
@@ -437,6 +428,30 @@ function buildOwnershipMap(types: Map<string, ResolvedType>): OwnershipMap {
  * Convert a legacy (v1) schema to the new (v2) format.
  */
 function convertLegacySchema(legacy: LegacySchema): Schema {
+  // Error if schema uses dynamic_sources (removed in v2)
+  if (legacy.dynamic_sources && Object.keys(legacy.dynamic_sources).length > 0) {
+    const sourceNames = Object.keys(legacy.dynamic_sources).join(', ');
+    throw new Error(
+      `Schema uses 'dynamic_sources' which has been removed.\n\n` +
+      `Found: ${sourceNames}\n\n` +
+      `Migration: Replace 'source: "${Object.keys(legacy.dynamic_sources)[0]}"' with type-based sources.\n` +
+      `Instead of referencing a named dynamic_source, set 'source' to the type name directly\n` +
+      `and add 'filter' to the field if needed.\n\n` +
+      `Before:\n` +
+      `  dynamic_sources:\n` +
+      `    active_milestones:\n` +
+      `      dir: "Objectives/Milestones"\n` +
+      `      filter: { status: { not_in: ["settled"] } }\n` +
+      `  fields:\n` +
+      `    milestone: { source: "active_milestones" }\n\n` +
+      `After:\n` +
+      `  fields:\n` +
+      `    milestone:\n` +
+      `      source: "milestone"\n` +
+      `      filter: { status: { not_in: ["settled"] } }`
+    );
+  }
+  
   const types: Record<string, Type> = {};
   
   // Convert each top-level type and its subtypes
@@ -447,7 +462,6 @@ function convertLegacySchema(legacy: LegacySchema): Schema {
   return {
     version: 2,
     enums: legacy.enums,
-    dynamic_sources: legacy.dynamic_sources,
     types,
     audit: legacy.audit,
   };

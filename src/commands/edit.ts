@@ -9,7 +9,7 @@ import {
   getEnumValues,
 } from '../lib/schema.js';
 import { parseNote, writeNote, generateBodySections } from '../lib/frontmatter.js';
-import { resolveVaultDir, queryDynamicSource, formatValue, isFile } from '../lib/vault.js';
+import { resolveVaultDir, queryByType, formatValue, isFile } from '../lib/vault.js';
 import {
   promptSelection,
   promptInput,
@@ -328,7 +328,7 @@ async function promptFieldEdit(
 
     case 'dynamic': {
       if (!field.source) return currentValue;
-      const dynamicOptions = await queryDynamicSource(schema, vaultDir, field.source);
+      const dynamicOptions = await queryByType(schema, vaultDir, field.source, field.filter);
       if (dynamicOptions.length === 0) {
         return currentValue;
       }

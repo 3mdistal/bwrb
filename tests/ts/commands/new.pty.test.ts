@@ -31,12 +31,6 @@ const FULL_SCHEMA = {
     status: ['raw', 'backlog', 'in-flight', 'settled'],
     priority: ['low', 'medium', 'high'],
   },
-  dynamic_sources: {
-    active_milestones: {
-      dir: 'Milestones',
-      filter: { status: { not_in: ['settled'] } },
-    },
-  },
   types: {
     objective: {
       output_dir: 'Objectives',
@@ -47,7 +41,12 @@ const FULL_SCHEMA = {
             type: { value: 'objective' },
             'objective-type': { value: 'task' },
             status: { prompt: 'select', enum: 'status', default: 'raw' },
-            milestone: { prompt: 'dynamic', source: 'active_milestones', format: 'quoted-wikilink' },
+            milestone: {
+              prompt: 'dynamic',
+              source: 'milestone',
+              filter: { status: { not_in: ['settled'] } },
+              format: 'quoted-wikilink',
+            },
           },
           frontmatter_order: ['type', 'objective-type', 'status', 'milestone'],
           body_sections: [

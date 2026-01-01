@@ -17,7 +17,7 @@ import {
   getTemplateDir,
   parseTemplate,
 } from '../lib/template.js';
-import { resolveVaultDir, queryDynamicSource, formatValue } from '../lib/vault.js';
+import { resolveVaultDir, queryByType, formatValue } from '../lib/vault.js';
 import { parseNote, writeNote } from '../lib/frontmatter.js';
 import {
   promptSelection,
@@ -700,7 +700,7 @@ async function promptFieldDefault(
 
     case 'dynamic': {
       if (!field.source) return undefined;
-      const dynamicOptions = await queryDynamicSource(schema, vaultDir, field.source);
+      const dynamicOptions = await queryByType(schema, vaultDir, field.source, field.filter);
       if (dynamicOptions.length === 0) return undefined;
       
       const options = ['(skip)', ...dynamicOptions];
@@ -1122,7 +1122,7 @@ async function promptFieldDefaultEdit(
 
     case 'dynamic': {
       if (!field.source) return currentValue;
-      const dynamicOptions = await queryDynamicSource(schema, vaultDir, field.source);
+      const dynamicOptions = await queryByType(schema, vaultDir, field.source, field.filter);
       if (dynamicOptions.length === 0) return currentValue;
       
       const options = ['(keep)', '(clear)', ...dynamicOptions];

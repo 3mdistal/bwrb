@@ -4,6 +4,54 @@ All notable changes to Pika are documented in this file.
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **Removed `dynamic_sources` - use type-based sources instead** (pika-fqh)
+  - The `dynamic_sources` section in schema.json is no longer supported
+  - Schemas using `dynamic_sources` will error on load with a migration guide
+  - **Migration**: Replace `source: "dynamic_source_name"` with `source: "type_name"` on fields
+  - **Migration**: Move filter conditions from `dynamic_sources` to the field's `filter` property
+  
+  Before:
+  ```json
+  {
+    "dynamic_sources": {
+      "active_milestones": {
+        "dir": "Objectives/Milestones",
+        "filter": { "status": { "not_in": ["settled"] } }
+      }
+    },
+    "types": {
+      "task": {
+        "fields": {
+          "milestone": { "source": "active_milestones", "format": "wikilink" }
+        }
+      }
+    }
+  }
+  ```
+  
+  After:
+  ```json
+  {
+    "types": {
+      "task": {
+        "fields": {
+          "milestone": {
+            "source": "milestone",
+            "filter": { "status": { "not_in": ["settled"] } },
+            "format": "wikilink"
+          }
+        }
+      }
+    }
+  }
+  ```
+  
+  - Type-based sources automatically include descendant types (e.g., `source: "objective"` includes tasks, milestones)
+  - Owned notes are excluded from source queries (they cannot be referenced by other notes)
+  - Context field validation (`invalid-source-type` in audit) now works for all fields, not just type-based ones
+
 ### Added
 
 - **Enum management commands** (pika-1kr)
@@ -44,7 +92,6 @@ All notable changes to Pika are documented in this file.
   - New issue code: `invalid-source-type` - reports when a field references a note of the wrong type
   - Example: If a task's `milestone` field has `source: "milestone"`, audit will error if it links to a task instead
   - Supports parent types: `source: "objective"` accepts objectives and all descendants (task, milestone, etc.)
-  - Skips validation for legacy `dynamic_sources` (use type-based sources for validation)
   - JSON output includes `expectedType` and `actualType` for debugging
 
 - **Custom plural names for folder computation** (pika-2e1)

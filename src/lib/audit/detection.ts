@@ -514,12 +514,6 @@ function checkContextFieldSource(
   // Handle "any" source - no type restriction
   if (source === 'any') return issues;
   
-  // Check if source refers to a dynamic_source (legacy) - skip validation
-  // These will be migrated to type-based sources in a future update
-  if (schema.dynamicSources.has(source)) {
-    return issues;
-  }
-  
   // Check if source is a valid type
   const sourceType = schema.types.get(source);
   if (!sourceType) {

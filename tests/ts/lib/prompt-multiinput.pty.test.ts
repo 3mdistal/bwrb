@@ -27,12 +27,6 @@ const TASK_SCHEMA = {
   enums: {
     status: ['raw', 'in-progress', 'done'],
   },
-  dynamic_sources: {
-    active_milestones: {
-      dir: 'Milestones',
-      filter: { status: { not_in: ['done'] } },
-    },
-  },
   types: {
     task: {
       output_dir: 'Tasks',

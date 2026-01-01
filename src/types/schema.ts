@@ -4,6 +4,14 @@ import { z } from 'zod';
 // Field Definition
 // ============================================================================
 
+// Filter condition for type-based source queries
+export const FilterConditionSchema = z.object({
+  equals: z.string().optional(),
+  not_equals: z.string().optional(),
+  in: z.array(z.string()).optional(),
+  not_in: z.array(z.string()).optional(),
+});
+
 /**
  * Field definition for type frontmatter.
  * Fields can be static values, prompted inputs, or dynamic queries.
@@ -15,8 +23,12 @@ export const FieldSchema = z.object({
   value: z.string().optional(),
   // Enum reference for select prompts
   enum: z.string().optional(),
-  // Type name for dynamic prompts (replaces dynamic_sources)
+  // Type name for dynamic prompts (e.g., "milestone", "objective")
+  // When specified, queryByType() fetches notes of this type (and descendants)
   source: z.string().optional(),
+  // Filter conditions for type-based source queries
+  // Applies frontmatter conditions to filter results (e.g., { status: { not_in: ["settled"] } })
+  filter: z.record(FilterConditionSchema).optional(),
   // Whether the field is required
   required: z.boolean().optional(),
   // Default value
@@ -46,18 +58,10 @@ export const BodySectionSchema: z.ZodType<BodySection, z.ZodTypeDef, BodySection
 );
 
 // ============================================================================
-// Dynamic Sources (Legacy - to be deprecated)
+// Dynamic Sources (Legacy - REMOVED, kept only for migration error messages)
 // ============================================================================
 
-// Filter condition for dynamic sources
-export const FilterConditionSchema = z.object({
-  equals: z.string().optional(),
-  not_equals: z.string().optional(),
-  in: z.array(z.string()).optional(),
-  not_in: z.array(z.string()).optional(),
-});
-
-// Dynamic source definition (legacy - will be replaced by type-based sources)
+// Dynamic source definition (legacy - for error detection only)
 export const DynamicSourceSchema = z.object({
   dir: z.string(),
   filter: z.record(FilterConditionSchema).optional(),
@@ -116,14 +120,13 @@ export const AuditConfigSchema = z.object({
  * - Flat types with 'extends' for inheritance
  * - 'fields' instead of 'frontmatter'
  * - Implicit 'meta' root type
+ * - Type-based 'source' on fields (no more dynamic_sources)
  */
 export const PikaSchema = z.object({
   // Schema version (2 = inheritance model)
   version: z.number().optional().default(2),
   // Enum definitions
   enums: z.record(z.array(z.string())).optional(),
-  // Dynamic sources (legacy - for backward compatibility)
-  dynamic_sources: z.record(DynamicSourceSchema).optional(),
   // Type definitions (flat with 'extends')
   types: z.record(TypeSchema),
   // Audit configuration
@@ -199,8 +202,6 @@ export interface LoadedSchema {
   types: Map<string, ResolvedType>;
   /** Enum definitions */
   enums: Map<string, string[]>;
-  /** Dynamic sources (legacy) */
-  dynamicSources: Map<string, DynamicSource>;
   /** Ownership relationships: which types can own which child types */
   ownership: OwnershipMap;
 }

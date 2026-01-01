@@ -1,21 +1,22 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { join } from 'path';
+import { writeFile, mkdir } from 'fs/promises';
 import {
   resolveVaultDir,
   listFilesInDir,
   isDirectory,
   isFile,
   formatValue,
-  queryDynamicSource,
+  queryByType,
   getOutputDir,
 } from '../../../src/lib/vault.js';
 import { loadSchema } from '../../../src/lib/schema.js';
 import { createTestVault, cleanupTestVault } from '../fixtures/setup.js';
-import type { Schema } from '../../../src/types/schema.js';
+import type { LoadedSchema } from '../../../src/types/schema.js';
 
 describe('vault', () => {
   let vaultDir: string;
-  let schema: Schema;
+  let schema: LoadedSchema;
 
   beforeAll(async () => {
     vaultDir = await createTestVault();
@@ -134,16 +135,36 @@ describe('vault', () => {
     });
   });
 
-  describe('queryDynamicSource', () => {
-    it('should return matching notes', async () => {
-      const results = await queryDynamicSource(schema, vaultDir, 'active_milestones');
+  describe('queryByType', () => {
+    it('should return notes of the specified type', async () => {
+      const results = await queryByType(schema, vaultDir, 'milestone');
+      expect(results).toContain('Active Milestone');
+      expect(results).toContain('Settled Milestone');
+    });
+
+    it('should filter results when filter is provided', async () => {
+      const results = await queryByType(schema, vaultDir, 'milestone', {
+        status: { not_in: ['settled'] },
+      });
       expect(results).toContain('Active Milestone');
       expect(results).not.toContain('Settled Milestone');
     });
 
-    it('should return empty array for unknown source', async () => {
-      const results = await queryDynamicSource(schema, vaultDir, 'unknown');
+    it('should return empty array for unknown type', async () => {
+      const results = await queryByType(schema, vaultDir, 'nonexistent_type');
       expect(results).toEqual([]);
+    });
+
+    it('should include descendant types', async () => {
+      // Query 'objective' should include both tasks and milestones
+      const results = await queryByType(schema, vaultDir, 'objective');
+      expect(results).toContain('Active Milestone');
+      expect(results).toContain('Sample Task');
+    });
+
+    it('should sort results alphabetically', async () => {
+      const results = await queryByType(schema, vaultDir, 'idea');
+      expect(results).toEqual(['Another Idea', 'Sample Idea']);
     });
   });
 

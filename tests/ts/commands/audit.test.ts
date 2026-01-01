@@ -1603,53 +1603,39 @@ milestone: "[[Non Existent]]"
       expect(sourceIssue).toBeUndefined();
     });
 
-    it('should skip validation for legacy dynamic_sources', async () => {
-      // Create a schema with legacy dynamic_sources
-      const legacySchema = {
-        ...TEST_SCHEMA,  // Uses dynamic_sources
+    it('should reject schemas with legacy dynamic_sources', async () => {
+      // Create a schema with legacy dynamic_sources (removed in v2)
+      const legacySchemaWithDynamicSources = {
+        version: 1,
+        enums: { status: ['raw', 'done'] },
+        dynamic_sources: {
+          active_items: {
+            dir: 'Items',
+            filter: { status: { not_in: ['done'] } },
+          },
+        },
+        types: {
+          item: {
+            output_dir: 'Items',
+            frontmatter: {
+              type: { value: 'item' },
+              status: { prompt: 'select', enum: 'status', default: 'raw' },
+              ref: { prompt: 'dynamic', source: 'active_items', format: 'wikilink' },
+            },
+            frontmatter_order: ['type', 'status', 'ref'],
+          },
+        },
       };
       await writeFile(
         join(tempVaultDir, '.pika', 'schema.json'),
-        JSON.stringify(legacySchema, null, 2)
+        JSON.stringify(legacySchemaWithDynamicSources, null, 2)
       );
 
-      // Create directories for legacy schema
-      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
-      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+      const result = await runCLI(['audit'], tempVaultDir);
 
-      // Create an idea (wrong type for milestone field which uses dynamic_source)
-      await writeFile(
-        join(tempVaultDir, 'Ideas', 'Some Idea.md'),
-        `---
-type: idea
-status: raw
-priority: medium
----
-`
-      );
-
-      // Create a task referencing the idea as milestone (would be wrong type, but uses dynamic_source)
-      await writeFile(
-        join(tempVaultDir, 'Objectives/Tasks', 'Task With Legacy.md'),
-        `---
-type: objective
-objective-type: task
-status: backlog
-milestone: "[[Some Idea]]"
----
-`
-      );
-
-      const result = await runCLI(['audit', 'objective/task', '--output', 'json'], tempVaultDir);
-
-      const output = JSON.parse(result.stdout);
-      const taskFile = output.files.find((f: { path: string }) => f.path.includes('Task With Legacy.md'));
-      
-      // Should NOT have invalid-source-type (legacy dynamic_sources are skipped)
-      if (taskFile) {
-        const sourceIssue = taskFile.issues.find((i: { code: string }) => i.code === 'invalid-source-type');
-        expect(sourceIssue).toBeUndefined();
-      }
+      // Should error because dynamic_sources is no longer supported
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain('dynamic_sources');
     });
 
     it('should validate all values when field has multiple values', async () => {

@@ -15,7 +15,7 @@ import {
 import { writeNote, generateBodyWithContent, generateBodySections, mergeBodySectionContent, extractSectionItems, parseBodyInput } from '../lib/frontmatter.js';
 import {
   resolveVaultDir,
-  queryDynamicSource,
+  queryByType,
   formatValue,
   getDirMode,
   isInstanceGroupedSubtype,
@@ -1247,7 +1247,7 @@ async function promptField(
 
     case 'dynamic': {
       if (!field.source) return field.default;
-      const dynamicOptions = await queryDynamicSource(schema, vaultDir, field.source);
+      const dynamicOptions = await queryByType(schema, vaultDir, field.source, field.filter);
       if (dynamicOptions.length === 0) {
         printWarning(`No options available for ${fieldName}`);
         return field.default ?? '';

@@ -5,14 +5,6 @@
     "status": ["raw", "backlog", "in-flight", "settled"],
     "priority": ["low", "medium", "high"]
   },
-  "dynamic_sources": {
-    "active_milestones": {
-      "dir": "Objectives/Milestones",
-      "filter": {
-        "status": { "not_in": ["settled"] }
-      }
-    }
-  },
   "types": {
     "objective": {
       "output_dir": "Objectives",
@@ -29,7 +21,8 @@
             },
             "milestone": {
               "prompt": "dynamic",
-              "source": "active_milestones",
+              "source": "milestone",
+              "filter": { "status": { "not_in": ["settled"] } },
               "format": "quoted-wikilink"
             },
             "creation-date": { "value": "$NOW" },

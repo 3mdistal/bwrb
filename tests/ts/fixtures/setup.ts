@@ -39,14 +39,6 @@ export const TEST_SCHEMA = {
     status: ['raw', 'backlog', 'in-flight', 'settled'],
     priority: ['low', 'medium', 'high'],
   },
-  dynamic_sources: {
-    active_milestones: {
-      dir: 'Objectives/Milestones',
-      filter: {
-        status: { not_in: ['settled'] },
-      },
-    },
-  },
   types: {
     objective: {
       output_dir: 'Objectives',
@@ -60,7 +52,12 @@ export const TEST_SCHEMA = {
           frontmatter: {
             type: { value: 'objective' },
             'objective-type': { value: 'task' },
-            milestone: { prompt: 'dynamic', source: 'active_milestones', format: 'quoted-wikilink' },
+            milestone: {
+              prompt: 'dynamic',
+              source: 'milestone',
+              filter: { status: { not_in: ['settled'] } },
+              format: 'quoted-wikilink',
+            },
             'creation-date': { value: '$NOW' },
             deadline: { prompt: 'input', label: 'Deadline (YYYY-MM-DD)' },
           },

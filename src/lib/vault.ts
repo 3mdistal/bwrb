@@ -2,10 +2,11 @@ import { readdir, stat, mkdir } from 'fs/promises';
 import { join, basename } from 'path';
 import { existsSync } from 'fs';
 import { parseNote } from './frontmatter.js';
-import type { LoadedSchema, FilterCondition, DynamicSource, ResolvedType, OwnerInfo } from '../types/schema.js';
+import type { LoadedSchema, FilterCondition, ResolvedType, OwnerInfo } from '../types/schema.js';
 import { 
   getOutputDir as getOutputDirFromSchema, 
   getType, 
+  getDescendants,
   canTypeBeOwned, 
   getOwnerTypes,
   resolveTypeFromFrontmatter,
@@ -107,44 +108,95 @@ function matchesCondition(value: unknown, condition: FilterCondition): boolean {
 }
 
 /**
- * Query a dynamic source and return matching note names.
+ * Check if all filter conditions match a frontmatter object.
  */
-export async function queryDynamicSource(
+function matchesAllConditions(
+  frontmatter: Record<string, unknown>,
+  filter: Record<string, FilterCondition>
+): boolean {
+  for (const [field, condition] of Object.entries(filter)) {
+    if (!matchesCondition(frontmatter[field], condition)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Query notes by type name, including all descendant types.
+ * 
+ * This replaces the legacy `dynamic_sources` system. Instead of configuring
+ * named sources with directories and filters, you now specify a type name
+ * directly as the `source` on a field, with optional `filter` conditions.
+ * 
+ * Owned notes (notes that live with their owner) are EXCLUDED from results
+ * because owned notes cannot be referenced by other notes' frontmatter.
+ * 
+ * @param schema - The loaded schema
+ * @param vaultDir - The vault root directory  
+ * @param typeName - The type to query (e.g., "milestone", "objective")
+ * @param filter - Optional filter conditions to apply to frontmatter
+ * @returns Array of note names (basenames without .md) that match the type and filter
+ * 
+ * @example
+ * // Get all milestones
+ * queryByType(schema, vaultDir, 'milestone')
+ * 
+ * @example
+ * // Get all objectives (including tasks, milestones, etc.)
+ * queryByType(schema, vaultDir, 'objective')
+ * 
+ * @example
+ * // Get active milestones (with filter)
+ * queryByType(schema, vaultDir, 'milestone', { status: { not_in: ['settled'] } })
+ */
+export async function queryByType(
   schema: LoadedSchema,
   vaultDir: string,
-  sourceName: string
+  typeName: string,
+  filter?: Record<string, FilterCondition>
 ): Promise<string[]> {
-  const source: DynamicSource | undefined = schema.dynamicSources.get(sourceName);
-  if (!source) {
+  // Validate that typeName is a known type
+  const type = getType(schema, typeName);
+  if (!type) {
     return [];
   }
 
-  const fullDir = join(vaultDir, source.dir);
-  const files = await listFilesInDir(fullDir);
+  // Get all types to query: the specified type + all descendants
+  const typesToQuery = [typeName, ...getDescendants(schema, typeName)];
   const results: string[] = [];
 
-  for (const file of files) {
-    try {
-      const { frontmatter } = await parseNote(file);
+  for (const queryType of typesToQuery) {
+    const outputDir = getOutputDirFromSchema(schema, queryType);
+    if (!outputDir) continue;
 
-      // Apply filters
-      let matches = true;
-      if (source.filter) {
-        for (const [field, condition] of Object.entries(source.filter)) {
-          if (!matchesCondition(frontmatter[field], condition)) {
-            matches = false;
-            break;
-          }
+    const fullDir = join(vaultDir, outputDir);
+    const files = await listFilesInDir(fullDir);
+
+    for (const file of files) {
+      try {
+        const { frontmatter } = await parseNote(file);
+        
+        // Verify the note is actually the type we expect
+        const actualType = resolveTypeFromFrontmatter(schema, frontmatter);
+        if (!typesToQuery.includes(actualType ?? '')) {
+          continue;
         }
-      }
 
-      if (matches) {
+        // Apply filter conditions if provided
+        if (filter && !matchesAllConditions(frontmatter, filter)) {
+          continue;
+        }
+
         results.push(basename(file, '.md'));
+      } catch {
+        // Skip files that can't be parsed
       }
-    } catch {
-      // Skip files that can't be parsed
     }
   }
+
+  // Sort results alphabetically for consistent ordering
+  results.sort((a, b) => a.localeCompare(b));
 
   return results;
 }
