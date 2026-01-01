@@ -123,5 +123,6 @@ Optional AI-powered features for automation.
 ## Reference
 
 - **Product Vision:** `docs/product/vision.md`
-- **Inheritance Model:** `docs/product/inheritance.md`
+- **Type System (overview):** `docs/product/type-system.md`
+- **Type System (technical):** `docs/technical/inheritance.md`
 - **Issue Tracker:** `.beads/` (use `bd list`, `bd show`)
