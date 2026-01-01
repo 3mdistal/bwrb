@@ -4,6 +4,17 @@ All notable changes to Pika are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Enum management commands** (pika-1kr)
+  - `pika schema enum list` - Show all enums with their values and field usage
+  - `pika schema enum add <name>` - Create a new enum (interactive or `--values` flag)
+  - `pika schema enum update <name>` - Modify enum values (`--add`, `--remove`, `--rename`)
+  - `pika schema enum delete <name>` - Delete an enum (refuses if in use, `--force` to override)
+  - Full JSON output support with `--output json` for all enum commands
+  - Validation: enum names must be alphanumeric with hyphens/underscores, values cannot contain commas or newlines
+  - Note: Enum changes only update schema.json; use `pika bulk` or `pika audit --fix` to update existing notes
+
 ### Breaking Changes
 
 - **Renamed project from ovault to pika**

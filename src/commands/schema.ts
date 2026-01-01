@@ -10,13 +10,26 @@ import {
   getEnumValues,
 } from '../lib/schema.js';
 import { resolveVaultDir } from '../lib/vault.js';
-import { printError, printSuccess } from '../lib/prompt.js';
+import { printError, printSuccess, promptMultiInput } from '../lib/prompt.js';
 import {
   printJson,
   jsonSuccess,
   jsonError,
   ExitCodes,
 } from '../lib/output.js';
+import { loadRawSchemaJson, writeSchema } from '../lib/schema-writer.js';
+import {
+  getEnumUsage,
+  getEnumNames,
+  enumExists,
+  addEnum,
+  deleteEnum,
+  addEnumValue,
+  removeEnumValue,
+  renameEnumValue,
+  validateEnumName,
+  validateEnumValue,
+} from '../lib/enum-utils.js';
 import type { LoadedSchema, Field, BodySection, ResolvedType } from '../types/schema.js';
 
 interface SchemaShowOptions {
@@ -407,4 +420,354 @@ function getFieldType(field: Field): string {
     default:
       return chalk.gray('auto');
   }
+}
+
+// ============================================================================
+// Enum Subcommands
+// ============================================================================
+
+interface EnumCommandOptions {
+  output?: string;
+  values?: string;
+  add?: string;
+  remove?: string;
+  rename?: string;
+  force?: boolean;
+}
+
+const enumCommand = new Command('enum')
+  .description('Manage enum definitions')
+  .addHelpText('after', `
+Examples:
+  pika schema enum list              # Show all enums
+  pika schema enum add status        # Create enum (prompts for values)
+  pika schema enum add status --values "raw,active,done"
+  pika schema enum update status --add archived
+  pika schema enum update status --remove raw
+  pika schema enum update status --rename active=in-progress
+  pika schema enum delete old-status
+  pika schema enum delete unused --force  # Delete even if in use`);
+
+// schema enum list
+enumCommand
+  .command('list')
+  .description('Show all enums with their values and usage')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (options: EnumCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      if (jsonMode) {
+        outputEnumListJson(schema);
+      } else {
+        outputEnumListText(schema);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema enum add <name>
+enumCommand
+  .command('add <name>')
+  .description('Create a new enum')
+  .option('--values <values>', 'Comma-separated values')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (name: string, options: EnumCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      
+      // Validate name
+      const nameError = validateEnumName(name);
+      if (nameError) {
+        throw new Error(nameError);
+      }
+      
+      // Check if exists
+      const schema = await loadSchema(vaultDir);
+      if (enumExists(schema, name)) {
+        throw new Error(`Enum "${name}" already exists`);
+      }
+      
+      // Get values from flag or prompt
+      let values: string[];
+      if (options.values) {
+        values = options.values.split(',').map(v => v.trim()).filter(Boolean);
+      } else {
+        if (jsonMode) {
+          throw new Error('--values flag is required in JSON mode');
+        }
+        const prompted = await promptMultiInput(`Enter values for enum "${name}"`);
+        if (prompted === null) {
+          process.exit(0); // User cancelled
+        }
+        values = prompted;
+      }
+      
+      if (values.length === 0) {
+        throw new Error('Enum must have at least one value');
+      }
+      
+      // Validate values
+      for (const value of values) {
+        const valueError = validateEnumValue(value);
+        if (valueError) {
+          throw new Error(`Invalid value "${value}": ${valueError}`);
+        }
+      }
+      
+      // Add enum
+      let rawSchema = await loadRawSchemaJson(vaultDir);
+      rawSchema = addEnum(rawSchema, name, values);
+      await writeSchema(vaultDir, rawSchema);
+      
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: `Created enum "${name}"`,
+          data: { name, values },
+        }));
+      } else {
+        printSuccess(`Created enum "${name}" with values: ${values.join(', ')}`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema enum update <name>
+enumCommand
+  .command('update <name>')
+  .description('Update an enum (add/remove/rename values)')
+  .option('--add <value>', 'Add a value')
+  .option('--remove <value>', 'Remove a value')
+  .option('--rename <old>=<new>', 'Rename a value')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (name: string, options: EnumCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      
+      // Check if enum exists
+      const schema = await loadSchema(vaultDir);
+      if (!enumExists(schema, name)) {
+        throw new Error(`Enum "${name}" does not exist`);
+      }
+      
+      // Require exactly one operation
+      const ops = [options.add, options.remove, options.rename].filter(Boolean);
+      if (ops.length === 0) {
+        throw new Error('Specify one of: --add, --remove, or --rename');
+      }
+      if (ops.length > 1) {
+        throw new Error('Specify only one of: --add, --remove, or --rename');
+      }
+      
+      let rawSchema = await loadRawSchemaJson(vaultDir);
+      let message: string;
+      
+      if (options.add) {
+        const valueError = validateEnumValue(options.add);
+        if (valueError) {
+          throw new Error(valueError);
+        }
+        rawSchema = addEnumValue(rawSchema, name, options.add);
+        message = `Added "${options.add}" to enum "${name}"`;
+      } else if (options.remove) {
+        rawSchema = removeEnumValue(rawSchema, name, options.remove);
+        message = `Removed "${options.remove}" from enum "${name}"`;
+        
+        // Warn about notes that may have this value
+        if (!jsonMode) {
+          console.log(chalk.yellow(`\nNote: Existing notes with ${name}: ${options.remove} are now invalid.`));
+          console.log(chalk.yellow(`Run \`pika audit --fix\` to update affected notes.`));
+        }
+      } else if (options.rename) {
+        // Parse old=new format (split on first = only)
+        const eqIndex = options.rename.indexOf('=');
+        if (eqIndex === -1) {
+          throw new Error('--rename format must be: old=new');
+        }
+        const oldValue = options.rename.slice(0, eqIndex);
+        const newValue = options.rename.slice(eqIndex + 1);
+        
+        if (!oldValue || !newValue) {
+          throw new Error('--rename format must be: old=new');
+        }
+        
+        const valueError = validateEnumValue(newValue);
+        if (valueError) {
+          throw new Error(`Invalid new value: ${valueError}`);
+        }
+        
+        rawSchema = renameEnumValue(rawSchema, name, oldValue, newValue);
+        message = `Renamed "${oldValue}" to "${newValue}" in enum "${name}"`;
+        
+        // Warn about notes that need updating
+        if (!jsonMode) {
+          console.log(chalk.yellow(`\nNote: Existing notes with ${name}: ${oldValue} need to be updated.`));
+          console.log(chalk.yellow(`Run: pika bulk --set ${name}=${newValue} --where "${name}=${oldValue}" --execute`));
+        }
+      } else {
+        throw new Error('Unexpected state');
+      }
+      
+      await writeSchema(vaultDir, rawSchema);
+      
+      // Get updated values for output
+      const updatedSchema = await loadRawSchemaJson(vaultDir);
+      const updatedValues = updatedSchema.enums?.[name] ?? [];
+      
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message,
+          data: { name, values: updatedValues },
+        }));
+      } else {
+        printSuccess(message);
+        console.log(`Values: ${updatedValues.join(', ')}`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema enum delete <name>
+enumCommand
+  .command('delete <name>')
+  .description('Delete an enum')
+  .option('--force', 'Delete even if in use (dangerous)')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (name: string, options: EnumCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      
+      // Check if enum exists
+      const schema = await loadSchema(vaultDir);
+      if (!enumExists(schema, name)) {
+        throw new Error(`Enum "${name}" does not exist`);
+      }
+      
+      // Check if in use
+      const usages = getEnumUsage(schema, name);
+      if (usages.length > 0 && !options.force) {
+        const usageList = usages.map(u => `${u.typeName}.${u.fieldName}`).join(', ');
+        throw new Error(
+          `Cannot delete enum "${name}" - used by: ${usageList}\n` +
+          `To delete anyway: pika schema enum delete ${name} --force`
+        );
+      }
+      
+      let rawSchema = await loadRawSchemaJson(vaultDir);
+      rawSchema = deleteEnum(rawSchema, name);
+      await writeSchema(vaultDir, rawSchema);
+      
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: `Deleted enum "${name}"`,
+          data: { name, wasInUse: usages.length > 0 },
+        }));
+      } else {
+        printSuccess(`Deleted enum "${name}"`);
+        if (usages.length > 0) {
+          console.log(chalk.yellow(`\nWarning: This enum was in use by:`));
+          for (const usage of usages) {
+            console.log(chalk.yellow(`  • ${usage.typeName}.${usage.fieldName}`));
+          }
+          console.log(chalk.yellow(`\nRun \`pika audit\` to find affected notes.`));
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// Add enum command to schema command
+schemaCommand.addCommand(enumCommand);
+
+// ============================================================================
+// Enum Output Helpers
+// ============================================================================
+
+/**
+ * Output enum list as JSON.
+ */
+function outputEnumListJson(schema: LoadedSchema): void {
+  const enumNames = getEnumNames(schema);
+  const enums = enumNames.map(name => {
+    const values = schema.enums.get(name) ?? [];
+    const usages = getEnumUsage(schema, name);
+    return {
+      name,
+      values,
+      usages: usages.map(u => ({ type: u.typeName, field: u.fieldName })),
+    };
+  });
+  
+  printJson(jsonSuccess({ data: { enums } }));
+}
+
+/**
+ * Output enum list as text.
+ */
+function outputEnumListText(schema: LoadedSchema): void {
+  const enumNames = getEnumNames(schema);
+  
+  if (enumNames.length === 0) {
+    console.log('No enums defined in schema.');
+    return;
+  }
+  
+  console.log(chalk.bold('\nEnums\n'));
+  
+  for (const name of enumNames) {
+    const values = schema.enums.get(name) ?? [];
+    const usages = getEnumUsage(schema, name);
+    
+    console.log(`${chalk.yellow(name)}: ${values.join(', ')}`);
+    
+    if (usages.length > 0) {
+      const usageStr = usages.map(u => `${u.typeName}.${u.fieldName}`).join(', ');
+      console.log(chalk.gray(`  Used by: ${usageStr}`));
+    } else {
+      console.log(chalk.gray(`  (not in use)`));
+    }
+  }
+  
+  console.log('');
 }
