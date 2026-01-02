@@ -209,9 +209,9 @@ describe('relative vault path handling', () => {
         relativeVaultPath,
         'bulk',
         'idea',
+        '--all',
         '--set',
         'status=backlog',
-        '--dry-run',
       ]);
 
       expect(result.exitCode).toBe(0);

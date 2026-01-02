@@ -31,23 +31,103 @@ describe('bulk command', () => {
     });
 
     it('should require at least one operation', async () => {
-      const result = await runCLI(['bulk', 'idea'], vaultDir);
+      // Note: --all satisfies the targeting gate, so we can test the operation requirement
+      const result = await runCLI(['bulk', 'idea', '--all'], vaultDir);
       expect(result.exitCode).toBe(1);
       // Error goes to stderr via printError
       expect(result.stderr).toContain('No operations specified');
     });
 
     it('should validate enum values', async () => {
-      const result = await runCLI(['bulk', 'idea', '--set', 'status=invalid'], vaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--set', 'status=invalid'], vaultDir);
       expect(result.exitCode).toBe(1);
       // Error goes to stderr via printError
       expect(result.stderr).toContain("Invalid value 'invalid' for field 'status'");
     });
   });
 
+  describe('targeting gate (--all flag)', () => {
+    it('should error when no selectors and no --all flag', async () => {
+      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled'], vaultDir);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('No files selected');
+      expect(result.stdout).toContain('--all');
+    });
+
+    it('should succeed with --where selector (no --all needed)', async () => {
+      const result = await runCLI([
+        'bulk', 'idea', 
+        '--where', "status == 'raw'",
+        '--set', 'status=settled'
+      ], vaultDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Dry run');
+    });
+
+    it('should succeed with --all flag (no other selectors)', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--all',
+        '--set', 'status=settled'
+      ], vaultDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Would affect 2 file');
+    });
+
+    it('should succeed with both --where and --all', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--all',
+        '--where', "status == 'raw'",
+        '--set', 'status=settled'
+      ], vaultDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Dry run');
+    });
+
+    it('should show targeting error in JSON mode', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--set', 'status=settled',
+        '--output', 'json'
+      ], vaultDir);
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('No files selected');
+    });
+
+    it('should not count simple filters as explicit targeting', async () => {
+      // Simple filters (--status=raw) are deprecated and do NOT satisfy the targeting gate
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--status=raw',
+        '--set', 'priority=high'
+      ], vaultDir);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('No files selected');
+    });
+
+    it('should work with --all and --execute', async () => {
+      const tempVaultDir = await createTestVault();
+      try {
+        const result = await runCLI([
+          'bulk', 'idea',
+          '--all',
+          '--set', 'status=settled',
+          '--execute'
+        ], tempVaultDir);
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Updated 2 files');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+  });
+
   describe('dry-run mode', () => {
     it('should show what would change without modifying files', async () => {
-      const result = await runCLI(['bulk', 'idea', '--set', 'status=backlog'], vaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--set', 'status=backlog'], vaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Dry run');
@@ -61,7 +141,7 @@ describe('bulk command', () => {
     });
 
     it('should show no changes when nothing matches', async () => {
-      const result = await runCLI(['bulk', 'idea', '--set', 'status=raw', '--where', "status == 'settled'"], vaultDir);
+      const result = await runCLI(['bulk', 'idea', '--where', "status == 'settled'", '--set', 'status=raw'], vaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('No files match');
@@ -80,7 +160,7 @@ describe('bulk command', () => {
     });
 
     it('should set a single field', async () => {
-      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--execute'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--set', 'status=settled', '--execute'], tempVaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Updated 2 files');
@@ -96,6 +176,7 @@ describe('bulk command', () => {
     it('should set multiple fields', async () => {
       const result = await runCLI([
         'bulk', 'idea',
+        '--all',
         '--set', 'status=settled',
         '--set', 'priority=low',
         '--execute'
@@ -110,7 +191,7 @@ describe('bulk command', () => {
     });
 
     it('should clear a field with --set field=', async () => {
-      const result = await runCLI(['bulk', 'idea', '--set', 'priority=', '--execute'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--set', 'priority=', '--execute'], tempVaultDir);
       
       expect(result.exitCode).toBe(0);
 
@@ -119,7 +200,7 @@ describe('bulk command', () => {
     });
 
     it('should allow setting arbitrary fields (not in schema)', async () => {
-      const result = await runCLI(['bulk', 'idea', '--set', 'custom-field=test', '--execute'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--set', 'custom-field=test', '--execute'], tempVaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Updated 2 files');
@@ -142,9 +223,9 @@ describe('bulk command', () => {
 
     it('should rename a field', async () => {
       // First add a field to rename
-      await runCLI(['bulk', 'idea', '--set', 'old-field=value', '--execute'], tempVaultDir);
+      await runCLI(['bulk', 'idea', '--all', '--set', 'old-field=value', '--execute'], tempVaultDir);
       
-      const result = await runCLI(['bulk', 'idea', '--rename', 'old-field=new-field', '--execute'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--rename', 'old-field=new-field', '--execute'], tempVaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Updated 2 files');
@@ -155,7 +236,7 @@ describe('bulk command', () => {
     });
 
     it('should error when target field already exists', async () => {
-      const result = await runCLI(['bulk', 'idea', '--rename', 'status=priority', '--execute'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--rename', 'status=priority', '--execute'], tempVaultDir);
       
       expect(result.exitCode).toBe(1);
       // Error goes to stderr via printError
@@ -175,7 +256,7 @@ describe('bulk command', () => {
     });
 
     it('should delete a field', async () => {
-      const result = await runCLI(['bulk', 'idea', '--delete', 'priority', '--execute'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--delete', 'priority', '--execute'], tempVaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Updated 2 files');
@@ -185,7 +266,7 @@ describe('bulk command', () => {
     });
 
     it('should not fail when field does not exist', async () => {
-      const result = await runCLI(['bulk', 'idea', '--delete', 'nonexistent', '--execute'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--delete', 'nonexistent', '--execute'], tempVaultDir);
       
       expect(result.exitCode).toBe(0);
       // No files should be modified since field doesn't exist
@@ -206,9 +287,9 @@ describe('bulk command', () => {
 
     it('should append to an existing array', async () => {
       // First set tags as an array
-      await runCLI(['bulk', 'idea', '--set', 'tags=existing', '--execute'], tempVaultDir);
+      await runCLI(['bulk', 'idea', '--all', '--set', 'tags=existing', '--execute'], tempVaultDir);
       
-      const result = await runCLI(['bulk', 'idea', '--append', 'tags=newtag', '--execute'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--append', 'tags=newtag', '--execute'], tempVaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Updated 2 files');
@@ -219,7 +300,7 @@ describe('bulk command', () => {
     });
 
     it('should create array for new field', async () => {
-      const result = await runCLI(['bulk', 'idea', '--append', 'labels=first', '--execute'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--append', 'labels=first', '--execute'], tempVaultDir);
       
       expect(result.exitCode).toBe(0);
 
@@ -229,9 +310,9 @@ describe('bulk command', () => {
 
     it('should convert scalar to array when appending', async () => {
       // First set a scalar value
-      await runCLI(['bulk', 'idea', '--set', 'scalar-field=first', '--execute'], tempVaultDir);
+      await runCLI(['bulk', 'idea', '--all', '--set', 'scalar-field=first', '--execute'], tempVaultDir);
       
-      const result = await runCLI(['bulk', 'idea', '--append', 'scalar-field=second', '--execute'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--append', 'scalar-field=second', '--execute'], tempVaultDir);
       
       expect(result.exitCode).toBe(0);
 
@@ -320,9 +401,13 @@ tags:
   });
 
   describe('simple filters (--field=value syntax)', () => {
-    it('should filter with equality', async () => {
+    // Note: Simple filters are deprecated but still work when combined with --all or --where.
+    // They do NOT satisfy the targeting gate on their own.
+    
+    it('should filter with equality when used with --all', async () => {
       const result = await runCLI([
         'bulk', 'idea',
+        '--all',
         '--status=raw',
         '--set', 'priority=high'
       ], vaultDir);
@@ -333,9 +418,10 @@ tags:
       expect(result.stdout).not.toContain('Another Idea.md');
     });
 
-    it('should filter with negation', async () => {
+    it('should filter with negation when used with --all', async () => {
       const result = await runCLI([
         'bulk', 'idea',
+        '--all',
         '--status!=raw',
         '--set', 'priority=low'
       ], vaultDir);
@@ -346,9 +432,10 @@ tags:
       expect(result.stdout).not.toContain('Sample Idea.md');
     });
 
-    it('should filter with multiple values (OR)', async () => {
+    it('should filter with multiple values (OR) when used with --all', async () => {
       const result = await runCLI([
         'bulk', 'idea',
+        '--all',
         '--status=raw,backlog',
         '--set', 'test=value'
       ], vaultDir);
@@ -359,9 +446,10 @@ tags:
       expect(result.stdout).toContain('Another Idea.md');
     });
 
-    it('should combine simple filters with AND', async () => {
+    it('should combine simple filters with AND when used with --all', async () => {
       const result = await runCLI([
         'bulk', 'idea',
+        '--all',
         '--status=backlog',
         '--priority=high',
         '--set', 'test=value'
@@ -374,6 +462,7 @@ tags:
     });
 
     it('should combine simple filters with --where expressions', async () => {
+      // --where satisfies the targeting gate, simple filters add additional filtering
       const result = await runCLI([
         'bulk', 'idea',
         '--status=backlog',
@@ -390,6 +479,7 @@ tags:
     it('should validate filter field names', async () => {
       const result = await runCLI([
         'bulk', 'idea',
+        '--all',
         '--nonexistent=value',
         '--set', 'status=done'
       ], vaultDir);
@@ -401,6 +491,7 @@ tags:
     it('should validate filter enum values', async () => {
       const result = await runCLI([
         'bulk', 'idea',
+        '--all',
         '--status=invalid',
         '--set', 'priority=high'
       ], vaultDir);
@@ -412,14 +503,14 @@ tags:
 
   describe('--limit option', () => {
     it('should limit number of files affected', async () => {
-      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--limit', '1'], vaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--set', 'status=settled', '--limit', '1'], vaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Would affect 1 file');
     });
 
     it('should reject invalid limit', async () => {
-      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--limit', 'abc'], vaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--set', 'status=settled', '--limit', 'abc'], vaultDir);
       
       expect(result.exitCode).toBe(1);
       // Error goes to stderr via printError
@@ -439,7 +530,7 @@ tags:
     });
 
     it('should create backup when --backup is specified', async () => {
-      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--execute', '--backup'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--set', 'status=settled', '--execute', '--backup'], tempVaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Backup created');
@@ -449,7 +540,7 @@ tags:
 
   describe('output modes', () => {
     it('should output JSON with --output json', async () => {
-      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--output', 'json'], vaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--set', 'status=settled', '--output', 'json'], vaultDir);
       
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -459,7 +550,7 @@ tags:
     });
 
     it('should show minimal output with --quiet', async () => {
-      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--quiet'], vaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--set', 'status=settled', '--quiet'], vaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Would affect');
@@ -467,7 +558,7 @@ tags:
     });
 
     it('should show detailed output with --verbose', async () => {
-      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled', '--verbose'], vaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--set', 'status=settled', '--verbose'], vaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Sample Idea.md');
@@ -477,14 +568,14 @@ tags:
 
   describe('subtype handling', () => {
     it('should work with subtypes', async () => {
-      const result = await runCLI(['bulk', 'objective/task', '--set', 'status=settled'], vaultDir);
+      const result = await runCLI(['bulk', 'objective/task', '--all', '--set', 'status=settled'], vaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Sample Task.md');
     });
 
     it('should work with parent type (affecting all subtypes)', async () => {
-      const result = await runCLI(['bulk', 'objective', '--set', 'status=settled'], vaultDir);
+      const result = await runCLI(['bulk', 'objective', '--all', '--set', 'status=settled'], vaultDir);
       
       expect(result.exitCode).toBe(0);
       // Should show both task and milestone
@@ -508,7 +599,7 @@ tags:
     });
 
     it('should preview move in dry-run mode', async () => {
-      const result = await runCLI(['bulk', 'idea', '--move', 'Archive/Ideas'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--move', 'Archive/Ideas'], tempVaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Dry run');
@@ -521,7 +612,7 @@ tags:
     });
 
     it('should move files when --execute is used', async () => {
-      const result = await runCLI(['bulk', 'idea', '--move', 'Archive/Ideas', '--execute'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--move', 'Archive/Ideas', '--execute'], tempVaultDir);
       
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Moved');
@@ -587,6 +678,7 @@ This task relates to [[Sample Idea]].
     it('should not combine --move with other operations', async () => {
       const result = await runCLI([
         'bulk', 'idea',
+        '--all',
         '--move', 'Archive/Ideas',
         '--set', 'status=settled'
       ], tempVaultDir);
@@ -598,6 +690,7 @@ This task relates to [[Sample Idea]].
     it('should show JSON output with --output json', async () => {
       const result = await runCLI([
         'bulk', 'idea',
+        '--all',
         '--move', 'Archive/Ideas',
         '--output', 'json'
       ], tempVaultDir);
@@ -613,6 +706,7 @@ This task relates to [[Sample Idea]].
     it('should handle --quiet mode', async () => {
       const result = await runCLI([
         'bulk', 'idea',
+        '--all',
         '--move', 'Archive/Ideas',
         '--quiet'
       ], tempVaultDir);
@@ -625,6 +719,7 @@ This task relates to [[Sample Idea]].
     it('should handle --limit option', async () => {
       const result = await runCLI([
         'bulk', 'idea',
+        '--all',
         '--move', 'Archive/Ideas',
         '--limit', '1',
         '--execute'
