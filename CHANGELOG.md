@@ -4,6 +4,20 @@ All notable changes to Pika are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Targeting safety gate for `bulk` command** (pika-da6s)
+  - Bulk operations now require explicit targeting to prevent accidental vault-wide mutations
+  - Must specify `--where` filter(s) OR use `--all` flag before any operation runs
+  - Without targeting: `pika bulk idea --set x=y` now errors with:
+    `No files selected. Use --type, --path, --where, --text, or --all.`
+  - With targeting: `pika bulk idea --all --set x=y` or `pika bulk idea --where "status == 'x'" --set x=y`
+  - This implements the "two-gate safety model" from docs/product/cli-targeting.md:
+    1. **Targeting gate**: Must specify explicit scope (`--where` or `--all`)
+    2. **Execution gate**: Must use `--execute` to apply changes (existing behavior)
+  - Help text updated to document the safety model
+  - Note: Simple filters (`--status=raw`) are deprecated and do NOT satisfy the targeting gate
+
 ### Fixed
 
 - **`pika schema add-field meta` now works correctly** (pika-tsbb)

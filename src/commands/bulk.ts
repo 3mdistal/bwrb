@@ -33,6 +33,7 @@ import type { BulkOperation, BulkResult, FileChange } from '../lib/bulk/types.js
 import type { LoadedSchema } from '../types/schema.js';
 
 interface BulkCommandOptions {
+  all?: boolean;
   set?: string[];
   rename?: string[];
   delete?: string[];
@@ -51,6 +52,22 @@ interface BulkCommandOptions {
 export const bulkCommand = new Command('bulk')
   .description('Mass changes across filtered file sets')
   .addHelpText('after', `
+Safety (Two-Gate Model):
+  Bulk operations require explicit targeting to prevent accidents.
+  
+  1. Targeting gate: Specify --where filter(s) OR use --all
+  2. Execution gate: Use --execute to apply changes (dry-run by default)
+
+  # Error: no targeting specified
+  pika bulk task --set status=done
+  # "No files selected. Use --type, --path, --where, --text, or --all."
+
+  # OK: filtered with --where
+  pika bulk task --where "status == 'active'" --set status=done
+
+  # OK: explicit --all targets all files of type
+  pika bulk task --all --set status=done
+
 Operations:
   --set <field>=<value>       Set field value
   --set <field>=              Clear field (remove from frontmatter)
@@ -60,13 +77,9 @@ Operations:
   --remove <field>=<value>    Remove from list field
   --move <path>               Move files to path (auto-updates wikilinks)
 
-Filters:
-  --field=value               Include where field equals value
-  --field=a,b                 Include where field equals a OR b
-  --field!=value              Exclude where field equals value
-  --field=                    Include where field is empty/missing
-  --field!=                   Include where field exists
+Targeting:
   --where "<expression>"      Filter expression (can repeat, ANDed)
+  --all                       Target all files of the type (explicit intent)
 
 Execution:
   --execute                   Actually apply changes (dry-run by default)
@@ -80,29 +93,28 @@ Output:
 
 Examples:
   # Preview changes (dry-run)
-  pika bulk task --set status=done --where "status == 'in-progress'"
+  pika bulk task --where "status == 'in-progress'" --set status=done
 
   # Apply changes
-  pika bulk task --set status=done --where "status == 'in-progress'" --execute
+  pika bulk task --where "status == 'in-progress'" --set status=done --execute
+
+  # Target all files of a type
+  pika bulk idea --all --set reviewed=true --execute
 
   # Multiple operations
-  pika bulk task --set status=done --set "completion-date=2025-01-15" --execute
+  pika bulk task --where "status == 'done'" --set archived=true --set "archived-date=2025-01-15" --execute
 
   # Rename a field across all files
-  pika bulk idea --rename old-field=new-field --execute
+  pika bulk idea --all --rename old-field=new-field --execute
 
   # Append to a list field
-  pika bulk task --append tags=urgent --where "priority == 'high'" --execute
+  pika bulk task --where "priority == 'high'" --append tags=urgent --execute
 
   # Create backup before changes
-  pika bulk task --set status=archived --execute --backup
+  pika bulk task --all --set status=archived --execute --backup
 
   # Move files to archive (updates wikilinks automatically)
-  pika bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
-
-  # Using simple filters
-  pika bulk task --status=done --set archived=true --execute
-  pika bulk idea --priority=high,critical --set urgent=true --execute`)
+  pika bulk idea --where "status == 'settled'" --move Archive/Ideas --execute`)
   .argument('<type>', 'Type path (e.g., idea, objective/task)')
   .option('--set <field=value...>', 'Set field value (or clear with --set field=)')
   .option('--rename <old=new...>', 'Rename field')
@@ -111,6 +123,7 @@ Examples:
   .option('--remove <field=value...>', 'Remove from list field')
   .option('--move <path>', 'Move files to path (auto-updates wikilinks)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
+  .option('-a, --all', 'Target all files of the type (requires explicit intent)')
   .option('--execute', 'Actually apply changes (dry-run by default)')
   .option('--backup', 'Create backup before changes')
   .option('--limit <n>', 'Limit to n files')
@@ -156,6 +169,31 @@ Examples:
           }
           process.exit(1);
         }
+      }
+
+      // Targeting gate: require explicit selector(s) OR --all for destructive operations
+      // Per product spec, simple filters (--field=value) are deprecated and do NOT satisfy the gate.
+      // Only --where expressions or --all flag satisfy explicit targeting.
+      const hasWhereExpressions = options.where && options.where.length > 0;
+      const hasExplicitTargeting = hasWhereExpressions || options.all;
+
+      if (!hasExplicitTargeting) {
+        const error = 'No files selected. Use --type, --path, --where, --text, or --all.';
+        if (jsonMode) {
+          printJson(jsonError(error));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        printError(error);
+        console.log(`
+Hint: Bulk operations require explicit targeting to prevent accidents.
+
+  Filter with --where:
+    pika bulk ${typePath} --where "status == 'x'" --set field=value
+
+  Or use --all to target all ${typePath} notes:
+    pika bulk ${typePath} --all --set field=value
+`);
+        process.exit(1);
       }
 
       // Build operations list
