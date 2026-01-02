@@ -408,6 +408,405 @@ schemaCommand
     }
   });
 
+// ============================================================================
+// Field Management Subcommands
+// ============================================================================
+
+interface AddFieldOptions {
+  output?: string;
+  type?: string;        // prompt type
+  enum?: string;        // for select
+  source?: string;      // for dynamic
+  value?: string;       // for fixed value
+  format?: string;      // for dynamic
+  required?: boolean;
+  default?: string;
+}
+
+/**
+ * Validate a field name.
+ * Returns an error message if invalid, undefined if valid.
+ */
+function validateFieldName(name: string): string | undefined {
+  if (!name) {
+    return 'Field name is required';
+  }
+  if (!/^[a-z][a-z0-9-]*$/.test(name)) {
+    return 'Field name must start with a lowercase letter and contain only lowercase letters, numbers, and hyphens';
+  }
+  return undefined;
+}
+
+/**
+ * Build a field definition from CLI options.
+ */
+function buildFieldFromOptions(
+  options: AddFieldOptions,
+  schema: LoadedSchema
+): Field {
+  const field: Field = {};
+  const promptType = options.type;
+
+  if (promptType === 'fixed') {
+    // Fixed value field
+    if (!options.value) {
+      throw new Error('--value is required for fixed type');
+    }
+    field.value = options.value;
+  } else if (promptType) {
+    // Validate prompt type
+    const validPromptTypes = ['input', 'select', 'date', 'multi-input', 'dynamic'];
+    if (!validPromptTypes.includes(promptType)) {
+      throw new Error(`Invalid prompt type "${promptType}". Valid types: input, select, date, multi-input, dynamic, fixed`);
+    }
+    
+    field.prompt = promptType as Field['prompt'];
+    
+    // Handle select type
+    if (promptType === 'select') {
+      if (!options.enum) {
+        throw new Error('--enum is required for select type');
+      }
+      if (!enumExists(schema, options.enum)) {
+        throw new Error(`Enum "${options.enum}" does not exist`);
+      }
+      field.enum = options.enum;
+    }
+    
+    // Handle dynamic type
+    if (promptType === 'dynamic') {
+      if (!options.source) {
+        throw new Error('--source is required for dynamic type');
+      }
+      if (!schema.types.has(options.source)) {
+        throw new Error(`Source type "${options.source}" does not exist`);
+      }
+      field.source = options.source;
+      
+      // Format is optional, default to plain
+      if (options.format) {
+        const validFormats = ['plain', 'wikilink', 'quoted-wikilink'];
+        if (!validFormats.includes(options.format)) {
+          throw new Error(`Invalid format "${options.format}". Valid formats: plain, wikilink, quoted-wikilink`);
+        }
+        field.format = options.format as Field['format'];
+      }
+    }
+    
+    // Handle required flag
+    if (options.required) {
+      field.required = true;
+    }
+    
+    // Handle default value
+    if (options.default !== undefined) {
+      field.default = options.default;
+    }
+  }
+  
+  return field;
+}
+
+/**
+ * Prompt for a single field definition interactively (for add-field command).
+ * Unlike promptFieldDefinition, this doesn't have a "done" option since we're
+ * only adding one field.
+ */
+async function promptSingleFieldDefinition(
+  schema: LoadedSchema,
+  fieldName?: string
+): Promise<{ name: string; field: Field } | null> {
+  let name = fieldName;
+  
+  // Get field name if not provided
+  if (!name) {
+    const nameResult = await promptInput('Field name');
+    if (nameResult === null) return null;
+    name = nameResult.trim().toLowerCase();
+    
+    if (!name) {
+      throw new Error('Field name is required');
+    }
+  }
+  
+  // Validate field name
+  const nameError = validateFieldName(name);
+  if (nameError) {
+    throw new Error(nameError);
+  }
+  
+  // Get prompt type
+  const promptTypes = [
+    'input (text)',
+    'select (enum)',
+    'date',
+    'multi-input (list)',
+    'dynamic (from other notes)',
+    'fixed value',
+  ];
+  const promptTypeResult = await promptSelection('Prompt type', promptTypes);
+  if (promptTypeResult === null) return null;
+  
+  const promptTypeIndex = promptTypes.indexOf(promptTypeResult);
+  const promptTypeMap: Record<number, Field['prompt'] | 'value'> = {
+    0: 'input',
+    1: 'select',
+    2: 'date',
+    3: 'multi-input',
+    4: 'dynamic',
+    5: 'value',
+  };
+  const promptType = promptTypeMap[promptTypeIndex];
+  
+  const field: Field = {};
+  
+  // Handle different prompt types
+  if (promptType === 'value') {
+    // Fixed value
+    const valueResult = await promptInput('Fixed value');
+    if (valueResult === null) return null;
+    field.value = valueResult;
+  } else {
+    field.prompt = promptType as Field['prompt'];
+    
+    // For select, get enum name
+    if (promptType === 'select') {
+      const enumNames = Array.from(schema.enums.keys());
+      if (enumNames.length === 0) {
+        throw new Error('No enums defined in schema. Create an enum first with: pika schema enum add <name>');
+      }
+      const enumResult = await promptSelection('Enum to use', enumNames);
+      if (enumResult === null) return null;
+      field.enum = enumResult;
+    }
+    
+    // For dynamic, get source type
+    if (promptType === 'dynamic') {
+      const typeNames = getTypeNames(schema).filter(t => t !== 'meta');
+      if (typeNames.length === 0) {
+        throw new Error('No types defined in schema yet.');
+      }
+      const sourceResult = await promptSelection('Source type', typeNames);
+      if (sourceResult === null) return null;
+      field.source = sourceResult;
+      
+      // Ask for format
+      const formatOptions = ['plain', 'wikilink', 'quoted-wikilink'];
+      const formatResult = await promptSelection('Link format', formatOptions);
+      if (formatResult === null) return null;
+      field.format = formatResult as Field['format'];
+    }
+    
+    // Ask if required
+    const requiredResult = await promptConfirm('Required?');
+    if (requiredResult === null) return null;
+    field.required = requiredResult;
+    
+    // If not required, ask for default
+    if (!field.required) {
+      const defaultResult = await promptInput('Default value (blank for none)');
+      if (defaultResult === null) return null;
+      if (defaultResult.trim()) {
+        field.default = defaultResult.trim();
+      }
+    }
+  }
+  
+  return { name, field };
+}
+
+// schema add-field <type-name> [field-name]
+schemaCommand
+  .command('add-field <type-name> [field-name]')
+  .description('Add a field to an existing type')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--type <prompt-type>', 'Prompt type: input, select, date, multi-input, dynamic, fixed')
+  .option('--enum <name>', 'Enum name (for select type)')
+  .option('--source <type>', 'Source type (for dynamic type)')
+  .option('--value <value>', 'Fixed value (for fixed type)')
+  .option('--format <format>', 'Link format: plain, wikilink, quoted-wikilink (for dynamic)')
+  .option('--required', 'Mark field as required')
+  .option('--default <value>', 'Default value')
+  .action(async (typeName: string, fieldName: string | undefined, options: AddFieldOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      
+      // Load schema
+      const schema = await loadSchema(vaultDir);
+      
+      // Validate type exists
+      if (!schema.types.has(typeName)) {
+        throw new Error(`Type "${typeName}" does not exist`);
+      }
+      
+      // If field name is provided, validate it early (before interactive mode)
+      if (fieldName) {
+        // Validate field name format
+        const nameError = validateFieldName(fieldName);
+        if (nameError) {
+          throw new Error(nameError);
+        }
+        
+        // Check if field already exists on this type (including inherited fields)
+        const effectiveFields = getFieldsForType(schema, typeName);
+        if (effectiveFields[fieldName]) {
+          // Check if it's inherited or defined on this type
+          const rawType = schema.raw.types[typeName];
+          const isOwnField = rawType?.fields?.[fieldName] !== undefined;
+          if (isOwnField) {
+            throw new Error(`Field "${fieldName}" already exists on type "${typeName}"`);
+          } else {
+            throw new Error(`Field "${fieldName}" is inherited from a parent type. To override it, edit the parent type instead.`);
+          }
+        }
+      }
+      
+      let name: string;
+      let field: Field;
+      
+      // Check if we have enough options for non-interactive mode
+      const hasTypeOption = options.type !== undefined;
+      
+      if (jsonMode || (fieldName && hasTypeOption)) {
+        // Non-interactive mode
+        if (!fieldName) {
+          throw new Error('Field name is required in JSON mode');
+        }
+        
+        if (!hasTypeOption) {
+          throw new Error('--type is required in JSON mode');
+        }
+        
+        name = fieldName;
+        field = buildFieldFromOptions(options, schema);
+      } else {
+        // Interactive mode
+        const result = await promptSingleFieldDefinition(schema, fieldName);
+        if (result === null) {
+          process.exit(0); // User cancelled
+        }
+        name = result.name;
+        field = result.field;
+      }
+      
+      // Check if field already exists (only needed if name came from interactive mode)
+      if (!fieldName) {
+        const effectiveFields = getFieldsForType(schema, typeName);
+        if (effectiveFields[name]) {
+          // Check if it's inherited or defined on this type
+          const rawType = schema.raw.types[typeName];
+          const isOwnField = rawType?.fields?.[name] !== undefined;
+          if (isOwnField) {
+            throw new Error(`Field "${name}" already exists on type "${typeName}"`);
+          } else {
+            throw new Error(`Field "${name}" is inherited from a parent type. To override it, edit the parent type instead.`);
+          }
+        }
+      }
+      
+      // Load raw schema and add the field
+      const rawSchema = await loadRawSchemaJson(vaultDir);
+      
+      // Get the type definition (we already validated it exists)
+      const typeDef = rawSchema.types[typeName];
+      if (!typeDef) {
+        throw new Error(`Type "${typeName}" not found in raw schema`);
+      }
+      
+      // Ensure the type has a fields object
+      if (!typeDef.fields) {
+        typeDef.fields = {};
+      }
+      typeDef.fields[name] = field;
+      
+      // Update field_order if it exists, or create it
+      if (typeDef.field_order) {
+        typeDef.field_order.push(name);
+      } else {
+        // Only create field_order if there are multiple fields now
+        const existingFields = Object.keys(typeDef.fields);
+        if (existingFields.length > 1) {
+          typeDef.field_order = existingFields;
+        }
+      }
+      
+      // Write the updated schema
+      await writeSchema(vaultDir, rawSchema);
+      
+      // Validate the result by loading the schema again
+      await loadSchema(vaultDir);
+      
+      // Check if adding to meta (affects all types)
+      const isMetaType = typeName === 'meta';
+      const childCount = schema.types.get(typeName)?.children.length ?? 0;
+      
+      // Output result
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: `Added field "${name}" to type "${typeName}"`,
+          data: {
+            type: typeName,
+            field: name,
+            definition: field,
+            affectsChildTypes: childCount > 0,
+          },
+        }));
+      } else {
+        console.log('');
+        printSuccess(`Added field "${name}" to type "${typeName}"`);
+        
+        // Show field details
+        const fieldTypeStr = field.value !== undefined 
+          ? 'fixed value' 
+          : field.prompt ?? 'auto';
+        console.log(`  Type: ${fieldTypeStr}`);
+        
+        if (field.enum) {
+          console.log(`  Enum: ${field.enum}`);
+        }
+        if (field.source) {
+          console.log(`  Source: ${field.source}`);
+        }
+        if (field.format) {
+          console.log(`  Format: ${field.format}`);
+        }
+        if (field.required) {
+          console.log(`  Required: yes`);
+        }
+        if (field.default !== undefined) {
+          console.log(`  Default: ${field.default}`);
+        }
+        if (field.value !== undefined) {
+          console.log(`  Value: ${field.value}`);
+        }
+        
+        // Show inheritance note
+        if (isMetaType) {
+          console.log('');
+          console.log(chalk.yellow('Note: Adding to "meta" affects all types in the schema.'));
+        } else if (childCount > 0) {
+          console.log('');
+          console.log(chalk.gray(`This field will be inherited by ${childCount} child type${childCount > 1 ? 's' : ''}.`));
+        }
+        
+        // Hint about updating existing notes
+        console.log('');
+        console.log(chalk.gray(`Run 'pika audit' to check existing notes for this field.`));
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
 /**
  * Output schema as JSON for AI/scripting usage.
  */

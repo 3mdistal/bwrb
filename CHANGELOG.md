@@ -6,6 +6,17 @@ All notable changes to Pika are documented in this file.
 
 ### Added
 
+- **`pika schema add-field` command** (pika-tev)
+  - Add fields to existing types via CLI without editing schema.json directly
+  - Interactive mode: prompts for field name, prompt type, and relevant options
+  - Non-interactive mode: use `--type`, `--enum`, `--source`, `--value` flags with `--output json`
+  - Supports all prompt types: input, select, date, multi-input, dynamic, and fixed value
+  - Validates field names (lowercase, alphanumeric with hyphens)
+  - Prevents duplicate fields and overriding inherited fields
+  - Automatically updates field_order and validates the schema
+  - Shows inheritance notes when adding fields to parent types
+  - Example: `pika schema add-field task priority --type select --enum priority`
+
 - **PTY tests for schema add-type interactive wizard** (pika-h3xh)
   - Comprehensive coverage for the interactive type creation flow
   - Tests for all field wizard prompt types: input, select, date, multi-input, dynamic, fixed value
