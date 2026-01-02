@@ -6,6 +6,16 @@ All notable changes to Pika are documented in this file.
 
 ### Added
 
+- **`pika schema add-type` command** (pika-w2a)
+  - Create new type definitions via CLI without editing schema.json directly
+  - Interactive mode: prompts for parent type, output directory, and field definitions
+  - Non-interactive mode: use `--extends`, `--output-dir` flags with `--output json`
+  - Field wizard supports all prompt types: input, select, date, multi-input, dynamic, and fixed value
+  - Validates type names (lowercase, alphanumeric with hyphens, no reserved names)
+  - Validates parent type exists before creating child type
+  - Automatically updates schema.json and validates the result
+  - Example: `pika schema add-type task --extends objective --output-dir Tasks`
+
 - **`--open` flag for `search` and `list` commands** (pika-fkd)
   - `pika search "My Note" --open` - Search for a note and open it in Obsidian/editor
   - `pika list task --status=inbox --open` - Filter notes and pick one to open
