@@ -10,6 +10,7 @@ import {
   getEnumValues,
   getTypeNames,
   computeDefaultOutputDir,
+  resolveSourceType,
 } from '../lib/schema.js';
 import { resolveVaultDir } from '../lib/vault.js';
 import {
@@ -478,10 +479,13 @@ function buildFieldFromOptions(
       if (!options.source) {
         throw new Error('--source is required for dynamic type');
       }
-      if (!schema.types.has(options.source)) {
-        throw new Error(`Source type "${options.source}" does not exist`);
+      
+      // Use resolveSourceType for better error messages
+      const resolution = resolveSourceType(schema, options.source);
+      if (!resolution.success) {
+        throw new Error(resolution.error);
       }
-      field.source = options.source;
+      field.source = resolution.typeName;
       
       // Format is optional, default to plain
       if (options.format) {

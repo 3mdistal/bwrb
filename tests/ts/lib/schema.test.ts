@@ -18,6 +18,7 @@ import {
   getPluralName,
   computeDefaultOutputDir,
   getType,
+  resolveSourceType,
 } from '../../../src/lib/schema.js';
 import { createTestVault, cleanupTestVault, TEST_SCHEMA } from '../fixtures/setup.js';
 import type { LoadedSchema } from '../../../src/types/schema.js';
@@ -422,6 +423,86 @@ describe('schema', () => {
       expect(ideaType).toBeDefined();
       expect(ideaType!.recursive).toBe(false);
       expect(ideaType!.fields['parent']).toBeUndefined();
+    });
+  });
+
+  describe('resolveSourceType', () => {
+    it('should return success for valid type names', () => {
+      const result = resolveSourceType(schema, 'idea');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.typeName).toBe('idea');
+      }
+    });
+
+    it('should return success for nested type names', () => {
+      const result = resolveSourceType(schema, 'task');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.typeName).toBe('task');
+      }
+    });
+
+    it('should detect enum value confusion', () => {
+      // 'raw' is a value in the 'status' enum
+      const result = resolveSourceType(schema, 'raw');
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('"raw" is a value in the "status" enum');
+        expect(result.error).toContain('Dynamic sources must reference types');
+      }
+    });
+
+    it('should detect path format and suggest using type name directly', () => {
+      // 'objective/task' uses path format; task is a valid type
+      const result = resolveSourceType(schema, 'objective/task');
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('uses path format');
+        expect(result.error).toContain('Use just the type name: "task"');
+        expect(result.suggestions).toContain('task');
+      }
+    });
+
+    it('should detect path format when neither segment is a valid type', () => {
+      const result = resolveSourceType(schema, 'foo/bar');
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('uses path format which is not supported');
+        expect(result.error).toContain('Available types:');
+      }
+    });
+
+    it('should suggest similar type names for typos', () => {
+      // 'ide' is close to 'idea'
+      const result = resolveSourceType(schema, 'ide');
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('does not exist');
+        expect(result.error).toContain('Did you mean:');
+        expect(result.suggestions).toContain('idea');
+      }
+    });
+
+    it('should list available types when no close match exists', () => {
+      const result = resolveSourceType(schema, 'completely-unknown-type');
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('does not exist');
+        expect(result.error).toContain('Available types:');
+        // Should not have suggestions for very different names
+        expect(result.suggestions).toBeUndefined();
+      }
+    });
+
+    it('should prioritize enum check over typo suggestions', () => {
+      // If something is an enum value, we should say so even if it's close to a type name
+      // 'priority' enum has 'low', 'medium', 'high' values
+      const result = resolveSourceType(schema, 'low');
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('is a value in the "priority" enum');
+      }
     });
   });
 });

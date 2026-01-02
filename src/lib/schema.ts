@@ -930,3 +930,160 @@ export function doesTypeOwn(
   const ownedFields = schema.ownership.owns.get(ownerTypeName) ?? [];
   return ownedFields.some(f => f.childType === childTypeName);
 }
+
+// ============================================================================
+// Source Type Resolution (for dynamic fields)
+// ============================================================================
+
+/**
+ * Result of resolving a source type name.
+ */
+export type SourceTypeResolution =
+  | { success: true; typeName: string }
+  | { success: false; error: string; suggestions?: string[] };
+
+/**
+ * Calculate Levenshtein distance between two strings.
+ * Used for fuzzy matching to suggest corrections for typos.
+ */
+function levenshteinDistance(a: string, b: string): number {
+  // Create matrix with proper initialization
+  const matrix: number[][] = Array.from({ length: a.length + 1 }, () =>
+    Array.from({ length: b.length + 1 }, () => 0)
+  );
+
+  // Initialize first column
+  for (let i = 0; i <= a.length; i++) {
+    matrix[i]![0] = i;
+  }
+  // Initialize first row
+  for (let j = 0; j <= b.length; j++) {
+    matrix[0]![j] = j;
+  }
+
+  // Fill in the rest of the matrix
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const row = matrix[i]!;
+      const prevRow = matrix[i - 1]!;
+      row[j] = Math.min(
+        prevRow[j]! + 1,        // deletion
+        row[j - 1]! + 1,        // insertion
+        prevRow[j - 1]! + cost  // substitution
+      );
+    }
+  }
+
+  return matrix[a.length]![b.length]!;
+}
+
+/**
+ * Find close matches for a string within a list of candidates.
+ * Returns candidates within the specified maximum distance, sorted by distance.
+ */
+function findCloseMatches(target: string, candidates: string[], maxDistance: number): string[] {
+  const matches: Array<{ candidate: string; distance: number }> = [];
+
+  for (const candidate of candidates) {
+    const distance = levenshteinDistance(target.toLowerCase(), candidate.toLowerCase());
+    if (distance <= maxDistance && distance > 0) {
+      matches.push({ candidate, distance });
+    }
+  }
+
+  // Sort by distance (closest first)
+  matches.sort((a, b) => a.distance - b.distance);
+
+  return matches.map(m => m.candidate);
+}
+
+/**
+ * Check if a value matches any enum value in the schema.
+ * Returns the enum name if found, undefined otherwise.
+ */
+function findEnumContainingValue(schema: LoadedSchema, value: string): string | undefined {
+  for (const [enumName, values] of schema.enums) {
+    if (values.includes(value)) {
+      return enumName;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resolve a source type name with helpful error messages.
+ * 
+ * This function validates that a source type exists and provides
+ * actionable error messages when it doesn't, including:
+ * - Detecting path format usage (e.g., "entity/person")
+ * - Detecting enum value confusion (e.g., "person" being an enum value, not a type)
+ * - Suggesting similar type names for typos
+ * - Listing available types when no close match is found
+ */
+export function resolveSourceType(
+  schema: LoadedSchema,
+  source: string
+): SourceTypeResolution {
+  // Direct match - source is a valid type
+  if (schema.types.has(source)) {
+    return { success: true, typeName: source };
+  }
+
+  const availableTypes = getConcreteTypeNames(schema);
+
+  // Check for path format (legacy subtype syntax like "entity/person")
+  if (source.includes('/')) {
+    const segments = source.split('/');
+    const lastSegment = segments[segments.length - 1];
+
+    if (lastSegment && schema.types.has(lastSegment)) {
+      // The last segment is a valid type - suggest using it directly
+      return {
+        success: false,
+        error: `Source "${source}" uses path format. Use just the type name: "${lastSegment}"`,
+        suggestions: [lastSegment],
+      };
+    }
+
+    // Path format but neither segment is a valid type
+    return {
+      success: false,
+      error: `Source "${source}" uses path format which is not supported. ` +
+        `In v2 schemas, specify the type name directly.\n` +
+        `Available types: ${availableTypes.join(', ')}`,
+    };
+  }
+
+  // Check if the source matches an enum value
+  const enumName = findEnumContainingValue(schema, source);
+  if (enumName) {
+    return {
+      success: false,
+      error: `"${source}" is a value in the "${enumName}" enum, not a type name.\n` +
+        `Dynamic sources must reference types.\n` +
+        `Available types: ${availableTypes.join(', ')}\n\n` +
+        `Hint: If you want to filter by this enum value, set the source to the ` +
+        `parent type and add a filter in the schema.`,
+    };
+  }
+
+  // Check for typos using fuzzy matching
+  const closeMatches = findCloseMatches(source, availableTypes, 3);
+
+  if (closeMatches.length > 0) {
+    return {
+      success: false,
+      error: `Source type "${source}" does not exist.\n` +
+        `Did you mean: ${closeMatches.join(', ')}?`,
+      suggestions: closeMatches,
+    };
+  }
+
+  // No close match - list all available types
+  return {
+    success: false,
+    error: `Source type "${source}" does not exist.\n` +
+      `Available types: ${availableTypes.join(', ')}`,
+  };
+}

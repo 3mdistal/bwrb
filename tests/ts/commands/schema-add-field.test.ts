@@ -514,4 +514,90 @@ describe('schema add-field command', () => {
       expect(result.stderr).toContain('must start with a lowercase letter');
     });
   });
+
+  describe('dynamic source error messages', () => {
+    it('should detect enum value confusion and provide helpful message', async () => {
+      // 'high' is a value in the 'priority' enum, not a type name
+      const result = await runCLI(
+        ['schema', 'add-field', 'project', 'urgency', '--type', 'dynamic', '--source', 'high', '--output', 'json'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('"high" is a value in the "priority" enum');
+      expect(json.error).toContain('Dynamic sources must reference types');
+      expect(json.error).toContain('Available types:');
+    });
+
+    it('should detect path format and suggest using type name directly', async () => {
+      // note/task uses path format; task is a valid type
+      const result = await runCLI(
+        ['schema', 'add-field', 'project', 'related', '--type', 'dynamic', '--source', 'note/task', '--output', 'json'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('uses path format');
+      expect(json.error).toContain('Use just the type name: "task"');
+    });
+
+    it('should detect path format when neither segment is a valid type', async () => {
+      const result = await runCLI(
+        ['schema', 'add-field', 'project', 'related', '--type', 'dynamic', '--source', 'foo/bar', '--output', 'json'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('uses path format which is not supported');
+      expect(json.error).toContain('Available types:');
+    });
+
+    it('should suggest similar type names for typos', async () => {
+      // 'projec' is close to 'project'
+      const result = await runCLI(
+        ['schema', 'add-field', 'note', 'parent-project', '--type', 'dynamic', '--source', 'projec', '--output', 'json'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('does not exist');
+      expect(json.error).toContain('Did you mean: project');
+    });
+
+    it('should list available types when no close match exists', async () => {
+      const result = await runCLI(
+        ['schema', 'add-field', 'project', 'related', '--type', 'dynamic', '--source', 'completely-unknown', '--output', 'json'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('does not exist');
+      expect(json.error).toContain('Available types:');
+      expect(json.error).toContain('note');
+      expect(json.error).toContain('task');
+      expect(json.error).toContain('project');
+    });
+
+    it('should still accept valid source types', async () => {
+      const result = await runCLI(
+        ['schema', 'add-field', 'project', 'related-task', '--type', 'dynamic', '--source', 'task', '--output', 'json'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.data.definition.source).toBe('task');
+    });
+  });
 });

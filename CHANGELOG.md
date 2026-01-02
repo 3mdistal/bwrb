@@ -4,6 +4,18 @@ All notable changes to Pika are documented in this file.
 
 ## [Unreleased]
 
+### Improved
+
+- **Better error messages for `--source` flag in dynamic fields** (pika-dbvv)
+  - Detects when user provides an enum value instead of a type name
+    - e.g., `"person" is a value in the "entity-type" enum, not a type name`
+  - Detects legacy path format usage and suggests correct syntax
+    - e.g., `Source "entity/person" uses path format. Use just the type name: "person"`
+  - Suggests similar type names for typos (using fuzzy matching)
+    - e.g., `Did you mean: project?`
+  - Lists available types when no close match exists
+  - Provides actionable hints for filtering by enum values
+
 ### Added
 
 - **`pika schema add-field` command** (pika-tev)
