@@ -4,6 +4,13 @@ All notable changes to Pika are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`pika schema add-field meta` now works correctly** (pika-tsbb)
+  - Previously failed with `Type "meta" not found in raw schema` when meta was implicit
+  - Now creates the meta type definition in schema.json when adding a field to implicit meta
+  - Fields added to meta correctly inherit to all types as documented in type-system.md
+
 ### Improved
 
 - **Better error messages for `--source` flag in dynamic fields** (pika-dbvv)
