@@ -6,6 +6,14 @@ All notable changes to Pika are documented in this file.
 
 ### Added
 
+- **PTY tests for schema add-type interactive wizard** (pika-h3xh)
+  - Comprehensive coverage for the interactive type creation flow
+  - Tests for all field wizard prompt types: input, select, date, multi-input, dynamic, fixed value
+  - Cancellation tests at each step (extends, output dir, field wizard)
+  - Field validation and retry behavior tests
+  - Error handling tests (non-existent parent type, no enums for select, no types for dynamic)
+  - Early completion tests (done immediately, answer no to add fields)
+
 - **`pika schema add-type` command** (pika-w2a)
   - Create new type definitions via CLI without editing schema.json directly
   - Interactive mode: prompts for parent type, output directory, and field definitions
