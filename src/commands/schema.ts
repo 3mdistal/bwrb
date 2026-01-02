@@ -714,10 +714,14 @@ schemaCommand
       // Load raw schema and add the field
       const rawSchema = await loadRawSchemaJson(vaultDir);
       
-      // Get the type definition (we already validated it exists)
-      const typeDef = rawSchema.types[typeName];
+      // Get the type definition, creating it if this is an implicit type (like meta)
+      // The type exists in the resolved schema (validated above) but may not exist
+      // in the raw schema if it's implicit (e.g., meta is created implicitly if not defined)
+      let typeDef = rawSchema.types[typeName];
       if (!typeDef) {
-        throw new Error(`Type "${typeName}" not found in raw schema`);
+        // Create an empty type definition for the implicit type
+        rawSchema.types[typeName] = {};
+        typeDef = rawSchema.types[typeName];
       }
       
       // Ensure the type has a fields object

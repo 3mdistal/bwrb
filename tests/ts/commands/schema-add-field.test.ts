@@ -600,4 +600,80 @@ describe('schema add-field command', () => {
       expect(json.data.definition.source).toBe('task');
     });
   });
+
+  describe('meta type handling', () => {
+    it('should add a field to implicit meta type', async () => {
+      // The test schema has no explicit meta type - it's created implicitly
+      const result = await runCLI(
+        ['schema', 'add-field', 'meta', 'created', '--type', 'date', '--output', 'json'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.data.type).toBe('meta');
+      expect(json.data.field).toBe('created');
+      expect(json.data.definition.prompt).toBe('date');
+      // Adding to meta affects all child types
+      expect(json.data.affectsChildTypes).toBe(true);
+
+      // Verify schema was updated with meta type created
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      expect(schema.types.meta).toBeDefined();
+      expect(schema.types.meta.fields).toBeDefined();
+      expect(schema.types.meta.fields.created).toEqual({ prompt: 'date' });
+    });
+
+    it('should add field to existing explicit meta type', async () => {
+      // Add explicit meta to schema first
+      const schemaPath = join(tempVaultDir, '.pika', 'schema.json');
+      const schema = JSON.parse(await readFile(schemaPath, 'utf-8'));
+      schema.types.meta = { fields: { version: { value: '1' } } };
+      await writeFile(schemaPath, JSON.stringify(schema));
+
+      const result = await runCLI(
+        ['schema', 'add-field', 'meta', 'created', '--type', 'date', '--output', 'json'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+
+      // Verify both fields exist
+      const updatedSchema = JSON.parse(await readFile(schemaPath, 'utf-8'));
+      expect(updatedSchema.types.meta.fields.version).toEqual({ value: '1' }); // preserved
+      expect(updatedSchema.types.meta.fields.created).toEqual({ prompt: 'date' }); // added
+    });
+
+    it('should reject duplicate field on meta type', async () => {
+      // Add meta with a field first
+      const schemaPath = join(tempVaultDir, '.pika', 'schema.json');
+      const schema = JSON.parse(await readFile(schemaPath, 'utf-8'));
+      schema.types.meta = { fields: { created: { prompt: 'date' } } };
+      await writeFile(schemaPath, JSON.stringify(schema));
+
+      const result = await runCLI(
+        ['schema', 'add-field', 'meta', 'created', '--type', 'input', '--output', 'json'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('already exists');
+    });
+
+    it('should show inheritance note in text mode when adding to meta', async () => {
+      const result = await runCLI(
+        ['schema', 'add-field', 'meta', 'created', '--type', 'date'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      // Should mention that adding to meta affects all types
+      expect(result.stdout).toContain('meta');
+    });
+  });
 });
