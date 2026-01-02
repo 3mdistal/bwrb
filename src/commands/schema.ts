@@ -8,9 +8,18 @@ import {
   getSubtypeKeys,
   getFieldsForType,
   getEnumValues,
+  getTypeNames,
+  computeDefaultOutputDir,
 } from '../lib/schema.js';
 import { resolveVaultDir } from '../lib/vault.js';
-import { printError, printSuccess, promptMultiInput } from '../lib/prompt.js';
+import {
+  printError,
+  printSuccess,
+  promptMultiInput,
+  promptInput,
+  promptConfirm,
+  promptSelection,
+} from '../lib/prompt.js';
 import {
   printJson,
   jsonSuccess,
@@ -30,7 +39,7 @@ import {
   validateEnumName,
   validateEnumValue,
 } from '../lib/enum-utils.js';
-import type { LoadedSchema, Field, BodySection, ResolvedType } from '../types/schema.js';
+import type { LoadedSchema, Field, BodySection, ResolvedType, Type } from '../types/schema.js';
 
 interface SchemaShowOptions {
   output?: string;
@@ -110,6 +119,290 @@ schemaCommand
         process.exit(ExitCodes.SCHEMA_ERROR);
       }
       printError('Schema validation failed:');
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// ============================================================================
+// Type Management Subcommands
+// ============================================================================
+
+interface AddTypeOptions {
+  output?: string;
+  extends?: string;
+  outputDir?: string;
+}
+
+/**
+ * Validate a type name.
+ * Returns an error message if invalid, undefined if valid.
+ */
+function validateTypeName(name: string): string | undefined {
+  if (!name) {
+    return 'Type name is required';
+  }
+  if (!/^[a-z][a-z0-9-]*$/.test(name)) {
+    return 'Type name must start with a lowercase letter and contain only lowercase letters, numbers, and hyphens';
+  }
+  if (name === 'meta') {
+    return '"meta" is a reserved type name';
+  }
+  return undefined;
+}
+
+/**
+ * Prompt for field definition interactively.
+ * Returns null if user cancels.
+ */
+async function promptFieldDefinition(
+  schema: LoadedSchema
+): Promise<{ name: string; field: Field } | null | 'done'> {
+  // Get field name
+  const nameResult = await promptInput('Field name (or "done" to finish)');
+  if (nameResult === null) return null;
+  
+  const name = nameResult.trim().toLowerCase();
+  if (!name || name === 'done') return 'done';
+  
+  // Validate field name
+  if (!/^[a-z][a-z0-9-]*$/.test(name)) {
+    printError('Field name must start with a lowercase letter and contain only lowercase letters, numbers, and hyphens');
+    return promptFieldDefinition(schema); // Retry
+  }
+  
+  // Get prompt type
+  const promptTypes = [
+    'input (text)',
+    'select (enum)',
+    'date',
+    'multi-input (list)',
+    'dynamic (from other notes)',
+    'fixed value',
+  ];
+  const promptTypeResult = await promptSelection('Prompt type', promptTypes);
+  if (promptTypeResult === null) return null;
+  
+  const promptTypeIndex = promptTypes.indexOf(promptTypeResult);
+  const promptTypeMap: Record<number, Field['prompt'] | 'value'> = {
+    0: 'input',
+    1: 'select',
+    2: 'date',
+    3: 'multi-input',
+    4: 'dynamic',
+    5: 'value',
+  };
+  const promptType = promptTypeMap[promptTypeIndex];
+  
+  const field: Field = {};
+  
+  // Handle different prompt types
+  if (promptType === 'value') {
+    // Fixed value
+    const valueResult = await promptInput('Fixed value');
+    if (valueResult === null) return null;
+    field.value = valueResult;
+  } else {
+    field.prompt = promptType as Field['prompt'];
+    
+    // For select, get enum name
+    if (promptType === 'select') {
+      const enumNames = Array.from(schema.enums.keys());
+      if (enumNames.length === 0) {
+        printError('No enums defined in schema. Create an enum first with: pika schema enum add <name>');
+        return promptFieldDefinition(schema);
+      }
+      const enumResult = await promptSelection('Enum to use', enumNames);
+      if (enumResult === null) return null;
+      field.enum = enumResult;
+    }
+    
+    // For dynamic, get source type
+    if (promptType === 'dynamic') {
+      const typeNames = getTypeNames(schema).filter(t => t !== 'meta');
+      if (typeNames.length === 0) {
+        printError('No types defined in schema yet.');
+        return promptFieldDefinition(schema);
+      }
+      const sourceResult = await promptSelection('Source type', typeNames);
+      if (sourceResult === null) return null;
+      field.source = sourceResult;
+      
+      // Ask for format
+      const formatOptions = ['plain', 'wikilink', 'quoted-wikilink'];
+      const formatResult = await promptSelection('Link format', formatOptions);
+      if (formatResult === null) return null;
+      field.format = formatResult as Field['format'];
+    }
+    
+    // Ask if required
+    const requiredResult = await promptConfirm('Required?');
+    if (requiredResult === null) return null;
+    field.required = requiredResult;
+    
+    // If not required, ask for default
+    if (!field.required) {
+      const defaultResult = await promptInput('Default value (blank for none)');
+      if (defaultResult === null) return null;
+      if (defaultResult.trim()) {
+        field.default = defaultResult.trim();
+      }
+    }
+  }
+  
+  return { name, field };
+}
+
+// schema add-type <name>
+schemaCommand
+  .command('add-type <name>')
+  .description('Create a new type definition')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--extends <parent>', 'Parent type to extend')
+  .option('--output-dir <dir>', 'Output directory for type files')
+  .action(async (name: string, options: AddTypeOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      
+      // Validate type name
+      const nameError = validateTypeName(name);
+      if (nameError) {
+        throw new Error(nameError);
+      }
+      
+      // Load schema to check for conflicts
+      const schema = await loadSchema(vaultDir);
+      
+      // Check if type already exists
+      if (schema.types.has(name)) {
+        throw new Error(`Type "${name}" already exists`);
+      }
+      
+      // Validate parent type if provided
+      let parentType: string | undefined = options.extends;
+      if (parentType && !schema.types.has(parentType)) {
+        throw new Error(`Parent type "${parentType}" does not exist`);
+      }
+      
+      let outputDir = options.outputDir;
+      let fields: Record<string, Field> = {};
+      const fieldOrder: string[] = [];
+      
+      // Interactive mode if not JSON
+      if (!jsonMode) {
+        // Prompt for parent type if not provided
+        if (!parentType) {
+          const typeNames = getTypeNames(schema).filter(t => t !== 'meta');
+          if (typeNames.length > 0) {
+            console.log('');
+            const parentResult = await promptInput('Extend from type? (blank for none)');
+            if (parentResult === null) {
+              process.exit(0); // User cancelled
+            }
+            if (parentResult.trim()) {
+              parentType = parentResult.trim();
+              if (!schema.types.has(parentType)) {
+                throw new Error(`Parent type "${parentType}" does not exist`);
+              }
+            }
+          }
+        }
+        
+        // Prompt for output directory if not provided
+        if (!outputDir) {
+          // Compute default based on type hierarchy
+          const defaultDir = computeDefaultOutputDir(schema, name);
+          const dirResult = await promptInput('Output directory', defaultDir);
+          if (dirResult === null) {
+            process.exit(0);
+          }
+          outputDir = dirResult.trim() || defaultDir;
+        }
+        
+        // Ask if user wants to add fields now
+        const addFieldsResult = await promptConfirm('Add fields now?');
+        if (addFieldsResult === null) {
+          process.exit(0);
+        }
+        
+        if (addFieldsResult) {
+          // Field wizard loop
+          while (true) {
+            const fieldResult = await promptFieldDefinition(schema);
+            if (fieldResult === null) {
+              process.exit(0); // User cancelled
+            }
+            if (fieldResult === 'done') {
+              break;
+            }
+            fields[fieldResult.name] = fieldResult.field;
+            fieldOrder.push(fieldResult.name);
+            printSuccess(`Added field: ${fieldResult.name}`);
+          }
+        }
+      }
+      
+      // Build the new type definition
+      const newType: Type = {};
+      
+      if (parentType) {
+        newType.extends = parentType;
+      }
+      
+      if (outputDir) {
+        newType.output_dir = outputDir;
+      }
+      
+      if (Object.keys(fields).length > 0) {
+        newType.fields = fields;
+        if (fieldOrder.length > 0) {
+          newType.field_order = fieldOrder;
+        }
+      }
+      
+      // Load raw schema and add the type
+      let rawSchema = await loadRawSchemaJson(vaultDir);
+      rawSchema.types[name] = newType;
+      
+      // Write the updated schema
+      await writeSchema(vaultDir, rawSchema);
+      
+      // Validate the result by loading the schema again
+      await loadSchema(vaultDir);
+      
+      // Output result
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: `Created type "${name}"`,
+          data: {
+            name,
+            extends: parentType,
+            output_dir: outputDir,
+            fields: Object.keys(fields),
+          },
+        }));
+      } else {
+        console.log('');
+        printSuccess(`Created type "${name}"`);
+        if (parentType) {
+          console.log(`  Extends: ${parentType}`);
+        }
+        if (outputDir) {
+          console.log(`  Directory: ${outputDir}/`);
+        }
+        if (Object.keys(fields).length > 0) {
+          console.log(`  Fields: ${Object.keys(fields).join(', ')}`);
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
       printError(message);
       process.exit(1);
     }
