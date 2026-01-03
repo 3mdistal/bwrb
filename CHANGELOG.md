@@ -6,6 +6,18 @@ All notable changes to Pika are documented in this file.
 
 ### Added
 
+- **Schema migration system** (pika-3nd)
+  - `pika schema diff` - Shows pending changes between current schema and last-applied snapshot
+  - `pika schema migrate` - Applies schema changes to existing notes (dry-run by default)
+  - `pika schema history` - Shows migration history
+  - Automatic change classification: deterministic (auto-apply) vs non-deterministic (requires confirmation)
+  - Smart version suggestions based on change severity (major/minor/patch)
+  - Backup by default when executing migrations (`--no-backup` to skip)
+  - Schema snapshots stored in `.pika/schema.applied.json`
+  - Migration history tracked in `.pika/migrations.json`
+  - Supports field, enum, and type operations
+  - See `docs/product/migrations.md` for full documentation
+
 - **Shell completion for bash, zsh, and fish** (pika-nn8b)
   - `pika completion bash|zsh|fish` outputs shell scripts for tab completion
   - Completes commands, options, `--type` values (from schema), and `--path` values (vault directories)

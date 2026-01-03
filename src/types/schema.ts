@@ -115,8 +115,11 @@ export const AuditConfigSchema = z.object({
  * - Type-based 'source' on fields (no more dynamic_sources)
  */
 export const PikaSchema = z.object({
-  // Schema version (2 = inheritance model)
+  // Schema format version (2 = inheritance model)
   version: z.number().optional().default(2),
+  // User-controlled schema content version for migrations (semver)
+  // This tracks the evolution of your schema over time
+  schemaVersion: z.string().optional(),
   // Enum definitions
   enums: z.record(z.array(z.string())).optional(),
   // Type definitions (flat with 'extends')

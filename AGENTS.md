@@ -28,7 +28,8 @@ src/
 │   ├── prompt.ts      # Interactive prompts (prompts library)
 │   ├── validation.ts  # Frontmatter validation
 │   ├── audit/         # Audit detection and fix logic
-│   └── bulk/          # Bulk operation utilities
+│   ├── bulk/          # Bulk operation utilities
+│   └── migration/     # Schema migration (diff, execute, history)
 └── types/
     └── schema.ts      # Zod schemas for type safety
 ```
