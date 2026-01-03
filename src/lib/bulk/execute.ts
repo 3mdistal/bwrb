@@ -4,10 +4,12 @@
 
 import { relative, dirname, basename } from 'path';
 import { stat } from 'fs/promises';
+import { minimatch } from 'minimatch';
 import { parseNote, writeNote } from '../frontmatter.js';
 import { matchesExpression, type EvalContext } from '../expression.js';
 import { matchesAllFilters } from '../query.js';
 import { discoverManagedFiles } from '../discovery.js';
+import { searchContent } from '../content-search.js';
 import { applyOperations } from './operations.js';
 import { createBackup } from './backup.js';
 import { executeBulkMove, findAllMarkdownFiles } from './move.js';
@@ -31,6 +33,8 @@ function hasMoveOperation(operations: BulkOperation[]): BulkOperation | undefine
 export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
   const {
     typePath,
+    pathGlob,
+    textQuery,
     operations,
     whereExpressions,
     simpleFilters,
@@ -56,7 +60,35 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
   }
 
   // Discover files for the specified type
-  const files = await discoverManagedFiles(schema, vaultDir, typePath);
+  let files = await discoverManagedFiles(schema, vaultDir, typePath);
+
+  // Apply path glob filter
+  if (pathGlob) {
+    files = files.filter(file => minimatch(file.relativePath, pathGlob, { matchBase: true }));
+  }
+
+  // Apply text content filter
+  let textMatchingPaths: Set<string> | undefined;
+  if (textQuery) {
+    const searchResult = await searchContent({
+      pattern: textQuery,
+      vaultDir,
+      schema,
+      ...(typePath && { typePath }),
+      contextLines: 0,
+      caseSensitive: false,
+      regex: false,
+      limit: 10000,
+    });
+    if (searchResult.success) {
+      textMatchingPaths = new Set(searchResult.results.map(r => r.file.path));
+    }
+  }
+
+  if (textMatchingPaths) {
+    files = files.filter(file => textMatchingPaths!.has(file.path));
+  }
+
   result.totalFiles = files.length;
 
   // Filter and collect changes
@@ -166,6 +198,8 @@ async function executeBulkWithMove(
 ): Promise<BulkResult> {
   const {
     typePath,
+    pathGlob,
+    textQuery,
     whereExpressions,
     simpleFilters,
     execute,
@@ -192,7 +226,35 @@ async function executeBulkWithMove(
   };
 
   // Discover files for the specified type
-  const files = await discoverManagedFiles(schema, vaultDir, typePath);
+  let files = await discoverManagedFiles(schema, vaultDir, typePath);
+
+  // Apply path glob filter
+  if (pathGlob) {
+    files = files.filter(file => minimatch(file.relativePath, pathGlob, { matchBase: true }));
+  }
+
+  // Apply text content filter
+  let textMatchingPaths: Set<string> | undefined;
+  if (textQuery) {
+    const searchResult = await searchContent({
+      pattern: textQuery,
+      vaultDir,
+      schema,
+      ...(typePath && { typePath }),
+      contextLines: 0,
+      caseSensitive: false,
+      regex: false,
+      limit: 10000,
+    });
+    if (searchResult.success) {
+      textMatchingPaths = new Set(searchResult.results.map(r => r.file.path));
+    }
+  }
+
+  if (textMatchingPaths) {
+    files = files.filter(file => textMatchingPaths!.has(file.path));
+  }
+
   result.totalFiles = files.length;
 
   // Filter files based on criteria

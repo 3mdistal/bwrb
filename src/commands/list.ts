@@ -1,19 +1,17 @@
 import { Command } from 'commander';
-import { join, basename, relative } from 'path';
+import { basename, relative } from 'path';
 import Table from 'cli-table3';
 import {
   loadSchema,
   getTypeFamilies,
   getTypeDefByPath,
-  hasSubtypes,
-  getSubtypeKeys,
   getType,
 } from '../lib/schema.js';
 import { extractWikilinkTarget } from '../lib/audit/types.js';
-import { parseNote } from '../lib/frontmatter.js';
-import { resolveVaultDir, listFilesInDir, getOutputDir } from '../lib/vault.js';
-import { parseFilters, validateFilters, applyFrontmatterFilters } from '../lib/query.js';
-import { printError } from '../lib/prompt.js';
+
+import { resolveVaultDir } from '../lib/vault.js';
+import { validateFilters, applyFrontmatterFilters } from '../lib/query.js';
+import { printError, printWarning } from '../lib/prompt.js';
 import {
   printJson,
   jsonError,
@@ -22,8 +20,20 @@ import {
 import { openNote } from './open.js';
 import { pickFile, parsePickerMode } from '../lib/picker.js';
 import type { LoadedSchema } from '../types/schema.js';
+import {
+  resolveTargets,
+  parsePositionalArg,
+  checkDeprecatedFilters,
+  getTypePositionalDeprecationWarning,
+  hasAnyTargeting,
+  formatTargetingSummary,
+  type TargetingOptions,
+} from '../lib/targeting.js';
 
 interface ListCommandOptions {
+  type?: string;
+  path?: string;
+  text?: string;
   paths?: boolean;
   fields?: string;
   where?: string[];
@@ -40,36 +50,42 @@ interface ListCommandOptions {
 }
 
 export const listCommand = new Command('list')
-  .description('List notes of a given type with optional filtering')
+  .description('List notes with optional filtering')
   .addHelpText('after', `
-Expression Filters (--where):
-  pika list task --where "status == 'in-progress'"
-  pika list task --where "priority < 3 && !isEmpty(deadline)"
-  pika list task --where "deadline < today() + '7d'"
+Targeting Selectors (compose via AND):
+  --type <type>        Filter by type (e.g., task, objective/milestone)
+  --path <glob>        Filter by file path (e.g., Projects/**, Ideas/)
+  --where <expr>       Filter by frontmatter expression (can repeat)
+  --text <query>       Filter by body content (uses ripgrep)
 
-Simple Filters:
-  --field=value        Include where field equals value
-  --field=a,b          Include where field equals a OR b  
-  --field!=value       Exclude where field equals value
-  --field=             Include where field is empty/missing
-  --field!=            Include where field exists
+Expression Filters (--where):
+  pika list --type task --where "status == 'in-progress'"
+  pika list --type task --where "priority < 3 && !isEmpty(deadline)"
+  pika list --type task --where "deadline < today() + '7d'"
+
+Smart Positional Detection:
+  pika list task                    # Detected as --type task
+  pika list Projects/**             # Detected as --path Projects/**
+  pika list "status=active"         # Detected as --where "status=active"
 
 Examples:
-  pika list idea --status=raw
-  pika list objective/task --status!=settled
-  pika list idea --fields=status,priority
-  pika list task --where "status == 'done' && !isEmpty(tags)"
-  pika list task --output json
-  pika list task --open                    # Pick from tasks and open
-  pika list task --status=inbox --open     # Filter, then open result
+  pika list --type idea
+  pika list --type task --where "status == 'done'"
+  pika list --path "Projects/**" --text "TODO"
+  pika list --type task --output json
+  pika list --type task --open                    # Pick from tasks and open
+  pika list --type task --where "status=inbox" --open
 
 Open Options:
   --open               Open a note from the results (picker if multiple)
   --app <mode>         How to open: obsidian (default), editor, system, print
 
 Note: In zsh, use single quotes for expressions with '!' to avoid history expansion:
-  pika list task --where '!isEmpty(deadline)'`)
-  .argument('[type]', 'Type path (e.g., idea, objective/task)')
+  pika list --type task --where '!isEmpty(deadline)'`)
+  .argument('[positional]', 'Smart positional: type, path (contains /), or where expression (contains =<>~)')
+  .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
+  .option('-p, --path <glob>', 'Filter by file path glob (e.g., Projects/**, Ideas/)')
+  .option('--text <query>', 'Filter by body content search')
   .option('--paths', 'Show file paths instead of names')
   .option('--fields <fields>', 'Show frontmatter fields in a table (comma-separated)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
@@ -84,7 +100,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--tree', 'Display notes as a tree hierarchy')
   .option('--depth <n>', 'Limit tree/descendants depth (use with --tree or --descendants-of)')
   .allowUnknownOption(true)
-  .action(async (typePath: string | undefined, options: ListCommandOptions, cmd: Command) => {
+  .action(async (positional: string | undefined, options: ListCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
     try {
@@ -92,34 +108,63 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       const vaultDir = resolveVaultDir(parentOpts ?? {});
       const schema = await loadSchema(vaultDir);
 
-      if (!typePath) {
-        if (jsonMode) {
-          printJson(jsonError('Type path is required'));
-          process.exit(ExitCodes.VALIDATION_ERROR);
+      // Build targeting options from flags
+      const targeting: TargetingOptions = {};
+      if (options.type) targeting.type = options.type;
+      if (options.path) targeting.path = options.path;
+      if (options.where) targeting.where = options.where;
+      if (options.text) targeting.text = options.text;
+
+      // Check for deprecated simple filter flags (--field=value)
+      const filterArgs = cmd.args.slice(positional ? 1 : 0);
+      const deprecatedCheck = checkDeprecatedFilters(filterArgs);
+      if (deprecatedCheck.warnings.length > 0 && !jsonMode) {
+        for (const warning of deprecatedCheck.warnings) {
+          printWarning(warning);
         }
-        showListUsage(schema);
-        process.exit(1);
       }
 
-      // Validate type exists
-      const typeDef = getTypeDefByPath(schema, typePath);
-      if (!typeDef) {
-        const error = `Unknown type: ${typePath}`;
-        if (jsonMode) {
-          printJson(jsonError(error));
-          process.exit(ExitCodes.VALIDATION_ERROR);
+      // Handle smart positional detection
+      if (positional) {
+        const positionalResult = parsePositionalArg(positional, schema, targeting);
+        if (positionalResult.error) {
+          if (jsonMode) {
+            printJson(jsonError(positionalResult.error));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(positionalResult.error);
+          process.exit(1);
         }
-        printError(error);
-        process.exit(1);
+        
+        // Show deprecation warning if positional was detected as type
+        if (positionalResult.detectedAs === 'type' && !jsonMode) {
+          printWarning(getTypePositionalDeprecationWarning(positional));
+        }
+        
+        // Merge parsed options
+        Object.assign(targeting, positionalResult.options);
       }
 
-      // Parse filters from remaining arguments
-      const filterArgs = cmd.args.slice(1); // Skip the type argument
-      const filters = parseFilters(filterArgs);
+      // Validate type if specified
+      if (targeting.type) {
+        const typeDef = getTypeDefByPath(schema, targeting.type);
+        if (!typeDef) {
+          const error = `Unknown type: ${targeting.type}`;
+          if (jsonMode) {
+            printJson(jsonError(error));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(error);
+          process.exit(1);
+        }
+      }
 
-      // Validate filters
-      if (filters.length > 0) {
-        const validation = validateFilters(schema, typePath, filters);
+      // Use the deprecated filters directly (already parsed)
+      const filters = deprecatedCheck.filters;
+
+      // Validate filters if type is specified
+      if (filters.length > 0 && targeting.type) {
+        const validation = validateFilters(schema, targeting.type, filters);
         if (!validation.valid) {
           if (jsonMode) {
             printJson(jsonError(validation.errors.join('; ')));
@@ -132,13 +177,31 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         }
       }
 
+      // Resolve targets using shared targeting module
+      const targetResult = await resolveTargets(targeting, schema, vaultDir);
+      
+      if (targetResult.error) {
+        if (jsonMode) {
+          printJson(jsonError(targetResult.error));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        printError(targetResult.error);
+        process.exit(1);
+      }
+
+      // Show targeting summary if no results
+      if (targetResult.files.length === 0 && !jsonMode && hasAnyTargeting(targeting)) {
+        console.log(`No notes found matching: ${formatTargetingSummary(targeting)}`);
+      }
+
       const fields = options.fields?.split(',').map(f => f.trim());
       const depth = options.depth ? parseInt(options.depth, 10) : undefined;
-      await listObjects(schema, vaultDir, typePath, {
+      
+      await listObjects(schema, vaultDir, targeting.type, targetResult.files, {
         showPaths: options.paths ?? false,
         ...(fields !== undefined && { fields }),
         filters,
-        whereExpressions: options.where ?? [],
+        whereExpressions: [], // Already applied by resolveTargets
         jsonMode,
         // Open options
         open: options.open,
@@ -182,12 +245,17 @@ interface ListOptions {
  * Show list command usage.
  */
 function showListUsage(schema: LoadedSchema): void {
-  console.log('Usage: pika list [options] <type>[/<subtype>] [filters...]');
+  console.log('Usage: pika list [options] [positional]');
   console.log('');
-  console.log('Options:');
+  console.log('Targeting Selectors:');
+  console.log('  --type <type>        Filter by type path');
+  console.log('  --path <glob>        Filter by file path glob');
+  console.log('  --where "expr"       Filter with expression (can be repeated)');
+  console.log('  --text <query>       Filter by body content');
+  console.log('');
+  console.log('Other Options:');
   console.log('  --paths              Show file paths instead of names');
   console.log('  --fields=f1,f2,...   Show frontmatter fields in a table');
-  console.log('  --where "expr"       Filter with expression (can be repeated)');
   console.log('  --output json        Output as JSON');
   console.log('');
   console.log('Expression examples:');
@@ -196,13 +264,6 @@ function showListUsage(schema: LoadedSchema): void {
   console.log('  --where "deadline < today() + \'7d\'"');
   console.log('  --where "contains(tags, \'urgent\')"');
   console.log('');
-  console.log('Simple Filters:');
-  console.log('  --field=value        Include items where field equals value');
-  console.log('  --field=val1,val2    Include items where field equals any value (OR)');
-  console.log('  --field!=value       Exclude items where field equals value');
-  console.log('  --field=             Include items where field is missing/empty');
-  console.log('  --field!=            Include items where field exists (has a value)');
-  console.log('');
   console.log('Available types:');
   for (const family of getTypeFamilies(schema)) {
     console.log(`  ${family}`);
@@ -210,38 +271,33 @@ function showListUsage(schema: LoadedSchema): void {
 }
 
 /**
- * List objects by type path.
+ * List objects with pre-resolved files from targeting.
  */
 async function listObjects(
   schema: LoadedSchema,
   vaultDir: string,
-  typePath: string,
+  typePath: string | undefined,
+  files: Array<{ path: string; relativePath: string; frontmatter: Record<string, unknown> }>,
   options: ListOptions
 ): Promise<void> {
-  // Collect all files for this type
-  const files = await collectFilesForType(schema, vaultDir, typePath);
+  // Convert to the format expected by the rest of the function
+  let filteredFiles = files.map(f => ({
+    path: f.path,
+    frontmatter: f.frontmatter,
+  }));
 
-  // Parse frontmatter for all files
-  const filesWithFrontmatter: { path: string; frontmatter: Record<string, unknown> }[] = [];
-  for (const file of files) {
-    try {
-      const { frontmatter } = await parseNote(file);
-      filesWithFrontmatter.push({ path: file, frontmatter });
-    } catch {
-      // Skip files that can't be parsed
-    }
+  // Apply any remaining deprecated filters
+  if (options.filters.length > 0) {
+    filteredFiles = await applyFrontmatterFilters(filteredFiles, {
+      filters: options.filters,
+      whereExpressions: options.whereExpressions,
+      vaultDir,
+      silent: options.jsonMode,
+    });
   }
 
-  // Apply filters using shared helper
-  let filteredFiles = await applyFrontmatterFilters(filesWithFrontmatter, {
-    filters: options.filters,
-    whereExpressions: options.whereExpressions,
-    vaultDir,
-    silent: options.jsonMode,
-  });
-
   // Check if type is recursive for hierarchy options
-  const typeDef = getType(schema, typePath);
+  const typeDef = typePath ? getType(schema, typePath) : undefined;
   const isRecursive = typeDef?.recursive ?? false;
 
   // Apply hierarchy filters for recursive types
@@ -307,11 +363,11 @@ async function listObjects(
       targetPath = filteredFiles[0]!.path;
     } else if (process.stdin.isTTY && process.stdout.isTTY) {
       // Multiple results - use picker
-      const files = filteredFiles.map(f => ({
+      const pickerFiles = filteredFiles.map(f => ({
         path: f.path,
         relativePath: relative(vaultDir, f.path),
       }));
-      const pickerResult = await pickFile(files, {
+      const pickerResult = await pickFile(pickerFiles, {
         mode: parsePickerMode(undefined),
         prompt: `${filteredFiles.length} notes - select to open`,
       });
@@ -359,34 +415,6 @@ async function listObjects(
     for (const { path } of filteredFiles) {
       console.log(basename(path, '.md'));
     }
-  }
-}
-
-/**
- * Recursively collect files for a type path.
- */
-async function collectFilesForType(
-  schema: LoadedSchema,
-  vaultDir: string,
-  typePath: string
-): Promise<string[]> {
-  const typeDef = getTypeDefByPath(schema, typePath);
-  if (!typeDef) return [];
-
-  if (hasSubtypes(typeDef)) {
-    // Recurse into subtypes (children in v2)
-    const files: string[] = [];
-    for (const subtype of getSubtypeKeys(typeDef)) {
-      // In v2, children are just type names, not paths
-      const subFiles = await collectFilesForType(schema, vaultDir, subtype);
-      files.push(...subFiles);
-    }
-    return files;
-  } else {
-    // Leaf type - list files from output_dir
-    const outputDir = getOutputDir(schema, typePath);
-    if (!outputDir) return [];
-    return listFilesInDir(join(vaultDir, outputDir));
   }
 }
 
@@ -623,3 +651,6 @@ function printTree(
     printNode(root, '', isLast);
   }
 }
+
+// Export showListUsage for potential use elsewhere
+export { showListUsage };

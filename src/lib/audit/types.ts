@@ -143,6 +143,10 @@ export interface AuditRunOptions {
   typePath?: string | undefined;
   strict: boolean;
   pathFilter?: string | undefined;
+  /** Where expressions for frontmatter filtering */
+  whereExpressions?: string[] | undefined;
+  /** Text query for body content filtering */
+  textQuery?: string | undefined;
   onlyIssue?: IssueCode | undefined;
   ignoreIssue?: IssueCode | undefined;
   allowedFields?: Set<string> | undefined;

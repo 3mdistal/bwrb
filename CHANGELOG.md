@@ -6,6 +6,21 @@ All notable changes to Pika are documented in this file.
 
 ### Added
 
+- **Unified CLI targeting model** (pika-s8kt)
+  - All set-operating commands now support four composable selectors: `--type`, `--path`, `--where`, `--text`
+  - Selectors compose via AND: `pika list --type task --where "status=active" --path "Projects/*"`
+  - Smart positional detection: first argument auto-detected as type, path (contains `/`), or where expression
+  - **`list` command**: Added `--type`, `--path`, `--text` options; type positional now deprecated
+  - **`bulk` command**: Added `--path`, `--text` options; type positional now deprecated
+  - **`audit` command**: Added `--type`, `--where`, `--text` options
+  - **`search` command**: Added `--path` option for glob filtering
+  - **`delete` command**: Now supports bulk deletion with full targeting selectors
+    - Two-gate safety model: requires explicit targeting + `--execute` flag
+    - Dry-run by default shows files that would be deleted
+    - Example: `pika delete --type task --where "status=done" --execute`
+  - Deprecation warnings for type positional argument (use `--type` instead)
+  - New shared targeting module (`src/lib/targeting.ts`) for consistent behavior
+
 - **Targeting safety gate for `bulk` command** (pika-da6s)
   - Bulk operations now require explicit targeting to prevent accidental vault-wide mutations
   - Must specify `--where` filter(s) OR use `--all` flag before any operation runs

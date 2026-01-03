@@ -19,7 +19,7 @@ import {
   getEnumValues,
 } from '../lib/schema.js';
 import { resolveVaultDir } from '../lib/vault.js';
-import { parseFilters, validateFilters } from '../lib/query.js';
+import { validateFilters } from '../lib/query.js';
 import { printError } from '../lib/prompt.js';
 import {
   printJson,
@@ -29,10 +29,19 @@ import {
 } from '../lib/output.js';
 import { buildOperation, formatChange } from '../lib/bulk/operations.js';
 import { executeBulk } from '../lib/bulk/execute.js';
-import type { BulkOperation, BulkResult, FileChange } from '../lib/bulk/types.js';
+import {
+  parsePositionalArg,
+  getTypePositionalDeprecationWarning,
+  hasAnyTargeting,
+  checkDeprecatedFilters,
+} from '../lib/targeting.js';
+import type { BulkOperation, BulkResult } from '../lib/bulk/types.js';
 import type { LoadedSchema } from '../types/schema.js';
 
 interface BulkCommandOptions {
+  type?: string;
+  path?: string;
+  text?: string;
   all?: boolean;
   set?: string[];
   rename?: string[];
@@ -55,18 +64,27 @@ export const bulkCommand = new Command('bulk')
 Safety (Two-Gate Model):
   Bulk operations require explicit targeting to prevent accidents.
   
-  1. Targeting gate: Specify --where filter(s) OR use --all
+  1. Targeting gate: Specify selectors (--type, --path, --where, --text) OR use --all
   2. Execution gate: Use --execute to apply changes (dry-run by default)
 
   # Error: no targeting specified
-  pika bulk task --set status=done
+  pika bulk --set status=done
   # "No files selected. Use --type, --path, --where, --text, or --all."
 
-  # OK: filtered with --where
-  pika bulk task --where "status == 'active'" --set status=done
+  # OK: filtered with --type and --where
+  pika bulk --type task --where "status == 'active'" --set status=done
 
-  # OK: explicit --all targets all files of type
-  pika bulk task --all --set status=done
+  # OK: filtered with --path
+  pika bulk --path "Projects/**" --set archived=true
+
+  # OK: explicit --all targets all managed files
+  pika bulk --all --set status=done
+
+Selectors (compose via AND):
+  -t, --type <type>           Filter by type (e.g., task, objective/milestone)
+  -p, --path <glob>           Filter by file path (supports globs)
+  -w, --where <expression>    Filter by frontmatter (can repeat, ANDed)
+  --text <query>              Filter by body content
 
 Operations:
   --set <field>=<value>       Set field value
@@ -77,11 +95,8 @@ Operations:
   --remove <field>=<value>    Remove from list field
   --move <path>               Move files to path (auto-updates wikilinks)
 
-Targeting:
-  --where "<expression>"      Filter expression (can repeat, ANDed)
-  --all                       Target all files of the type (explicit intent)
-
 Execution:
+  -a, --all                   Target all files (requires explicit intent)
   --execute                   Actually apply changes (dry-run by default)
   --backup                    Create backup before changes
   --limit <n>                 Limit to n files
@@ -93,29 +108,38 @@ Output:
 
 Examples:
   # Preview changes (dry-run)
-  pika bulk task --where "status == 'in-progress'" --set status=done
+  pika bulk --type task --where "status == 'in-progress'" --set status=done
 
   # Apply changes
-  pika bulk task --where "status == 'in-progress'" --set status=done --execute
+  pika bulk --type task --where "status == 'in-progress'" --set status=done --execute
 
-  # Target all files of a type
-  pika bulk idea --all --set reviewed=true --execute
+  # Target by path
+  pika bulk --path "Archive/**" --set archived=true --execute
+
+  # Target by content
+  pika bulk --text "TODO" --set needs-review=true --execute
+
+  # Target all managed files
+  pika bulk --all --set reviewed=true --execute
 
   # Multiple operations
-  pika bulk task --where "status == 'done'" --set archived=true --set "archived-date=2025-01-15" --execute
+  pika bulk --type task --where "status == 'done'" --set archived=true --set "archived-date=2025-01-15" --execute
 
   # Rename a field across all files
-  pika bulk idea --all --rename old-field=new-field --execute
+  pika bulk --all --rename old-field=new-field --execute
 
   # Append to a list field
-  pika bulk task --where "priority == 'high'" --append tags=urgent --execute
+  pika bulk --type task --where "priority == 'high'" --append tags=urgent --execute
 
   # Create backup before changes
-  pika bulk task --all --set status=archived --execute --backup
+  pika bulk --type task --all --set status=archived --execute --backup
 
   # Move files to archive (updates wikilinks automatically)
-  pika bulk idea --where "status == 'settled'" --move Archive/Ideas --execute`)
-  .argument('<type>', 'Type path (e.g., idea, objective/task)')
+  pika bulk --type idea --where "status == 'settled'" --move Archive/Ideas --execute`)
+  .argument('[target]', 'Type, path, or where expression (auto-detected) [DEPRECATED: use --type, --path, or --where]')
+  .option('-t, --type <type>', 'Filter by type (e.g., task, objective/milestone)')
+  .option('-p, --path <glob>', 'Filter by file path (supports globs)')
+  .option('--text <query>', 'Filter by body content')
   .option('--set <field=value...>', 'Set field value (or clear with --set field=)')
   .option('--rename <old=new...>', 'Rename field')
   .option('--delete <field...>', 'Delete field')
@@ -123,7 +147,7 @@ Examples:
   .option('--remove <field=value...>', 'Remove from list field')
   .option('--move <path>', 'Move files to path (auto-updates wikilinks)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
-  .option('-a, --all', 'Target all files of the type (requires explicit intent)')
+  .option('-a, --all', 'Target all files (requires explicit intent)')
   .option('--execute', 'Actually apply changes (dry-run by default)')
   .option('--backup', 'Create backup before changes')
   .option('--limit <n>', 'Limit to n files')
@@ -131,7 +155,7 @@ Examples:
   .option('--quiet', 'Only show summary')
   .option('-o, --output <format>', 'Output format: text (default) or json')
   .allowUnknownOption(true)
-  .action(async (typePath: string, options: BulkCommandOptions, cmd: Command) => {
+  .action(async (target: string | undefined, options: BulkCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
     try {
@@ -139,25 +163,64 @@ Examples:
       const vaultDir = resolveVaultDir(parentOpts ?? {});
       const schema = await loadSchema(vaultDir);
 
-      // Validate type exists
-      const typeDef = getTypeDefByPath(schema, typePath);
-      if (!typeDef) {
-        const error = `Unknown type: ${typePath}`;
-        if (jsonMode) {
-          printJson(jsonError(error));
-          process.exit(ExitCodes.VALIDATION_ERROR);
+      // Build targeting options from flags
+      let typePath = options.type;
+      let pathGlob = options.path;
+      let whereExpressions = options.where ?? [];
+
+      // Handle positional argument (deprecated)
+      if (target) {
+        const parsed = parsePositionalArg(target, schema, {});
+        if (parsed.error) {
+          if (jsonMode) {
+            printJson(jsonError(parsed.error));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(parsed.error);
+          process.exit(1);
         }
-        printError(error);
-        showAvailableTypes(schema);
-        process.exit(1);
+
+        // Emit deprecation warning
+        if (parsed.detectedAs === 'type' && parsed.options.type) {
+          console.error(getTypePositionalDeprecationWarning(parsed.options.type));
+        }
+
+        // Apply the detected value
+        if (parsed.options.type && !typePath) {
+          typePath = parsed.options.type;
+        } else if (parsed.options.path && !pathGlob) {
+          pathGlob = parsed.options.path;
+        } else if (parsed.options.where) {
+          whereExpressions = [...parsed.options.where, ...whereExpressions];
+        }
       }
 
-      // Parse simple filters from remaining arguments (--field=value syntax)
-      const filterArgs = cmd.args.slice(1); // Skip the type argument
-      const simpleFilters = parseFilters(filterArgs);
+      // Parse simple filters from remaining arguments (--field=value syntax) - DEPRECATED
+      const filterArgs = target ? cmd.args.slice(1) : cmd.args;
+      const { filters: simpleFilters, warnings: filterWarnings } = checkDeprecatedFilters(filterArgs);
 
-      // Validate simple filters
-      if (simpleFilters.length > 0) {
+      // Emit deprecation warnings for simple filters
+      for (const warning of filterWarnings) {
+        console.error(warning);
+      }
+
+      // Validate type exists if specified
+      if (typePath) {
+        const typeDef = getTypeDefByPath(schema, typePath);
+        if (!typeDef) {
+          const error = `Unknown type: ${typePath}`;
+          if (jsonMode) {
+            printJson(jsonError(error));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(error);
+          showAvailableTypes(schema);
+          process.exit(1);
+        }
+      }
+
+      // Validate simple filters if type is specified
+      if (simpleFilters.length > 0 && typePath) {
         const validation = validateFilters(schema, typePath, simpleFilters);
         if (!validation.valid) {
           if (jsonMode) {
@@ -172,12 +235,16 @@ Examples:
       }
 
       // Targeting gate: require explicit selector(s) OR --all for destructive operations
-      // Per product spec, simple filters (--field=value) are deprecated and do NOT satisfy the gate.
-      // Only --where expressions or --all flag satisfy explicit targeting.
-      const hasWhereExpressions = options.where && options.where.length > 0;
-      const hasExplicitTargeting = hasWhereExpressions || options.all;
+      // Simple filters are deprecated and do NOT satisfy the targeting gate
+      const hasTargeting = hasAnyTargeting({
+        ...(typePath && { type: typePath }),
+        ...(pathGlob && { path: pathGlob }),
+        ...(whereExpressions.length > 0 && { where: whereExpressions }),
+        ...(options.text && { text: options.text }),
+        ...(options.all && { all: options.all }),
+      });
 
-      if (!hasExplicitTargeting) {
+      if (!hasTargeting) {
         const error = 'No files selected. Use --type, --path, --where, --text, or --all.';
         if (jsonMode) {
           printJson(jsonError(error));
@@ -187,11 +254,12 @@ Examples:
         console.log(`
 Hint: Bulk operations require explicit targeting to prevent accidents.
 
-  Filter with --where:
-    pika bulk ${typePath} --where "status == 'x'" --set field=value
+  Filter with selectors:
+    pika bulk --type task --where "status == 'x'" --set field=value
+    pika bulk --path "Projects/**" --set field=value
 
-  Or use --all to target all ${typePath} notes:
-    pika bulk ${typePath} --all --set field=value
+  Or use --all to target all managed files:
+    pika bulk --all --set field=value
 `);
         process.exit(1);
       }
@@ -204,8 +272,8 @@ Hint: Bulk operations require explicit targeting to prevent accidents.
       for (const arg of options.set ?? []) {
         try {
           const op = buildOperation('set', arg);
-          // Validate enum values for 'set' operations
-          if (op.type === 'set' && op.value !== undefined) {
+          // Validate enum values for 'set' operations (only if type is specified)
+          if (op.type === 'set' && op.value !== undefined && typePath) {
             const enumError = validateEnumValue(schema, typePath, op.field, op.value);
             if (enumError) {
               validationErrors.push(enumError);
@@ -239,8 +307,8 @@ Hint: Bulk operations require explicit targeting to prevent accidents.
       for (const arg of options.append ?? []) {
         try {
           const op = buildOperation('append', arg);
-          // Validate enum values for 'append' operations
-          if (op.value !== undefined) {
+          // Validate enum values for 'append' operations (only if type is specified)
+          if (op.value !== undefined && typePath) {
             const enumError = validateEnumValue(schema, typePath, op.field, op.value);
             if (enumError) {
               validationErrors.push(enumError);
@@ -321,8 +389,10 @@ Hint: Bulk operations require explicit targeting to prevent accidents.
 
       const result = await executeBulk({
         typePath,
+        pathGlob,
+        textQuery: options.text,
         operations,
-        whereExpressions: options.where ?? [],
+        whereExpressions,
         simpleFilters,
         execute: options.execute ?? false,
         backup: options.backup ?? false,
@@ -332,6 +402,7 @@ Hint: Bulk operations require explicit targeting to prevent accidents.
         jsonMode,
         vaultDir,
         schema,
+        all: options.all ?? false,
       });
 
       // Output results
@@ -633,7 +704,7 @@ function outputMoveTextResult(result: BulkResult, verbose: boolean, quiet: boole
 }
 
 // Re-export types for testing
-export type { BulkOperation, BulkResult, FileChange };
+export type { BulkOperation, BulkResult };
 export { executeBulk } from '../lib/bulk/execute.js';
 export { buildOperation, applyOperations, formatChange, formatValue } from '../lib/bulk/operations.js';
 export { createBackup, listBackups, restoreBackup } from '../lib/bulk/backup.js';

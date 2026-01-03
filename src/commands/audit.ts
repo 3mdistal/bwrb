@@ -11,13 +11,16 @@ import {
   getTypeDefByPath,
 } from '../lib/schema.js';
 import { resolveVaultDir } from '../lib/vault.js';
-import { printError } from '../lib/prompt.js';
+import { printError, printWarning } from '../lib/prompt.js';
 import {
   printJson,
   jsonError,
   ExitCodes,
 } from '../lib/output.js';
-// Schema type used only in re-exports
+import {
+  parsePositionalArg,
+  getTypePositionalDeprecationWarning,
+} from '../lib/targeting.js';
 
 // Import from audit modules
 import {
@@ -68,25 +71,40 @@ Issue Types:
   format-violation  Field value doesn't match expected format (wikilink, etc.)
   stale-reference   Wikilink points to non-existent file
 
+Targeting Options:
+  --type <type>     Filter by type (e.g., idea, objective/task)
+  --path <glob>     Filter by file path pattern
+  --where <expr>    Filter by frontmatter expression
+  --text <query>    Filter by body content
+
 Examples:
   pika audit                      # Check all files (report only)
-  pika audit objective/task       # Check only tasks
+  pika audit --type objective/task  # Check only tasks
   pika audit --strict             # Error on unknown fields
-  pika audit --path "Ideas/"      # Check specific directory
+  pika audit --path "Ideas/**"    # Check specific directory
+  pika audit --where "status=active"  # Check files with specific status
+  pika audit --text "TODO"        # Check files containing TODO
   pika audit --only missing-required
   pika audit --ignore unknown-field
   pika audit --output json        # JSON output for CI
   pika audit --allow-field custom # Allow specific extra field`)
-  .argument('[type]', 'Type path to audit (e.g., idea, objective/task)')
+  .argument('[target]', 'Type, path, or where expression (auto-detected)')
+  .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
+  .option('-p, --path <glob>', 'Filter by file path pattern')
+  .option('-w, --where <expr...>', 'Filter by frontmatter expression')
+  .option('--text <query>', 'Filter by body content')
   .option('--strict', 'Treat unknown fields as errors instead of warnings')
-  .option('--path <path>', 'Limit audit to files matching path pattern')
   .option('--only <issue-type>', 'Only report specific issue type')
   .option('--ignore <issue-type>', 'Ignore specific issue type')
   .option('-o, --output <format>', 'Output format: text (default) or json')
   .option('--fix', 'Interactive repair mode')
   .option('--auto', 'With --fix: automatically apply unambiguous fixes')
   .option('--allow-field <fields...>', 'Allow additional fields beyond schema (repeatable)')
-  .action(async (typePath: string | undefined, options: AuditOptions, cmd: Command) => {
+  .action(async (target: string | undefined, options: AuditOptions & {
+    type?: string;
+    where?: string[];
+    text?: string;
+  }, cmd: Command) => {
     const jsonMode = options.output === 'json';
     const fixMode = options.fix ?? false;
     const autoMode = options.auto ?? false;
@@ -108,6 +126,52 @@ Examples:
       const vaultDir = resolveVaultDir(parentOpts ?? {});
       const schema = await loadSchema(vaultDir);
 
+      // Build targeting options from flags
+      let typePath = options.type;
+      let pathGlob = options.path;
+      let whereExprs = options.where;
+
+      // Handle positional argument with smart detection
+      if (target) {
+        if (typePath || pathGlob || whereExprs) {
+          // Positional provided along with explicit flags - emit deprecation warning
+          const deprecation = getTypePositionalDeprecationWarning('audit');
+          if (deprecation) {
+            printWarning(deprecation);
+          }
+        }
+        
+        const existingOpts: Record<string, string | string[] | undefined> = {};
+        if (typePath) existingOpts.type = typePath;
+        if (pathGlob) existingOpts.path = pathGlob;
+        if (whereExprs) existingOpts.where = whereExprs;
+        const parsed = parsePositionalArg(target, schema, existingOpts as import('../lib/targeting.js').TargetingOptions);
+        if (parsed.error) {
+          if (jsonMode) {
+            printJson(jsonError(parsed.error));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(parsed.error);
+          process.exit(1);
+        }
+        
+        // Apply parsed positional to appropriate option
+        if (parsed.options.type && !typePath) {
+          typePath = parsed.options.type;
+          // Emit deprecation warning for positional type
+          const deprecation = getTypePositionalDeprecationWarning('audit');
+          if (deprecation) {
+            printWarning(deprecation);
+          }
+        }
+        if (parsed.options.path && !pathGlob) {
+          pathGlob = parsed.options.path;
+        }
+        if (parsed.options.where && !whereExprs) {
+          whereExprs = parsed.options.where;
+        }
+      }
+
       // Validate type if specified
       if (typePath) {
         const typeDef = getTypeDefByPath(schema, typePath);
@@ -128,11 +192,13 @@ Examples:
         ? new Set(options.allowField)
         : undefined;
 
-      // Run audit
+      // Run audit with unified targeting options
       const results = await runAudit(schema, vaultDir, {
         typePath,
         strict: options.strict ?? false,
-        pathFilter: options.path,
+        pathFilter: pathGlob,
+        whereExpressions: whereExprs,
+        textQuery: options.text,
         onlyIssue: options.only as IssueCode | undefined,
         ignoreIssue: options.ignore as IssueCode | undefined,
         allowedFields,

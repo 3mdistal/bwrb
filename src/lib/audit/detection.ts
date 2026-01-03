@@ -6,6 +6,7 @@
  */
 
 import { dirname, basename } from 'path';
+import { minimatch } from 'minimatch';
 import {
   getType,
   getFieldsForType,
@@ -17,6 +18,8 @@ import {
 } from '../schema.js';
 import { parseNote } from '../frontmatter.js';
 import { suggestEnumValue, suggestFieldName } from '../validation.js';
+import { applyFrontmatterFilters } from '../query.js';
+import { searchContent } from '../content-search.js';
 import type { LoadedSchema, Field } from '../../types/schema.js';
 import {
   type AuditIssue,
@@ -63,10 +66,63 @@ export async function runAudit(
   // Discover all managed files
   const files = await discoverManagedFiles(schema, vaultDir, options.typePath);
 
-  // Apply path filter
-  const filteredFiles = options.pathFilter
-    ? files.filter(f => f.relativePath.includes(options.pathFilter!))
-    : files;
+  // Apply path filter (glob pattern or substring match)
+  let filteredFiles = files;
+  if (options.pathFilter) {
+    const pattern = options.pathFilter;
+    // If pattern contains glob characters, use minimatch; otherwise do substring match
+    const isGlob = /[*?[\]]/.test(pattern);
+    if (isGlob) {
+      filteredFiles = files.filter(f => minimatch(f.relativePath, pattern, { matchBase: true }));
+    } else {
+      // Substring match for simple patterns
+      filteredFiles = files.filter(f => f.relativePath.includes(pattern));
+    }
+  }
+
+  // Apply where expressions (frontmatter filtering)
+  if (options.whereExpressions && options.whereExpressions.length > 0) {
+    const filesWithFrontmatter = await Promise.all(
+      filteredFiles.map(async (f) => {
+        try {
+          const { frontmatter } = await parseNote(f.path);
+          return { path: f.path, frontmatter, _managedFile: f };
+        } catch {
+          return { path: f.path, frontmatter: {}, _managedFile: f };
+        }
+      })
+    );
+    
+    const filtered = await applyFrontmatterFilters(filesWithFrontmatter, {
+      filters: [],
+      whereExpressions: options.whereExpressions,
+      vaultDir,
+      silent: true,
+    });
+    
+    // Map back to ManagedFile
+    const filteredPaths = new Set(filtered.map(f => f.path));
+    filteredFiles = filteredFiles.filter(f => filteredPaths.has(f.path));
+  }
+
+  // Apply text filter (content search)
+  if (options.textQuery) {
+    const searchResult = await searchContent({
+      pattern: options.textQuery,
+      vaultDir,
+      schema,
+      ...(options.typePath && { typePath: options.typePath }),
+      contextLines: 0,
+      caseSensitive: false,
+      regex: false,
+      limit: 10000,
+    });
+    
+    if (searchResult.success && searchResult.results) {
+      const matchingPaths = new Set(searchResult.results.map(r => r.file.path));
+      filteredFiles = filteredFiles.filter(f => matchingPaths.has(f.path));
+    }
+  }
 
   // Build set of all markdown files for stale reference checking
   const allFiles = await collectAllMarkdownFilenames(vaultDir);

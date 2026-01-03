@@ -96,7 +96,9 @@ export interface SimpleFilter {
  * Options for bulk execution.
  */
 export interface BulkOptions {
-  typePath: string;
+  typePath?: string;
+  pathGlob?: string;
+  textQuery?: string;
   operations: BulkOperation[];
   whereExpressions: string[];
   simpleFilters: SimpleFilter[];
@@ -108,6 +110,7 @@ export interface BulkOptions {
   jsonMode: boolean;
   vaultDir: string;
   schema: LoadedSchema;
+  all?: boolean;
 }
 
 /**

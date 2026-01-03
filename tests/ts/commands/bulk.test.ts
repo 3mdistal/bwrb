@@ -17,14 +17,15 @@ describe('bulk command', () => {
   });
 
   describe('basic validation', () => {
-    it('should require a type argument', async () => {
+    it('should show usage when no targeting provided', async () => {
       const result = await runCLI(['bulk'], vaultDir);
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("required");
+      // New behavior: shows "No files selected" with available options
+      expect(result.stderr).toContain('No files selected');
     });
 
     it('should reject unknown type', async () => {
-      const result = await runCLI(['bulk', 'unknown', '--set', 'status=done'], vaultDir);
+      const result = await runCLI(['bulk', '--type', 'unknown', '--set', 'status=done'], vaultDir);
       expect(result.exitCode).toBe(1);
       // Error goes to stderr via printError
       expect(result.stderr).toContain('Unknown type: unknown');
@@ -47,11 +48,18 @@ describe('bulk command', () => {
   });
 
   describe('targeting gate (--all flag)', () => {
-    it('should error when no selectors and no --all flag', async () => {
-      const result = await runCLI(['bulk', 'idea', '--set', 'status=settled'], vaultDir);
+    it('should succeed with --type selector (type is explicit targeting)', async () => {
+      // In unified targeting model, --type IS explicit targeting
+      const result = await runCLI(['bulk', '--type', 'idea', '--set', 'status=settled'], vaultDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Dry run');
+    });
+
+    it('should error when no selectors at all', async () => {
+      const result = await runCLI(['bulk', '--set', 'status=settled'], vaultDir);
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('No files selected');
-      expect(result.stdout).toContain('--all');
+      expect(result.stdout).toContain('--type');
     });
 
     it('should succeed with --where selector (no --all needed)', async () => {
@@ -85,9 +93,9 @@ describe('bulk command', () => {
       expect(result.stdout).toContain('Dry run');
     });
 
-    it('should show targeting error in JSON mode', async () => {
+    it('should show targeting error in JSON mode when no selectors', async () => {
       const result = await runCLI([
-        'bulk', 'idea',
+        'bulk',
         '--set', 'status=settled',
         '--output', 'json'
       ], vaultDir);
@@ -97,15 +105,15 @@ describe('bulk command', () => {
       expect(json.error).toContain('No files selected');
     });
 
-    it('should not count simple filters as explicit targeting', async () => {
-      // Simple filters (--status=raw) are deprecated and do NOT satisfy the targeting gate
+    it('should work with simple filters when type is provided', async () => {
+      // Simple filters work but emit deprecation warning; type provides explicit targeting
       const result = await runCLI([
-        'bulk', 'idea',
+        'bulk', '--type', 'idea',
         '--status=raw',
         '--set', 'priority=high'
       ], vaultDir);
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('No files selected');
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Dry run');
     });
 
     it('should work with --all and --execute', async () => {

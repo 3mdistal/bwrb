@@ -159,10 +159,17 @@ describe('list command', () => {
 
   describe('error handling', () => {
     it('should error on unknown type', async () => {
-      const result = await runCLI(['list', 'nonexistent'], vaultDir);
+      const result = await runCLI(['list', '--type', 'nonexistent'], vaultDir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('Unknown type');
+    });
+
+    it('should show ambiguous error for positional that could be type or path', async () => {
+      const result = await runCLI(['list', 'nonexistent'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Ambiguous argument');
     });
 
     it('should error on invalid filter field', async () => {
@@ -179,12 +186,13 @@ describe('list command', () => {
       expect(result.stderr).toContain('Invalid value');
     });
 
-    it('should show usage when no type provided', async () => {
+    it('should list all notes when no selectors provided (implicit --all for read-only)', async () => {
       const result = await runCLI(['list'], vaultDir);
 
-      expect(result.exitCode).toBe(1);
-      expect(result.stdout).toContain('Usage:');
-      expect(result.stdout).toContain('Available types:');
+      // Read-only commands use implicit --all, so this succeeds
+      expect(result.exitCode).toBe(0);
+      // Should list notes from the vault
+      expect(result.stdout).toBeTruthy();
     });
   });
 

@@ -444,11 +444,13 @@ priority: medium
   });
 
   describe('error handling', () => {
-    it('should error on unknown type', async () => {
+    it('should error on ambiguous/unknown positional arg', async () => {
       const result = await runCLI(['audit', 'nonexistent'], vaultDir);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('Unknown type');
+      // With unified targeting, unknown positional args show helpful disambiguation
+      expect(result.stderr).toContain('Ambiguous argument');
+      expect(result.stderr).toContain('--type=nonexistent');
     });
   });
 

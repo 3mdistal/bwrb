@@ -423,7 +423,7 @@ describe('JSON I/O', () => {
 
     it('should error on unknown type in JSON mode', async () => {
       const result = await runCLI(
-        ['list', 'unknown-type', '--output', 'json'],
+        ['list', '--type', 'unknown-type', '--output', 'json'],
         vaultDir
       );
 
