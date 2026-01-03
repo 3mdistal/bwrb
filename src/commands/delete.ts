@@ -126,7 +126,7 @@ function escapeRegex(str: string): string {
 // ============================================================================
 
 export const deleteCommand = new Command('delete')
-  .description('Delete a note from the vault')
+  .description('Delete notes from the vault')
   .argument('[query]', 'Note name, basename, or path to delete (omit to browse all)')
   // Unified targeting selectors
   .option('-t, --type <type>', 'Filter by type (e.g., "task", "objective/milestone")')

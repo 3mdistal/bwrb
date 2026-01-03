@@ -66,10 +66,19 @@ export async function runAudit(
   // Discover all managed files
   const files = await discoverManagedFiles(schema, vaultDir, options.typePath);
 
-  // Apply path filter (glob pattern)
-  let filteredFiles = options.pathFilter
-    ? files.filter(f => minimatch(f.relativePath, options.pathFilter!, { matchBase: true }))
-    : files;
+  // Apply path filter (glob pattern or substring match)
+  let filteredFiles = files;
+  if (options.pathFilter) {
+    const pattern = options.pathFilter;
+    // If pattern contains glob characters, use minimatch; otherwise do substring match
+    const isGlob = /[*?[\]]/.test(pattern);
+    if (isGlob) {
+      filteredFiles = files.filter(f => minimatch(f.relativePath, pattern, { matchBase: true }));
+    } else {
+      // Substring match for simple patterns
+      filteredFiles = files.filter(f => f.relativePath.includes(pattern));
+    }
+  }
 
   // Apply where expressions (frontmatter filtering)
   if (options.whereExpressions && options.whereExpressions.length > 0) {
