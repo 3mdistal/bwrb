@@ -1,18 +1,29 @@
 /**
- * Vitest setup file for PTY test cleanup.
+ * Vitest setup file for test isolation and PTY cleanup.
  *
- * Ensures orphaned PTY processes are killed:
- * 1. After each test (via afterEach hook)
- * 2. On process interrupt (Ctrl+C) via SIGINT/SIGTERM handlers
- * 3. On uncaught exceptions
+ * This file:
+ * 1. Sets PIKA_VAULT to the fixture vault to prevent tests from
+ *    accidentally reading a developer's real vault
+ * 2. Ensures orphaned PTY processes are killed:
+ *    - After each test (via afterEach hook)
+ *    - On process interrupt (Ctrl+C) via SIGINT/SIGTERM handlers
+ *    - On uncaught exceptions
  *
  * The afterEach hook handles normal test completion and timeouts,
  * but signal handlers are needed for user interrupts (Ctrl+C)
  * which bypass vitest's lifecycle hooks entirely.
  */
 
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { afterEach } from 'vitest';
 import { killAllPtyProcesses } from './lib/pty-helpers.js';
+
+// Set PIKA_VAULT to fixture vault as a safety net.
+// This ensures tests that forget --vault don't accidentally use the developer's real vault.
+// Individual tests can still override via --vault flag or by creating temp vaults.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+process.env.PIKA_VAULT = path.resolve(__dirname, 'fixtures/vault');
 
 // Kill any orphaned PTY processes after each test
 afterEach(() => {

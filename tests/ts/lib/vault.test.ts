@@ -38,6 +38,14 @@ describe('vault', () => {
       }
     });
 
+    it('should default to fixture vault in tests (regression test for vault isolation)', () => {
+      // This test verifies that tests/ts/setup.ts sets PIKA_VAULT to the fixture vault.
+      // Without this, tests could accidentally read a developer's real vault.
+      // See issue pika-smjf.
+      const result = resolveVaultDir({});
+      expect(result).toContain('tests/ts/fixtures/vault');
+    });
+
     it('should use --vault option first', () => {
       process.env['PIKA_VAULT'] = '/env/path';
       const result = resolveVaultDir({ vault: '/option/path' });
