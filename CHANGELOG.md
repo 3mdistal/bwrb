@@ -6,6 +6,12 @@ All notable changes to Pika are documented in this file.
 
 ### Added
 
+- **Shell completion for bash, zsh, and fish** (pika-nn8b)
+  - `pika completion bash|zsh|fish` outputs shell scripts for tab completion
+  - Completes commands, options, `--type` values (from schema), and `--path` values (vault directories)
+  - Dynamic completions that always match the installed version
+  - See README for installation instructions
+
 - **Unified CLI targeting model** (pika-s8kt)
   - All set-operating commands now support four composable selectors: `--type`, `--path`, `--where`, `--text`
   - Selectors compose via AND: `pika list --type task --where "status=active" --path "Projects/*"`

@@ -492,6 +492,41 @@ pika search "My Note" --wikilink | pbcopy
 local link = vim.fn.system("pika search 'My Note' --picker none")
 ```
 
+## Shell Completion
+
+Enable tab completion for commands, types, and paths.
+
+### Bash
+
+Add to `~/.bashrc`:
+
+```bash
+eval "$(pika completion bash)"
+```
+
+### Zsh
+
+Add to `~/.zshrc`:
+
+```zsh
+eval "$(pika completion zsh)"
+```
+
+### Fish
+
+Run once to install:
+
+```fish
+pika completion fish > ~/.config/fish/completions/pika.fish
+```
+
+### What Gets Completed
+
+- **Commands**: `pika <TAB>` shows `new`, `edit`, `list`, `open`, etc.
+- **Options**: `pika list -<TAB>` shows `--type`, `--path`, `--where`, etc.
+- **Types**: `pika list --type <TAB>` shows types from your schema (task, idea, etc.)
+- **Paths**: `pika list --path <TAB>` shows vault directories (Ideas/, Objectives/, etc.)
+
 ## Running Tests
 
 ```sh
