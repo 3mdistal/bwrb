@@ -1612,6 +1612,7 @@ milestone: "[[Non Existent]]"
       );
 
       // Create a file that would trigger audit
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Test.md'),
         `---

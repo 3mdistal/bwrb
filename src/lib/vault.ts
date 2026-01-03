@@ -1,5 +1,5 @@
 import { readdir, stat, mkdir } from 'fs/promises';
-import { join, basename } from 'path';
+import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import { parseNote } from './frontmatter.js';
 import type { LoadedSchema, FilterCondition, ResolvedType, OwnerInfo } from '../types/schema.js';
@@ -472,7 +472,6 @@ export function computeOwnedOutputDirRelative(
   childTypeName: string
 ): string {
   const fullPath = computeOwnedOutputDir(ownerPath, childTypeName);
-  const { relative } = require('path');
   return relative(vaultDir, fullPath);
 }
 

@@ -388,9 +388,9 @@ Hint: Bulk operations require explicit targeting to prevent accidents.
       }
 
       const result = await executeBulk({
-        typePath,
-        pathGlob,
-        textQuery: options.text,
+        ...(typePath !== undefined && { typePath }),
+        ...(pathGlob !== undefined && { pathGlob }),
+        ...(options.text !== undefined && { textQuery: options.text }),
         operations,
         whereExpressions,
         simpleFilters,

@@ -166,7 +166,7 @@ function evaluateUnary(expr: UnaryExpression, context: EvalContext): unknown {
 
   switch (expr.operator) {
     case '!':
-      return !Boolean(arg);
+      return !arg;
     case '-':
       return -toNumber(arg);
     default:

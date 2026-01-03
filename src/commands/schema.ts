@@ -300,7 +300,7 @@ Examples:
       }
       
       let outputDir = options.outputDir;
-      let fields: Record<string, Field> = {};
+      const fields: Record<string, Field> = {};
       const fieldOrder: string[] = [];
       
       // Interactive mode if not JSON
@@ -376,7 +376,7 @@ Examples:
       }
       
       // Load raw schema and add the type
-      let rawSchema = await loadRawSchemaJson(vaultDir);
+      const rawSchema = await loadRawSchemaJson(vaultDir);
       rawSchema.types[name] = newType;
       
       // Write the updated schema

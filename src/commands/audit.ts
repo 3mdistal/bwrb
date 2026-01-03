@@ -182,7 +182,7 @@ Examples:
             process.exit(ExitCodes.VALIDATION_ERROR);
           }
           printError(error);
-          showAvailableTypes(schema);
+          await showAvailableTypes(schema);
           process.exit(1);
         }
       }

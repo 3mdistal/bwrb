@@ -14,7 +14,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "qa": "pnpm typecheck && pnpm lint && pnpm build && pnpm test",
     "postinstall": "chmod +x node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true"
   },
   "keywords": [
@@ -41,18 +43,21 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/minimatch": "^6.0.0",
     "@types/node": "^22.19.3",
     "@types/prompts": "^2.4.9",
     "@vitest/coverage-v8": "^2.1.9",
+    "eslint": "^9.39.2",
     "node-pty": "^1.1.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.51.0",
     "vitest": "^2.1.9"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "packageManager": "pnpm@10.11.0",
   "pnpm": {
