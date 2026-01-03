@@ -29,6 +29,7 @@ import {
 } from '../lib/content-search.js';
 import { parseNote } from '../lib/frontmatter.js';
 import { parseFilters, validateFilters, applyFrontmatterFilters, type Filter } from '../lib/query.js';
+import { minimatch } from 'minimatch';
 
 // ============================================================================
 // Types
@@ -39,6 +40,7 @@ interface SearchOptions {
   output?: string;
   wikilink?: boolean;
   path?: boolean;
+  pathGlob?: string;  // --path-glob for filtering by path pattern
   content?: boolean;
   // Open options
   open?: boolean;
@@ -81,6 +83,7 @@ export const searchCommand = new Command('search')
   // Content search options
   .option('-t, --text', 'Full-text content search (uses ripgrep)')
   .option('--type <type>', 'Restrict search to a type (e.g., idea, objective/task)')
+  .option('--path-glob <pattern>', 'Filter by file path glob pattern (e.g., "Projects/**")')
   .option('-w, --where <expression...>', 'Filter results by frontmatter expression')
   .option('-C, --context <lines>', 'Lines of context around matches (default: 2)')
   .option('--no-context', 'Do not show context lines')
@@ -110,6 +113,7 @@ Content Search (--text):
   Options:
     -t, --text           Enable content search mode
     --type <type>        Restrict to specific type (e.g., task, objective/task)
+    --path-glob <pat>    Filter by path pattern (e.g., "Projects/**")
     -w, --where <expr>   Filter by frontmatter (e.g., "status != 'done'")
     -C, --context <n>    Show n lines of context (default: 2)
     --no-context         Don't show context lines
@@ -261,8 +265,15 @@ async function handleContentSearch(
     process.exit(1);
   }
 
-  // Apply frontmatter filters if specified (simple filters and/or --where expressions)
+  // Apply path glob filter if specified
   let filteredResults = searchResult.results;
+  if (options.pathGlob) {
+    filteredResults = filteredResults.filter(r => 
+      minimatch(r.file.relativePath, options.pathGlob!, { matchBase: true })
+    );
+  }
+
+  // Apply frontmatter filters if specified (simple filters and/or --where expressions)
   const hasFilters = simpleFilters.length > 0 || (options.where && options.where.length > 0);
   if (hasFilters) {
     filteredResults = await filterByFrontmatter(
