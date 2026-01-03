@@ -137,9 +137,9 @@ describe('delete command', () => {
       const result = await runCLI(['delete', '--help'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Delete a note');
+      expect(result.stdout).toContain('Delete notes from the vault');
       expect(result.stdout).toContain('--force');
-      expect(result.stdout).toContain('Picker Modes');
+      expect(result.stdout).toContain('--execute');
       expect(result.stdout).toContain('Examples');
     });
   });
