@@ -27,8 +27,18 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Cache ripgrep
+        id: cache-ripgrep
+        uses: actions/cache@v4
+        with:
+          path: /usr/bin/rg
+          key: ripgrep-${{ runner.os }}-14.1
+
       - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        if: steps.cache-ripgrep.outputs.cache-hit != 'true'
+        run: |
+          curl -LO https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb
+          sudo dpkg -i ripgrep_14.1.1-1_amd64.deb
 
       - name: Install dependencies
         run: pnpm install
@@ -45,9 +55,12 @@ jobs:
       - name: Run tests (excluding PTY)
         run: pnpm test -- --exclude='**/*.pty.test.ts'
 
+  # PTY tests only run on main (post-merge verification)
+  # This speeds up PR feedback while still catching PTY regressions
   test-pty:
     name: PTY Tests
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     # PTY tests may fail in CI due to terminal emulation issues
     # We track these separately and allow failures while debugging
     continue-on-error: true
@@ -63,8 +76,18 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Cache ripgrep
+        id: cache-ripgrep
+        uses: actions/cache@v4
+        with:
+          path: /usr/bin/rg
+          key: ripgrep-${{ runner.os }}-14.1
+
       - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        if: steps.cache-ripgrep.outputs.cache-hit != 'true'
+        run: |
+          curl -LO https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb
+          sudo dpkg -i ripgrep_14.1.1-1_amd64.deb
 
       - name: Install dependencies
         run: pnpm install
