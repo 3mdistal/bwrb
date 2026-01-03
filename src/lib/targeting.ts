@@ -118,14 +118,23 @@ export function detectPositionalType(
 }
 
 /**
+ * Result of parsing a positional argument.
+ */
+export interface ParsePositionalResult {
+  options: TargetingOptions;
+  detectedAs?: 'type' | 'path' | 'where';
+  error?: string;
+}
+
+/**
  * Parse a positional argument into targeting options.
- * Returns updated options and any error message.
+ * Returns updated options, detected type, and any error message.
  */
 export function parsePositionalArg(
   arg: string,
   schema: LoadedSchema,
   existingOptions: TargetingOptions
-): { options: TargetingOptions; error?: string } {
+): ParsePositionalResult {
   const detected = detectPositionalType(arg, schema);
 
   if (detected === null) {
@@ -147,6 +156,7 @@ export function parsePositionalArg(
       if (options.type) {
         return {
           options,
+          detectedAs: detected,
           error: `Type already specified as '${options.type}'. Cannot also use '${arg}'.`,
         };
       }
@@ -157,6 +167,7 @@ export function parsePositionalArg(
       if (options.path) {
         return {
           options,
+          detectedAs: detected,
           error: `Path already specified as '${options.path}'. Cannot also use '${arg}'.`,
         };
       }
@@ -169,7 +180,7 @@ export function parsePositionalArg(
       break;
   }
 
-  return { options };
+  return { options, detectedAs: detected };
 }
 
 // ============================================================================
