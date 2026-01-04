@@ -68,6 +68,39 @@ Tasks can contain subtasks. Chapters can contain subchapters.
 - Tree queries: "show me all subtasks of Epic X"
 - Hierarchical organization without new types
 
+#### Recursion + Inheritance (Mixed Hierarchies)
+
+A type can be both recursive AND extend a parent type. When this happens, the auto-generated `parent` field accepts either:
+
+- The extended type (inheritance relationship)
+- The same type (recursive nesting)
+
+This is single inheritance with optional self-nesting — not multiple inheritance.
+
+**Example:** A `scene` type with `extends: "chapter"` and `recursive: true`:
+
+```
+chapter: "Act One"          ← scene's parent can be a chapter
+  └── scene: "Opening"
+        └── scene: "Flashback"  ← or another scene
+```
+
+| Valid parent for `scene` | Reason |
+|--------------------------|--------|
+| `[[Act One]]` (chapter)  | Inheritance: scene extends chapter |
+| `[[Opening]]` (scene)    | Recursion: scene is recursive |
+| `[[Some Task]]` (task)   | Invalid: not chapter or scene |
+| `[[Self]]` (itself)      | Invalid: would create a cycle |
+
+**Common patterns:**
+- `task` extends `objective`, but tasks can have subtasks
+- `scene` extends `chapter`, but scenes can have sub-scenes
+
+**Cycle prevention:** Circular parent references are blocked at creation time.
+- `pika new` and `pika edit` reject changes that would create cycles
+- `pika audit` detects cycles introduced by external edits
+- Self-references (A → A) are also blocked
+
 ---
 
 ## Design Principles
