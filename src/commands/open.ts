@@ -17,6 +17,7 @@ import { resolveAndPick, parsePickerMode } from "../lib/picker.js";
 import {
   printJson,
   jsonError,
+  exitWithError,
   ExitCodes,
   exitWithResolutionError,
 } from "../lib/output.js";
@@ -64,7 +65,14 @@ export async function openNote(
       printJson({ success: true, data: { relativePath: notePath, fullPath, app: "obsidian" } });
     }
   } else {
-    const editor = process.env.EDITOR || "vim";
+    const editor = process.env['EDITOR'] || process.env['VISUAL'];
+    if (!editor) {
+      if (jsonMode) {
+        jsonError("No editor configured. Set EDITOR or VISUAL environment variable.");
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      exitWithError("No editor configured. Set EDITOR or VISUAL environment variable.");
+    }
     const child = spawn(editor, [fullPath], {
       stdio: "inherit",
     });

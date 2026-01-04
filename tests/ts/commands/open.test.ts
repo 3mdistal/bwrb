@@ -69,8 +69,8 @@ describe('open command', () => {
       const result = await runCLI(['open'], vaultDir);
 
       expect(result.exitCode).toBe(1);
-      // In non-TTY context, it errors about needing a terminal
-      expect(result.stderr).toContain('terminal');
+      // In non-TTY context, it errors about fzf not being available
+      expect(result.stderr).toContain('fzf');
     });
   });
 
