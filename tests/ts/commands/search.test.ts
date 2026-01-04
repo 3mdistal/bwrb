@@ -213,6 +213,24 @@ status: backlog
       expect(result.stdout).toContain('--path');
       expect(result.stdout).toContain('--content');
     });
+
+    it('should show --preview in help text', async () => {
+      const result = await runCLI(['search', '--help'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('--preview');
+      expect(result.stdout).toContain('fzf picker');
+    });
+  });
+
+  describe('--preview flag', () => {
+    it('should accept --preview flag', async () => {
+      // With --picker none, preview is ignored but flag should be accepted
+      const result = await runCLI(['search', 'Sample Idea', '--preview', '--picker', 'none'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('Sample Idea');
+    });
   });
 
   describe('no query (browse all)', () => {

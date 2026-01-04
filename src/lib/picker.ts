@@ -23,6 +23,10 @@ export interface PickerOptions {
   mode: PickerMode;
   /** Prompt message to display */
   prompt?: string;
+  /** Enable preview pane in fzf (requires fzf, ignored for numbered) */
+  preview?: boolean;
+  /** Vault directory path (needed for preview to resolve full paths) */
+  vaultDir?: string | undefined;
 }
 
 export interface PickerResult {
@@ -59,19 +63,78 @@ function isTTY(): boolean {
 }
 
 /**
+ * Check if a command is available on the system.
+ * Tries the command with --version to verify it works.
+ */
+async function isCommandAvailable(cmd: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const proc = spawn(cmd, ['--version'], { stdio: 'ignore' });
+    proc.on('close', (code) => resolve(code === 0));
+    proc.on('error', () => resolve(false));
+  });
+}
+
+// Cache for bat command availability (null = not checked, string = command name, false = not available)
+let batCommand: string | false | null = null;
+
+/**
+ * Get the bat command if available (bat or batcat on some Linux distros).
+ * Returns the command name or null if not available.
+ */
+async function getBatCommand(): Promise<string | null> {
+  if (batCommand !== null) {
+    return batCommand === false ? null : batCommand;
+  }
+  
+  // Try 'bat' first (most common)
+  if (await isCommandAvailable('bat')) {
+    batCommand = 'bat';
+    return 'bat';
+  }
+  
+  // Try 'batcat' (Debian/Ubuntu package name)
+  if (await isCommandAvailable('batcat')) {
+    batCommand = 'batcat';
+    return 'batcat';
+  }
+  
+  batCommand = false;
+  return null;
+}
+
+/**
  * Run fzf to pick from candidates.
  */
 async function pickWithFzf(
   candidates: ManagedFile[],
-  prompt: string
+  prompt: string,
+  preview: boolean = false,
+  vaultDir?: string
 ): Promise<ManagedFile | null> {
+  // Build fzf args
+  const fzfArgs = [
+    '--prompt', `${prompt}: `,
+    '--height', '40%',
+    '--reverse',
+    '--no-multi',
+  ];
+
+  // Add preview if enabled and we have a vault dir
+  if (preview && vaultDir) {
+    const batCmd = await getBatCommand();
+    // Escape single quotes in vaultDir for shell safety
+    const escapedVaultDir = vaultDir.replace(/'/g, "'\\''");
+    // Use bat for syntax highlighting if available, otherwise cat
+    // The preview command uses single quotes and proper escaping for paths with spaces
+    const previewCmd = batCmd
+      ? `${batCmd} --style=numbers --color=always --line-range=:100 -- '${escapedVaultDir}/'{}`
+      : `cat -- '${escapedVaultDir}/'{}`; 
+    fzfArgs.push('--preview', previewCmd);
+    fzfArgs.push('--preview-window', 'right:50%:wrap');
+  }
+
   return new Promise((resolve) => {
-    const fzf = spawn('fzf', [
-      '--prompt', `${prompt}: `,
-      '--height', '40%',
-      '--reverse',
-      '--no-multi',
-    ], {
+    const fzf = spawn('fzf', fzfArgs, {
       stdio: ['pipe', 'pipe', 'inherit'],
     });
 
@@ -131,7 +194,7 @@ export async function pickFile(
   candidates: ManagedFile[],
   options: PickerOptions
 ): Promise<PickerResult> {
-  const { mode, prompt = 'Select file' } = options;
+  const { mode, prompt = 'Select file', preview = false, vaultDir } = options;
 
   // Handle empty candidates
   if (candidates.length === 0) {
@@ -172,7 +235,7 @@ export async function pickFile(
           candidates,
         };
       }
-      const selected = await pickWithFzf(candidates, prompt);
+      const selected = await pickWithFzf(candidates, prompt, preview, vaultDir);
       return { selected, cancelled: selected === null };
     }
 
@@ -203,7 +266,7 @@ export async function pickFile(
       }
 
       if (await isFzfAvailable()) {
-        const selected = await pickWithFzf(candidates, prompt);
+        const selected = await pickWithFzf(candidates, prompt, preview, vaultDir);
         return { selected, cancelled: selected === null };
       } else {
         const selected = await pickWithNumbered(candidates, prompt);
@@ -238,6 +301,10 @@ export interface ResolveAndPickOptions {
   pickerMode: PickerMode;
   /** Prompt message for picker */
   prompt: string;
+  /** Enable preview pane in fzf */
+  preview?: boolean | undefined;
+  /** Vault directory path (needed for preview) */
+  vaultDir?: string | undefined;
 }
 
 /**
@@ -268,7 +335,7 @@ export async function resolveAndPick(
   query: string | undefined,
   options: ResolveAndPickOptions
 ): Promise<ResolveAndPickResult> {
-  const { pickerMode, prompt } = options;
+  const { pickerMode, prompt, preview = false, vaultDir } = options;
 
   if (!query) {
     // No query - show picker with all files
@@ -279,6 +346,8 @@ export async function resolveAndPick(
     const pickerResult = await pickFile(index.allFiles, {
       mode: pickerMode,
       prompt,
+      preview,
+      vaultDir,
     });
 
     if (pickerResult.error) {
@@ -313,6 +382,8 @@ export async function resolveAndPick(
     const pickerResult = await pickFile(resolution.candidates, {
       mode: pickerMode,
       prompt,
+      preview,
+      vaultDir,
     });
 
     if (pickerResult.error) {

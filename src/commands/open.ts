@@ -35,6 +35,7 @@ interface OpenOptions {
   app?: string;
   picker?: string;
   output?: string;
+  preview?: boolean;
 }
 
 // ============================================================================
@@ -46,6 +47,7 @@ export const openCommand = new Command('open')
   .argument('[query]', 'Note name, basename, or path to open (omit to browse all)')
   .option('--app <mode>', 'How to open: obsidian (default), editor, system, print')
   .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
+  .option('--preview', 'Show file preview in fzf picker (requires fzf)')
   .option('-o, --output <format>', 'Output format: text (default) or json')
   .addHelpText('after', `
 This command is an alias for: bwrb search <query> --open
@@ -100,6 +102,8 @@ Note: Obsidian must be running for --app obsidian to work.
       const result = await resolveAndPick(index, query, {
         pickerMode: effectivePickerMode,
         prompt: 'Select note to open',
+        preview: options.preview,
+        vaultDir,
       });
 
       if (!result.ok) {

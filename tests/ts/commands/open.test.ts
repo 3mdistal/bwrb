@@ -165,4 +165,22 @@ describe('open command', () => {
       expect(result.stderr).toContain('No editor configured');
     });
   });
+
+  describe('preview flag', () => {
+    it('should accept --preview flag', async () => {
+      // --preview is accepted even when it won't be used (non-interactive mode)
+      const result = await runCLI(['open', 'Sample Idea', '--app', 'print', '--preview'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Sample Idea.md');
+    });
+
+    it('should show --preview in help text', async () => {
+      const result = await runCLI(['open', '--help'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('--preview');
+      expect(result.stdout).toContain('fzf');
+    });
+  });
 });

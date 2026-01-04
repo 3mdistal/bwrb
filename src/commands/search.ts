@@ -45,6 +45,7 @@ interface SearchOptions {
   // Open options
   open?: boolean;
   app?: string;
+  preview?: boolean;
   // Content search options
   text?: boolean;
   type?: string;
@@ -78,6 +79,7 @@ export const searchCommand = new Command('search')
   .option('--content', 'Output full file contents (frontmatter + body)')
   .option('--open', 'Open the selected note after search')
   .option('--app <mode>', 'How to open: obsidian (default), editor, system, print')
+  .option('--preview', 'Show file preview in fzf picker (requires fzf)')
   .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
   .option('-o, --output <format>', 'Output format: text (default) or json')
   // Content search options
@@ -313,6 +315,8 @@ async function handleContentSearch(
       prompt: options.open 
         ? `${filteredResults.length} files with matches - select to open`
         : `${filteredResults.length} files with matches`,
+      preview: options.preview ?? false,
+      vaultDir,
     });
 
     if (pickerResult.cancelled || !pickerResult.selected) {
@@ -424,6 +428,8 @@ async function handleNameSearch(
   const result = await resolveAndPick(index, query, {
     pickerMode: effectivePickerMode,
     prompt: options.open ? 'Select note to open' : 'Select note',
+    preview: options.preview ?? false,
+    vaultDir,
   });
 
   if (!result.ok) {
