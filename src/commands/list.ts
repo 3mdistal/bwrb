@@ -24,7 +24,6 @@ import {
   resolveTargets,
   parsePositionalArg,
   checkDeprecatedFilters,
-  getTypePositionalDeprecationWarning,
   hasAnyTargeting,
   formatTargetingSummary,
   type TargetingOptions,
@@ -134,11 +133,6 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
           }
           printError(positionalResult.error);
           process.exit(1);
-        }
-        
-        // Show deprecation warning if positional was detected as type
-        if (positionalResult.detectedAs === 'type' && !jsonMode) {
-          printWarning(getTypePositionalDeprecationWarning(positional));
         }
         
         // Merge parsed options

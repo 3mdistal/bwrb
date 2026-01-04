@@ -28,6 +28,15 @@ describe('list command', () => {
       expect(result.stdout).toContain('Sample Task');
     });
 
+    it('should not show deprecation warning for positional type argument', async () => {
+      // Positional type is a permanent shortcut for list command (see docs/product/cli-targeting.md)
+      const result = await runCLI(['list', 'idea'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).not.toContain('Deprecation warning');
+      expect(result.stderr).not.toContain('positional type argument');
+    });
+
     it('should list all subtypes when listing parent type', async () => {
       const result = await runCLI(['list', 'objective'], vaultDir);
 
