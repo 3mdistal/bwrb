@@ -1,5 +1,7 @@
 # bwrb
 
+Short for **bowerbird**, pronounced "birb".
+
 Schema-driven note management for markdown vaults.
 
 ## Overview
