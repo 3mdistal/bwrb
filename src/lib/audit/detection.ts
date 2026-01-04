@@ -562,30 +562,40 @@ function checkContextFieldSource(
   schema: LoadedSchema,
   fieldName: string,
   value: unknown,
-  source: string,
+  source: string | string[],
   noteTypeMap: Map<string, string>
 ): AuditIssue[] {
   const issues: AuditIssue[] = [];
   
-  // Handle "any" source - no type restriction
-  if (source === 'any') return issues;
+  // Normalize source to array
+  const sources = Array.isArray(source) ? source : [source];
   
-  // Check if source is a valid type
-  const sourceType = schema.types.get(source);
-  if (!sourceType) {
-    // Source is not a known type - schema validation should catch this
-    return issues;
+  // Handle "any" source - no type restriction
+  if (sources.includes('any')) return issues;
+  
+  // Get all valid types (each source type + all their descendants)
+  const validTypes = new Set<string>();
+  for (const src of sources) {
+    const sourceType = schema.types.get(src);
+    if (sourceType) {
+      validTypes.add(src);
+      for (const descendant of getDescendants(schema, src)) {
+        validTypes.add(descendant);
+      }
+    }
   }
   
-  // Get all valid types (source type + all descendants)
-  const validTypes = new Set([source, ...getDescendants(schema, source)]);
+  if (validTypes.size === 0) {
+    // No valid source types found - schema validation should catch this
+    return issues;
+  }
   
   // Handle array values (multiple: true fields)
   const values = Array.isArray(value) ? value : [value];
   
   for (const v of values) {
     const issue = checkSingleContextValue(
-      fieldName, v, source, validTypes, noteTypeMap
+      fieldName, v, sources, validTypes, noteTypeMap
     );
     if (issue) {
       issues.push(issue);
@@ -601,7 +611,7 @@ function checkContextFieldSource(
 function checkSingleContextValue(
   fieldName: string,
   value: unknown,
-  source: string,
+  sources: string[],
   validTypes: Set<string>,
   noteTypeMap: Map<string, string>
 ): AuditIssue | null {
@@ -626,15 +636,16 @@ function checkSingleContextValue(
   const validTypesArray = Array.from(validTypes);
   const suggestion = suggestEnumValue(actualType, validTypesArray);
   
+  const sourceDisplay = sources.length === 1 ? sources[0] : sources.join(' or ');
   return {
     severity: 'error',
     code: 'invalid-source-type',
-    message: `Type mismatch: '${fieldName}' expects ${source}${validTypesArray.length > 1 ? ' (or descendant)' : ''}, but '${target}' is ${actualType}`,
+    message: `Type mismatch: '${fieldName}' expects ${sourceDisplay}${validTypesArray.length > sources.length ? ' (or descendant)' : ''}, but '${target}' is ${actualType}`,
     field: fieldName,
     value: strValue,
-    expectedType: source,
+    expectedType: sources[0],
     actualType: actualType,
-    expected: validTypesArray.length > 1 ? validTypesArray : source,
+    expected: validTypesArray.length > 1 ? validTypesArray : sources[0],
     ...(suggestion && { suggestion: `Did you mean to link to a ${suggestion}?` }),
     autoFixable: false,
   };

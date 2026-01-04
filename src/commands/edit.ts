@@ -251,7 +251,6 @@ async function editNoteFromJson(
     const cycleError = await validateParentNoCycle(
       schema,
       _vaultDir,
-      typePath,
       noteName,
       mergedFrontmatter['parent'] as string
     );
@@ -260,10 +259,8 @@ async function editNoteFromJson(
         success: false,
         error: cycleError.message,
         errors: [{
-          type: cycleError.type,
           field: cycleError.field,
           message: cycleError.message,
-          cyclePath: cycleError.cyclePath,
         }],
       });
       process.exit(ExitCodes.VALIDATION_ERROR);

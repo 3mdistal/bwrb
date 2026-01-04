@@ -373,7 +373,6 @@ async function createNoteFromJson(
     const cycleError = await validateParentNoCycle(
       schema,
       vaultDir,
-      typePath,
       frontmatter['name'] as string,
       frontmatter['parent'] as string
     );
@@ -382,10 +381,8 @@ async function createNoteFromJson(
         success: false,
         error: cycleError.message,
         errors: [{
-          type: cycleError.type,
           field: cycleError.field,
           message: cycleError.message,
-          cyclePath: cycleError.cyclePath,
         }],
       });
       process.exit(ExitCodes.VALIDATION_ERROR);

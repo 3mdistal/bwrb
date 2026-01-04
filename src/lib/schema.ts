@@ -367,7 +367,9 @@ function buildOwnershipMap(types: Map<string, ResolvedType>): OwnershipMap {
     for (const [fieldName, field] of Object.entries(ownerType.fields)) {
       // Check if this field declares ownership
       if (field.owned === true && field.source) {
-        const childType = field.source;
+        // For ownership, use the first source type (arrays are for parent field accepting multiple types)
+        const childType = Array.isArray(field.source) ? field.source[0] : field.source;
+        if (!childType) continue;
         const multiple = field.multiple ?? false;
         
         // Add to owner's "owns" list

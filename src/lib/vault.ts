@@ -157,20 +157,32 @@ function matchesAllConditions(
 export async function queryByType(
   schema: LoadedSchema,
   vaultDir: string,
-  typeName: string,
+  typeName: string | string[],
   filter?: Record<string, FilterCondition>
 ): Promise<string[]> {
-  // Validate that typeName is a known type
-  const type = getType(schema, typeName);
-  if (!type) {
+  // Normalize to array of type names
+  const typeNames = Array.isArray(typeName) ? typeName : [typeName];
+  
+  // Collect all types to query: each specified type + all their descendants
+  const typesToQuery = new Set<string>();
+  for (const name of typeNames) {
+    const type = getType(schema, name);
+    if (type) {
+      typesToQuery.add(name);
+      for (const descendant of getDescendants(schema, name)) {
+        typesToQuery.add(descendant);
+      }
+    }
+  }
+  
+  if (typesToQuery.size === 0) {
     return [];
   }
 
-  // Get all types to query: the specified type + all descendants
-  const typesToQuery = [typeName, ...getDescendants(schema, typeName)];
+  const typesToQueryArray = Array.from(typesToQuery);
   const results: string[] = [];
 
-  for (const queryType of typesToQuery) {
+  for (const queryType of typesToQueryArray) {
     const outputDir = getOutputDirFromSchema(schema, queryType);
     if (!outputDir) continue;
 
@@ -183,7 +195,7 @@ export async function queryByType(
         
         // Verify the note is actually the type we expect
         const actualType = resolveTypeFromFrontmatter(schema, frontmatter);
-        if (!typesToQuery.includes(actualType ?? '')) {
+        if (!typesToQuery.has(actualType ?? '')) {
           continue;
         }
 
