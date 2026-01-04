@@ -384,6 +384,26 @@ This means:
 - A scene's parent can be a `chapter` (the defined source)
 - OR a scene's parent can be another `scene` (because recursive: true)
 
+### Cycle Detection
+
+Pika prevents parent cycles that would create infinite loops:
+
+```yaml
+# Task A
+type: task
+parent: "[[Task B]]"
+
+# Task B  
+type: task
+parent: "[[Task A]]"   # ERROR: Would create cycle A → B → A
+```
+
+**Behavior:**
+- `pika new` and `pika edit` check for cycles before saving
+- Self-references are blocked (a note cannot be its own parent)
+- Error message shows the full cycle path for debugging
+- `pika audit` also detects cycles in existing notes
+
 ### Hierarchical Queries
 
 Recursion enables tree-based queries:

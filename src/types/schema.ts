@@ -23,9 +23,10 @@ export const FieldSchema = z.object({
   value: z.string().optional(),
   // Enum reference for select prompts
   enum: z.string().optional(),
-  // Type name for dynamic prompts (e.g., "milestone", "objective")
+  // Type name(s) for dynamic prompts (e.g., "milestone", "objective")
   // When specified, queryByType() fetches notes of this type (and descendants)
-  source: z.string().optional(),
+  // Can be an array to allow multiple valid types (e.g., for recursive types with extends)
+  source: z.union([z.string(), z.array(z.string())]).optional(),
   // Filter conditions for type-based source queries
   // Applies frontmatter conditions to filter results (e.g., { status: { not_in: ["settled"] } })
   filter: z.record(FilterConditionSchema).optional(),

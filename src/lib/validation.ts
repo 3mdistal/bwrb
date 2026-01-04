@@ -534,7 +534,11 @@ async function validateSingleContextValue(
   // Build list of valid types based on source constraint
   const validTypes = new Set<string>();
   
-  if (source === 'any') {
+  // Handle array sources (e.g., ["chapter", "scene"] for recursive + extends)
+  const sources = Array.isArray(source) ? source : [source];
+  
+  // Check for "any" in sources
+  if (sources.includes('any')) {
     // Any type is valid, just need to check existence
     // Query all types to find the note
     for (const typeName of schema.types.keys()) {
@@ -554,18 +558,25 @@ async function validateSingleContextValue(
     };
   }
 
-  // Check if source type exists
-  const sourceType = getType(schema, source);
-  if (!sourceType) {
-    // Invalid source type in schema - this is a schema error, not a data error
-    // Skip validation rather than report as data error
-    return null;
-  }
+  // Build set of valid types from all sources + their descendants
+  for (const src of sources) {
+    // Check if source type exists
+    const sourceType = getType(schema, src);
+    if (!sourceType) {
+      // Invalid source type in schema - skip this source
+      continue;
+    }
 
-  // Build set of valid types: source + all descendants
-  validTypes.add(source);
-  for (const descendant of getDescendants(schema, source)) {
-    validTypes.add(descendant);
+    // Add source + all descendants
+    validTypes.add(src);
+    for (const descendant of getDescendants(schema, src)) {
+      validTypes.add(descendant);
+    }
+  }
+  
+  // If no valid source types were found, skip validation
+  if (validTypes.size === 0) {
+    return null;
   }
 
   // Query notes for each valid type and check if target exists

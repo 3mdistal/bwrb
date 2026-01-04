@@ -420,6 +420,96 @@ describe('schema', () => {
       expect(ideaType!.recursive).toBe(false);
       expect(ideaType!.fields['parent']).toBeUndefined();
     });
+
+    it('should create parent field with array source for recursive type with extends', async () => {
+      // When a type is recursive AND extends another type,
+      // the parent field should accept both the extended type and the same type
+      const { mkdtemp, writeFile, mkdir, rm } = await import('fs/promises');
+      const { tmpdir } = await import('os');
+      const { join } = await import('path');
+      
+      const tempDir = await mkdtemp(join(tmpdir(), 'pika-mixed-hierarchy-test-'));
+      try {
+        await mkdir(join(tempDir, '.pika'), { recursive: true });
+        await writeFile(
+          join(tempDir, '.pika/schema.json'),
+          JSON.stringify({
+            version: 2,
+            types: {
+              chapter: {
+                fields: {
+                  title: { prompt: 'input' }
+                }
+              },
+              scene: {
+                extends: 'chapter',
+                recursive: true,
+                fields: {
+                  content: { prompt: 'input' }
+                }
+              }
+            }
+          })
+        );
+        
+        const mixedSchema = await loadSchema(tempDir);
+        const sceneType = mixedSchema.types.get('scene');
+        
+        expect(sceneType).toBeDefined();
+        expect(sceneType!.recursive).toBe(true);
+        expect(sceneType!.parent).toBe('chapter');
+        expect(sceneType!.fields['parent']).toBeDefined();
+        
+        // Parent field should accept both 'chapter' and 'scene'
+        const parentSource = sceneType!.fields['parent'].source;
+        expect(Array.isArray(parentSource)).toBe(true);
+        expect(parentSource).toContain('chapter');
+        expect(parentSource).toContain('scene');
+        expect(sceneType!.fields['parent'].format).toBe('wikilink');
+        expect(sceneType!.fields['parent'].required).toBe(false);
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should create parent field with single source for recursive type without extends', async () => {
+      // When a type is recursive but does not extend another type,
+      // the parent field should only accept the same type
+      const { mkdtemp, writeFile, mkdir, rm } = await import('fs/promises');
+      const { tmpdir } = await import('os');
+      const { join } = await import('path');
+      
+      const tempDir = await mkdtemp(join(tmpdir(), 'pika-recursive-only-test-'));
+      try {
+        await mkdir(join(tempDir, '.pika'), { recursive: true });
+        await writeFile(
+          join(tempDir, '.pika/schema.json'),
+          JSON.stringify({
+            version: 2,
+            types: {
+              task: {
+                recursive: true,
+                fields: {
+                  title: { prompt: 'input' }
+                }
+              }
+            }
+          })
+        );
+        
+        const recursiveSchema = await loadSchema(tempDir);
+        const taskType = recursiveSchema.types.get('task');
+        
+        expect(taskType).toBeDefined();
+        expect(taskType!.recursive).toBe(true);
+        expect(taskType!.fields['parent']).toBeDefined();
+        
+        // Parent field should only accept 'task' (single source, not array)
+        expect(taskType!.fields['parent'].source).toBe('task');
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe('resolveSourceType', () => {

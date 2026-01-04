@@ -6,6 +6,15 @@ All notable changes to Pika are documented in this file.
 
 ### Added
 
+- **Recursive type support with cycle detection** (#95)
+  - Types with `recursive: true` can now self-nest (e.g., tasks with subtasks)
+  - Mixed hierarchies: recursive types that `extend` another type can have parent of either type
+    - Example: A `scene` extends `chapter` with `recursive: true` - parent can be a chapter OR another scene
+  - Eager cycle detection: `pika new` and `pika edit` block parent references that would create cycles
+    - Error message shows the full cycle path for debugging
+  - `source` field property now accepts an array of types for multi-type validation
+  - New `src/lib/hierarchy.ts` module with shared cycle detection utilities
+
 - **Context field validation** (#99)
   - `pika new --json` and `pika edit --json` now validate context field references
   - Validates that wikilink targets exist and match the field's `source` type constraint

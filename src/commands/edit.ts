@@ -23,6 +23,7 @@ import {
   validateFrontmatter,
   validateContextFields,
 } from '../lib/validation.js';
+import { validateParentNoCycle } from '../lib/hierarchy.js';
 import {
   printJson,
   jsonSuccess,
@@ -241,6 +242,32 @@ async function editNoteFromJson(
       })),
     });
     process.exit(ExitCodes.VALIDATION_ERROR);
+  }
+
+  // Validate parent field doesn't create a cycle (for recursive types)
+  if (typeDef.recursive && mergedFrontmatter['parent']) {
+    // Get the note name from the file path
+    const noteName = filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
+    const cycleError = await validateParentNoCycle(
+      schema,
+      _vaultDir,
+      typePath,
+      noteName,
+      mergedFrontmatter['parent'] as string
+    );
+    if (cycleError) {
+      printJson({
+        success: false,
+        error: cycleError.message,
+        errors: [{
+          type: cycleError.type,
+          field: cycleError.field,
+          message: cycleError.message,
+          cyclePath: cycleError.cyclePath,
+        }],
+      });
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
   }
 
   // Get field order
