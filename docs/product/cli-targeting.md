@@ -70,20 +70,33 @@ bwrb audit --where "isEmpty(tags)"
 - With `--type`: strict validation (error on unknown fields)
 - Without `--type`: permissive with warnings (supports migration workflows)
 
-### 4. Text (`--text <query>`)
+**Hierarchy functions** (for recursive types):
+- `isRoot()` — note has no parent
+- `isChildOf('[[Note]]')` — direct child of specified note
+- `isDescendantOf('[[Note]]')` — any descendant of specified note
+
+```bash
+bwrb list --type task --where "isRoot()"
+bwrb list --type task --where "isChildOf('[[Epic]]')"
+bwrb list --type task --where "isDescendantOf('[[Q1 Goals]]')" --depth 2
+```
+
+### 4. Body (`--body <query>`)
 
 Filter by body content (full-text search via ripgrep).
 
 ```bash
-bwrb list --text "TODO"
-bwrb bulk --text "DEPRECATED" --delete deprecated_field
-bwrb search --text "meeting notes" --type task
+bwrb list --body "TODO"
+bwrb bulk --body "DEPRECATED" --delete deprecated_field
+bwrb search --body "meeting notes" --type task
 ```
 
 **Behavior:**
 - Searches note body content (not frontmatter)
 - Uses ripgrep under the hood for performance
 - Case-insensitive by default
+
+**Short flag:** `-b` (e.g., `bwrb list -b "TODO"`)
 
 ---
 
@@ -93,7 +106,7 @@ bwrb search --text "meeting notes" --type task
 
 ```bash
 # Find tasks in Work/ folder with status=active containing "deadline"
-bwrb list --type task --path "Work/" --where "status == 'active'" --text "deadline"
+bwrb list --type task --path "Work/" --where "status == 'active'" --body "deadline"
 ```
 
 **Union (OR) is not implicit.** To express OR logic, use boolean operators within `--where`:
@@ -130,19 +143,22 @@ Use the explicit flag to clarify.
 
 All commands that operate on note sets support the same selectors:
 
-| Command | `--type` | `--path` | `--where` | `--text` | Picker |
+| Command | `--type` | `--path` | `--where` | `--body` | Picker |
 |---------|----------|----------|-----------|----------|--------|
 | list    | Y | Y | Y | Y | - |
 | bulk    | Y | Y | Y | Y | - |
 | audit   | Y | Y | Y | Y | - |
-| search  | Y | Y | Y | Y (primary) | Y |
+| search  | Y | Y | Y | Y | Y |
 | open    | Y | Y | Y | Y | Y |
-| edit    | Y | - | - | - | Y |
+| edit    | Y | Y | Y | Y | Y |
 | delete  | Y | Y | Y | Y | - |
 
+**Short flags:** `-t` (type), `-p` (path), `-w` (where), `-b` (body)
+
 **Notes:**
-- `open` is an alias for `search --open`.
-- `edit` supports `--type` for filtering and `--picker` for picker mode selection.
+- `open` is an alias for `search --open`
+- `edit` is an alias for `search --edit`
+- Both aliases gain full targeting support automatically
 
 ---
 
@@ -172,7 +188,7 @@ No selectors = prompt with picker.
 
 ```bash
 bwrb bulk --set status=done
-# Error: No files selected. Use --type, --path, --where, --text, or --all.
+# Error: No files selected. Use --type, --path, --where, --body, or --all.
 
 bwrb bulk --type task --set status=done
 # Dry-run: shows what would change, but doesn't apply
@@ -204,6 +220,29 @@ bwrb audit --path Reflections/<TAB>
 ```
 
 Autocomplete makes the targeting model discoverable and reduces errors.
+
+---
+
+## Output Formats
+
+Use `--output <format>` to control how results are displayed:
+
+| Format | `list` | `search` | Description |
+|--------|--------|----------|-------------|
+| `text` | ✓ | ✓ | Default human-readable |
+| `json` | ✓ | ✓ | Machine-readable JSON |
+| `paths` | ✓ | ✓ | File paths only |
+| `link` | ✓ | ✓ | Wikilinks (`[[Note Name]]`) |
+| `tree` | ✓ | - | Hierarchical tree view |
+| `content` | - | ✓ | Full file contents |
+
+```bash
+bwrb list --type task --output json
+bwrb list --type task --output paths
+bwrb list --type task --output link      # [[Task 1]], [[Task 2]], ...
+bwrb list --type task --output tree      # Hierarchical display
+bwrb search "TODO" --output content      # Full file with matches
+```
 
 ---
 
@@ -248,10 +287,10 @@ bwrb bulk --type task --rename old_field=new_field --execute
 bwrb list task --path "Work/" --where "status == 'active'"
 
 # Find notes containing "TODO" that are drafts
-bwrb list --text "TODO" --where "status == 'draft'"
+bwrb list --body "TODO" --where "status == 'draft'"
 
 # Open a task by searching
-bwrb open --type task --text "quarterly review"
+bwrb open --type task --body "quarterly review"
 ```
 
 ### Audit and maintenance
@@ -264,5 +303,5 @@ bwrb audit task --only missing-required
 bwrb audit --path "Ideas/" --fix
 
 # Delete notes containing specific text (with confirmation)
-bwrb delete --text "DELETE ME"
+bwrb delete --body "DELETE ME"
 ```
