@@ -2525,7 +2525,6 @@ newCommand
       }
 
       // Prompt for field definition
-      let fieldDef: Field;
       if (jsonMode) {
         throw new Error('Interactive field definition required. Use add-field with --type flag for JSON mode.');
       }
@@ -2534,7 +2533,7 @@ newCommand
       if (result === null) {
         process.exit(0);
       }
-      fieldDef = result.field;
+      const fieldDef = result.field;
 
       // Add the field
       const rawSchema = await loadRawSchemaJson(vaultDir);
@@ -2877,6 +2876,7 @@ editCommand
         process.exit(1);
       }
       console.log(chalk.bold(`\nEditing field: ${typeName}.${fieldName}\n`));
+      // eslint-disable-next-line no-control-regex
       console.log(`Current type: ${getFieldType(currentDef).replace(/\x1b\[[0-9;]*m/g, '')}`);
       if (currentDef.required) console.log(`Required: yes`);
       if (currentDef.default !== undefined) console.log(`Default: ${currentDef.default}`);
