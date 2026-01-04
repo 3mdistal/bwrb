@@ -44,6 +44,74 @@ import {
 } from '../lib/enum-utils.js';
 import type { LoadedSchema, Field, BodySection, ResolvedType, Type } from '../types/schema.js';
 
+// ============================================================================
+// Deprecation Helper
+// ============================================================================
+
+/**
+ * Print a deprecation warning for old command names.
+ */
+function warnDeprecated(oldCmd: string, newCmd: string): void {
+  console.error(chalk.yellow(`Warning: '${oldCmd}' is deprecated. Use '${newCmd}' instead.`));
+}
+
+// ============================================================================
+// Entity Type Picker (for unified verbs)
+// ============================================================================
+
+type SchemaEntityType = 'type' | 'field' | 'enum';
+
+/**
+ * Prompt user to select what kind of schema entity to work with.
+ */
+async function promptSchemaEntityType(action: string): Promise<SchemaEntityType | null> {
+  const result = await promptSelection(`What do you want to ${action}?`, [
+    'type',
+    'field',
+    'enum',
+  ]);
+  if (result === null) return null;
+  return result as SchemaEntityType;
+}
+
+/**
+ * Prompt for type selection from available types.
+ */
+async function promptTypePicker(schema: LoadedSchema, message: string = 'Select type'): Promise<string | null> {
+  const typeNames = getTypeNames(schema).filter(t => t !== 'meta');
+  if (typeNames.length === 0) {
+    throw new Error('No types defined in schema');
+  }
+  return promptSelection(message, typeNames);
+}
+
+/**
+ * Prompt for field selection from a type's own fields.
+ */
+async function promptFieldPicker(
+  schema: LoadedSchema, 
+  typeName: string, 
+  message: string = 'Select field'
+): Promise<string | null> {
+  const typeEntry = schema.raw.types[typeName];
+  if (!typeEntry?.fields || Object.keys(typeEntry.fields).length === 0) {
+    throw new Error(`Type "${typeName}" has no own fields to select`);
+  }
+  const fieldNames = Object.keys(typeEntry.fields);
+  return promptSelection(message, fieldNames);
+}
+
+/**
+ * Prompt for enum selection from available enums.
+ */
+async function promptEnumPicker(schema: LoadedSchema, message: string = 'Select enum'): Promise<string | null> {
+  const enumNames = getEnumNames(schema);
+  if (enumNames.length === 0) {
+    throw new Error('No enums defined in schema');
+  }
+  return promptSelection(message, enumNames);
+}
+
 interface SchemaShowOptions {
   output?: string;
 }
@@ -65,6 +133,7 @@ schemaCommand
   .option('-o, --output <format>', 'Output format: text (default) or json')
   .action(async (typePath: string | undefined, options: SchemaShowOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
+    warnDeprecated('schema show', 'schema list');
 
     try {
       const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
@@ -274,6 +343,7 @@ Examples:
   bwrb schema add-type book`)
   .action(async (name: string, options: AddTypeOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
+    warnDeprecated('schema add-type', 'schema new type');
 
     try {
       const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
@@ -656,6 +726,7 @@ Examples:
   bwrb schema add-field book title`)
   .action(async (typeName: string, fieldName: string | undefined, options: AddFieldOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
+    warnDeprecated('schema add-field', 'schema new field');
 
     try {
       const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
@@ -1033,6 +1104,7 @@ schemaCommand
   .option('-o, --output <format>', 'Output format: text (default) or json')
   .action(async (typeName: string, options: { execute?: boolean; output?: string }, cmd: Command) => {
     const jsonMode = options.output === 'json';
+    warnDeprecated('schema remove-type', 'schema delete type');
 
     try {
       const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
@@ -1172,6 +1244,7 @@ schemaCommand
     output?: string;
   }, cmd: Command) => {
     const jsonMode = options.output === 'json';
+    warnDeprecated('schema edit-field', 'schema edit field');
 
     try {
       const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
@@ -1376,6 +1449,7 @@ schemaCommand
   .option('-o, --output <format>', 'Output format: text (default) or json')
   .action(async (typeName: string, fieldName: string, options: { execute?: boolean; output?: string }, cmd: Command) => {
     const jsonMode = options.output === 'json';
+    warnDeprecated('schema remove-field', 'schema delete field');
 
     try {
       const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
@@ -1938,6 +2012,7 @@ enumCommand
   .option('-o, --output <format>', 'Output format: text (default) or json')
   .action(async (options: EnumCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
+    warnDeprecated('schema enum list', 'schema list enums');
 
     try {
       const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
@@ -1968,6 +2043,7 @@ enumCommand
   .option('-o, --output <format>', 'Output format: text (default) or json')
   .action(async (name: string, options: EnumCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
+    warnDeprecated('schema enum add', 'schema new enum');
 
     try {
       const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
@@ -2046,6 +2122,7 @@ enumCommand
   .option('-o, --output <format>', 'Output format: text (default) or json')
   .action(async (name: string, options: EnumCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
+    warnDeprecated('schema enum update', 'schema edit enum');
 
     try {
       const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
@@ -2149,6 +2226,7 @@ enumCommand
   .option('-o, --output <format>', 'Output format: text (default) or json')
   .action(async (name: string, options: EnumCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
+    warnDeprecated('schema enum delete', 'schema delete enum');
 
     try {
       const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
@@ -2202,6 +2280,1423 @@ enumCommand
 
 // Add enum command to schema command
 schemaCommand.addCommand(enumCommand);
+
+// ============================================================================
+// Unified Verb Subcommands (new, edit, delete, list)
+// ============================================================================
+
+interface NewCommandOptions {
+  output?: string;
+  fields?: string;
+  directory?: string;
+  inherits?: string;
+  values?: string;
+}
+
+interface EditCommandOptions {
+  output?: string;
+}
+
+interface DeleteCommandOptions {
+  output?: string;
+  execute?: boolean;
+}
+
+interface ListCommandOptions {
+  output?: string;
+}
+
+// -------------------- schema new --------------------
+
+const newCommand = new Command('new')
+  .description('Create a new type, field, or enum')
+  .addHelpText('after', `
+Examples:
+  bwrb schema new                    # Prompts for what to create
+  bwrb schema new type               # Create a new type
+  bwrb schema new type project       # Create type named "project"
+  bwrb schema new field              # Create a field (prompts for type)
+  bwrb schema new field task status  # Add "status" field to "task" type
+  bwrb schema new enum               # Create a new enum
+  bwrb schema new enum priority      # Create enum named "priority"`);
+
+// schema new (no args - prompt for entity type)
+newCommand
+  .action(async (options: NewCommandOptions, _cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      if (jsonMode) {
+        throw new Error('Entity type argument is required in JSON mode. Use: schema new type|field|enum');
+      }
+
+      const entityType = await promptSchemaEntityType('create');
+      if (entityType === null) {
+        process.exit(0);
+      }
+
+      // Re-invoke the appropriate subcommand
+      const args = [entityType];
+      await newCommand.parseAsync(args, { from: 'user' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema new type [name]
+newCommand
+  .command('type [name]')
+  .description('Create a new type')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--fields <fields>', 'Comma-separated field definitions (name:type)')
+  .option('--directory <dir>', 'Output directory for notes of this type')
+  .option('--inherits <type>', 'Parent type to inherit from')
+  .action(async (name: string | undefined, options: NewCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+
+      // Get name if not provided
+      let typeName = name;
+      if (!typeName) {
+        if (jsonMode) {
+          throw new Error('Type name is required in JSON mode');
+        }
+        const result = await promptInput('Type name');
+        if (result === null) {
+          process.exit(0);
+        }
+        typeName = result;
+      }
+
+      // Validate name
+      const nameError = validateTypeName(typeName);
+      if (nameError) {
+        throw new Error(nameError);
+      }
+
+      // Check if type already exists
+      const schema = await loadSchema(vaultDir);
+      if (schema.raw.types[typeName]) {
+        throw new Error(`Type "${typeName}" already exists`);
+      }
+
+      // Build the type definition
+      const rawSchema = await loadRawSchemaJson(vaultDir);
+      
+      // Parse inheritance
+      let inherits: string | undefined;
+      if (options.inherits) {
+        inherits = options.inherits;
+        // Validate parent exists
+        if (!schema.raw.types[inherits]) {
+          throw new Error(`Parent type "${inherits}" does not exist`);
+        }
+      }
+
+      // Parse fields from options or prompt
+      const fields: Record<string, Field> = {};
+      if (options.fields) {
+        // Parse "name:type,name2:type2" format
+        for (const fieldDef of options.fields.split(',')) {
+          const [fieldName, fieldType] = fieldDef.split(':').map(s => s.trim());
+          if (!fieldName || !fieldType) {
+            throw new Error(`Invalid field definition: "${fieldDef}". Use "name:type" format.`);
+          }
+          // Map simple type strings to field definitions
+          const promptType = fieldType as 'input' | 'select' | 'date' | 'dynamic';
+          fields[fieldName] = { prompt: promptType };
+        }
+      } else if (!jsonMode) {
+        // Interactive prompt for fields
+        const wantFields = await promptConfirm('Add fields to this type?');
+        if (wantFields) {
+          const fieldResult = await promptFieldDefinition(schema);
+          if (fieldResult) {
+            Object.assign(fields, fieldResult);
+          }
+        }
+      }
+
+      // Build the type object
+      const newType: Type = {};
+      if (inherits) {
+        newType.extends = inherits;
+      }
+      if (options.directory) {
+        newType.output_dir = options.directory;
+      } else {
+        newType.output_dir = computeDefaultOutputDir(schema, typeName);
+      }
+      if (Object.keys(fields).length > 0) {
+        newType.fields = fields;
+      }
+
+      // Add to schema
+      rawSchema.types[typeName] = newType;
+      await writeSchema(vaultDir, rawSchema);
+
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: `Type "${typeName}" created`,
+          data: { type: typeName, definition: newType },
+        }));
+      } else {
+        printSuccess(`Type "${typeName}" created`);
+        if (inherits) {
+          console.log(`  Inherits from: ${inherits}`);
+        }
+        console.log(`  Output directory: ${newType.output_dir}`);
+        if (Object.keys(fields).length > 0) {
+          console.log(`  Fields: ${Object.keys(fields).join(', ')}`);
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema new field [type] [name]
+newCommand
+  .command('field [type] [name]')
+  .description('Add a field to a type')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (typeName: string | undefined, fieldName: string | undefined, options: NewCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      // Get type name if not provided
+      if (!typeName) {
+        if (jsonMode) {
+          throw new Error('Type name is required in JSON mode');
+        }
+        const result = await promptTypePicker(schema, 'Select type to add field to');
+        if (result === null) {
+          process.exit(0);
+        }
+        typeName = result;
+      }
+
+      // Validate type exists
+      if (!schema.raw.types[typeName]) {
+        throw new Error(`Type "${typeName}" does not exist`);
+      }
+
+      // Get field name if not provided
+      if (!fieldName) {
+        if (jsonMode) {
+          throw new Error('Field name is required in JSON mode');
+        }
+        const result = await promptInput('Field name');
+        if (result === null) {
+          process.exit(0);
+        }
+        fieldName = result;
+      }
+
+      // Validate field name
+      const nameError = validateFieldName(fieldName);
+      if (nameError) {
+        throw new Error(nameError);
+      }
+
+      // Check if field already exists on this type
+      const typeEntry = schema.raw.types[typeName];
+      if (typeEntry?.fields?.[fieldName]) {
+        throw new Error(`Field "${fieldName}" already exists on type "${typeName}"`);
+      }
+
+      // Prompt for field definition
+      if (jsonMode) {
+        throw new Error('Interactive field definition required. Use add-field with --type flag for JSON mode.');
+      }
+      
+      const result = await promptSingleFieldDefinition(schema, fieldName);
+      if (result === null) {
+        process.exit(0);
+      }
+      const fieldDef = result.field;
+
+      // Add the field
+      const rawSchema = await loadRawSchemaJson(vaultDir);
+      if (!rawSchema.types?.[typeName]) {
+        throw new Error(`Type "${typeName}" not found in schema`);
+      }
+      const targetType = rawSchema.types[typeName]!;
+      if (!targetType.fields) {
+        targetType.fields = {};
+      }
+      targetType.fields[fieldName] = fieldDef;
+      await writeSchema(vaultDir, rawSchema);
+
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: `Field "${fieldName}" added to type "${typeName}"`,
+          data: { type: typeName, field: fieldName, definition: fieldDef },
+        }));
+      } else {
+        printSuccess(`Field "${fieldName}" added to type "${typeName}"`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema new enum [name]
+newCommand
+  .command('enum [name]')
+  .description('Create a new enum')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--values <values>', 'Comma-separated values')
+  .action(async (name: string | undefined, options: NewCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+
+      // Get name if not provided
+      let enumName = name;
+      if (!enumName) {
+        if (jsonMode) {
+          throw new Error('Enum name is required in JSON mode');
+        }
+        const result = await promptInput('Enum name');
+        if (result === null) {
+          process.exit(0);
+        }
+        enumName = result;
+      }
+
+      // Validate name
+      const nameError = validateEnumName(enumName);
+      if (nameError) {
+        throw new Error(nameError);
+      }
+
+      // Check if exists
+      const schema = await loadSchema(vaultDir);
+      if (enumExists(schema, enumName)) {
+        throw new Error(`Enum "${enumName}" already exists`);
+      }
+
+      // Get values from flag or prompt
+      let values: string[];
+      if (options.values) {
+        values = options.values.split(',').map(v => v.trim()).filter(Boolean);
+      } else {
+        if (jsonMode) {
+          throw new Error('--values flag is required in JSON mode');
+        }
+        const prompted = await promptMultiInput(`Enter values for enum "${enumName}"`);
+        if (prompted === null) {
+          process.exit(0);
+        }
+        values = prompted;
+      }
+
+      // Validate values
+      for (const value of values) {
+        const valueError = validateEnumValue(value);
+        if (valueError) {
+          throw new Error(`Invalid value "${value}": ${valueError}`);
+        }
+      }
+
+      if (values.length === 0) {
+        throw new Error('Enum must have at least one value');
+      }
+
+      // Add to schema
+      const rawSchema = await loadRawSchemaJson(vaultDir);
+      const updatedSchema = addEnum(rawSchema, enumName, values);
+      await writeSchema(vaultDir, updatedSchema);
+
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: `Enum "${enumName}" created with ${values.length} values`,
+          data: { name: enumName, values },
+        }));
+      } else {
+        printSuccess(`Enum "${enumName}" created with values: ${values.join(', ')}`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+schemaCommand.addCommand(newCommand);
+
+// -------------------- schema edit --------------------
+
+const editCommand = new Command('edit')
+  .description('Edit an existing type, field, or enum')
+  .addHelpText('after', `
+Examples:
+  bwrb schema edit                   # Prompts for what to edit
+  bwrb schema edit type              # Edit a type (shows picker)
+  bwrb schema edit type task         # Edit the "task" type
+  bwrb schema edit field             # Edit a field (shows pickers)
+  bwrb schema edit field task status # Edit "status" field on "task" type
+  bwrb schema edit enum              # Edit an enum (shows picker)
+  bwrb schema edit enum priority     # Edit the "priority" enum`);
+
+// schema edit (no args - prompt for entity type)
+editCommand
+  .action(async (options: EditCommandOptions, _cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      if (jsonMode) {
+        throw new Error('Entity type argument is required in JSON mode. Use: schema edit type|field|enum');
+      }
+
+      const entityType = await promptSchemaEntityType('edit');
+      if (entityType === null) {
+        process.exit(0);
+      }
+
+      // Re-invoke the appropriate subcommand
+      const args = [entityType];
+      await editCommand.parseAsync(args, { from: 'user' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema edit type [name]
+editCommand
+  .command('type [name]')
+  .description('Edit a type definition')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (name: string | undefined, options: EditCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      // Get type name if not provided
+      let typeName = name;
+      if (!typeName) {
+        if (jsonMode) {
+          throw new Error('Type name is required in JSON mode');
+        }
+        const result = await promptTypePicker(schema, 'Select type to edit');
+        if (result === null) {
+          process.exit(0);
+        }
+        typeName = result;
+      }
+
+      // Validate type exists
+      if (!schema.raw.types[typeName]) {
+        throw new Error(`Type "${typeName}" does not exist`);
+      }
+
+      // Delegate to edit-type implementation
+      // For now, show what can be edited and prompt
+      if (jsonMode) {
+        throw new Error('Interactive edit required. Use specific flags in JSON mode.');
+      }
+
+      // Type entry available via schema.raw.types[typeName] if needed
+      console.log(chalk.bold(`\nEditing type: ${typeName}\n`));
+      
+      const editOptions = ['Edit output directory', 'Edit inheritance', 'Add field', 'Done'];
+      
+      while (true) {
+        const choice = await promptSelection('What would you like to edit?', editOptions);
+        if (choice === null || choice === 'Done') {
+          break;
+        }
+
+        const rawSchema = await loadRawSchemaJson(vaultDir);
+
+        if (choice === 'Edit output directory') {
+          const resolvedType = schema.types.get(typeName);
+          const currentDir = resolvedType?.outputDir || computeDefaultOutputDir(schema, typeName);
+          const newDir = await promptInput('Output directory', currentDir);
+          if (newDir !== null && newDir !== currentDir) {
+            rawSchema.types[typeName]!.output_dir = newDir;
+            await writeSchema(vaultDir, rawSchema);
+            printSuccess(`Output directory updated to "${newDir}"`);
+          }
+        } else if (choice === 'Edit inheritance') {
+          // currentExtends available via typeEntry?.extends if needed
+          const availableTypes = getTypeNames(schema).filter(t => t !== typeName && t !== 'meta');
+          if (availableTypes.length === 0) {
+            printError('No other types available for inheritance');
+            continue;
+          }
+          const options = ['(none)', ...availableTypes];
+          const newExtends = await promptSelection('Inherit from', options);
+          if (newExtends !== null) {
+            if (newExtends === '(none)') {
+              delete rawSchema.types[typeName]!.extends;
+            } else {
+              rawSchema.types[typeName]!.extends = newExtends;
+            }
+            await writeSchema(vaultDir, rawSchema);
+            printSuccess(`Inheritance updated`);
+          }
+        } else if (choice === 'Add field') {
+          const fieldName = await promptInput('Field name');
+          if (fieldName === null) continue;
+          
+          const nameError = validateFieldName(fieldName);
+          if (nameError) {
+            printError(nameError);
+            continue;
+          }
+
+          const reloadedSchema = await loadSchema(vaultDir);
+          const fieldDef = await promptSingleFieldDefinition(reloadedSchema, fieldName);
+          if (fieldDef === null) continue;
+
+          const freshSchema = await loadRawSchemaJson(vaultDir);
+          if (!freshSchema.types?.[typeName]) {
+            throw new Error(`Type "${typeName}" not found in schema`);
+          }
+          const targetType = freshSchema.types[typeName]!;
+          if (!targetType.fields) {
+            targetType.fields = {};
+          }
+          targetType.fields[fieldName] = fieldDef.field;
+          await writeSchema(vaultDir, freshSchema);
+          printSuccess(`Field "${fieldName}" added`);
+        }
+      }
+
+      printSuccess(`Finished editing type "${typeName}"`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema edit field [type] [name]
+editCommand
+  .command('field [type] [name]')
+  .description('Edit a field definition')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (typeName: string | undefined, fieldName: string | undefined, options: EditCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      // Get type name if not provided
+      if (!typeName) {
+        if (jsonMode) {
+          throw new Error('Type name is required in JSON mode');
+        }
+        const result = await promptTypePicker(schema, 'Select type');
+        if (result === null) {
+          process.exit(0);
+        }
+        typeName = result;
+      }
+
+      // Validate type exists
+      if (!schema.raw.types[typeName]) {
+        throw new Error(`Type "${typeName}" does not exist`);
+      }
+
+      // Get field name if not provided
+      if (!fieldName) {
+        if (jsonMode) {
+          throw new Error('Field name is required in JSON mode');
+        }
+        const result = await promptFieldPicker(schema, typeName, 'Select field to edit');
+        if (result === null) {
+          process.exit(0);
+        }
+        fieldName = result;
+      }
+
+      // Validate field exists on this type
+      const typeEntry = schema.raw.types[typeName];
+      if (!typeEntry?.fields?.[fieldName]) {
+        throw new Error(`Field "${fieldName}" does not exist on type "${typeName}"`);
+      }
+
+      // Interactive edit
+      if (jsonMode) {
+        throw new Error('Interactive edit required. Use edit-field with specific flags for JSON mode.');
+      }
+
+      const currentDef = typeEntry.fields[fieldName];
+      if (!currentDef) {
+        printError(`Field "${fieldName}" not found on type "${typeName}"`);
+        process.exit(1);
+      }
+      console.log(chalk.bold(`\nEditing field: ${typeName}.${fieldName}\n`));
+      // eslint-disable-next-line no-control-regex
+      console.log(`Current type: ${getFieldType(currentDef).replace(/\x1b\[[0-9;]*m/g, '')}`);
+      if (currentDef.required) console.log(`Required: yes`);
+      if (currentDef.default !== undefined) console.log(`Default: ${currentDef.default}`);
+
+      const editOptions = ['Change prompt type', 'Toggle required', 'Set default', 'Done'];
+      
+      while (true) {
+        const choice = await promptSelection('What would you like to edit?', editOptions);
+        if (choice === null || choice === 'Done') {
+          break;
+        }
+
+        const rawSchema = await loadRawSchemaJson(vaultDir);
+        const rawTypeEntry = rawSchema.types?.[typeName];
+        if (!rawTypeEntry?.fields) {
+          printError(`Type "${typeName}" or its fields not found`);
+          process.exit(1);
+        }
+
+        if (choice === 'Change prompt type') {
+          const promptOptions = ['input', 'select', 'multi-input', 'date', 'dynamic'];
+          const newPrompt = await promptSelection('Prompt type', promptOptions);
+          const fieldEntry = rawTypeEntry.fields?.[fieldName];
+          if (newPrompt !== null && fieldEntry) {
+            fieldEntry.prompt = newPrompt as Field['prompt'];
+            
+            // If select type, prompt for enum name
+            if (newPrompt === 'select') {
+              const reloadedSchema = await loadSchema(vaultDir);
+              const enumNames = getEnumNames(reloadedSchema);
+              if (enumNames.length > 0) {
+                const enumChoice = await promptSelection('Select enum (or skip)', ['(none)', ...enumNames]);
+                if (enumChoice !== null && enumChoice !== '(none)') {
+                  fieldEntry.enum = enumChoice;
+                }
+              }
+            }
+            
+            await writeSchema(vaultDir, rawSchema);
+            printSuccess(`Field prompt type updated to "${newPrompt}"`);
+          }
+        } else if (choice === 'Toggle required') {
+          const fieldEntry = rawTypeEntry.fields?.[fieldName];
+          if (fieldEntry) {
+            const currentRequired = fieldEntry.required ?? false;
+            fieldEntry.required = !currentRequired;
+            await writeSchema(vaultDir, rawSchema);
+            printSuccess(`Required set to ${!currentRequired}`);
+          }
+        } else if (choice === 'Set default') {
+          const fieldEntry = rawTypeEntry.fields?.[fieldName];
+          if (fieldEntry) {
+            const currentDefault = fieldEntry.default;
+            const newDefault = await promptInput('Default value', currentDefault?.toString() ?? '');
+            if (newDefault !== null) {
+              if (newDefault === '') {
+                delete fieldEntry.default;
+              } else {
+                fieldEntry.default = newDefault;
+              }
+              await writeSchema(vaultDir, rawSchema);
+              printSuccess(`Default value updated`);
+            }
+          }
+        }
+      }
+
+      printSuccess(`Finished editing field "${typeName}.${fieldName}"`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema edit enum [name]
+editCommand
+  .command('enum [name]')
+  .description('Edit an enum definition')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--add <value>', 'Add a value to the enum')
+  .option('--remove <value>', 'Remove a value from the enum')
+  .option('--rename <old=new>', 'Rename a value (format: old=new)')
+  .action(async (name: string | undefined, options: { output?: string; add?: string; remove?: string; rename?: string }, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      // Get enum name if not provided
+      let enumName = name;
+      if (!enumName) {
+        if (jsonMode) {
+          throw new Error('Enum name is required in JSON mode');
+        }
+        const result = await promptEnumPicker(schema, 'Select enum to edit');
+        if (result === null) {
+          process.exit(0);
+        }
+        enumName = result;
+      }
+
+      // Validate enum exists
+      if (!enumExists(schema, enumName)) {
+        throw new Error(`Enum "${enumName}" does not exist`);
+      }
+
+      // Handle flag-based operations
+      if (options.add || options.remove || options.rename) {
+        const rawSchema = await loadRawSchemaJson(vaultDir);
+        
+        if (options.add) {
+          const valueError = validateEnumValue(options.add);
+          if (valueError) {
+            throw new Error(valueError);
+          }
+          const updatedSchema = addEnumValue(rawSchema, enumName, options.add);
+          await writeSchema(vaultDir, updatedSchema);
+          
+          if (jsonMode) {
+            printJson(jsonSuccess({
+              message: `Value "${options.add}" added to enum "${enumName}"`,
+              data: { enum: enumName, added: options.add },
+            }));
+          } else {
+            printSuccess(`Value "${options.add}" added to enum "${enumName}"`);
+          }
+          return;
+        }
+
+        if (options.remove) {
+          const updatedSchema = removeEnumValue(rawSchema, enumName, options.remove);
+          await writeSchema(vaultDir, updatedSchema);
+          
+          if (jsonMode) {
+            printJson(jsonSuccess({
+              message: `Value "${options.remove}" removed from enum "${enumName}"`,
+              data: { enum: enumName, removed: options.remove },
+            }));
+          } else {
+            printSuccess(`Value "${options.remove}" removed from enum "${enumName}"`);
+          }
+          return;
+        }
+
+        if (options.rename) {
+          const [oldValue, newValue] = options.rename.split('=');
+          if (!oldValue || !newValue) {
+            throw new Error('Rename format must be "old=new"');
+          }
+          const updatedSchema = renameEnumValue(rawSchema, enumName, oldValue, newValue);
+          await writeSchema(vaultDir, updatedSchema);
+          
+          if (jsonMode) {
+            printJson(jsonSuccess({
+              message: `Value "${oldValue}" renamed to "${newValue}" in enum "${enumName}"`,
+              data: { enum: enumName, renamed: { from: oldValue, to: newValue } },
+            }));
+          } else {
+            printSuccess(`Value "${oldValue}" renamed to "${newValue}" in enum "${enumName}"`);
+          }
+          return;
+        }
+      }
+
+      // Interactive mode
+      if (jsonMode) {
+        throw new Error('Interactive edit required. Use --add, --remove, or --rename flags in JSON mode.');
+      }
+
+      const currentValues = getEnumValues(schema, enumName);
+      console.log(chalk.bold(`\nEditing enum: ${enumName}\n`));
+      console.log(`Current values: ${currentValues.join(', ')}`);
+
+      const editOptions = ['Add value', 'Remove value', 'Rename value', 'Done'];
+      
+      while (true) {
+        const choice = await promptSelection('What would you like to do?', editOptions);
+        if (choice === null || choice === 'Done') {
+          break;
+        }
+
+        const rawSchema = await loadRawSchemaJson(vaultDir);
+
+        if (choice === 'Add value') {
+          const newValue = await promptInput('New value');
+          if (newValue !== null) {
+            const valueError = validateEnumValue(newValue);
+            if (valueError) {
+              printError(valueError);
+              continue;
+            }
+            addEnumValue(rawSchema, enumName, newValue);
+            await writeSchema(vaultDir, rawSchema);
+            printSuccess(`Value "${newValue}" added`);
+          }
+        } else if (choice === 'Remove value') {
+          const reloadedSchema = await loadSchema(vaultDir);
+          const values = getEnumValues(reloadedSchema, enumName);
+          const toRemove = await promptSelection('Value to remove', values);
+          if (toRemove !== null) {
+            removeEnumValue(rawSchema, enumName, toRemove);
+            await writeSchema(vaultDir, rawSchema);
+            printSuccess(`Value "${toRemove}" removed`);
+          }
+        } else if (choice === 'Rename value') {
+          const reloadedSchema = await loadSchema(vaultDir);
+          const values = getEnumValues(reloadedSchema, enumName);
+          const oldValue = await promptSelection('Value to rename', values);
+          if (oldValue !== null) {
+            const newValue = await promptInput('New name', oldValue);
+            if (newValue !== null && newValue !== oldValue) {
+              renameEnumValue(rawSchema, enumName, oldValue, newValue);
+              await writeSchema(vaultDir, rawSchema);
+              printSuccess(`Value "${oldValue}" renamed to "${newValue}"`);
+            }
+          }
+        }
+      }
+
+      printSuccess(`Finished editing enum "${enumName}"`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+schemaCommand.addCommand(editCommand);
+
+// -------------------- schema delete --------------------
+
+const deleteCommand = new Command('delete')
+  .description('Delete a type, field, or enum (dry-run by default)')
+  .addHelpText('after', `
+Examples:
+  bwrb schema delete                      # Prompts for what to delete
+  bwrb schema delete type                 # Delete a type (shows picker, dry-run)
+  bwrb schema delete type project         # Preview deleting "project" type
+  bwrb schema delete type project --execute  # Actually delete "project" type
+  bwrb schema delete field                # Delete a field (shows pickers)
+  bwrb schema delete field task status    # Preview deleting "status" from "task"
+  bwrb schema delete enum                 # Delete an enum (shows picker)
+  bwrb schema delete enum priority --execute  # Actually delete "priority" enum`);
+
+// schema delete (no args - prompt for entity type)
+deleteCommand
+  .action(async (options: DeleteCommandOptions, _cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      if (jsonMode) {
+        throw new Error('Entity type argument is required in JSON mode. Use: schema delete type|field|enum');
+      }
+
+      const entityType = await promptSchemaEntityType('delete');
+      if (entityType === null) {
+        process.exit(0);
+      }
+
+      // Re-invoke the appropriate subcommand
+      const args = [entityType];
+      await deleteCommand.parseAsync(args, { from: 'user' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema delete type [name]
+deleteCommand
+  .command('type [name]')
+  .description('Delete a type (dry-run by default)')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--execute', 'Actually perform the deletion (default is dry-run)')
+  .action(async (name: string | undefined, options: DeleteCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+    const dryRun = !options.execute;
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      // Get type name if not provided
+      let typeName = name;
+      if (!typeName) {
+        if (jsonMode) {
+          throw new Error('Type name is required in JSON mode');
+        }
+        const result = await promptTypePicker(schema, 'Select type to delete');
+        if (result === null) {
+          process.exit(0);
+        }
+        typeName = result;
+      }
+
+      // Validate type exists
+      if (!schema.raw.types[typeName]) {
+        throw new Error(`Type "${typeName}" does not exist`);
+      }
+
+      // Check for subtypes (children)
+      const subtypes = getTypeNames(schema).filter(t => {
+        const typeEntry = schema.raw.types[t];
+        return typeEntry?.extends === typeName;
+      });
+
+      // Build impact report
+      const impact = {
+        type: typeName,
+        hasSubtypes: subtypes.length > 0,
+        subtypes,
+        dryRun,
+      };
+
+      if (dryRun) {
+        if (jsonMode) {
+          printJson(jsonSuccess({
+            message: `Dry run: would delete type "${typeName}"`,
+            data: { ...impact, wouldDelete: true },
+          }));
+        } else {
+          console.log(chalk.bold(`\nDry run: would delete type "${typeName}"\n`));
+          if (subtypes.length > 0) {
+            console.log(chalk.yellow(`Warning: This type has ${subtypes.length} subtype(s): ${subtypes.join(', ')}`));
+            console.log(chalk.yellow('Subtypes will lose their inheritance.'));
+          }
+          console.log('');
+          console.log('Run with --execute to perform the deletion.');
+        }
+        return;
+      }
+
+      // Actually delete
+      const rawSchema = await loadRawSchemaJson(vaultDir);
+      
+      // Update subtypes to remove inheritance
+      for (const subtype of subtypes) {
+        if (rawSchema.types[subtype]) {
+          delete rawSchema.types[subtype].extends;
+        }
+      }
+      
+      // Delete the type
+      delete rawSchema.types[typeName];
+      await writeSchema(vaultDir, rawSchema);
+
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: `Type "${typeName}" deleted`,
+          data: { deleted: typeName, subtypesUpdated: subtypes },
+        }));
+      } else {
+        printSuccess(`Type "${typeName}" deleted`);
+        if (subtypes.length > 0) {
+          console.log(`Updated ${subtypes.length} subtype(s) to remove inheritance.`);
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema delete field [type] [name]
+deleteCommand
+  .command('field [type] [name]')
+  .description('Delete a field from a type (dry-run by default)')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--execute', 'Actually perform the deletion (default is dry-run)')
+  .action(async (typeName: string | undefined, fieldName: string | undefined, options: DeleteCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+    const dryRun = !options.execute;
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      // Get type name if not provided
+      if (!typeName) {
+        if (jsonMode) {
+          throw new Error('Type name is required in JSON mode');
+        }
+        const result = await promptTypePicker(schema, 'Select type');
+        if (result === null) {
+          process.exit(0);
+        }
+        typeName = result;
+      }
+
+      // Validate type exists
+      if (!schema.raw.types[typeName]) {
+        throw new Error(`Type "${typeName}" does not exist`);
+      }
+
+      // Get field name if not provided
+      if (!fieldName) {
+        if (jsonMode) {
+          throw new Error('Field name is required in JSON mode');
+        }
+        const result = await promptFieldPicker(schema, typeName, 'Select field to delete');
+        if (result === null) {
+          process.exit(0);
+        }
+        fieldName = result;
+      }
+
+      // Validate field exists on this type
+      const typeEntry = schema.raw.types[typeName];
+      if (!typeEntry?.fields?.[fieldName]) {
+        throw new Error(`Field "${fieldName}" does not exist on type "${typeName}"`);
+      }
+
+      // Build impact report
+      const impact = {
+        type: typeName,
+        field: fieldName,
+        dryRun,
+      };
+
+      if (dryRun) {
+        if (jsonMode) {
+          printJson(jsonSuccess({
+            message: `Dry run: would delete field "${fieldName}" from type "${typeName}"`,
+            data: { ...impact, wouldDelete: true },
+          }));
+        } else {
+          console.log(chalk.bold(`\nDry run: would delete field "${typeName}.${fieldName}"\n`));
+          console.log('Run with --execute to perform the deletion.');
+        }
+        return;
+      }
+
+      // Actually delete
+      const rawSchema = await loadRawSchemaJson(vaultDir);
+      const typeToUpdate = rawSchema.types?.[typeName];
+      if (typeToUpdate?.fields) {
+        delete typeToUpdate.fields[fieldName];
+        
+        // Clean up empty fields object
+        if (Object.keys(typeToUpdate.fields).length === 0) {
+          delete typeToUpdate.fields;
+        }
+      }
+      
+      await writeSchema(vaultDir, rawSchema);
+
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: `Field "${fieldName}" deleted from type "${typeName}"`,
+          data: { deleted: { type: typeName, field: fieldName } },
+        }));
+      } else {
+        printSuccess(`Field "${fieldName}" deleted from type "${typeName}"`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema delete enum [name]
+deleteCommand
+  .command('enum [name]')
+  .description('Delete an enum (dry-run by default)')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--execute', 'Actually perform the deletion (default is dry-run)')
+  .action(async (name: string | undefined, options: DeleteCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+    const dryRun = !options.execute;
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      // Get enum name if not provided
+      let enumName = name;
+      if (!enumName) {
+        if (jsonMode) {
+          throw new Error('Enum name is required in JSON mode');
+        }
+        const result = await promptEnumPicker(schema, 'Select enum to delete');
+        if (result === null) {
+          process.exit(0);
+        }
+        enumName = result;
+      }
+
+      // Validate enum exists
+      if (!enumExists(schema, enumName)) {
+        throw new Error(`Enum "${enumName}" does not exist`);
+      }
+
+      // Check usage
+      const usage = getEnumUsage(schema, enumName);
+
+      // Error if enum is in use
+      if (usage.length > 0) {
+        const usageList = usage.map(u => `${u.typeName}.${u.fieldName}`).join(', ');
+        throw new Error(`Enum "${enumName}" is in use by: ${usageList}. Remove field references first.`);
+      }
+
+      // Build impact report
+      const impact = {
+        enum: enumName,
+        usedBy: usage,
+        isInUse: usage.length > 0,
+        dryRun,
+      };
+
+      if (dryRun) {
+        if (jsonMode) {
+          printJson(jsonSuccess({
+            message: `Dry run: would delete enum "${enumName}"`,
+            data: { ...impact, wouldDelete: true },
+          }));
+        } else {
+          console.log(chalk.bold(`\nDry run: would delete enum "${enumName}"\n`));
+          console.log('Run with --execute to perform the deletion.');
+        }
+        return;
+      }
+
+      // Actually delete
+      let rawSchema = await loadRawSchemaJson(vaultDir);
+      rawSchema = deleteEnum(rawSchema, enumName);
+      await writeSchema(vaultDir, rawSchema);
+
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: `Enum "${enumName}" deleted`,
+          data: { deleted: enumName, fieldsAffected: usage },
+        }));
+      } else {
+        printSuccess(`Enum "${enumName}" deleted`);
+        if (usage.length > 0) {
+          console.log(chalk.yellow(`Note: ${usage.length} field(s) were referencing this enum.`));
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+schemaCommand.addCommand(deleteCommand);
+
+// -------------------- schema list --------------------
+
+const listCommand = new Command('list')
+  .description('List schema contents')
+  .addHelpText('after', `
+Examples:
+  bwrb schema list                # Show full schema overview
+  bwrb schema list types          # List type names only
+  bwrb schema list fields         # List all fields across types
+  bwrb schema list enums          # List all enums
+  bwrb schema list type task      # Show details for "task" type
+  bwrb schema list enum priority  # Show details for "priority" enum`);
+
+// schema list (no args - show full schema overview)
+listCommand
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (options: ListCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      if (jsonMode) {
+        outputSchemaJson(schema);
+      } else {
+        showSchemaTree(schema);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema list types
+listCommand
+  .command('types')
+  .description('List all type names')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (options: ListCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      const typeNames = getTypeNames(schema).filter(t => t !== 'meta');
+
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: `Found ${typeNames.length} types`,
+          data: { types: typeNames },
+        }));
+      } else {
+        console.log(chalk.bold('\nTypes:\n'));
+        for (const name of typeNames) {
+          const typeEntry = schema.raw.types[name];
+          const inherits = typeEntry?.extends ? ` (extends: ${typeEntry.extends})` : '';
+          console.log(`  ${name}${chalk.gray(inherits)}`);
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema list fields
+listCommand
+  .command('fields')
+  .description('List all fields across all types')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (options: ListCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      const allFields: Array<{ type: string; field: string; definition: Field }> = [];
+      
+      for (const typeName of getTypeNames(schema)) {
+        if (typeName === 'meta') continue;
+        const typeEntry = schema.raw.types[typeName];
+        if (typeEntry?.fields) {
+          for (const [fieldName, fieldDef] of Object.entries(typeEntry.fields)) {
+            allFields.push({ type: typeName, field: fieldName, definition: fieldDef });
+          }
+        }
+      }
+
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: `Found ${allFields.length} fields`,
+          data: { fields: allFields },
+        }));
+      } else {
+        console.log(chalk.bold('\nFields:\n'));
+        for (const { type, field, definition } of allFields) {
+          const typeStr = getFieldType(definition) + (definition.enum ? `:${definition.enum}` : '');
+          const required = definition.required ? chalk.red('*') : '';
+          console.log(`  ${type}.${field}${required} ${chalk.gray(`(${typeStr})`)}`);
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema list enums
+listCommand
+  .command('enums')
+  .description('List all enums')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (options: ListCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      if (jsonMode) {
+        outputEnumListJson(schema);
+      } else {
+        outputEnumListText(schema);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema list type <name>
+listCommand
+  .command('type <name>')
+  .description('Show details for a specific type')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (name: string, options: ListCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      if (jsonMode) {
+        outputTypeDetailsJson(schema, name);
+      } else {
+        showTypeDetails(schema, name);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+// schema list enum <name>
+listCommand
+  .command('enum <name>')
+  .description('Show details for a specific enum')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (name: string, options: ListCommandOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
+      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const schema = await loadSchema(vaultDir);
+
+      if (!enumExists(schema, name)) {
+        throw new Error(`Enum "${name}" does not exist`);
+      }
+
+      const values = getEnumValues(schema, name);
+      const usage = getEnumUsage(schema, name);
+
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: `Enum "${name}"`,
+          data: {
+            name,
+            values,
+            usedBy: usage,
+          },
+        }));
+      } else {
+        console.log(chalk.bold(`\nEnum: ${name}\n`));
+        console.log('Values:');
+        for (const value of values) {
+          console.log(`  - ${value}`);
+        }
+        if (usage.length > 0) {
+          console.log('\nUsed by:');
+          for (const u of usage) {
+            console.log(`  - ${u.typeName}.${u.fieldName}`);
+          }
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+schemaCommand.addCommand(listCommand);
 
 // ============================================================================
 // Migration Subcommands

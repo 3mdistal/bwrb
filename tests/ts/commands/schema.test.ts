@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { writeFile, rm, mkdir } from 'fs/promises';
+import { writeFile, rm, mkdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -1150,6 +1150,462 @@ describe('schema command', () => {
         expect(data.affectedFiles).toBe(2);
         expect(data.childTypes).toContain('task');
         expect(data.childTypes).toContain('milestone');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  // ============================================
+  // NEW UNIFIED VERB COMMANDS (schema new/edit/delete/list)
+  // ============================================
+
+  describe('schema new type (unified verb)', () => {
+    it('should create a new type with CLI flags', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-new-type-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: { meta: {} }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'new', 'type', 'note', '--inherits', 'meta', '--directory', 'Notes', '--output', 'json'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const data = JSON.parse(result.stdout);
+        expect(data.success).toBe(true);
+        expect(data.data.type).toBe('note');
+
+        // Verify the type was created
+        const schema = JSON.parse(
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
+        );
+        expect(schema.types.note).toBeDefined();
+        expect(schema.types.note.extends).toBe('meta');
+        expect(schema.types.note.output_dir).toBe('Notes');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should output JSON when --output json is specified', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-new-type-json-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: { meta: {} }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'new', 'type', 'note', '--inherits', 'meta', '--output', 'json'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const data = JSON.parse(result.stdout);
+        expect(data.success).toBe(true);
+        expect(data.data.type).toBe('note');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should show deprecation warning for old add-type command', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-add-type-deprecated-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: { meta: {} }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'add-type', 'note', '--extends', 'meta', '--output', 'json'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stderr).toContain('deprecated');
+        expect(result.stderr).toContain('schema new type');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('schema new field (unified verb)', () => {
+    // Note: Full field creation with --prompt, --enum, --required, --default flags
+    // is interactive-only in the unified verb implementation.
+    // PTY tests cover the interactive flow.
+    it.skip('should add a required field with default value (interactive only)', async () => {
+      // This test is skipped because schema new field is interactive-only
+      // and doesn't support --prompt, --enum, --required, --default flags
+    });
+  });
+
+  describe('schema new enum (unified verb)', () => {
+    it('should create a new enum with values', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-new-enum-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: { meta: {} }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'new', 'enum', 'priority', '--values', 'low,medium,high'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Enum');
+
+        const schema = JSON.parse(
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
+        );
+        expect(schema.enums.priority).toEqual(['low', 'medium', 'high']);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('schema delete type (unified verb)', () => {
+    it('should show dry-run by default', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-delete-type-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            task: { extends: 'meta', output_dir: 'Tasks' }
+          }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'delete', 'type', 'task', '--output', 'json'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const response = JSON.parse(result.stdout);
+        expect(response.success).toBe(true);
+        expect(response.data.dryRun).toBe(true);
+
+        // Type should still exist
+        const schema = JSON.parse(
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
+        );
+        expect(schema.types.task).toBeDefined();
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should delete type with --execute flag', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-delete-type-exec-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            task: { extends: 'meta', output_dir: 'Tasks' }
+          }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'delete', 'type', 'task', '--execute'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('deleted');
+
+        // Type should be gone
+        const schema = JSON.parse(
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
+        );
+        expect(schema.types.task).toBeUndefined();
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('schema delete field (unified verb)', () => {
+    it('should delete field with --execute flag', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-delete-field-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            task: {
+              extends: 'meta',
+              fields: { status: { prompt: 'input' }, deadline: { prompt: 'date' } }
+            }
+          }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'delete', 'field', 'task', 'deadline', '--execute'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+
+        const schema = JSON.parse(
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
+        );
+        expect(schema.types.task.fields.deadline).toBeUndefined();
+        expect(schema.types.task.fields.status).toBeDefined();
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('schema delete enum (unified verb)', () => {
+    it('should delete unused enum with --execute flag', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-delete-enum-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          enums: { priority: ['low', 'medium', 'high'], unused: ['a', 'b'] },
+          types: { meta: {} }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'delete', 'enum', 'unused', '--execute'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+
+        const schema = JSON.parse(
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
+        );
+        expect(schema.enums.unused).toBeUndefined();
+        expect(schema.enums.priority).toBeDefined();
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should error when deleting enum in use', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-delete-enum-used-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          enums: { status: ['raw', 'done'] },
+          types: {
+            meta: {},
+            task: {
+              extends: 'meta',
+              fields: { status: { prompt: 'select', enum: 'status' } }
+            }
+          }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'delete', 'enum', 'status', '--execute'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('in use');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('schema list (unified verb)', () => {
+    it('should show full schema overview (same as show)', async () => {
+      const result = await runCLI(['schema', 'list'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Schema Types');
+      expect(result.stdout).toContain('Types:');
+      expect(result.stdout).toContain('Enums:');
+    });
+
+    it('should list types only with "schema list types"', async () => {
+      const result = await runCLI(['schema', 'list', 'types'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('objective');
+      expect(result.stdout).toContain('idea');
+    });
+
+    it('should list enums only with "schema list enums"', async () => {
+      const result = await runCLI(['schema', 'list', 'enums'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('status');
+    });
+
+    it('should output JSON when --output json is specified', async () => {
+      const result = await runCLI(['schema', 'list', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const data = JSON.parse(result.stdout);
+      expect(data.types).toBeDefined();
+      expect(data.enums).toBeDefined();
+    });
+
+    it('should show deprecation warning for old show command', async () => {
+      const result = await runCLI(['schema', 'show'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain('deprecated');
+      expect(result.stderr).toContain('schema list');
+    });
+  });
+
+  describe('schema edit type (unified verb)', () => {
+    // Note: edit type is interactive-only in unified verbs
+    // Use the old edit-type command with flags for non-interactive editing
+    it.skip('should change output directory (interactive only)', async () => {
+      // This test is skipped because schema edit type is interactive
+      // and requires PTY testing. See schema-edit-type.pty.test.ts
+    });
+  });
+
+  describe('schema edit field (unified verb)', () => {
+    // Note: edit field is interactive-only in unified verbs
+    // Use the old edit-field command with flags for non-interactive editing
+    it.skip('should change field properties (interactive only)', async () => {
+      // This test is skipped because schema edit field is interactive
+      // and requires PTY testing. See schema-edit-field.pty.test.ts
+    });
+  });
+
+  describe('schema edit enum (unified verb)', () => {
+    it('should add values to enum', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-enum-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          enums: { priority: ['low', 'high'] },
+          types: { meta: {} }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'edit', 'enum', 'priority', '--add', 'medium'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+
+        const schema = JSON.parse(
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
+        );
+        expect(schema.enums.priority).toContain('medium');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should remove values from enum', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-enum-remove-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          enums: { priority: ['low', 'medium', 'high'] },
+          types: { meta: {} }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'edit', 'enum', 'priority', '--remove', 'medium'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+
+        const schema = JSON.parse(
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
+        );
+        expect(schema.enums.priority).not.toContain('medium');
+        expect(schema.enums.priority).toContain('low');
+        expect(schema.enums.priority).toContain('high');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should rename enum values', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-enum-rename-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          enums: { status: ['raw', 'done'] },
+          types: { meta: {} }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'edit', 'enum', 'status', '--rename', 'raw=pending'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+
+        const schema = JSON.parse(
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
+        );
+        expect(schema.enums.status).not.toContain('raw');
+        expect(schema.enums.status).toContain('pending');
+        expect(schema.enums.status).toContain('done');
       } finally {
         await rm(tempVaultDir, { recursive: true, force: true });
       }

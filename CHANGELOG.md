@@ -6,6 +6,15 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Changed
 
+- **Unified verbs for schema commands** (#122)
+  - New commands with consistent verb pattern: `schema new`, `schema edit`, `schema delete`, `schema list`
+  - `schema new type/field/enum` - Create types, fields, and enums
+  - `schema edit type/field/enum` - Modify existing schema elements (interactive)
+  - `schema delete type/field/enum` - Remove schema elements (dry-run by default, `--execute` to apply)
+  - `schema list [types|fields|enums]` - View schema overview or filter by category
+  - Old commands (`add-type`, `add-field`, `edit-type`, `edit-field`, `remove-type`, `remove-field`, `show`, `enum add/update/delete/list`) still work but emit deprecation warnings
+  - Enum deletion now blocks when enum is in use by fields (safety improvement)
+
 - **Unified `--output` flag for list and search commands** (#118)
   - `list` command: `--output <format>` with choices: `default`, `paths`, `tree`, `link`, `json`
   - `search` command: `--output <format>` with choices: `default`, `paths`, `link`, `content`, `json`
