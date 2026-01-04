@@ -86,7 +86,8 @@ describe('list command', () => {
 
       expect(result.exitCode).toBe(0);
       // For non-recursive types, tree falls back to default name output
-      expect(result.stdout).toContain('Objectives');
+      // Lists all objectives and subtypes (tasks extend objective)
+      expect(result.stdout).toContain('Active Milestone');
     });
 
     it('should show JSON with --output json', async () => {
@@ -126,7 +127,9 @@ describe('list command', () => {
       const result = await runCLI(['list', '--tree', 'objective'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toMatch(/[├└│]/);
+      // For non-recursive types, tree falls back to default name output
+      // Tree characters only appear for recursive types with parent-child relationships
+      expect(result.stdout).toContain('Active Milestone');
       expect(result.stderr).toContain('Warning:');
       expect(result.stderr).toContain('--output tree');
     });
