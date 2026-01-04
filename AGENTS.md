@@ -68,7 +68,27 @@ PTY test locations:
 
 ## Issue Tracking
 
-This project uses Beads for issue tracking. Load the `beads` skill for commands.
+This project uses GitHub Issues. Use the `gh` CLI for issue management:
+
+```bash
+gh issue list                    # List open issues
+gh issue view <number>           # View issue details
+gh issue create                  # Create new issue
+gh issue close <number>          # Close an issue
+gh issue edit <number>           # Edit issue
+```
+
+### Dependencies
+
+Track blocking relationships in issue bodies using task lists:
+
+```markdown
+## Blocked by
+- [ ] #12 Schema validation refactor
+- [ ] #15 Add enum support
+```
+
+Use the `blocked` label for issues that cannot proceed. When closing an issue, check if it unblocks others.
 
 ## Landing the Plane (Session Completion)
 
@@ -82,7 +102,6 @@ This project uses Beads for issue tracking. Load the `beads` skill for commands.
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd sync
    git push
    git status  # MUST show "up to date with origin"
    ```
