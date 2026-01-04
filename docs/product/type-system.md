@@ -43,6 +43,10 @@ Notes can link to other notes via context fields:
 - Broken links are caught by audit
 - You can query by relationship
 
+**Validation behavior:**
+- **CLI commands** (`pika new`, `pika edit`): Interactive pickers show only valid targets. In JSON mode, invalid references are rejected with clear error messages.
+- **External edits**: Files can drift (e.g., target note renamed). `pika audit` catches broken links and type mismatches; `pika audit --fix` offers guided remediation.
+
 ### 3. Parents Can Own Children (Ownership)
 
 A parent can declare that it "owns" its children:

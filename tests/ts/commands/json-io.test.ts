@@ -301,6 +301,89 @@ describe('JSON I/O', () => {
     });
   });
 
+  describe('context field validation in JSON mode', () => {
+    it('should reject task with milestone pointing to wrong type', async () => {
+      // Sample Idea is an idea, not a milestone - should fail validation
+      const result = await runCLI(
+        ['new', 'task', '--json', JSON.stringify({
+          name: 'Invalid Task',
+          milestone: '"[[Sample Idea]]"',
+        })],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.errors).toBeDefined();
+      expect(json.errors[0].field).toBe('milestone');
+      expect(json.errors[0].type).toBe('invalid_context_source');
+    });
+
+    it('should reject task with milestone pointing to non-existent note', async () => {
+      const result = await runCLI(
+        ['new', 'task', '--json', JSON.stringify({
+          name: 'Missing Milestone Task',
+          milestone: '"[[Non Existent Note]]"',
+        })],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.errors).toBeDefined();
+      expect(json.errors[0].field).toBe('milestone');
+      expect(json.errors[0].type).toBe('invalid_context_source');
+    });
+
+    it('should accept task with valid milestone reference', async () => {
+      const result = await runCLI(
+        ['new', 'task', '--json', JSON.stringify({
+          name: 'Valid Task',
+          milestone: '"[[Active Milestone]]"',
+        })],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+    });
+
+    it('should accept task with empty milestone field', async () => {
+      const result = await runCLI(
+        ['new', 'task', '--json', JSON.stringify({
+          name: 'No Milestone Task',
+          milestone: '',
+        })],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+    });
+
+    it('should reject edit with invalid context field', async () => {
+      // Edit Sample Task to reference an idea instead of milestone
+      const result = await runCLI(
+        ['edit', 'Objectives/Tasks/Sample Task.md', '--json', JSON.stringify({
+          milestone: '"[[Sample Idea]]"',
+        })],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      // Find the context field validation error
+      const milestoneError = json.errors.find((e: { field: string }) => e.field === 'milestone');
+      expect(milestoneError).toBeDefined();
+      expect(milestoneError.type).toBe('invalid_context_source');
+    });
+  });
+
   describe('pika edit --json', () => {
     it('should update a note with JSON patch', async () => {
       const result = await runCLI(

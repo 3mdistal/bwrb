@@ -1,5 +1,7 @@
 import type { LoadedSchema, Field } from '../types/schema.js';
-import { getFieldsForType, getEnumValues } from './schema.js';
+import { getFieldsForType, getEnumValues, getDescendants, getType } from './schema.js';
+import { queryByType } from './vault.js';
+import { extractWikilinkTarget } from './audit/types.js';
 
 /**
  * Validation error types.
@@ -9,7 +11,8 @@ export type ValidationErrorType =
   | 'invalid_enum_value'
   | 'invalid_type'
   | 'unknown_field'
-  | 'invalid_date';
+  | 'invalid_date'
+  | 'invalid_context_source';
 
 /**
  * A single validation error with context.
@@ -422,4 +425,195 @@ export function validationResultToJson(
         }))
       : undefined,
   };
+}
+
+/**
+ * Context field validation error with additional metadata.
+ */
+export interface ContextValidationError extends ValidationError {
+  /** The referenced note name that was invalid */
+  targetName?: string;
+  /** The actual type of the referenced note (if found) */
+  actualType?: string;
+  /** The expected types based on the source constraint */
+  expectedTypes?: string[];
+}
+
+/**
+ * Result of validating context fields.
+ */
+export interface ContextValidationResult {
+  valid: boolean;
+  errors: ContextValidationError[];
+}
+
+/**
+ * Validate context fields (fields with source type constraint) against the vault.
+ * 
+ * This validates that wikilink values in context fields reference notes that:
+ * 1. Exist in the vault
+ * 2. Match the source type constraint
+ * 
+ * For source type constraints:
+ * - `source: "milestone"` - only accepts notes of exact type "milestone"
+ * - `source: "objective"` - accepts "objective" or any descendant type (task, milestone, etc.)
+ * - `source: "any"` - accepts any note type
+ * 
+ * @param schema - The loaded schema
+ * @param vaultDir - The vault root directory
+ * @param typeName - The type of the note being validated
+ * @param frontmatter - The frontmatter values to validate
+ * @returns Validation result with any context field errors
+ */
+export async function validateContextFields(
+  schema: LoadedSchema,
+  vaultDir: string,
+  typeName: string,
+  frontmatter: Record<string, unknown>
+): Promise<ContextValidationResult> {
+  const errors: ContextValidationError[] = [];
+  const fields = getFieldsForType(schema, typeName);
+
+  for (const [fieldName, field] of Object.entries(fields)) {
+    // Skip fields without source constraint (not context fields)
+    if (!field.source) continue;
+
+    const value = frontmatter[fieldName];
+    
+    // Skip empty/null values (required field check is separate)
+    if (value === undefined || value === null || value === '') continue;
+
+    // Validate each value (handle both single and array values)
+    const values = Array.isArray(value) ? value : [value];
+    
+    for (const v of values) {
+      if (typeof v !== 'string') continue;
+      
+      const error = await validateSingleContextValue(
+        schema,
+        vaultDir,
+        fieldName,
+        field,
+        v
+      );
+      
+      if (error) {
+        errors.push(error);
+      }
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+/**
+ * Validate a single context field value against the vault.
+ */
+async function validateSingleContextValue(
+  schema: LoadedSchema,
+  vaultDir: string,
+  fieldName: string,
+  field: Field,
+  value: string
+): Promise<ContextValidationError | null> {
+  const source = field.source!;
+  
+  // Extract wikilink target
+  const targetName = extractWikilinkTarget(value);
+  if (!targetName) {
+    // Not a wikilink format - skip validation (other validators handle format)
+    return null;
+  }
+
+  // "any" source accepts any note - we just need to verify it exists
+  // For type-specific sources, we query by type which also verifies existence
+  
+  // Build list of valid types based on source constraint
+  const validTypes = new Set<string>();
+  
+  if (source === 'any') {
+    // Any type is valid, just need to check existence
+    // Query all types to find the note
+    for (const typeName of schema.types.keys()) {
+      const typeNotes = await queryByType(schema, vaultDir, typeName);
+      if (typeNotes.includes(targetName)) {
+        return null; // Found, valid
+      }
+    }
+    
+    // Note not found in any type
+    return {
+      type: 'invalid_context_source',
+      field: fieldName,
+      value,
+      message: `Referenced note not found: "${targetName}"`,
+      targetName,
+    };
+  }
+
+  // Check if source type exists
+  const sourceType = getType(schema, source);
+  if (!sourceType) {
+    // Invalid source type in schema - this is a schema error, not a data error
+    // Skip validation rather than report as data error
+    return null;
+  }
+
+  // Build set of valid types: source + all descendants
+  validTypes.add(source);
+  for (const descendant of getDescendants(schema, source)) {
+    validTypes.add(descendant);
+  }
+
+  // Query notes for each valid type and check if target exists
+  for (const typeName of validTypes) {
+    const typeNotes = await queryByType(schema, vaultDir, typeName);
+    if (typeNotes.includes(targetName)) {
+      return null; // Found and valid type
+    }
+  }
+
+  // Check if the note exists but has wrong type (for better error messages)
+  for (const [typeName, _type] of schema.types) {
+    if (validTypes.has(typeName)) continue; // Already checked
+    
+    const typeNotes = await queryByType(schema, vaultDir, typeName);
+    if (typeNotes.includes(targetName)) {
+      // Note exists but wrong type
+      return {
+        type: 'invalid_context_source',
+        field: fieldName,
+        value,
+        message: `"${targetName}" is type "${typeName}", expected ${formatExpectedTypes(validTypes)}`,
+        targetName,
+        actualType: typeName,
+        expectedTypes: Array.from(validTypes),
+        expected: Array.from(validTypes),
+      };
+    }
+  }
+
+  // Note not found at all
+  return {
+    type: 'invalid_context_source',
+    field: fieldName,
+    value,
+    message: `Referenced note not found: "${targetName}"`,
+    targetName,
+    expectedTypes: Array.from(validTypes),
+    expected: Array.from(validTypes),
+  };
+}
+
+/**
+ * Format expected types for error messages.
+ */
+function formatExpectedTypes(types: Set<string>): string {
+  const arr = Array.from(types);
+  if (arr.length === 1) return `"${arr[0]}"`;
+  if (arr.length === 2) return `"${arr[0]}" or "${arr[1]}"`;
+  return `one of: ${arr.map(t => `"${t}"`).join(', ')}`;
 }

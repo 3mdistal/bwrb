@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
   validateFrontmatter,
+  validateContextFields,
   applyDefaults,
   suggestEnumValue,
   suggestFieldName,
@@ -232,6 +233,94 @@ describe('validation', () => {
 
       expect(output).toContain('status');
       expect(output).toContain('foo');
+    });
+  });
+
+  describe('validateContextFields', () => {
+    it('should pass when context field references valid type', async () => {
+      // milestone field on task should accept a milestone
+      const result = await validateContextFields(schema, vaultDir, 'task', {
+        type: 'task',
+        status: 'backlog',
+        milestone: '"[[Active Milestone]]"',
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should fail when context field references wrong type', async () => {
+      // milestone field on task should NOT accept an idea
+      const result = await validateContextFields(schema, vaultDir, 'task', {
+        type: 'task',
+        status: 'backlog',
+        milestone: '"[[Sample Idea]]"',
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].type).toBe('invalid_context_source');
+      expect(result.errors[0].field).toBe('milestone');
+      // The error should mention the expected type and that the actual type doesn't match
+      expect(result.errors[0].message).toContain('milestone');
+    });
+
+    it('should fail when context field references non-existent note', async () => {
+      const result = await validateContextFields(schema, vaultDir, 'task', {
+        type: 'task',
+        status: 'backlog',
+        milestone: '"[[Non Existent Note]]"',
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].type).toBe('invalid_context_source');
+      expect(result.errors[0].field).toBe('milestone');
+      expect(result.errors[0].message).toContain('not found');
+    });
+
+    it('should pass when context field is empty', async () => {
+      const result = await validateContextFields(schema, vaultDir, 'task', {
+        type: 'task',
+        status: 'backlog',
+        milestone: '',
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should pass when context field is not provided', async () => {
+      const result = await validateContextFields(schema, vaultDir, 'task', {
+        type: 'task',
+        status: 'backlog',
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should handle unquoted wikilink format', async () => {
+      const result = await validateContextFields(schema, vaultDir, 'task', {
+        type: 'task',
+        status: 'backlog',
+        milestone: '[[Active Milestone]]',
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should pass for types without context fields', async () => {
+      // idea type has no context fields (no source property on any field)
+      const result = await validateContextFields(schema, vaultDir, 'idea', {
+        type: 'idea',
+        status: 'raw',
+        priority: 'high',
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
     });
   });
 });

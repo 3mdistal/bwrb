@@ -47,6 +47,7 @@ import {
 import {
   validateFrontmatter,
   applyDefaults,
+  validateContextFields,
 } from '../lib/validation.js';
 import {
   printJson,
@@ -331,6 +332,23 @@ async function createNoteFromJson(
 
   // Apply schema defaults for missing fields
   const frontmatter = applyDefaults(schema, typePath, mergedInput);
+
+  // Validate context fields (source type constraints)
+  const contextValidation = await validateContextFields(schema, vaultDir, typePath, mergedInput);
+  if (!contextValidation.valid) {
+    printJson({
+      success: false,
+      error: 'Context field validation failed',
+      errors: contextValidation.errors.map(e => ({
+        type: e.type,
+        field: e.field,
+        message: e.message,
+        ...(e.value !== undefined && { value: e.value }),
+        ...(e.expected !== undefined && { expected: e.expected }),
+      })),
+    });
+    process.exit(ExitCodes.VALIDATION_ERROR);
+  }
 
   // Validate template constraints
   if (template?.constraints) {

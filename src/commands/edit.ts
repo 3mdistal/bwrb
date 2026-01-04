@@ -21,6 +21,7 @@ import {
 } from '../lib/prompt.js';
 import {
   validateFrontmatter,
+  validateContextFields,
 } from '../lib/validation.js';
 import {
   printJson,
@@ -219,6 +220,24 @@ async function editNoteFromJson(
         ...(e.value !== undefined && { value: e.value }),
         ...(e.expected !== undefined && { expected: e.expected }),
         ...(e.suggestion !== undefined && { suggestion: e.suggestion }),
+      })),
+    });
+    process.exit(ExitCodes.VALIDATION_ERROR);
+  }
+
+  // Validate context fields (source type constraints)
+  const contextValidation = await validateContextFields(schema, _vaultDir, typePath, mergedFrontmatter);
+  if (!contextValidation.valid) {
+    printJson({
+      success: false,
+      error: 'Context field validation failed',
+      errors: contextValidation.errors.map(e => ({
+        type: e.type,
+        field: e.field,
+        message: e.message,
+        currentValue: frontmatter[e.field],
+        ...(e.value !== undefined && { value: e.value }),
+        ...(e.expected !== undefined && { expected: e.expected }),
       })),
     });
     process.exit(ExitCodes.VALIDATION_ERROR);

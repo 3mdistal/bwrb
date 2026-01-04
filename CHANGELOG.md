@@ -4,6 +4,15 @@ All notable changes to Pika are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Context field validation** (#99)
+  - `pika new --json` and `pika edit --json` now validate context field references
+  - Validates that wikilink targets exist and match the field's `source` type constraint
+  - Returns `invalid_context_source` errors with details (field, value, expected types, actual type)
+  - `pika audit --fix` now handles `invalid-source-type` issues interactively
+  - Fix options: select valid replacement note, clear field, skip, or quit
+
 ### Changed
 
 - **Ownership model completion** (pika-9g9/#88)

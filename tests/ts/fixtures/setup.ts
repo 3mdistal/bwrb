@@ -140,7 +140,7 @@ priority: high
     `---
 type: task
 status: in-flight
-deadline: 2024-01-15
+deadline: "2024-01-15"
 ---
 ## Steps
 - [ ] Step 1

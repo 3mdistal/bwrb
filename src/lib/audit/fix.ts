@@ -14,6 +14,7 @@ import {
   getEnumForField,
   hasSubtypes,
 } from '../schema.js';
+import { queryByType } from '../vault.js';
 import { parseNote, writeNote } from '../frontmatter.js';
 import { promptSelection, promptConfirm, promptInput } from '../prompt.js';
 import type { LoadedSchema } from '../../types/schema.js';
@@ -94,6 +95,15 @@ export async function applyFix(
       case 'unknown-field': {
         // This is handled by removeField instead
         return { file: filePath, issue, action: 'skipped', message: 'Use removeField for unknown-field issues' };
+      }
+      case 'invalid-source-type': {
+        // Fix invalid source type by updating the field value
+        if (issue.field && newValue !== undefined) {
+          frontmatter[issue.field] = newValue;
+        } else {
+          return { file: filePath, issue, action: 'failed', message: 'No value provided' };
+        }
+        break;
       }
       default:
         return { file: filePath, issue, action: 'skipped', message: 'Not auto-fixable' };
@@ -370,6 +380,8 @@ async function handleInteractiveFix(
       return handleOwnedNoteReferencedFix(schema, result, issue);
     case 'owned-wrong-location':
       return handleOwnedWrongLocationFix(schema, result, issue);
+    case 'invalid-source-type':
+      return handleInvalidSourceTypeFix(schema, result, issue);
     default:
       // Truly non-fixable issues
       if (issue.suggestion) {
@@ -755,6 +767,95 @@ async function handleOwnedNoteReferencedFix(
 
   console.log(chalk.dim('    → Skipped'));
   return 'skipped';
+}
+
+/**
+ * Handle invalid-source-type fix.
+ * 
+ * This occurs when a context field references a note of the wrong type.
+ * For example, a task's milestone field referencing an objective instead of a milestone.
+ * 
+ * Options:
+ * 1. Select a valid note of the correct type
+ * 2. Clear the field
+ * 3. Skip (leave for manual fix)
+ */
+async function handleInvalidSourceTypeFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field) {
+    console.log(chalk.dim('    (Cannot fix - no field specified)'));
+    return 'skipped';
+  }
+
+  // Get the source type constraint from the schema
+  const parsed = await parseNote(result.path);
+  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  if (!typePath) {
+    console.log(chalk.dim('    (Cannot fix - unknown type)'));
+    return 'skipped';
+  }
+
+  const fields = getFieldsForType(schema, typePath);
+  const field = fields[issue.field];
+  if (!field || !field.source) {
+    console.log(chalk.dim('    (Cannot fix - field source not defined)'));
+    return 'skipped';
+  }
+
+  // Show context about the type mismatch
+  console.log(chalk.dim(`    Current value: ${issue.value}`));
+  console.log(chalk.dim(`    Target type: ${issue.actualType}`));
+  const expectedTypes = Array.isArray(issue.expected) ? issue.expected.join(', ') : issue.expected;
+  console.log(chalk.dim(`    Expected types: ${expectedTypes || field.source}`));
+
+  // Query for valid notes of the correct source type
+  const vaultDir = result.path.substring(0, result.path.indexOf(result.relativePath));
+  const validNotes = await queryByType(schema, vaultDir, field.source);
+
+  // Build options
+  const options: string[] = [];
+  if (validNotes.length > 0) {
+    // Format as wikilinks
+    options.push(...validNotes.slice(0, 20).map(n => `[[${n}]]`));
+    if (validNotes.length > 20) {
+      options.push(`... (${validNotes.length - 20} more)`);
+    }
+  }
+  options.push('[clear field]', '[skip]', '[quit]');
+
+  const selected = await promptSelection(
+    `    Select valid ${field.source}:`,
+    options
+  );
+
+  if (selected === null || selected === '[quit]') {
+    return 'quit';
+  } else if (selected === '[skip]' || selected.startsWith('... (')) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  } else if (selected === '[clear field]') {
+    const fixResult = await applyFix(schema, result.path, issue, '');
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Cleared ${issue.field}`));
+      return 'fixed';
+    } else {
+      console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+      return 'failed';
+    }
+  } else {
+    // User selected a valid note
+    const fixResult = await applyFix(schema, result.path, issue, selected);
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Updated ${issue.field}: ${selected}`));
+      return 'fixed';
+    } else {
+      console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+      return 'failed';
+    }
+  }
 }
 
 /**
