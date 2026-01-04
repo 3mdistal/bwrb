@@ -166,7 +166,7 @@ Examples:
 
       // Build candidates based on targeting
       let candidates: ManagedFile[];
-      let index = await buildNoteIndex(schema, vaultDir);
+      const index = await buildNoteIndex(schema, vaultDir);
 
       if (hasTargeting) {
         // Use resolveTargets for proper filtering
