@@ -1,5 +1,5 @@
 /**
- * Shared error types for pika commands.
+ * Shared error types for bwrb commands.
  */
 
 /**

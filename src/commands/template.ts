@@ -63,13 +63,13 @@ export const templateCommand = new Command('template')
   .description('Template management commands')
   .addHelpText('after', `
 Examples:
-  pika template list                      # List all templates
-  pika template list idea                 # List templates for idea type
-  pika template show idea default         # Show template details
-  pika template validate                  # Validate all templates
-  pika template new idea                  # Create new template interactively
-  pika template edit idea default         # Edit existing template
-  pika template delete idea default       # Delete a template`);
+  bwrb template list                      # List all templates
+  bwrb template list idea                 # List templates for idea type
+  bwrb template show idea default         # Show template details
+  bwrb template validate                  # Validate all templates
+  bwrb template new idea                  # Create new template interactively
+  bwrb template edit idea default         # Edit existing template
+  bwrb template delete idea default       # Delete a template`);
 
 // ============================================================================
 // template list [type]
@@ -132,7 +132,7 @@ templateCommand
         } else {
           console.log('No templates found.');
         }
-        console.log(`\nTemplates are stored in: .pika/templates/{type}/{subtype}/`);
+        console.log(`\nTemplates are stored in: .bwrb/templates/{type}/{subtype}/`);
         return;
       }
 

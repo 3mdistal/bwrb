@@ -142,15 +142,15 @@ export const deleteCommand = new Command('delete')
   .addHelpText('after', `
 Modes:
   Single-file mode (default):
-    pika delete "My Note"           Delete specific note by name
-    pika delete                     Browse all notes with picker
+    bwrb delete "My Note"           Delete specific note by name
+    bwrb delete                     Browse all notes with picker
 
   Bulk mode (with targeting selectors):
-    pika delete --type task         Dry-run: show tasks that would be deleted
-    pika delete --type task -x      Actually delete all tasks
-    pika delete --where "status=archived" --execute
-    pika delete --text "DELETE ME" --execute
-    pika delete --all --execute     Delete ALL notes (dangerous!)
+    bwrb delete --type task         Dry-run: show tasks that would be deleted
+    bwrb delete --type task -x      Actually delete all tasks
+    bwrb delete --where "status=archived" --execute
+    bwrb delete --text "DELETE ME" --execute
+    bwrb delete --all --execute     Delete ALL notes (dangerous!)
 
 Safety:
   Bulk delete requires TWO gates:
@@ -164,12 +164,12 @@ Picker Modes:
   none        Error on ambiguity (for non-interactive use)
 
 Examples:
-  pika delete "My Note"                   # Single file delete with confirmation
-  pika delete "My Note" --force           # Skip confirmation
-  pika delete --type task                 # Dry-run: preview deletions
-  pika delete --type task --execute       # Actually delete all tasks
-  pika delete --path "Archive/**" -x      # Delete all notes in Archive
-  pika delete -o json --force "My Note"   # Scripting mode (single file)
+  bwrb delete "My Note"                   # Single file delete with confirmation
+  bwrb delete "My Note" --force           # Skip confirmation
+  bwrb delete --type task                 # Dry-run: preview deletions
+  bwrb delete --type task --execute       # Actually delete all tasks
+  bwrb delete --path "Archive/**" -x      # Delete all notes in Archive
+  bwrb delete -o json --force "My Note"   # Scripting mode (single file)
 
 Note: Deletion is permanent. The file is removed from the filesystem.
       Use version control (git) to recover deleted notes if needed.`)

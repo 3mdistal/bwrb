@@ -1,4 +1,4 @@
-# Pika Inheritance Model
+# Bowerbird Inheritance Model
 
 > Single inheritance + context relationships + ownership
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-Pika uses a simple, consistent model for organizing notes:
+Bowerbird uses a simple, consistent model for organizing notes:
 
 1. **Inheritance** — What a note IS (determines fields)
 2. **Context** — What a note SUPPORTS (determines relationships)
@@ -112,8 +112,8 @@ Full path is never needed because type names are unique.
 CLI accepts the type name, validates uniqueness:
 
 ```bash
-pika new task           # Works (unique name)
-pika new daily-note     # Works (unique name)
+bwrb new task           # Works (unique name)
+bwrb new daily-note     # Works (unique name)
 ```
 
 If somehow a name collision existed (schema validation should prevent this), CLI would error with suggestions.
@@ -386,7 +386,7 @@ This means:
 
 ### Cycle Detection
 
-Pika prevents parent cycles that would create infinite loops:
+Bowerbird prevents parent cycles that would create infinite loops:
 
 ```yaml
 # Task A
@@ -399,21 +399,21 @@ parent: "[[Task A]]"   # ERROR: Would create cycle A → B → A
 ```
 
 **Behavior:**
-- `pika new` and `pika edit` check for cycles before saving
+- `bwrb new` and `bwrb edit` check for cycles before saving
 - Self-references are blocked (a note cannot be its own parent)
 - Error message shows the full cycle path for debugging
-- `pika audit` also detects cycles in existing notes
+- `bwrb audit` also detects cycles in existing notes
 
 ### Hierarchical Queries
 
 Recursion enables tree-based queries:
 
 ```bash
-pika list task --tree              # Render as hierarchy
-pika list task --roots             # Only tasks with no parent
-pika list task --children-of "[[Epic]]"  # Direct children
-pika list task --descendants-of "[[Epic]]"  # All nested
-pika list task --depth 2           # Top 2 levels only
+bwrb list task --tree              # Render as hierarchy
+bwrb list task --roots             # Only tasks with no parent
+bwrb list task --children-of "[[Epic]]"  # Direct children
+bwrb list task --descendants-of "[[Epic]]"  # All nested
+bwrb list task --depth 2           # Top 2 levels only
 ```
 
 ---
@@ -424,7 +424,7 @@ Types can be abstract (no direct instances) or concrete (has instances).
 
 ### Inference Rules
 
-Pika infers this from usage:
+Bowerbird infers this from usage:
 
 1. **Has owned children** → Concrete (the parent instances exist)
 2. **Has notes with this exact type** → Concrete
@@ -434,14 +434,14 @@ Pika infers this from usage:
 
 ```bash
 # Abstract type: recursive by default
-pika list objective          # Returns tasks, milestones, goals, projects
+bwrb list objective          # Returns tasks, milestones, goals, projects
 
 # Concrete type: exact by default  
-pika list task               # Returns only tasks
+bwrb list task               # Returns only tasks
 
 # Override with flags
-pika list objective --exact      # Only type: objective (probably none)
-pika list task --recursive       # Tasks and any task subtypes
+bwrb list objective --exact      # Only type: objective (probably none)
+bwrb list task --recursive       # Tasks and any task subtypes
 ```
 
 ### Output Clarity
@@ -449,7 +449,7 @@ pika list task --recursive       # Tasks and any task subtypes
 When listing an abstract type, output shows actual types:
 
 ```
-$ pika list objective
+$ bwrb list objective
 
 TYPE       NAME                 STATUS
 task       Fix login bug        in-flight
@@ -633,7 +633,7 @@ goal       Ship v1.0            raw
 
 ### Validation Rules
 
-Pika validates schemas on load:
+Bowerbird validates schemas on load:
 
 1. **No duplicate type names** — Error if two types share a name
 2. **No circular extends** — Error if A extends B extends A
@@ -663,7 +663,7 @@ Pika validates schemas on load:
 }
 ```
 
-### New Model (Pika)
+### New Model (Bowerbird)
 
 ```json
 {
@@ -690,7 +690,7 @@ Pika validates schemas on load:
 ### Migration Steps
 
 1. Flatten nested subtypes into top-level types with `extends`
-2. Remove `output_dir` (let Pika compute, or use colocation)
+2. Remove `output_dir` (let Bowerbird compute, or use colocation)
 3. Rename `frontmatter` to `fields`
 4. Update notes: remove `{type}-type` field, keep only `type` with leaf name
 

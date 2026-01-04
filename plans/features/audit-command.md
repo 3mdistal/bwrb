@@ -6,7 +6,7 @@
 
 ## Overview
 
-The `pika audit` command validates files against the schema and reports issues:
+The `bwrb audit` command validates files against the schema and reports issues:
 
 - Missing required fields
 - Invalid enum values
@@ -21,12 +21,12 @@ The `pika audit` command validates files against the schema and reports issues:
 ## Command Syntax
 
 ```bash
-pika audit                      # Check all files (report only)
-pika audit objective/task       # Check specific type
-pika audit --fix                # Interactive repair mode
-pika audit --fix --auto         # Automatic fixes where unambiguous
-pika audit --strict             # Error on unknown fields
-pika audit --templates          # Also audit templates
+bwrb audit                      # Check all files (report only)
+bwrb audit objective/task       # Check specific type
+bwrb audit --fix                # Interactive repair mode
+bwrb audit --fix --auto         # Automatic fixes where unambiguous
+bwrb audit --strict             # Error on unknown fields
+bwrb audit --templates          # Also audit templates
 ```
 
 ---
@@ -150,7 +150,7 @@ Drafts/Q1 Blog Post/Research.md
 ### Default: Report Only
 
 ```bash
-pika audit
+bwrb audit
 
 # Auditing vault...
 # 
@@ -171,13 +171,13 @@ pika audit
 #   Total errors: 5
 #   Total warnings: 1
 # 
-# Run 'pika audit --fix' to repair interactively.
+# Run 'bwrb audit --fix' to repair interactively.
 ```
 
 ### Interactive Fix Mode
 
 ```bash
-pika audit --fix
+bwrb audit --fix
 
 # Auditing vault...
 # 
@@ -209,7 +209,7 @@ pika audit --fix
 ### Auto-Fix Mode
 
 ```bash
-pika audit --fix --auto
+bwrb audit --fix --auto
 
 # Auditing vault...
 # 
@@ -232,13 +232,13 @@ pika audit --fix --auto
 #   Auto-fixed: 3 issues
 #   Manual review needed: 2 issues
 # 
-# Run 'pika audit --fix' to address remaining issues.
+# Run 'bwrb audit --fix' to address remaining issues.
 ```
 
 ### Strict Mode
 
 ```bash
-pika audit --strict
+bwrb audit --strict
 
 # Unknown fields are now errors:
 # 
@@ -255,26 +255,26 @@ pika audit --strict
 ### By Type
 
 ```bash
-pika audit objective/task      # Only tasks
-pika audit objective           # Tasks and milestones
-pika audit draft               # All draft instances
-pika audit draft/version       # Only draft versions
+bwrb audit objective/task      # Only tasks
+bwrb audit objective           # Tasks and milestones
+bwrb audit draft               # All draft instances
+bwrb audit draft/version       # Only draft versions
 ```
 
 ### By Directory
 
 ```bash
-pika audit --path "Objectives/Tasks/"
-pika audit --path "Drafts/Q1 Blog Post/"
+bwrb audit --path "Objectives/Tasks/"
+bwrb audit --path "Drafts/Q1 Blog Post/"
 ```
 
 ### By Issue Type
 
 ```bash
-pika audit --only missing-required
-pika audit --only invalid-enum
-pika audit --only unknown-field
-pika audit --ignore unknown-field
+bwrb audit --only missing-required
+bwrb audit --only invalid-enum
+bwrb audit --only unknown-field
+bwrb audit --ignore unknown-field
 ```
 
 ---
@@ -304,8 +304,8 @@ These fields are always allowed (Obsidian native):
 ### Command-Line Override
 
 ```bash
-pika audit --allow-field custom-field
-pika audit --strict --allow-field custom-field
+bwrb audit --allow-field custom-field
+bwrb audit --strict --allow-field custom-field
 ```
 
 ---
@@ -341,23 +341,23 @@ pika audit --strict --allow-field custom-field
 ### Pre-Bulk Check
 
 ```bash
-pika bulk task --set status=done --where "status == 'in-progress'"
+bwrb bulk task --set status=done --where "status == 'in-progress'"
 # Warning: 3 files have audit issues that may affect this operation.
-# Run 'pika audit objective/task' first? [Y/n]
+# Run 'bwrb audit objective/task' first? [Y/n]
 ```
 
 ### Post-Schema-Change
 
 ```bash
-pika schema edit-enum status --rename wip=in-progress
-# Schema updated. Run 'pika audit' to check for issues.
+bwrb schema edit-enum status --rename wip=in-progress
+# Schema updated. Run 'bwrb audit' to check for issues.
 ```
 
 ### CI/CD Integration
 
 ```bash
-pika audit --format json > audit-report.json
-pika audit --format junit > audit-report.xml
+bwrb audit --format json > audit-report.json
+bwrb audit --format junit > audit-report.xml
 ```
 
 ---
@@ -369,7 +369,7 @@ For instance-grouped types, additional checks:
 ### Parent Note Check
 
 ```bash
-pika audit draft
+bwrb audit draft
 
 # Checking draft instances...
 # 
@@ -385,7 +385,7 @@ pika audit draft
 ### Subtype Validation
 
 ```bash
-pika audit draft/version
+bwrb audit draft/version
 
 # Checking draft/version files...
 # 

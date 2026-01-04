@@ -3,7 +3,7 @@
  *
  * These tests verify that all CLI commands work correctly when
  * the --vault option is given a relative path instead of an absolute path.
- * This is important because users may run pika from various directories
+ * This is important because users may run bwrb from various directories
  * and use relative paths like `--vault ./my-vault` or `--vault ../vaults/work`.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -228,14 +228,14 @@ describe('edge cases', () => {
 
     beforeAll(async () => {
       // Create vault in temp dir with space in name
-      spacedVaultDir = await mkdtemp(join(tmpdir(), 'pika test vault '));
+      spacedVaultDir = await mkdtemp(join(tmpdir(), 'bwrb test vault '));
 
       // Create minimal vault structure
-      await mkdir(join(spacedVaultDir, '.pika'), { recursive: true });
+      await mkdir(join(spacedVaultDir, '.bwrb'), { recursive: true });
       await mkdir(join(spacedVaultDir, 'Ideas'), { recursive: true });
 
       await writeFile(
-        join(spacedVaultDir, '.pika', 'schema.json'),
+        join(spacedVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           enums: { status: ['raw', 'done'] },

@@ -336,11 +336,11 @@ describe('schema', () => {
       const { tmpdir } = await import('os');
       const { join } = await import('path');
       
-      const tempDir = await mkdtemp(join(tmpdir(), 'pika-recursive-test-'));
+      const tempDir = await mkdtemp(join(tmpdir(), 'bwrb-recursive-test-'));
       try {
-        await mkdir(join(tempDir, '.pika'), { recursive: true });
+        await mkdir(join(tempDir, '.bwrb'), { recursive: true });
         await writeFile(
-          join(tempDir, '.pika/schema.json'),
+          join(tempDir, '.bwrb/schema.json'),
           JSON.stringify({
             version: 2,
             types: {
@@ -374,11 +374,11 @@ describe('schema', () => {
       const { tmpdir } = await import('os');
       const { join } = await import('path');
       
-      const tempDir = await mkdtemp(join(tmpdir(), 'pika-recursive-test-'));
+      const tempDir = await mkdtemp(join(tmpdir(), 'bwrb-recursive-test-'));
       try {
-        await mkdir(join(tempDir, '.pika'), { recursive: true });
+        await mkdir(join(tempDir, '.bwrb'), { recursive: true });
         await writeFile(
-          join(tempDir, '.pika/schema.json'),
+          join(tempDir, '.bwrb/schema.json'),
           JSON.stringify({
             version: 2,
             types: {
@@ -428,11 +428,11 @@ describe('schema', () => {
       const { tmpdir } = await import('os');
       const { join } = await import('path');
       
-      const tempDir = await mkdtemp(join(tmpdir(), 'pika-mixed-hierarchy-test-'));
+      const tempDir = await mkdtemp(join(tmpdir(), 'bwrb-mixed-hierarchy-test-'));
       try {
-        await mkdir(join(tempDir, '.pika'), { recursive: true });
+        await mkdir(join(tempDir, '.bwrb'), { recursive: true });
         await writeFile(
-          join(tempDir, '.pika/schema.json'),
+          join(tempDir, '.bwrb/schema.json'),
           JSON.stringify({
             version: 2,
             types: {
@@ -479,11 +479,11 @@ describe('schema', () => {
       const { tmpdir } = await import('os');
       const { join } = await import('path');
       
-      const tempDir = await mkdtemp(join(tmpdir(), 'pika-recursive-only-test-'));
+      const tempDir = await mkdtemp(join(tmpdir(), 'bwrb-recursive-only-test-'));
       try {
-        await mkdir(join(tempDir, '.pika'), { recursive: true });
+        await mkdir(join(tempDir, '.bwrb'), { recursive: true });
         await writeFile(
-          join(tempDir, '.pika/schema.json'),
+          join(tempDir, '.bwrb/schema.json'),
           JSON.stringify({
             version: 2,
             types: {
@@ -599,11 +599,11 @@ describe('schema', () => {
       const { tmpdir } = await import('os');
       const { join } = await import('path');
 
-      const tempDir = await mkdtemp(join(tmpdir(), 'pika-origin-test-'));
+      const tempDir = await mkdtemp(join(tmpdir(), 'bwrb-origin-test-'));
       try {
-        await mkdir(join(tempDir, '.pika'), { recursive: true });
+        await mkdir(join(tempDir, '.bwrb'), { recursive: true });
         await writeFile(
-          join(tempDir, '.pika/schema.json'),
+          join(tempDir, '.bwrb/schema.json'),
           JSON.stringify({
             version: 2,
             types: {
@@ -643,11 +643,11 @@ describe('schema', () => {
       const { tmpdir } = await import('os');
       const { join } = await import('path');
 
-      const tempDir = await mkdtemp(join(tmpdir(), 'pika-empty-test-'));
+      const tempDir = await mkdtemp(join(tmpdir(), 'bwrb-empty-test-'));
       try {
-        await mkdir(join(tempDir, '.pika'), { recursive: true });
+        await mkdir(join(tempDir, '.bwrb'), { recursive: true });
         await writeFile(
-          join(tempDir, '.pika/schema.json'),
+          join(tempDir, '.bwrb/schema.json'),
           JSON.stringify({
             version: 2,
             types: {
@@ -671,11 +671,11 @@ describe('schema', () => {
       const { tmpdir } = await import('os');
       const { join } = await import('path');
 
-      const tempDir = await mkdtemp(join(tmpdir(), 'pika-multilevel-test-'));
+      const tempDir = await mkdtemp(join(tmpdir(), 'bwrb-multilevel-test-'));
       try {
-        await mkdir(join(tempDir, '.pika'), { recursive: true });
+        await mkdir(join(tempDir, '.bwrb'), { recursive: true });
         await writeFile(
-          join(tempDir, '.pika/schema.json'),
+          join(tempDir, '.bwrb/schema.json'),
           JSON.stringify({
             version: 2,
             types: {
@@ -731,11 +731,11 @@ describe('schema', () => {
       const { tmpdir } = await import('os');
       const { join } = await import('path');
 
-      const tempDir = await mkdtemp(join(tmpdir(), 'pika-order-test-'));
+      const tempDir = await mkdtemp(join(tmpdir(), 'bwrb-order-test-'));
       try {
-        await mkdir(join(tempDir, '.pika'), { recursive: true });
+        await mkdir(join(tempDir, '.bwrb'), { recursive: true });
         await writeFile(
-          join(tempDir, '.pika/schema.json'),
+          join(tempDir, '.bwrb/schema.json'),
           JSON.stringify({
             version: 2,
             types: {

@@ -1,5 +1,5 @@
 /**
- * Shell completion support for pika CLI.
+ * Shell completion support for bwrb CLI.
  * 
  * This module provides:
  * - Type name completion (--type/-t)
@@ -7,8 +7,8 @@
  * - Command and option completion
  * 
  * The completion system works via a runtime callback model:
- * 1. `pika completion <shell>` outputs a shell script
- * 2. The script calls `pika --completions ...` at tab-completion time
+ * 1. `bwrb completion <shell>` outputs a shell script
+ * 2. The script calls `bwrb --completions ...` at tab-completion time
  * 3. This module returns candidates based on current context
  */
 
@@ -43,19 +43,19 @@ export interface CompletionContext {
  * Parse completion request from argv.
  * 
  * The shell scripts pass the command line words after --completions.
- * Format: pika --completions pika <subcommand> [options...] <current>
+ * Format: bwrb --completions bwrb <subcommand> [options...] <current>
  * 
- * The first word is 'pika' (the command name), which we skip.
+ * The first word is 'bwrb' (the command name), which we skip.
  * The last word is always the one being completed (may be empty string).
  */
 export function parseCompletionRequest(argv: string[]): CompletionContext {
   // argv is everything after --completions
-  // First word is 'pika', skip it
+  // First word is 'bwrb', skip it
   // Last element is the word being completed
   let words = argv.length > 0 ? argv : [''];
   
-  // Skip 'pika' if it's the first word
-  if (words[0] === 'pika') {
+  // Skip 'bwrb' if it's the first word
+  if (words[0] === 'bwrb') {
     words = words.slice(1);
   }
   
@@ -134,9 +134,9 @@ export async function getPathCompletions(
     const dirs: string[] = [];
     
     for (const entry of entries) {
-      // Skip hidden directories and .pika
+      // Skip hidden directories and .bwrb
       if (entry.name.startsWith('.')) continue;
-      if (entry.name === '.pika') continue;
+      if (entry.name === '.bwrb') continue;
       
       if (entry.isDirectory()) {
         // Build the full path relative to vault
@@ -175,7 +175,7 @@ const TARGETING_COMMANDS = new Set([
 ]);
 
 /**
- * All available pika commands.
+ * All available bwrb commands.
  */
 const COMMANDS = [
   'new',
@@ -261,7 +261,7 @@ export async function handleCompletionRequest(
 ): Promise<string[]> {
   const ctx = parseCompletionRequest(argv);
   
-  // If completing the first word (after 'pika'), return commands
+  // If completing the first word (after 'bwrb'), return commands
   if (ctx.currentIndex === 0 || (!ctx.command && !ctx.current.startsWith('-'))) {
     return filterByPrefix(getCommandCompletions(), ctx.current);
   }
@@ -319,17 +319,17 @@ export async function handleCompletionRequest(
  * Generate bash completion script.
  */
 export function generateBashScript(): string {
-  return `# pika bash completion
-# Add to ~/.bashrc: eval "$(pika completion bash)"
+  return `# bwrb bash completion
+# Add to ~/.bashrc: eval "$(bwrb completion bash)"
 
-_pika_completions() {
+_bwrb_completions() {
   local cur prev words cword
   _init_completion || return
 
   # Build the completion request
-  # Pass all words to pika --completions
+  # Pass all words to bwrb --completions
   local completions
-  completions=$(pika --completions "\${COMP_WORDS[@]:1}" 2>/dev/null)
+  completions=$(bwrb --completions "\${COMP_WORDS[@]:1}" 2>/dev/null)
   
   # Handle path completion specially (preserve trailing slashes)
   if [[ "\${prev}" == "--path" ]] || [[ "\${prev}" == "-p" ]]; then
@@ -339,7 +339,7 @@ _pika_completions() {
   COMPREPLY=($(compgen -W "\${completions}" -- "\${cur}"))
 }
 
-complete -F _pika_completions pika
+complete -F _bwrb_completions bwrb
 `;
 }
 
@@ -347,16 +347,16 @@ complete -F _pika_completions pika
  * Generate zsh completion script.
  */
 export function generateZshScript(): string {
-  return `#compdef pika
-# pika zsh completion
-# Add to ~/.zshrc: eval "$(pika completion zsh)"
+  return `#compdef bwrb
+# bwrb zsh completion
+# Add to ~/.zshrc: eval "$(bwrb completion zsh)"
 
-_pika() {
+_bwrb() {
   local completions
   
   # Build completion request from words array
-  # \${words[@]:1} skips the command name 'pika'
-  completions=("\${(@f)$(pika --completions "\${words[@]:1}" 2>/dev/null)}")
+  # \${words[@]:1} skips the command name 'bwrb'
+  completions=("\${(@f)$(bwrb --completions "\${words[@]:1}" 2>/dev/null)}")
   
   if [[ \${#completions[@]} -gt 0 ]]; then
     # Check if completing paths (preserve trailing slashes)
@@ -368,7 +368,7 @@ _pika() {
   fi
 }
 
-compdef _pika pika
+compdef _bwrb bwrb
 `;
 }
 
@@ -376,22 +376,22 @@ compdef _pika pika
  * Generate fish completion script.
  */
 export function generateFishScript(): string {
-  return `# pika fish completion
-# Save to ~/.config/fish/completions/pika.fish
+  return `# bwrb fish completion
+# Save to ~/.config/fish/completions/bwrb.fish
 
-function __pika_completions
+function __bwrb_completions
   set -l tokens (commandline -opc)
-  # Remove 'pika' from the start
+  # Remove 'bwrb' from the start
   set -e tokens[1]
   # Add the current token being completed
   set -l current (commandline -ct)
   set tokens $tokens $current
   
-  pika --completions $tokens 2>/dev/null
+  bwrb --completions $tokens 2>/dev/null
 end
 
 # Disable file completion, use our custom completions
-complete -c pika -f -a "(__pika_completions)"
+complete -c bwrb -f -a "(__bwrb_completions)"
 `;
 }
 

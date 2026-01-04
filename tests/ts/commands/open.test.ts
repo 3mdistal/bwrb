@@ -115,7 +115,7 @@ describe('open command', () => {
       expect(result.stdout).toContain('Open a note');
       expect(result.stdout).toContain('App Modes');
       expect(result.stdout).toContain('Picker Modes');
-      expect(result.stdout).toContain('PIKA_DEFAULT_APP');
+      expect(result.stdout).toContain('BWRB_DEFAULT_APP');
     });
   });
 

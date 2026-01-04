@@ -68,17 +68,17 @@ Safety (Two-Gate Model):
   2. Execution gate: Use --execute to apply changes (dry-run by default)
 
   # Error: no targeting specified
-  pika bulk --set status=done
+  bwrb bulk --set status=done
   # "No files selected. Use --type, --path, --where, --text, or --all."
 
   # OK: filtered with --type and --where
-  pika bulk --type task --where "status == 'active'" --set status=done
+  bwrb bulk --type task --where "status == 'active'" --set status=done
 
   # OK: filtered with --path
-  pika bulk --path "Projects/**" --set archived=true
+  bwrb bulk --path "Projects/**" --set archived=true
 
   # OK: explicit --all targets all managed files
-  pika bulk --all --set status=done
+  bwrb bulk --all --set status=done
 
 Selectors (compose via AND):
   -t, --type <type>           Filter by type (e.g., task, objective/milestone)
@@ -108,34 +108,34 @@ Output:
 
 Examples:
   # Preview changes (dry-run)
-  pika bulk --type task --where "status == 'in-progress'" --set status=done
+  bwrb bulk --type task --where "status == 'in-progress'" --set status=done
 
   # Apply changes
-  pika bulk --type task --where "status == 'in-progress'" --set status=done --execute
+  bwrb bulk --type task --where "status == 'in-progress'" --set status=done --execute
 
   # Target by path
-  pika bulk --path "Archive/**" --set archived=true --execute
+  bwrb bulk --path "Archive/**" --set archived=true --execute
 
   # Target by content
-  pika bulk --text "TODO" --set needs-review=true --execute
+  bwrb bulk --text "TODO" --set needs-review=true --execute
 
   # Target all managed files
-  pika bulk --all --set reviewed=true --execute
+  bwrb bulk --all --set reviewed=true --execute
 
   # Multiple operations
-  pika bulk --type task --where "status == 'done'" --set archived=true --set "archived-date=2025-01-15" --execute
+  bwrb bulk --type task --where "status == 'done'" --set archived=true --set "archived-date=2025-01-15" --execute
 
   # Rename a field across all files
-  pika bulk --all --rename old-field=new-field --execute
+  bwrb bulk --all --rename old-field=new-field --execute
 
   # Append to a list field
-  pika bulk --type task --where "priority == 'high'" --append tags=urgent --execute
+  bwrb bulk --type task --where "priority == 'high'" --append tags=urgent --execute
 
   # Create backup before changes
-  pika bulk --type task --all --set status=archived --execute --backup
+  bwrb bulk --type task --all --set status=archived --execute --backup
 
   # Move files to archive (updates wikilinks automatically)
-  pika bulk --type idea --where "status == 'settled'" --move Archive/Ideas --execute`)
+  bwrb bulk --type idea --where "status == 'settled'" --move Archive/Ideas --execute`)
   .argument('[target]', 'Type, path, or where expression (auto-detected) [DEPRECATED: use --type, --path, or --where]')
   .option('-t, --type <type>', 'Filter by type (e.g., task, objective/milestone)')
   .option('-p, --path <glob>', 'Filter by file path (supports globs)')
@@ -255,11 +255,11 @@ Examples:
 Hint: Bulk operations require explicit targeting to prevent accidents.
 
   Filter with selectors:
-    pika bulk --type task --where "status == 'x'" --set field=value
-    pika bulk --path "Projects/**" --set field=value
+    bwrb bulk --type task --where "status == 'x'" --set field=value
+    bwrb bulk --path "Projects/**" --set field=value
 
   Or use --all to target all managed files:
-    pika bulk --all --set field=value
+    bwrb bulk --all --set field=value
 `);
         process.exit(1);
       }

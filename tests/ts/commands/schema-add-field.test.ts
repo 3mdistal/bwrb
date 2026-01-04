@@ -9,10 +9,10 @@ describe('schema add-field command', () => {
 
   beforeEach(async () => {
     // Create fresh vault for each test
-    tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-addfield-'));
-    await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+    tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-addfield-'));
+    await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
     await writeFile(
-      join(tempVaultDir, '.pika', 'schema.json'),
+      join(tempVaultDir, '.bwrb', 'schema.json'),
       JSON.stringify({
         version: 2,
         enums: {
@@ -62,7 +62,7 @@ describe('schema add-field command', () => {
       expect(json.data.definition.prompt).toBe('input');
 
       // Verify schema was updated
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.project.fields.description).toEqual({ prompt: 'input' });
     });
 
@@ -78,7 +78,7 @@ describe('schema add-field command', () => {
       expect(json.data.definition.prompt).toBe('select');
       expect(json.data.definition.enum).toBe('priority');
 
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.project.fields.priority).toEqual({
         prompt: 'select',
         enum: 'priority',
@@ -95,7 +95,7 @@ describe('schema add-field command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.data.definition.prompt).toBe('date');
 
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.project.fields.deadline).toEqual({ prompt: 'date' });
     });
 
@@ -109,7 +109,7 @@ describe('schema add-field command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.data.definition.prompt).toBe('multi-input');
 
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.project.fields.tags).toEqual({ prompt: 'multi-input' });
     });
 
@@ -125,7 +125,7 @@ describe('schema add-field command', () => {
       expect(json.data.definition.source).toBe('project');
       expect(json.data.definition.format).toBe('wikilink');
 
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.task.fields.project).toEqual({
         prompt: 'dynamic',
         source: 'project',
@@ -143,7 +143,7 @@ describe('schema add-field command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.data.definition.value).toBe('project');
 
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.project.fields.type).toEqual({ value: 'project' });
     });
 
@@ -157,7 +157,7 @@ describe('schema add-field command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.data.definition.required).toBe(true);
 
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.project.fields.name).toEqual({
         prompt: 'input',
         required: true,
@@ -174,7 +174,7 @@ describe('schema add-field command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.data.definition.default).toBe('open');
 
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.project.fields.status).toEqual({
         prompt: 'select',
         enum: 'status',
@@ -383,7 +383,7 @@ describe('schema add-field command', () => {
   describe('field_order handling', () => {
     it('should append to existing field_order', async () => {
       // First, add field_order to the schema
-      const schemaPath = join(tempVaultDir, '.pika', 'schema.json');
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
       const schema = JSON.parse(await readFile(schemaPath, 'utf-8'));
       schema.types.project.fields = { existing: { prompt: 'input' } };
       schema.types.project.field_order = ['existing'];
@@ -415,7 +415,7 @@ describe('schema add-field command', () => {
 
       expect(result.exitCode).toBe(0);
 
-      const schemaPath = join(tempVaultDir, '.pika', 'schema.json');
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
       const schema = JSON.parse(await readFile(schemaPath, 'utf-8'));
       expect(schema.types.project.field_order).toEqual(['first', 'second']);
     });
@@ -428,7 +428,7 @@ describe('schema add-field command', () => {
 
       expect(result.exitCode).toBe(0);
 
-      const schemaPath = join(tempVaultDir, '.pika', 'schema.json');
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
       const schema = JSON.parse(await readFile(schemaPath, 'utf-8'));
       expect(schema.types.project.field_order).toBeUndefined();
     });
@@ -619,7 +619,7 @@ describe('schema add-field command', () => {
       expect(json.data.affectsChildTypes).toBe(true);
 
       // Verify schema was updated with meta type created
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.meta).toBeDefined();
       expect(schema.types.meta.fields).toBeDefined();
       expect(schema.types.meta.fields.created).toEqual({ prompt: 'date' });
@@ -627,7 +627,7 @@ describe('schema add-field command', () => {
 
     it('should add field to existing explicit meta type', async () => {
       // Add explicit meta to schema first
-      const schemaPath = join(tempVaultDir, '.pika', 'schema.json');
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
       const schema = JSON.parse(await readFile(schemaPath, 'utf-8'));
       schema.types.meta = { fields: { version: { value: '1' } } };
       await writeFile(schemaPath, JSON.stringify(schema));
@@ -649,7 +649,7 @@ describe('schema add-field command', () => {
 
     it('should reject duplicate field on meta type', async () => {
       // Add meta with a field first
-      const schemaPath = join(tempVaultDir, '.pika', 'schema.json');
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
       const schema = JSON.parse(await readFile(schemaPath, 'utf-8'));
       schema.types.meta = { fields: { created: { prompt: 'date' } } };
       await writeFile(schemaPath, JSON.stringify(schema));

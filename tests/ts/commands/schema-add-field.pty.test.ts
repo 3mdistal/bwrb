@@ -1,5 +1,5 @@
 /**
- * PTY-based integration tests for the `pika schema add-field` command.
+ * PTY-based integration tests for the `bwrb schema add-field` command.
  *
  * Tests the interactive wizard for adding fields to existing types, including:
  * - Full interactive flow for each prompt type
@@ -64,7 +64,7 @@ const MINIMAL_SCHEMA = {
   types: {},
 };
 
-describePty('pika schema add-field PTY tests', () => {
+describePty('bwrb schema add-field PTY tests', () => {
   // Clean up any orphaned PTY processes after each test
   afterEach(() => {
     killAllPtyProcesses();
@@ -99,7 +99,7 @@ describePty('pika schema add-field PTY tests', () => {
           await proc.waitForExit(5000);
 
           // Verify schema was updated
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields.description).toEqual({
             prompt: 'input',
@@ -134,7 +134,7 @@ describePty('pika schema add-field PTY tests', () => {
           await proc.waitFor('Added field');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields.mypriority).toMatchObject({
             prompt: 'select',
@@ -162,7 +162,7 @@ describePty('pika schema add-field PTY tests', () => {
           await proc.waitFor('Added field');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields['due-date']).toMatchObject({
             prompt: 'date',
@@ -192,7 +192,7 @@ describePty('pika schema add-field PTY tests', () => {
           await proc.waitFor('Added field');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields.tags).toMatchObject({
             prompt: 'multi-input',
@@ -230,7 +230,7 @@ describePty('pika schema add-field PTY tests', () => {
           await proc.waitFor('Added field');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields['parent-project']).toMatchObject({
             prompt: 'dynamic',
@@ -259,7 +259,7 @@ describePty('pika schema add-field PTY tests', () => {
           await proc.waitFor('Added field');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields.type).toEqual({
             value: 'project',
@@ -286,7 +286,7 @@ describePty('pika schema add-field PTY tests', () => {
           await proc.waitFor('Added field');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields.name).toEqual({
             prompt: 'input',
@@ -319,7 +319,7 @@ describePty('pika schema add-field PTY tests', () => {
           await proc.waitFor('Added field');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields.description).toBeDefined();
         },
@@ -342,7 +342,7 @@ describePty('pika schema add-field PTY tests', () => {
           await proc.waitForExit(5000);
 
           // Schema should not have new field
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields).toBeUndefined();
         },
@@ -362,7 +362,7 @@ describePty('pika schema add-field PTY tests', () => {
 
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields).toBeUndefined();
         },
@@ -385,7 +385,7 @@ describePty('pika schema add-field PTY tests', () => {
 
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields).toBeUndefined();
         },
@@ -408,7 +408,7 @@ describePty('pika schema add-field PTY tests', () => {
 
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields).toBeUndefined();
         },
@@ -431,7 +431,7 @@ describePty('pika schema add-field PTY tests', () => {
 
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields).toBeUndefined();
         },
@@ -454,7 +454,7 @@ describePty('pika schema add-field PTY tests', () => {
 
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields).toBeUndefined();
         },
@@ -494,7 +494,7 @@ describePty('pika schema add-field PTY tests', () => {
           await proc.waitForExit(5000);
 
           // Schema should not have new field
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.note.fields).toBeUndefined();
         },
@@ -536,7 +536,7 @@ describePty('pika schema add-field PTY tests', () => {
           await proc.waitFor('Added field');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.note.fields.parent).toMatchObject({
             prompt: 'dynamic',

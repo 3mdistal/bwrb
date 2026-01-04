@@ -1,13 +1,13 @@
 #!/bin/zsh
 
-# Test runner for pika.sh
+# Test runner for bwrb.sh
 # Usage: ./test_runner.sh [test_name]
 
 set -e
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 FIXTURES_DIR="$SCRIPT_DIR/fixtures"
-PIKA_SH="$(dirname "$SCRIPT_DIR")/pika.sh"
+BWRB_SH="$(dirname "$SCRIPT_DIR")/bwrb.sh"
 
 # Colors
 RED='\033[0;31m'
@@ -35,8 +35,8 @@ setup_test_env() {
     # Copy fixtures
     cp -r "$FIXTURES_DIR/vault/"* "$TEST_VAULT/" 2> /dev/null || true
 
-    # Copy test schema to .pika/ (new location)
-    TEST_SCHEMA="$TEST_VAULT/.pika/schema.json"
+    # Copy test schema to .bwrb/ (new location)
+    TEST_SCHEMA="$TEST_VAULT/.bwrb/schema.json"
     mkdir -p "$(dirname "$TEST_SCHEMA")"
     cp "$FIXTURES_DIR/test_schema.json" "$TEST_SCHEMA"
 }
@@ -147,22 +147,22 @@ assert_exit_code() {
 
 # --- Test execution ---
 
-run_pika() {
-    # Run pika.sh with test vault via --vault flag
+run_bwrb() {
+    # Run bwrb.sh with test vault via --vault flag
     # Args: input_string [additional_args...]
     local input="$1"
     shift
 
-    echo "$input" | "$PIKA_SH" --vault="$TEST_VAULT" "$@" 2>&1
+    echo "$input" | "$BWRB_SH" --vault="$TEST_VAULT" "$@" 2>&1
     return $?
 }
 
-run_pika_expect_fail() {
-    # Run pika.sh expecting failure
+run_bwrb_expect_fail() {
+    # Run bwrb.sh expecting failure
     local input="$1"
     shift
 
-    if echo "$input" | "$PIKA_SH" --vault="$TEST_VAULT" "$@" 2>&1; then
+    if echo "$input" | "$BWRB_SH" --vault="$TEST_VAULT" "$@" 2>&1; then
         return 1 # Should have failed
     else
         return 0 # Expected failure
@@ -229,7 +229,7 @@ main() {
     local filter="${1:-}"
 
     echo "================================"
-    echo "pika.sh Test Suite"
+    echo "bwrb.sh Test Suite"
     echo "================================"
     echo ""
 

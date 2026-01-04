@@ -14,10 +14,10 @@ import { runAudit } from '../../../src/lib/audit/detection.js';
 
 // Test vault with ownership schema
 const createTestVault = () => {
-  const vaultDir = join(tmpdir(), `pika-ownership-test-${Date.now()}`);
-  const pikaDir = join(vaultDir, '.pika');
+  const vaultDir = join(tmpdir(), `bwrb-ownership-test-${Date.now()}`);
+  const bwrbDir = join(vaultDir, '.bwrb');
   
-  mkdirSync(pikaDir, { recursive: true });
+  mkdirSync(bwrbDir, { recursive: true });
   
   // Create a v2 schema with ownership
   const schema = {
@@ -71,7 +71,7 @@ const createTestVault = () => {
     },
   };
   
-  writeFileSync(join(pikaDir, 'schema.json'), JSON.stringify(schema, null, 2));
+  writeFileSync(join(bwrbDir, 'schema.json'), JSON.stringify(schema, null, 2));
   
   return vaultDir;
 };

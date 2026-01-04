@@ -58,7 +58,7 @@ describe('template command', () => {
 
     it('should show message when no templates found', async () => {
       // Remove all templates
-      await rm(join(vaultDir, '.pika/templates'), { recursive: true, force: true });
+      await rm(join(vaultDir, '.bwrb/templates'), { recursive: true, force: true });
       
       const result = await runCLI(['template', 'list'], vaultDir);
 
@@ -127,7 +127,7 @@ describe('template command', () => {
     it('should detect invalid type path', async () => {
       // Create a template with invalid type
       await writeFile(
-        join(vaultDir, '.pika/templates/idea', 'invalid.md'),
+        join(vaultDir, '.bwrb/templates/idea', 'invalid.md'),
         `---
 type: template
 template-for: nonexistent/type
@@ -146,7 +146,7 @@ Body
     it('should detect invalid default values', async () => {
       // Create a template with invalid enum value
       await writeFile(
-        join(vaultDir, '.pika/templates/idea', 'bad-enum.md'),
+        join(vaultDir, '.bwrb/templates/idea', 'bad-enum.md'),
         `---
 type: template
 template-for: idea
@@ -169,7 +169,7 @@ Body
     it('should suggest typo corrections', async () => {
       // Create a template with typo in field name
       await writeFile(
-        join(vaultDir, '.pika/templates/idea', 'typo.md'),
+        join(vaultDir, '.bwrb/templates/idea', 'typo.md'),
         `---
 type: template
 template-for: idea
@@ -192,7 +192,7 @@ Body
       // Create a template with valid date expression - use status which is a valid field
       // Date expressions are valid values even for non-date fields
       await writeFile(
-        join(vaultDir, '.pika/templates/task', 'dated.md'),
+        join(vaultDir, '.bwrb/templates/task', 'dated.md'),
         `---
 type: template
 template-for: task
@@ -216,7 +216,7 @@ Body
     it('should reject invalid date expressions in defaults', async () => {
       // Create a template with invalid date expression syntax
       await writeFile(
-        join(vaultDir, '.pika/templates/task', 'bad-date.md'),
+        join(vaultDir, '.bwrb/templates/task', 'bad-date.md'),
         `---
 type: template
 template-for: task
@@ -262,7 +262,7 @@ Body
       expect(result.exitCode).toBe(0);
       
       // Verify file was created
-      const templatePath = join(vaultDir, '.pika/templates/idea', 'quick-idea.md');
+      const templatePath = join(vaultDir, '.bwrb/templates/idea', 'quick-idea.md');
       expect(existsSync(templatePath)).toBe(true);
       
       const content = await readFile(templatePath, 'utf-8');
@@ -323,7 +323,7 @@ Body
       expect(result.exitCode).toBe(0);
       
       // Verify file was updated
-      const templatePath = join(vaultDir, '.pika/templates/idea', 'default.md');
+      const templatePath = join(vaultDir, '.bwrb/templates/idea', 'default.md');
       const content = await readFile(templatePath, 'utf-8');
       expect(content).toContain('status: backlog');
     });
@@ -338,14 +338,14 @@ Body
 
       expect(result.exitCode).toBe(0);
       
-      const templatePath = join(vaultDir, '.pika/templates/idea', 'default.md');
+      const templatePath = join(vaultDir, '.bwrb/templates/idea', 'default.md');
       const content = await readFile(templatePath, 'utf-8');
       expect(content).toContain('Updated description');
     });
 
     it('should merge defaults (not replace)', async () => {
       // First check original
-      const templatePath = join(vaultDir, '.pika/templates/idea', 'default.md');
+      const templatePath = join(vaultDir, '.bwrb/templates/idea', 'default.md');
       const original = await readFile(templatePath, 'utf-8');
       expect(original).toContain('priority: medium');
       expect(original).toContain('status: raw');
@@ -375,7 +375,7 @@ Body
 
       expect(result.exitCode).toBe(0);
       
-      const templatePath = join(vaultDir, '.pika/templates/idea', 'default.md');
+      const templatePath = join(vaultDir, '.bwrb/templates/idea', 'default.md');
       const content = await readFile(templatePath, 'utf-8');
       expect(content).not.toContain('priority:');
       expect(content).toContain('status: raw'); // Still there
@@ -397,7 +397,7 @@ Body
   describe('template delete', () => {
     it('should delete a template with --force', async () => {
       // First verify template exists
-      const templatePath = join(vaultDir, '.pika/templates/idea', 'default.md');
+      const templatePath = join(vaultDir, '.bwrb/templates/idea', 'default.md');
       expect(existsSync(templatePath)).toBe(true);
 
       const result = await runCLI([
@@ -406,7 +406,7 @@ Body
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Deleted');
-      expect(result.stdout).toContain('.pika/templates/idea/default.md');
+      expect(result.stdout).toContain('.bwrb/templates/idea/default.md');
       
       // Verify file was deleted
       expect(existsSync(templatePath)).toBe(false);
@@ -420,7 +420,7 @@ Body
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
-      expect(json.path).toContain('.pika/templates/idea/default.md');
+      expect(json.path).toContain('.bwrb/templates/idea/default.md');
       expect(json.message).toContain('deleted');
     });
 
@@ -466,7 +466,7 @@ Body
 
     it('should delete nested subtype templates', async () => {
       // Test with task template (nested type)
-      const templatePath = join(vaultDir, '.pika/templates/task', 'default.md');
+      const templatePath = join(vaultDir, '.bwrb/templates/task', 'default.md');
       expect(existsSync(templatePath)).toBe(true);
 
       const result = await runCLI([

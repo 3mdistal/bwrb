@@ -9,10 +9,10 @@ describe('schema add-type command', () => {
 
   beforeEach(async () => {
     // Create fresh vault for each test
-    tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-addtype-'));
-    await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+    tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-addtype-'));
+    await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
     await writeFile(
-      join(tempVaultDir, '.pika', 'schema.json'),
+      join(tempVaultDir, '.bwrb', 'schema.json'),
       JSON.stringify({
         version: 2,
         enums: {
@@ -54,7 +54,7 @@ describe('schema add-type command', () => {
       expect(json.data.output_dir).toBe('Tasks');
 
       // Verify schema was updated
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.task).toBeDefined();
       expect(schema.types.task.output_dir).toBe('Tasks');
     });
@@ -71,7 +71,7 @@ describe('schema add-type command', () => {
       expect(json.data.extends).toBe('note');
 
       // Verify schema
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.task.extends).toBe('note');
     });
 

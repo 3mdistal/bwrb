@@ -52,16 +52,16 @@ export const editCommand = new Command('edit')
   .option('--type <type>', 'Restrict to notes of a specific type')
   .addHelpText('after', `
 Examples:
-  pika edit                           # Pick from all notes
-  pika edit "My Idea"                 # Search by name
-  pika edit Ideas/My\\ Idea.md        # Exact path
-  pika edit --type task               # Pick from tasks only
-  pika edit "bug" --type task         # Search tasks for "bug"
-  pika edit "My Task" --open          # Edit and open in Obsidian
+  bwrb edit                           # Pick from all notes
+  bwrb edit "My Idea"                 # Search by name
+  bwrb edit Ideas/My\\ Idea.md        # Exact path
+  bwrb edit --type task               # Pick from tasks only
+  bwrb edit "bug" --type task         # Search tasks for "bug"
+  bwrb edit "My Task" --open          # Edit and open in Obsidian
 
 Non-interactive (JSON) mode:
-  pika edit "Fix bug" --json '{"status": "done"}'
-  pika edit Ideas/Idea.md --json '{"priority": "high", "tags": ["urgent"]}'
+  bwrb edit "Fix bug" --json '{"status": "done"}'
+  bwrb edit Ideas/Idea.md --json '{"priority": "high", "tags": ["urgent"]}'
   
 JSON mode uses patch/merge semantics:
   - Only fields present in JSON are updated

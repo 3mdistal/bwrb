@@ -12,7 +12,7 @@ import { evaluateTemplateDefault, validateDateExpression, isDateExpression } fro
  * Template Discovery and Parsing
  * ==============================
  * 
- * Templates are markdown files stored in .pika/templates/{type}/{subtype}/*.md
+ * Templates are markdown files stored in .bwrb/templates/{type}/{subtype}/*.md
  * They provide defaults, body structure, and filename patterns for note creation.
  * 
  * Key design decisions:
@@ -27,22 +27,22 @@ import { evaluateTemplateDefault, validateDateExpression, isDateExpression } fro
 
 /**
  * Get the template directory for a type path.
- * Templates are stored at .pika/templates/{type}/{subtype}/...
+ * Templates are stored at .bwrb/templates/{type}/{subtype}/...
  * 
  * @example
- * getTemplateDir('/vault', 'objective/task') => '/vault/.pika/templates/objective/task'
- * getTemplateDir('/vault', 'idea') => '/vault/.pika/templates/idea'
+ * getTemplateDir('/vault', 'objective/task') => '/vault/.bwrb/templates/objective/task'
+ * getTemplateDir('/vault', 'idea') => '/vault/.bwrb/templates/idea'
  */
 export function getTemplateDir(vaultDir: string, typePath: string): string {
   const segments = typePath.split('/').filter(Boolean);
-  return join(vaultDir, '.pika', 'templates', ...segments);
+  return join(vaultDir, '.bwrb', 'templates', ...segments);
 }
 
 /**
  * Get the root templates directory for a vault.
  */
 export function getTemplatesRoot(vaultDir: string): string {
-  return join(vaultDir, '.pika', 'templates');
+  return join(vaultDir, '.bwrb', 'templates');
 }
 
 // ============================================================================
@@ -114,8 +114,8 @@ export async function parseTemplate(filePath: string): Promise<Template | null> 
  * 
  * @example
  * findTemplates('/vault', 'objective/task')
- * // Searches ONLY .pika/templates/objective/task/*.md
- * // Does NOT search .pika/templates/objective/*.md
+ * // Searches ONLY .bwrb/templates/objective/task/*.md
+ * // Does NOT search .bwrb/templates/objective/*.md
  */
 export async function findTemplates(
   vaultDir: string,

@@ -6,7 +6,7 @@
 
 ## Overview
 
-pika serves as a **harness** for AI agents, not an agent itself. It provides:
+bwrb serves as a **harness** for AI agents, not an agent itself. It provides:
 
 1. **Prompt/Agent storage** — Manage AI assets in the vault
 2. **Workflow definitions** — Multi-step AI pipelines
@@ -24,7 +24,7 @@ pika serves as a **harness** for AI agents, not an agent itself. It provides:
            │                │              ▲
            ▼                ▼              │
 ┌─────────────────────────────────────────────────┐
-│                    pika                        │
+│                    bwrb                        │
 │  • Reads workflow definitions                   │
 │  • Manages execution state                      │
 │  • Writes results back to vault                 │
@@ -81,7 +81,7 @@ You are a skilled summarizer. Given the following content, provide a concise sum
 {
   "types": {
     "prompt": {
-      "output_dir": ".pika/prompts",
+      "output_dir": ".bwrb/prompts",
       "frontmatter": {
         "type": { "value": "prompt" },
         "model": {
@@ -118,7 +118,7 @@ Agents are notes that combine prompts with tools and configuration:
 ```yaml
 ---
 type: agent
-system-prompt: "[[.pika/prompts/Research Assistant]]"
+system-prompt: "[[.bwrb/prompts/Research Assistant]]"
 tools:
   - web-search
   - summarize
@@ -170,16 +170,16 @@ max-cost: 0.50
 ## Steps
 
 1. **Search** → sources
-   Prompt: [[.pika/prompts/Web Search]]
+   Prompt: [[.bwrb/prompts/Web Search]]
    Input: {topic}
    
 2. **Summarize** → summaries
-   Prompt: [[.pika/prompts/Summarize Content]]
+   Prompt: [[.bwrb/prompts/Summarize Content]]
    Input: {sources}
    For each: source in sources
    
 3. **Synthesize** → summary
-   Prompt: [[.pika/prompts/Synthesize Research]]
+   Prompt: [[.bwrb/prompts/Synthesize Research]]
    Input: {summaries}
 
 ## Config
@@ -206,22 +206,22 @@ model: claude-sonnet-4-20250514
 
 ```bash
 # Run workflow with inputs
-pika run Workflows/research.md --topic "AI agents" --depth "comprehensive"
+bwrb run Workflows/research.md --topic "AI agents" --depth "comprehensive"
 
 # Dry run (show what would execute)
-pika run Workflows/research.md --topic "AI agents" --dry-run
+bwrb run Workflows/research.md --topic "AI agents" --dry-run
 
 # Check running workflows
-pika run --status
+bwrb run --status
 
 # Cancel running workflow
-pika run --cancel <workflow-id>
+bwrb run --cancel <workflow-id>
 ```
 
 ### Execution Flow
 
 ```bash
-pika run Workflows/research.md --topic "AI agents"
+bwrb run Workflows/research.md --topic "AI agents"
 
 # Starting workflow: Research: AI agents
 # 
@@ -287,7 +287,7 @@ status: completed
 
 ### Cost Storage
 
-Costs are logged to `.pika/logs/costs.json`:
+Costs are logged to `.bwrb/logs/costs.json`:
 
 ```json
 {
@@ -314,7 +314,7 @@ Costs are logged to `.pika/logs/costs.json`:
 
 ```bash
 # View spending summary
-pika costs
+bwrb costs
 
 # Spending Summary
 # 
@@ -328,16 +328,16 @@ pika costs
 #   analysis: $0.30
 
 # Filter by period
-pika costs --period week
-pika costs --period month
-pika costs --period "2025-01"
+bwrb costs --period week
+bwrb costs --period month
+bwrb costs --period "2025-01"
 
 # Filter by workflow
-pika costs --workflow research
+bwrb costs --workflow research
 
 # Set budget alerts
-pika costs --set-alert daily=5.00
-pika costs --set-alert monthly=50.00
+bwrb costs --set-alert daily=5.00
+bwrb costs --set-alert monthly=50.00
 ```
 
 ### Cost Limits
@@ -352,7 +352,7 @@ max-cost: 0.50
 ```
 
 ```bash
-pika run Workflows/expensive.md
+bwrb run Workflows/expensive.md
 
 # Step 3/5: Analysis
 #   ⚠ Cost limit approaching: $0.45 / $0.50
@@ -368,8 +368,8 @@ pika run Workflows/expensive.md
 Store API key securely:
 
 ```bash
-pika config set openrouter-api-key <key>
-# Stored in ~/.pika/config.json (not in vault)
+bwrb config set openrouter-api-key <key>
+# Stored in ~/.bwrb/config.json (not in vault)
 ```
 
 Or via environment:
@@ -509,7 +509,7 @@ Process lists with `for each`:
 ### Step Failure
 
 ```bash
-pika run Workflows/research.md --topic "AI agents"
+bwrb run Workflows/research.md --topic "AI agents"
 
 # Step 2/3: Summarize
 #   ✗ Failed: API error (rate limit)
@@ -527,7 +527,7 @@ pika run Workflows/research.md --topic "AI agents"
 ### Cost Overrun
 
 ```bash
-pika run Workflows/expensive.md
+bwrb run Workflows/expensive.md
 
 # Step 4/5: Analysis
 #   ✗ Cost limit exceeded: $0.52 > $0.50
@@ -576,31 +576,31 @@ Step 3: Synthesize - Rate limit exceeded
 
 ```bash
 # Prompts
-pika new prompt                     # Create prompt
-pika list prompt                    # List prompts
-pika run-prompt <prompt> --input "text"  # Test prompt
+bwrb new prompt                     # Create prompt
+bwrb list prompt                    # List prompts
+bwrb run-prompt <prompt> --input "text"  # Test prompt
 
 # Agents
-pika new agent                      # Create agent
-pika list agent                     # List agents
+bwrb new agent                      # Create agent
+bwrb list agent                     # List agents
 
 # Workflows
-pika new workflow                   # Create workflow
-pika list workflow                  # List workflows
-pika run <workflow> [--inputs]      # Execute workflow
-pika run --status                   # Show running workflows
-pika run --cancel <id>              # Cancel workflow
-pika run --dry-run                  # Preview execution
+bwrb new workflow                   # Create workflow
+bwrb list workflow                  # List workflows
+bwrb run <workflow> [--inputs]      # Execute workflow
+bwrb run --status                   # Show running workflows
+bwrb run --cancel <id>              # Cancel workflow
+bwrb run --dry-run                  # Preview execution
 
 # Costs
-pika costs                          # Spending summary
-pika costs --period <period>        # Filter by time
-pika costs --workflow <name>        # Filter by workflow
-pika costs --set-alert <limit>      # Set budget alert
+bwrb costs                          # Spending summary
+bwrb costs --period <period>        # Filter by time
+bwrb costs --workflow <name>        # Filter by workflow
+bwrb costs --set-alert <limit>      # Set budget alert
 
 # Config
-pika config set openrouter-api-key <key>
-pika config get openrouter-api-key
+bwrb config set openrouter-api-key <key>
+bwrb config get openrouter-api-key
 ```
 
 ---
@@ -628,9 +628,9 @@ schedule: "0 9 * * 1"  # Every Monday at 9am
 ```
 
 ```bash
-pika schedule list
-pika schedule enable <workflow>
-pika schedule disable <workflow>
+bwrb schedule list
+bwrb schedule enable <workflow>
+bwrb schedule disable <workflow>
 ```
 
 ### Streaming
@@ -638,7 +638,7 @@ pika schedule disable <workflow>
 Real-time output during execution:
 
 ```bash
-pika run Workflows/writing.md --stream
+bwrb run Workflows/writing.md --stream
 # Shows output as it's generated
 ```
 

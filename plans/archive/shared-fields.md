@@ -142,7 +142,7 @@ With `frontmatter_order`, you can customize:
 Shared fields are prompted like any other field:
 
 ```bash
-pika new idea
+bwrb new idea
 # Title: My Idea
 # Status: [inbox] backlog, planned, in-progress, done, cancelled
 # Scopes (comma-separated): personal, q1-2025
@@ -155,9 +155,9 @@ pika new idea
 Shared fields are available for filtering and display:
 
 ```bash
-pika list idea --where "status == 'in-progress'"
-pika list --all --where "isEmpty(scopes)"
-pika list task --fields status,title,deadline
+bwrb list idea --where "status == 'in-progress'"
+bwrb list --all --where "isEmpty(scopes)"
+bwrb list task --fields status,title,deadline
 ```
 
 ### Editing Notes
@@ -165,7 +165,7 @@ pika list task --fields status,title,deadline
 Shared fields can be edited like any other:
 
 ```bash
-pika edit Ideas/My\ Idea.md --set status=done
+bwrb edit Ideas/My\ Idea.md --set status=done
 ```
 
 ---
@@ -206,7 +206,7 @@ Audit should verify shared fields:
 ### Example Output
 
 ```bash
-pika audit
+bwrb audit
 
 # Shared Field Issues:
 #   Ideas/Old Idea.md
@@ -220,7 +220,7 @@ pika audit
 ### Auto-Fix
 
 ```bash
-pika audit --fix --auto
+bwrb audit --fix --auto
 
 # Fixing shared field issues...
 #   Ideas/Old Idea.md
@@ -237,7 +237,7 @@ pika audit --fix --auto
 ### Adding a Shared Field
 
 ```bash
-pika schema add-shared-field priority
+bwrb schema add-shared-field priority
 
 # Field name: priority
 # Prompt type: select
@@ -260,7 +260,7 @@ pika schema add-shared-field priority
 ### Modifying a Shared Field
 
 ```bash
-pika schema edit-shared-field status --default planned
+bwrb schema edit-shared-field status --default planned
 
 # Updated default for 'status': inbox → planned
 # 
@@ -271,7 +271,7 @@ pika schema edit-shared-field status --default planned
 ### Removing a Shared Field
 
 ```bash
-pika schema remove-shared-field scopes
+bwrb schema remove-shared-field scopes
 
 # Warning: 'scopes' is used by 3 types:
 #   - idea
@@ -295,14 +295,14 @@ If you have existing per-type status fields:
 ### 1. Create Shared Field
 
 ```bash
-pika schema add-shared-field status
+bwrb schema add-shared-field status
 # Define the canonical version
 ```
 
 ### 2. Audit Inconsistencies
 
 ```bash
-pika audit --check-shared-migration status
+bwrb audit --check-shared-migration status
 
 # Status field migration analysis:
 #   
@@ -324,15 +324,15 @@ pika audit --check-shared-migration status
 ### 3. Bulk Update
 
 ```bash
-pika bulk task --set status=inbox --where "status == 'raw'" --execute
-pika bulk task --set status=in-progress --where "status == 'in-flight'" --execute
-pika bulk task --set status=done --where "status == 'complete'" --execute
+bwrb bulk task --set status=inbox --where "status == 'raw'" --execute
+bwrb bulk task --set status=in-progress --where "status == 'in-flight'" --execute
+bwrb bulk task --set status=done --where "status == 'complete'" --execute
 ```
 
 ### 4. Update Schema
 
 ```bash
-pika schema edit-type task --use-shared-field status
+bwrb schema edit-type task --use-shared-field status
 # Removes type-specific status, adds to shared_fields list
 ```
 

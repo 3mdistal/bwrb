@@ -1,4 +1,4 @@
-# pika Roadmap
+# bwrb Roadmap
 
 > Schema-driven management for Obsidian vaults — evolving into a comprehensive CLI for structured note management, auditing, and agentic workflows.
 
@@ -6,7 +6,7 @@
 
 ## Vision
 
-pika is a CLI tool that brings structure, consistency, and automation to Obsidian vaults. It provides:
+bwrb is a CLI tool that brings structure, consistency, and automation to Obsidian vaults. It provides:
 
 1. **Schema-driven note creation** — Types, subtypes, and fields defined in a central schema
 2. **Flexible organization** — Both pooled and instance-grouped directory structures
@@ -19,10 +19,10 @@ pika is a CLI tool that brings structure, consistency, and automation to Obsidia
 ## Current State (v1 — Shell)
 
 **Implemented:**
-- `pika new [type]` — Interactive note creation with schema-driven frontmatter
-- `pika edit <file>` — Edit existing frontmatter fields
-- `pika list [options] <type>` — List/filter objects with table output
-- `pika help` — Usage documentation
+- `bwrb new [type]` — Interactive note creation with schema-driven frontmatter
+- `bwrb edit <file>` — Edit existing frontmatter fields
+- `bwrb list [options] <type>` — List/filter objects with table output
+- `bwrb help` — Usage documentation
 - Hierarchical type/subtype navigation
 - Dynamic sources for field queries (e.g., active milestones)
 - Multi-vault support via `--vault` flag and `OVAULT_VAULT` env var
@@ -73,9 +73,9 @@ See: [features/directory-modes.md](features/directory-modes.md)
 ### 1.3 Open in Obsidian
 
 ```bash
-pika open <file>                    # Open file in Obsidian
-pika new idea --open                # Create and open
-pika edit Tasks/My\ Task.md --open  # Edit and open
+bwrb open <file>                    # Open file in Obsidian
+bwrb new idea --open                # Create and open
+bwrb edit Tasks/My\ Task.md --open  # Edit and open
 ```
 
 Uses Obsidian's URI scheme: `obsidian://open?vault=NAME&file=PATH`
@@ -85,9 +85,9 @@ Uses Obsidian's URI scheme: `obsidian://open?vault=NAME&file=PATH`
 Full expression-based filtering compatible with Obsidian Bases:
 
 ```bash
-pika list task --where "status == 'in-progress'"
-pika list task --where "priority < 3 && !isEmpty(deadline)"
-pika list task --where "deadline < today() + '7d'"
+bwrb list task --where "status == 'in-progress'"
+bwrb list task --where "priority < 3 && !isEmpty(deadline)"
+bwrb list task --where "deadline < today() + '7d'"
 ```
 
 See: [features/query-system.md](features/query-system.md)
@@ -95,9 +95,9 @@ See: [features/query-system.md](features/query-system.md)
 ### 1.5 Schema Show Command
 
 ```bash
-pika schema show                    # Tree view of all types
-pika schema show objective/task     # Show specific type definition
-pika schema validate                # Validate schema structure
+bwrb schema show                    # Tree view of all types
+bwrb schema show objective/task     # Show specific type definition
+bwrb schema validate                # Validate schema structure
 ```
 
 ---
@@ -109,11 +109,11 @@ pika schema validate                # Validate schema structure
 Validate files against schema and surface mismatches:
 
 ```bash
-pika audit                      # Check all files (report only)
-pika audit objective/task       # Check specific type
-pika audit --fix                # Interactive repair mode
-pika audit --fix --auto         # Automatic fixes where unambiguous
-pika audit --strict             # Error on unknown fields
+bwrb audit                      # Check all files (report only)
+bwrb audit objective/task       # Check specific type
+bwrb audit --fix                # Interactive repair mode
+bwrb audit --fix --auto         # Automatic fixes where unambiguous
+bwrb audit --strict             # Error on unknown fields
 ```
 
 See: [features/audit-command.md](features/audit-command.md)
@@ -123,9 +123,9 @@ See: [features/audit-command.md](features/audit-command.md)
 Mass changes across filtered file sets:
 
 ```bash
-pika bulk task --set status=done --where "status == 'in-progress'"
-pika bulk idea --move Archive/Ideas --where "status == 'settled'"
-pika bulk objective --rename old-field=new-field
+bwrb bulk task --set status=done --where "status == 'in-progress'"
+bwrb bulk idea --move Archive/Ideas --where "status == 'settled'"
+bwrb bulk objective --rename old-field=new-field
 ```
 
 Features:
@@ -145,9 +145,9 @@ See: [features/bulk-operations.md](features/bulk-operations.md)
 Markdown-based templates with defaults and body structure:
 
 ```bash
-pika new task                           # Prompts for template if multiple
-pika new task --template bug-report     # Use specific template
-pika new task --default                 # Use default template
+bwrb new task                           # Prompts for template if multiple
+bwrb new task --template bug-report     # Use specific template
+bwrb new task --default                 # Use default template
 ```
 
 Templates live in `Templates/{type}/{subtype}/{name}.md`.
@@ -199,22 +199,22 @@ Full CLI for schema manipulation — never touch JSON directly:
 
 ```bash
 # Type management
-pika schema add-type writing
-pika schema edit-type writing
-pika schema remove-type writing
+bwrb schema add-type writing
+bwrb schema edit-type writing
+bwrb schema remove-type writing
 
 # Field management
-pika schema add-field deadline task
-pika schema edit-field deadline task
+bwrb schema add-field deadline task
+bwrb schema edit-field deadline task
 
 # Enum management
-pika schema add-enum priority
-pika schema edit-enum status --add archived
-pika schema edit-enum status --rename wip=in-progress
+bwrb schema add-enum priority
+bwrb schema edit-enum status --add archived
+bwrb schema edit-enum status --rename wip=in-progress
 
 # Migration
-pika schema diff                # Show pending changes
-pika schema apply               # Apply migrations to files
+bwrb schema diff                # Show pending changes
+bwrb schema apply               # Apply migrations to files
 ```
 
 See: [features/schema-management.md](features/schema-management.md)
@@ -237,17 +237,17 @@ Define recurring task/project creation:
 ```
 
 ```bash
-pika recur list                 # Show configured recurrences
-pika recur spawn                # Create due instances
-pika recur spawn --dry-run      # Preview
+bwrb recur list                 # Show configured recurrences
+bwrb recur spawn                # Create due instances
+bwrb recur spawn --dry-run      # Preview
 ```
 
 ### 5.2 Output Formats
 
 ```bash
-pika list task --format=json
-pika list task --format=csv
-pika list task --format=dataview
+bwrb list task --format=json
+bwrb list task --format=csv
+bwrb list task --format=dataview
 ```
 
 ---
@@ -259,23 +259,23 @@ pika list task --format=dataview
 Schema types for managing AI assets:
 
 ```bash
-pika new prompt --set model=claude-sonnet
-pika new agent --set tools="web-search,summarize"
+bwrb new prompt --set model=claude-sonnet
+bwrb new agent --set tools="web-search,summarize"
 ```
 
 ### 6.2 Workflow Execution
 
 ```bash
-pika run Workflows/blog-research.md --topic="AI agents"
-pika run --status  # Show running/completed workflows
+bwrb run Workflows/blog-research.md --topic="AI agents"
+bwrb run --status  # Show running/completed workflows
 ```
 
 ### 6.3 Cost Tracking
 
 ```bash
-pika costs                      # Spending summary
-pika costs --period=week        # This week's usage
-pika costs --workflow=research  # By workflow type
+bwrb costs                      # Spending summary
+bwrb costs --period=week        # This week's usage
+bwrb costs --workflow=research  # By workflow type
 ```
 
 See: [features/agentic-workflows.md](features/agentic-workflows.md)
@@ -289,8 +289,8 @@ See: [features/agentic-workflows.md](features/agentic-workflows.md)
 Broader markdown hygiene (separate from schema audit):
 
 ```bash
-pika lint                   # Check all files
-pika lint --fix             # Auto-fix where possible
+bwrb lint                   # Check all files
+bwrb lint --fix             # Auto-fix where possible
 ```
 
 Checks: broken wikilinks, orphan files, duplicate filenames, heading hierarchy
@@ -300,7 +300,7 @@ Checks: broken wikilinks, orphan files, duplicate filenames, heading hierarchy
 Generate Obsidian Bases queries from CLI filters:
 
 ```bash
-pika base task --where "status == 'in-progress'" --where "scope == 'week'"
+bwrb base task --where "status == 'in-progress'" --where "scope == 'week'"
 # Outputs .base file or dataview query
 ```
 
@@ -340,7 +340,7 @@ pika base task --where "status == 'in-progress'" --where "scope == 'week'"
 
 ### Schema Location
 
-`.pika/schema.json` in vault root
+`.bwrb/schema.json` in vault root
 
 ### Key Design Decisions
 
@@ -350,7 +350,7 @@ pika base task --where "status == 'in-progress'" --where "scope == 'week'"
 | Parent type = instance field | For instance-grouped, parent type names the instance |
 | Parent note for instances | Folder name matches parent note name (Folder Notes plugin compatible) |
 | Templates are markdown | Manage templates in Obsidian like any other note |
-| User manages git | pika warns about dirty state but doesn't auto-commit |
+| User manages git | bwrb warns about dirty state but doesn't auto-commit |
 | Auto-apply deterministic migrations | Enum renames, field additions with defaults |
 | Prompt for non-deterministic | Field removal, type changes |
 

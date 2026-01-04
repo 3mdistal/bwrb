@@ -1,20 +1,20 @@
-# Pika Product Vision
+# Bowerbird Product Vision
 
 > Schema enforcement for Markdown. Type-safe personal knowledge management.
 
 ---
 
-## What is Pika?
+## What is Bowerbird?
 
-Pika is a CLI tool that enforces strict schemas on Markdown/YAML files. It brings TypeScript-style type safety to personal knowledge management—your notes can't violate the schema, your queries always return valid data, and migrations are explicit.
+Bowerbird is a CLI tool that enforces strict schemas on Markdown/YAML files. It brings TypeScript-style type safety to personal knowledge management—your notes can't violate the schema, your queries always return valid data, and migrations are explicit.
 
-**One-liner:** Pika is the type system for your notes.
+**One-liner:** Bowerbird is the type system for your notes.
 
 ---
 
 ## The Three Circles
 
-Pika's functionality exists in concentric layers of priority:
+Bowerbird's functionality exists in concentric layers of priority:
 
 ```
 ┌─────────────────────────────────────────┐
@@ -50,7 +50,7 @@ Pika's functionality exists in concentric layers of priority:
 
 ## Primary User
 
-**Pika is built for one person first: the author.**
+**Bowerbird is built for one person first: the author.**
 
 - Power user, developer, creative
 - Writes in Markdown, lives in the terminal
@@ -59,7 +59,7 @@ Pika's functionality exists in concentric layers of priority:
 - Tired of migrating between PKM tools
 - Needs strict organization without manual discipline
 
-If Pika works for this user, it will work for others. But it must work for this user first.
+If Bowerbird works for this user, it will work for others. But it must work for this user first.
 
 **Secondary audiences (stretch goals):**
 - Neovim enthusiasts who want Obsidian-like PKM
@@ -74,25 +74,25 @@ If Pika works for this user, it will work for others. But it must work for this 
 
 The schema is the source of truth. Notes must conform.
 
-- **Hard enforcement on CLI** — `pika new` refuses to create invalid notes
-- **Soft enforcement on external edits** — Files can drift, but `pika audit` catches it
-- **TypeScript analogy** — Like `tsc`, you can use Pika to fail builds on schema violations
+- **Hard enforcement on CLI** — `bwrb new` refuses to create invalid notes
+- **Soft enforcement on external edits** — Files can drift, but `bwrb audit` catches it
+- **TypeScript analogy** — Like `tsc`, you can use Bowerbird to fail builds on schema violations
 
 > "You won't be able to create notes that go off the schema."
 
 ### 2. Composable, Not Monolithic
 
-Pika does one thing well: schema enforcement. It uses the existing ecosystem for everything else.
+Bowerbird does one thing well: schema enforcement. It uses the existing ecosystem for everything else.
 
-- **Git** for version control (Pika doesn't manage commits)
-- **yq/yaql** for raw YAML queries (Pika provides schema-aware queries)
-- **ripgrep** for content search (Pika wraps it with type awareness)
-- **Neovim** for editing (Pika provides a plugin, not an editor)
-- **GitHub Actions** for automation (Pika is scriptable, not a scheduler)
+- **Git** for version control (Bowerbird doesn't manage commits)
+- **yq/yaql** for raw YAML queries (Bowerbird provides schema-aware queries)
+- **ripgrep** for content search (Bowerbird wraps it with type awareness)
+- **Neovim** for editing (Bowerbird provides a plugin, not an editor)
+- **GitHub Actions** for automation (Bowerbird is scriptable, not a scheduler)
 
 ### 3. Portable and Offline
 
-Pika works anywhere, on anything.
+Bowerbird works anywhere, on anything.
 
 - No internet required for core functionality
 - Works on any folder of Markdown files (Git-backed or not)
@@ -121,7 +121,7 @@ The CLI should be predictable and learnable.
 
 ---
 
-## What Pika Is
+## What Bowerbird Is
 
 - A schema enforcement layer for Markdown/YAML
 - A CLI-first tool with JSON mode for automation
@@ -130,7 +130,7 @@ The CLI should be predictable and learnable.
 - A migration tool for schema evolution
 - A Neovim plugin for in-editor PKM (secondary)
 
-## What Pika Is NOT
+## What Bowerbird Is NOT
 
 - **Not a note-taking app** — Use Neovim, Obsidian, whatever you want
 - **Not a database** — Markdown files are the source of truth
@@ -144,7 +144,7 @@ The CLI should be predictable and learnable.
 
 ## Success Criteria
 
-Pika succeeds when:
+Bowerbird succeeds when:
 
 1. **You stop thinking about it** — The schema holds, notes are valid, queries work
 2. **You stop switching PKMs** — This is the last migration
@@ -152,7 +152,7 @@ Pika succeeds when:
 4. **Nothing feels lost** — Every note is discoverable, every idea tracked
 5. **You write more than you tweak** — The tool serves the work, not vice versa
 
-Pika fails if:
+Bowerbird fails if:
 
 1. **Schema isn't enforced** — The core promise is broken
 2. **Schema is hard to migrate** — Types should evolve easily
@@ -165,7 +165,7 @@ Pika fails if:
 
 ## Inheritance Model
 
-Pika uses strict type inheritance (design in progress).
+Bowerbird uses strict type inheritance (design in progress).
 
 **Principles:**
 - All types inherit from `meta` (global fields)
@@ -206,16 +206,16 @@ meta
 Target: <15 top-level commands that cover all use cases.
 
 **Current commands:**
-- `pika new` — Create notes with schema-driven prompts
-- `pika edit` — Modify existing note frontmatter
-- `pika list` — Query notes by type and fields
-- `pika search` — Find notes by name or content
-- `pika open` — Open notes in editor/Obsidian
-- `pika delete` — Remove notes with backlink warnings
-- `pika audit` — Validate notes against schema
-- `pika bulk` — Batch frontmatter operations
-- `pika schema` — Inspect and manage schema
-- `pika template` — Manage note templates
+- `bwrb new` — Create notes with schema-driven prompts
+- `bwrb edit` — Modify existing note frontmatter
+- `bwrb list` — Query notes by type and fields
+- `bwrb search` — Find notes by name or content
+- `bwrb open` — Open notes in editor/Obsidian
+- `bwrb delete` — Remove notes with backlink warnings
+- `bwrb audit` — Validate notes against schema
+- `bwrb bulk` — Batch frontmatter operations
+- `bwrb schema` — Inspect and manage schema
+- `bwrb template` — Manage note templates
 
 **Open questions:**
 - Merge `list` and `search`?
@@ -233,7 +233,7 @@ Target: <15 top-level commands that cover all use cases.
 
 ## Neovim Plugin
 
-`pika.nvim` brings full CLI functionality to Neovim.
+`bwrb.nvim` brings full CLI functionality to Neovim.
 
 **Philosophy:**
 - Feature parity with CLI (for human-usable operations)
@@ -272,17 +272,17 @@ Target: <15 top-level commands that cover all use cases.
 
 ## Naming
 
-- **CLI command:** `pika`
-- **Product name:** Pika
-- **Config directory:** `.pika/`
-- **Neovim plugin:** `pika.nvim`
-- **Schema file:** `.pika/schema.json`
+- **CLI command:** `bwrb`
+- **Product name:** Bowerbird
+- **Config directory:** `.bwrb/`
+- **Neovim plugin:** `bwrb.nvim`
+- **Schema file:** `.bwrb/schema.json`
 
 ---
 
 ## The Meta-Goal
 
-Pika exists so you can stop thinking about PKM tools and start thinking about what you're writing.
+Bowerbird exists so you can stop thinking about PKM tools and start thinking about what you're writing.
 
 The schema holds. The notes are valid. The queries work. You write.
 

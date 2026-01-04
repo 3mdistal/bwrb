@@ -8,9 +8,9 @@
 
 import { readFile, writeFile, rename } from 'fs/promises';
 import { join } from 'path';
-import { PikaSchema, type Schema } from '../types/schema.js';
+import { BwrbSchema, type Schema } from '../types/schema.js';
 
-const SCHEMA_PATH = '.pika/schema.json';
+const SCHEMA_PATH = '.bwrb/schema.json';
 
 /**
  * Load the raw schema JSON from a vault directory.
@@ -20,7 +20,7 @@ export async function loadRawSchemaJson(vaultDir: string): Promise<Schema> {
   const schemaPath = join(vaultDir, SCHEMA_PATH);
   const content = await readFile(schemaPath, 'utf-8');
   const json = JSON.parse(content) as unknown;
-  return PikaSchema.parse(json);
+  return BwrbSchema.parse(json);
 }
 
 /**
@@ -32,7 +32,7 @@ export async function writeSchema(vaultDir: string, schema: Schema): Promise<voi
   const tempPath = join(vaultDir, SCHEMA_PATH + '.tmp');
   
   // Validate before writing
-  PikaSchema.parse(schema);
+  BwrbSchema.parse(schema);
   
   // Write to temp file
   const content = JSON.stringify(schema, null, 2) + '\n';
@@ -47,5 +47,5 @@ export async function writeSchema(vaultDir: string, schema: Schema): Promise<voi
  * Throws if invalid.
  */
 export function validateSchema(schema: unknown): Schema {
-  return PikaSchema.parse(schema);
+  return BwrbSchema.parse(schema);
 }

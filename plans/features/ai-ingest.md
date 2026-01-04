@@ -6,7 +6,7 @@
 
 ## Overview
 
-The `pika ingest` command uses AI to scan notes (especially daily notes, journals, meeting notes) and extract structured data:
+The `bwrb ingest` command uses AI to scan notes (especially daily notes, journals, meeting notes) and extract structured data:
 
 - **Tasks** — Action items, TODOs, things to do
 - **Ideas** — Creative thoughts, concepts, possibilities
@@ -24,7 +24,7 @@ This bridges the gap between free-form journaling and structured knowledge manag
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                   pika ingest                              │
+│                   bwrb ingest                              │
 │  • Sends note + schema context to AI                        │
 │  • Receives structured extraction proposals                 │
 │  • Presents interactive approval flow                       │
@@ -45,29 +45,29 @@ This bridges the gap between free-form journaling and structured knowledge manag
 
 ```bash
 # Ingest a specific file
-pika ingest "Daily Notes/2025-12-30.md"
+bwrb ingest "Daily Notes/2025-12-30.md"
 
 # Ingest multiple files
-pika ingest "Daily Notes/2025-12-*.md"
+bwrb ingest "Daily Notes/2025-12-*.md"
 
 # Ingest all notes of a type
-pika ingest --type daily-note
+bwrb ingest --type daily-note
 
 # Ingest notes marked for processing
-pika ingest --pending
+bwrb ingest --pending
 
 # Dry run (show what would be extracted, don't prompt)
-pika ingest "Daily Notes/2025-12-30.md" --dry-run
+bwrb ingest "Daily Notes/2025-12-30.md" --dry-run
 
 # Auto-accept high-confidence extractions
-pika ingest "Daily Notes/2025-12-30.md" --auto
+bwrb ingest "Daily Notes/2025-12-30.md" --auto
 
 # JSON output for scripting
-pika ingest "Daily Notes/2025-12-30.md" --output json
+bwrb ingest "Daily Notes/2025-12-30.md" --output json
 
 # Limit extraction types
-pika ingest --extract tasks,ideas  # Skip entities
-pika ingest --extract entities     # Only entities
+bwrb ingest --extract tasks,ideas  # Skip entities
+bwrb ingest --extract entities     # Only entities
 ```
 
 ---
@@ -176,10 +176,10 @@ ai-extractions:
 When the schema changes (new type added, fields modified), notes processed under an older schema version are marked `needs-review`:
 
 ```bash
-pika schema add-type place
+bwrb schema add-type place
 # Notes with ai-schema-version < current marked for re-processing
 
-pika ingest --pending
+bwrb ingest --pending
 # Finds notes with ai-process-stage: to-process OR needs-review
 ```
 
@@ -188,7 +188,7 @@ pika ingest --pending
 ## Interactive Approval Flow
 
 ```bash
-pika ingest "Daily Notes/2025-12-30.md"
+bwrb ingest "Daily Notes/2025-12-30.md"
 
 # Scanning Daily Notes/2025-12-30.md...
 # 
@@ -300,7 +300,7 @@ pika ingest "Daily Notes/2025-12-30.md"
 For high-confidence extractions, `--auto` accepts automatically:
 
 ```bash
-pika ingest "Daily Notes/2025-12-30.md" --auto
+bwrb ingest "Daily Notes/2025-12-30.md" --auto
 
 # Scanning Daily Notes/2025-12-30.md...
 # 
@@ -320,8 +320,8 @@ pika ingest "Daily Notes/2025-12-30.md" --auto
 ### Confidence Thresholds
 
 ```bash
-pika ingest --auto --threshold 0.7  # Lower threshold
-pika ingest --auto --threshold 0.9  # Higher threshold
+bwrb ingest --auto --threshold 0.7  # Lower threshold
+bwrb ingest --auto --threshold 0.9  # Higher threshold
 ```
 
 Or configure in schema:
@@ -339,7 +339,7 @@ Or configure in schema:
 
 ## Entity Matching
 
-When AI extracts an entity, pika searches for existing matches:
+When AI extracts an entity, bwrb searches for existing matches:
 
 ### Match Strategies
 
@@ -367,7 +367,7 @@ Select match or [n]ew entity:
 For scripting and integration:
 
 ```bash
-pika ingest "Daily Notes/2025-12-30.md" --output json --dry-run
+bwrb ingest "Daily Notes/2025-12-30.md" --output json --dry-run
 ```
 
 ```json
@@ -413,20 +413,20 @@ Uses the same API infrastructure as agentic workflows (Phase 6):
 
 ```bash
 # Use OpenRouter (default)
-pika ingest "note.md"
+bwrb ingest "note.md"
 
 # Use opencode run (leverages existing subscription)
-pika ingest "note.md" --provider opencode
+bwrb ingest "note.md" --provider opencode
 
 # Direct Anthropic API
-pika ingest "note.md" --provider anthropic
+bwrb ingest "note.md" --provider anthropic
 ```
 
 ### Model Selection
 
 ```bash
-pika ingest "note.md" --model claude-3-5-haiku  # Fast, cheap
-pika ingest "note.md" --model claude-sonnet-4   # Better quality
+bwrb ingest "note.md" --model claude-3-5-haiku  # Fast, cheap
+bwrb ingest "note.md" --model claude-sonnet-4   # Better quality
 ```
 
 Or configure default:
@@ -511,7 +511,7 @@ If AI returns malformed JSON:
 Ingest operations log to the same cost tracking system as workflows:
 
 ```bash
-pika costs --command ingest
+bwrb costs --command ingest
 
 # Ingest Costs (last 7 days):
 #   
@@ -532,24 +532,24 @@ pika costs --command ingest
 
 ```bash
 # Process yesterday's daily note each morning
-pika ingest "Daily Notes/$(date -d yesterday +%Y-%m-%d).md"
+bwrb ingest "Daily Notes/$(date -d yesterday +%Y-%m-%d).md"
 ```
 
 ### Catch-Up Processing
 
 ```bash
 # Process all unprocessed daily notes
-pika ingest --type daily-note --pending
+bwrb ingest --type daily-note --pending
 
 # Process last 7 days
-pika ingest "Daily Notes/2025-12-2*.md" --auto
+bwrb ingest "Daily Notes/2025-12-2*.md" --auto
 ```
 
 ### Cron Integration
 
 ```bash
 # In crontab: process daily note at 9am
-0 9 * * * cd ~/vault && pika ingest --type daily-note --pending --auto
+0 9 * * * cd ~/vault && bwrb ingest --type daily-note --pending --auto
 ```
 
 ---
@@ -605,18 +605,18 @@ pika ingest "Daily Notes/2025-12-2*.md" --auto
 ### With Audit
 
 ```bash
-pika audit --fix
+bwrb audit --fix
 # After fixing issues, suggests:
-# "3 notes have ai-process-stage: to-process. Run 'pika ingest --pending'?"
+# "3 notes have ai-process-stage: to-process. Run 'bwrb ingest --pending'?"
 ```
 
 ### With Schema Changes
 
 ```bash
-pika schema add-type place
+bwrb schema add-type place
 # "12 processed notes may contain place entities. Mark for re-processing? [Y/n]"
 
-pika ingest --pending --extract entities
+bwrb ingest --pending --extract entities
 # Re-processes only entity extraction on marked notes
 ```
 
@@ -624,7 +624,7 @@ pika ingest --pending --extract entities
 
 ```bash
 # Mark all daily notes for processing
-pika bulk daily-note --set ai-process-stage=to-process
+bwrb bulk daily-note --set ai-process-stage=to-process
 ```
 
 ---
@@ -632,9 +632,9 @@ pika bulk daily-note --set ai-process-stage=to-process
 ## CLI Reference
 
 ```bash
-pika ingest <files...>              # Process specific files
-pika ingest --type <type>           # Process all of a type
-pika ingest --pending               # Process to-process/needs-review notes
+bwrb ingest <files...>              # Process specific files
+bwrb ingest --type <type>           # Process all of a type
+bwrb ingest --pending               # Process to-process/needs-review notes
 
 # Options
 --dry-run                             # Show extractions without prompting
@@ -654,7 +654,7 @@ pika ingest --pending               # Process to-process/needs-review notes
 ### API Errors
 
 ```
-pika ingest "note.md"
+bwrb ingest "note.md"
 
 # ✗ API error: Rate limit exceeded
 #   Retry in 60 seconds? [Y/n]
@@ -674,7 +674,7 @@ ai-partial-extractions:
 ```
 
 ```bash
-pika ingest "note.md"
+bwrb ingest "note.md"
 # "Previous processing incomplete. Resume from extraction 3? [Y/n]"
 ```
 
@@ -687,7 +687,7 @@ pika ingest "note.md"
 For sensitive vaults, support local models:
 
 ```bash
-pika ingest "note.md" --provider ollama --model llama3
+bwrb ingest "note.md" --provider ollama --model llama3
 ```
 
 ### Content Filtering

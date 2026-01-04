@@ -105,10 +105,10 @@ describe("completion", () => {
       expect(paths).toContain("Objectives/");
     });
 
-    it("excludes .pika directory", async () => {
+    it("excludes .bwrb directory", async () => {
       const paths = await getPathCompletions(vaultDir, "");
 
-      expect(paths).not.toContain(".pika/");
+      expect(paths).not.toContain(".bwrb/");
     });
 
     it("filters by prefix", async () => {

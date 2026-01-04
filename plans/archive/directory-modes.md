@@ -6,7 +6,7 @@
 
 ## Overview
 
-pika supports two directory organization patterns:
+bwrb supports two directory organization patterns:
 
 1. **Pooled** (default): All notes of a type live in one folder
 2. **Instance-grouped**: Notes are grouped under parent instances
@@ -63,11 +63,11 @@ Ideas/
 ### CLI Behavior
 
 ```bash
-pika new objective/task
+bwrb new objective/task
 # Title: Fix bug #123
 # → Creates: Objectives/Tasks/Fix bug #123.md
 
-pika list objective/task
+bwrb list objective/task
 # Lists all tasks from Objectives/Tasks/
 ```
 
@@ -152,7 +152,7 @@ For instance-grouped types, the **parent type is always the instance field** for
 When creating a subtype, the user specifies which parent instance it belongs to:
 
 ```bash
-pika new draft/version --set draft="Q1 Blog Post"
+bwrb new draft/version --set draft="Q1 Blog Post"
 ```
 
 #### Parent Note (Index File)
@@ -169,13 +169,13 @@ This pattern works beautifully with the **Folder Notes** Obsidian plugin, which 
 For instance-grouped types, the **folder IS the entity**. The parent note is metadata for that entity.
 
 ```bash
-pika list draft
+bwrb list draft
 # Lists all draft instances (folders):
 #   Q1 Blog Post
 #   Technical Guide
 #   Annual Report
 
-pika list draft/version
+bwrb list draft/version
 # Lists all version files across all drafts
 ```
 
@@ -184,7 +184,7 @@ pika list draft/version
 #### Creating a Parent Instance
 
 ```bash
-pika new draft
+bwrb new draft
 # Title: Q1 Blog Post
 # Status: in-progress
 # → Creates: Drafts/Q1 Blog Post/Q1 Blog Post.md
@@ -193,7 +193,7 @@ pika new draft
 #### Creating a Subtype
 
 ```bash
-pika new draft/version
+bwrb new draft/version
 # No draft specified. Select or create a draft:
 #   1. Q1 Blog Post
 #   2. Technical Guide
@@ -201,27 +201,27 @@ pika new draft/version
 # > 1
 # → Creates: Drafts/Q1 Blog Post/Draft v2.md
 
-pika new draft/version --set draft="Q1 Blog Post"
+bwrb new draft/version --set draft="Q1 Blog Post"
 # → Creates: Drafts/Q1 Blog Post/Draft v3.md
 ```
 
 #### Listing Instances
 
 ```bash
-pika list draft
+bwrb list draft
 # TYPE   NAME              STATUS        FILES
 # draft  Q1 Blog Post      in-progress   4
 # draft  Technical Guide   planning      2
 # draft  Annual Report     done          5
 
-pika list draft --instances
+bwrb list draft --instances
 # Just instance names (for scripting)
 ```
 
 #### Listing Subtypes
 
 ```bash
-pika list draft/version
+bwrb list draft/version
 # DRAFT            FILENAME        CANONICAL
 # Q1 Blog Post     Draft v1.md     false
 # Q1 Blog Post     Draft v2.md     true
@@ -393,7 +393,7 @@ This gives you the best of both worlds — project-specific files together, but 
 Directories are created based on schema `output_dir`:
 
 ```bash
-pika new objective/task
+bwrb new objective/task
 # Creates Objectives/Tasks/ if it doesn't exist
 # Creates Objectives/Tasks/My Task.md
 ```
@@ -403,12 +403,12 @@ pika new objective/task
 Instance directories are created when needed:
 
 ```bash
-pika new draft --title "Q1 Blog Post"
+bwrb new draft --title "Q1 Blog Post"
 # Creates Drafts/ if it doesn't exist
 # Creates Drafts/Q1 Blog Post/ if it doesn't exist
 # Creates Drafts/Q1 Blog Post/Q1 Blog Post.md
 
-pika new draft/version --set draft="Q1 Blog Post"
+bwrb new draft/version --set draft="Q1 Blog Post"
 # Drafts/Q1 Blog Post/ already exists
 # Creates Drafts/Q1 Blog Post/Draft v1.md
 ```
@@ -439,13 +439,13 @@ If you're moving from pooled to instance-grouped (or vice versa):
 
 ```bash
 # 1. Update schema
-pika schema edit-type draft --dir-mode instance-grouped
+bwrb schema edit-type draft --dir-mode instance-grouped
 
 # 2. Check what needs to change
-pika audit draft
+bwrb audit draft
 
 # 3. Bulk move files (future feature)
-pika bulk draft/version --reorg
+bwrb bulk draft/version --reorg
 ```
 
 The `--reorg` flag would restructure files to match the new directory mode.

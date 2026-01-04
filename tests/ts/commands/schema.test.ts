@@ -116,10 +116,10 @@ describe('schema command', () => {
 
     it('should show "(none)" when type has no own fields', async () => {
       // Create a v2 schema with a type that has no own fields
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-noownfields-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-noownfields-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -151,10 +151,10 @@ describe('schema command', () => {
 
     it('should show "(none)" when type has no inherited fields', async () => {
       // meta type has no parent, so no inherited fields
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-noinherited-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-noinherited-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -182,10 +182,10 @@ describe('schema command', () => {
 
     it('should group inherited fields by origin type', async () => {
       // Create a v2 schema with a 3-level inheritance chain
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-inheritance-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-inheritance-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           enums: { status: ['raw', 'done'] },
@@ -230,10 +230,10 @@ describe('schema command', () => {
   describe('schema show <type> --output json', () => {
     it('should include own_fields and inherited_fields in JSON output', async () => {
       // Create a v2 schema with inheritance
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-json-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-json-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           enums: { status: ['raw', 'done'] },
@@ -285,10 +285,10 @@ describe('schema command', () => {
 
     it('should omit inherited_fields when empty', async () => {
       // Create a v2 schema where meta has no parent
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-json-noinherit-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-json-noinherit-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -339,10 +339,10 @@ describe('schema command', () => {
 
     it('should error on invalid schema', async () => {
       // Create a vault with invalid schema
-      const invalidVaultDir = await mkdtemp(join(tmpdir(), 'pika-invalid-'));
-      await mkdir(join(invalidVaultDir, '.pika'), { recursive: true });
+      const invalidVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-invalid-'));
+      await mkdir(join(invalidVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(invalidVaultDir, '.pika', 'schema.json'),
+        join(invalidVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({ invalid: 'schema' })
       );
 
@@ -358,7 +358,7 @@ describe('schema command', () => {
 
     it('should error when schema file is missing', async () => {
       // Create a vault with no schema
-      const noSchemaVaultDir = await mkdtemp(join(tmpdir(), 'pika-noschema-'));
+      const noSchemaVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-noschema-'));
 
       try {
         const result = await runCLI(['schema', 'validate'], noSchemaVaultDir);
@@ -371,10 +371,10 @@ describe('schema command', () => {
 
     it('should error on malformed JSON', async () => {
       // Create a vault with malformed JSON
-      const malformedVaultDir = await mkdtemp(join(tmpdir(), 'pika-malformed-'));
-      await mkdir(join(malformedVaultDir, '.pika'), { recursive: true });
+      const malformedVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-malformed-'));
+      await mkdir(join(malformedVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(malformedVaultDir, '.pika', 'schema.json'),
+        join(malformedVaultDir, '.bwrb', 'schema.json'),
         '{ invalid json'
       );
 
@@ -390,10 +390,10 @@ describe('schema command', () => {
 
   describe('schema edit-type', () => {
     it('should change output directory', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-edit-type-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-type-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -429,10 +429,10 @@ describe('schema command', () => {
     });
 
     it('should change extends (reparent type)', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-edit-type-extends-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-type-extends-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -464,10 +464,10 @@ describe('schema command', () => {
     });
 
     it('should change filename pattern', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-edit-type-filename-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-type-filename-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -488,7 +488,7 @@ describe('schema command', () => {
         // Verify the change was applied by reading raw schema
         const { readFile } = await import('fs/promises');
         const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf8')
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
         );
         expect(schema.types.task.filename).toBe('{status} - {title}');
       } finally {
@@ -497,10 +497,10 @@ describe('schema command', () => {
     });
 
     it('should error on unknown type', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-edit-type-unknown-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-type-unknown-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: { meta: {} }
@@ -521,10 +521,10 @@ describe('schema command', () => {
     });
 
     it('should output JSON when --output json is specified', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-edit-type-json-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-type-json-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -552,11 +552,11 @@ describe('schema command', () => {
 
   describe('schema remove-type', () => {
     it('should show dry-run by default', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-remove-type-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-remove-type-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await mkdir(join(tempVaultDir, 'Tasks'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -592,10 +592,10 @@ describe('schema command', () => {
     });
 
     it('should remove type with --execute flag', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-remove-type-exec-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-remove-type-exec-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -624,10 +624,10 @@ describe('schema command', () => {
     });
 
     it('should error when type has child types', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-remove-type-children-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-remove-type-children-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -652,10 +652,10 @@ describe('schema command', () => {
     });
 
     it('should error on unknown type', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-remove-type-unknown-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-remove-type-unknown-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: { meta: {} }
@@ -676,10 +676,10 @@ describe('schema command', () => {
     });
 
     it('should prevent removing meta type', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-remove-meta-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-remove-meta-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: { meta: { fields: { created: { prompt: 'date' } } } }
@@ -702,10 +702,10 @@ describe('schema command', () => {
 
   describe('schema edit-field', () => {
     it('should change field required status with --required flag', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-edit-field-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -730,7 +730,7 @@ describe('schema command', () => {
         // Verify the change
         const { readFile } = await import('fs/promises');
         const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf8')
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
         );
         expect(schema.types.task.fields.status.required).toBe(true);
       } finally {
@@ -739,10 +739,10 @@ describe('schema command', () => {
     });
 
     it('should change field to not-required with --not-required flag', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-edit-field-not-req-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-not-req-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -767,7 +767,7 @@ describe('schema command', () => {
         // Verify the change
         const { readFile } = await import('fs/promises');
         const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf8')
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
         );
         expect(schema.types.task.fields.status.required).toBeUndefined();
       } finally {
@@ -776,10 +776,10 @@ describe('schema command', () => {
     });
 
     it('should change field default value', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-edit-field-default-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-default-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -803,7 +803,7 @@ describe('schema command', () => {
         // Verify the change
         const { readFile } = await import('fs/promises');
         const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf8')
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
         );
         expect(schema.types.task.fields.priority.default).toBe('medium');
       } finally {
@@ -812,10 +812,10 @@ describe('schema command', () => {
     });
 
     it('should clear field default with --clear-default', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-edit-field-clear-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-clear-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -839,7 +839,7 @@ describe('schema command', () => {
         // Verify the change
         const { readFile } = await import('fs/promises');
         const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf8')
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
         );
         expect(schema.types.task.fields.priority.default).toBeUndefined();
       } finally {
@@ -848,10 +848,10 @@ describe('schema command', () => {
     });
 
     it('should change field label', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-edit-field-label-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-label-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -875,7 +875,7 @@ describe('schema command', () => {
         // Verify the change
         const { readFile } = await import('fs/promises');
         const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf8')
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
         );
         expect(schema.types.task.fields.deadline.label).toBe('Due Date');
       } finally {
@@ -884,10 +884,10 @@ describe('schema command', () => {
     });
 
     it('should error when field is not directly on type (inherited)', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-edit-field-inherited-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-inherited-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -911,10 +911,10 @@ describe('schema command', () => {
     });
 
     it('should error on unknown field', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-edit-field-unknown-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-unknown-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -938,10 +938,10 @@ describe('schema command', () => {
     });
 
     it('should output JSON when --output json is specified', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-edit-field-json-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-json-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -971,11 +971,11 @@ describe('schema command', () => {
 
   describe('schema remove-field', () => {
     it('should show dry-run by default', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-remove-field-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-remove-field-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await mkdir(join(tempVaultDir, 'Tasks'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -1008,7 +1008,7 @@ describe('schema command', () => {
         // Verify the field still exists
         const { readFile } = await import('fs/promises');
         const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf8')
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
         );
         expect(schema.types.task.fields.deadline).toBeDefined();
       } finally {
@@ -1017,10 +1017,10 @@ describe('schema command', () => {
     });
 
     it('should remove field with --execute flag', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-remove-field-exec-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-remove-field-exec-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -1045,7 +1045,7 @@ describe('schema command', () => {
         // Verify the field is gone
         const { readFile } = await import('fs/promises');
         const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf8')
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
         );
         expect(schema.types.task.fields.deadline).toBeUndefined();
         expect(schema.types.task.fields.status).toBeDefined(); // Other field still there
@@ -1055,10 +1055,10 @@ describe('schema command', () => {
     });
 
     it('should error when field is inherited', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-remove-field-inherited-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-remove-field-inherited-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -1082,10 +1082,10 @@ describe('schema command', () => {
     });
 
     it('should error on unknown field', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-remove-field-unknown-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-remove-field-unknown-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -1109,12 +1109,12 @@ describe('schema command', () => {
     });
 
     it('should show child types affected by field removal', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-remove-field-children-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-remove-field-children-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await mkdir(join(tempVaultDir, 'Tasks'), { recursive: true });
       await mkdir(join(tempVaultDir, 'Milestones'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           types: {

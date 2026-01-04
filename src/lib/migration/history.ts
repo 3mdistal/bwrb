@@ -1,6 +1,6 @@
 /**
  * Migration history tracking.
- * Manages .pika/migrations.json for recording applied migrations.
+ * Manages .bwrb/migrations.json for recording applied migrations.
  */
 
 import * as fs from 'node:fs/promises';
@@ -13,10 +13,10 @@ import {
   MigrationResult,
 } from '../../types/migration.js';
 
-const MIGRATIONS_FILE = '.pika/migrations.json';
+const MIGRATIONS_FILE = '.bwrb/migrations.json';
 
 /**
- * Load migration history from .pika/migrations.json
+ * Load migration history from .bwrb/migrations.json
  * Returns empty history if file doesn't exist.
  */
 export async function loadMigrationHistory(vaultPath: string): Promise<MigrationHistory> {
@@ -35,7 +35,7 @@ export async function loadMigrationHistory(vaultPath: string): Promise<Migration
 }
 
 /**
- * Save migration history to .pika/migrations.json
+ * Save migration history to .bwrb/migrations.json
  * Uses atomic write (temp file + rename).
  */
 export async function saveMigrationHistory(

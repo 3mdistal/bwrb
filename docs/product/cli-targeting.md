@@ -1,12 +1,12 @@
 # CLI Targeting Model
 
-> How Pika commands select which notes to operate on.
+> How Bowerbird commands select which notes to operate on.
 
 ---
 
 ## Overview
 
-Pika uses a unified targeting model across all commands that operate on sets of notes. This provides a consistent, learnable interface: once you understand the four selectors, you can use any command.
+Bowerbird uses a unified targeting model across all commands that operate on sets of notes. This provides a consistent, learnable interface: once you understand the four selectors, you can use any command.
 
 **Core principle:** All targeting selectors compose via AND (intersection). Each selector narrows the set of matched files.
 
@@ -19,9 +19,9 @@ Pika uses a unified targeting model across all commands that operate on sets of 
 Filter by schema type.
 
 ```bash
-pika list --type task
-pika bulk --type reflection --set reviewed=true
-pika audit --type objective
+bwrb list --type task
+bwrb bulk --type reflection --set reviewed=true
+bwrb audit --type objective
 ```
 
 **Behavior:**
@@ -31,8 +31,8 @@ pika audit --type objective
 
 **Positional shortcut:** Type can be provided as a positional argument:
 ```bash
-pika list task              # Same as: pika list --type task
-pika bulk task --set x=y    # Same as: pika bulk --type task --set x=y
+bwrb list task              # Same as: bwrb list --type task
+bwrb bulk task --set x=y    # Same as: bwrb bulk --type task --set x=y
 ```
 
 ### 2. Path (`--path <glob>`)
@@ -40,9 +40,9 @@ pika bulk task --set x=y    # Same as: pika bulk --type task --set x=y
 Filter by file location in the vault.
 
 ```bash
-pika list --path "Ideas/"
-pika bulk --path "Reflections/Daily Notes" --set status=reviewed
-pika audit --path "Work/**"
+bwrb list --path "Ideas/"
+bwrb bulk --path "Reflections/Daily Notes" --set status=reviewed
+bwrb audit --path "Work/**"
 ```
 
 **Behavior:**
@@ -55,9 +55,9 @@ pika audit --path "Work/**"
 Filter by frontmatter field values.
 
 ```bash
-pika list --where "status == 'active'"
-pika bulk --where "priority < 3 && !isEmpty(deadline)" --set urgent=true
-pika audit --where "isEmpty(tags)"
+bwrb list --where "status == 'active'"
+bwrb bulk --where "priority < 3 && !isEmpty(deadline)" --set urgent=true
+bwrb audit --where "isEmpty(tags)"
 ```
 
 **Behavior:**
@@ -75,9 +75,9 @@ pika audit --where "isEmpty(tags)"
 Filter by body content (full-text search via ripgrep).
 
 ```bash
-pika list --text "TODO"
-pika bulk --text "DEPRECATED" --delete deprecated_field
-pika search --text "meeting notes" --type task
+bwrb list --text "TODO"
+bwrb bulk --text "DEPRECATED" --delete deprecated_field
+bwrb search --text "meeting notes" --type task
 ```
 
 **Behavior:**
@@ -93,12 +93,12 @@ pika search --text "meeting notes" --type task
 
 ```bash
 # Find tasks in Work/ folder with status=active containing "deadline"
-pika list --type task --path "Work/" --where "status == 'active'" --text "deadline"
+bwrb list --type task --path "Work/" --where "status == 'active'" --text "deadline"
 ```
 
 **Union (OR) is not implicit.** To express OR logic, use boolean operators within `--where`:
 ```bash
-pika list --where "status == 'draft' || status == 'review'"
+bwrb list --where "status == 'draft' || status == 'review'"
 ```
 
 ---
@@ -109,11 +109,11 @@ For ergonomics, the first positional argument is auto-detected:
 
 | Input | Detection | Equivalent |
 |-------|-----------|------------|
-| `pika list task` | Matches known type | `--type task` |
-| `pika list "Ideas/"` | Contains `/`, matches path | `--path "Ideas/"` |
-| `pika list "status == 'x'"` | Contains operators | `--where "status == 'x'"` |
+| `bwrb list task` | Matches known type | `--type task` |
+| `bwrb list "Ideas/"` | Contains `/`, matches path | `--path "Ideas/"` |
+| `bwrb list "status == 'x'"` | Contains operators | `--where "status == 'x'"` |
 
-**Ambiguity handling:** When detection is ambiguous, Pika errors with a helpful message:
+**Ambiguity handling:** When detection is ambiguous, Bowerbird errors with a helpful message:
 ```
 Error: "idea" is ambiguous. Did you mean:
   --type idea    (schema type)
@@ -155,8 +155,8 @@ Default behavior depends on command destructiveness:
 No selectors = implicit `--all` (operate on entire vault).
 
 ```bash
-pika list           # Lists all notes
-pika audit          # Audits all notes
+bwrb list           # Lists all notes
+bwrb audit          # Audits all notes
 ```
 
 ### Interactive commands (`open`, `edit`)
@@ -171,16 +171,16 @@ No selectors = prompt with picker.
 2. **Execution required:** Dry-run by default. Must use `--execute` to apply changes.
 
 ```bash
-pika bulk --set status=done
+bwrb bulk --set status=done
 # Error: No files selected. Use --type, --path, --where, --text, or --all.
 
-pika bulk --type task --set status=done
+bwrb bulk --type task --set status=done
 # Dry-run: shows what would change, but doesn't apply
 
-pika bulk --type task --set status=done --execute
+bwrb bulk --type task --set status=done --execute
 # Actually applies the changes
 
-pika bulk --all --set status=done --execute
+bwrb bulk --all --set status=done --execute
 # Works (explicit targeting + explicit execution)
 ```
 
@@ -193,13 +193,13 @@ This two-gate model prevents accidental vault-wide mutations. You must be explic
 Shell completion is required for `--type` and `--path`:
 
 ```bash
-pika list --type <TAB>
+bwrb list --type <TAB>
 # Shows: task, idea, reflection, objective, ...
 
-pika bulk --path <TAB>
+bwrb bulk --path <TAB>
 # Shows: Ideas/, Reflections/, Work/, ...
 
-pika audit --path Reflections/<TAB>
+bwrb audit --path Reflections/<TAB>
 # Shows: Daily Notes/, Weekly/, ...
 ```
 
@@ -215,10 +215,10 @@ Autocomplete makes the targeting model discoverable and reduces errors.
 
 ```bash
 # Old (deprecated):
-pika list task --status=active
+bwrb list task --status=active
 
 # New:
-pika list task --where "status == 'active'"
+bwrb list task --where "status == 'active'"
 ```
 
 **Rationale:** `--where` is more powerful, consistent, and reduces flag proliferation. Simple filters will emit deprecation warnings and be removed in a future version.
@@ -231,38 +231,38 @@ pika list task --where "status == 'active'"
 
 ```bash
 # Bulk-add type to existing files by location
-pika bulk --path "Reflections/Daily Notes" --set type=daily-note --execute
+bwrb bulk --path "Reflections/Daily Notes" --set type=daily-note --execute
 
 # Find files with legacy frontmatter (not yet in schema)
-pika list --where "!isEmpty(old_field)"
+bwrb list --where "!isEmpty(old_field)"
 # Warning: 'old_field' not in schema
 
 # Rename field across all notes of a type
-pika bulk --type task --rename old_field=new_field --execute
+bwrb bulk --type task --rename old_field=new_field --execute
 ```
 
 ### Daily workflows
 
 ```bash
 # List active tasks in Work folder
-pika list task --path "Work/" --where "status == 'active'"
+bwrb list task --path "Work/" --where "status == 'active'"
 
 # Find notes containing "TODO" that are drafts
-pika list --text "TODO" --where "status == 'draft'"
+bwrb list --text "TODO" --where "status == 'draft'"
 
 # Open a task by searching
-pika open --type task --text "quarterly review"
+bwrb open --type task --text "quarterly review"
 ```
 
 ### Audit and maintenance
 
 ```bash
 # Audit only tasks for missing required fields
-pika audit task --only missing-required
+bwrb audit task --only missing-required
 
 # Fix issues in a specific directory
-pika audit --path "Ideas/" --fix
+bwrb audit --path "Ideas/" --fix
 
 # Delete notes containing specific text (with confirmation)
-pika delete --text "DELETE ME"
+bwrb delete --text "DELETE ME"
 ```

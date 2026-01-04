@@ -110,7 +110,7 @@ export async function findAllMarkdownFiles(dir: string): Promise<string[]> {
       const fullPath = join(currentDir, entry.name);
       
       if (entry.isDirectory()) {
-        // Skip hidden directories and .pika
+        // Skip hidden directories and .bwrb
         if (!entry.name.startsWith('.')) {
           await scan(fullPath);
         }

@@ -5,7 +5,7 @@
  * It delegates to the search command with the --open flag.
  * 
  * Supports multiple output modes:
- * - obsidian: Open in Obsidian via URI scheme (default, or set PIKA_DEFAULT_APP)
+ * - obsidian: Open in Obsidian via URI scheme (default, or set BWRB_DEFAULT_APP)
  * - editor: Open in $VISUAL or $EDITOR
  * - system: Open with system default (xdg-open/open/start)
  * - print: Just print the resolved path (for scripting)
@@ -48,7 +48,7 @@ export const openCommand = new Command('open')
   .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
   .option('-o, --output <format>', 'Output format: text (default) or json')
   .addHelpText('after', `
-This command is an alias for: pika search <query> --open
+This command is an alias for: bwrb search <query> --open
 
 App Modes:
   obsidian    Open in Obsidian via URI scheme (default)
@@ -63,20 +63,20 @@ Picker Modes:
   none        Error on ambiguity (for non-interactive use)
 
 Environment Variables:
-  PIKA_DEFAULT_APP    Default app mode (obsidian, editor, system, print)
+  BWRB_DEFAULT_APP    Default app mode (obsidian, editor, system, print)
 
 Examples:
-  pika open                        # Browse all notes with picker
-  pika open "My Note"              # Open by basename
-  pika open Ideas/My\\ Note.md     # Open by path
-  pika open "my note"              # Case-insensitive match
-  pika open "My Note" --app editor # Open in $EDITOR
-  pika open "My Note" --app print  # Just print path
-  pika open "Amb" --picker none --output json  # Scripting mode
+  bwrb open                        # Browse all notes with picker
+  bwrb open "My Note"              # Open by basename
+  bwrb open Ideas/My\\ Note.md     # Open by path
+  bwrb open "my note"              # Case-insensitive match
+  bwrb open "My Note" --app editor # Open in $EDITOR
+  bwrb open "My Note" --app print  # Just print path
+  bwrb open "Amb" --picker none --output json  # Scripting mode
 
 Equivalent search commands:
-  pika open "My Note"              # = pika search "My Note" --open
-  pika open "My Note" --app editor # = pika search "My Note" --open --app editor
+  bwrb open "My Note"              # = bwrb search "My Note" --open
+  bwrb open "My Note" --app editor # = bwrb search "My Note" --open --app editor
 
 Note: Obsidian must be running for --app obsidian to work.
       For --app editor, set $VISUAL or $EDITOR environment variable.`)
@@ -168,12 +168,12 @@ Note: Obsidian must be running for --app obsidian to work.
 // ============================================================================
 
 /**
- * Open a note using the configured app mode (respects PIKA_DEFAULT_APP).
+ * Open a note using the configured app mode (respects BWRB_DEFAULT_APP).
  * This is the shared entry point for opening notes from other commands.
  * 
  * @param vaultDir - The vault directory path
  * @param filePath - Absolute path to the note file
- * @param appModeOverride - Optional app mode override (uses PIKA_DEFAULT_APP if not provided)
+ * @param appModeOverride - Optional app mode override (uses BWRB_DEFAULT_APP if not provided)
  * @param jsonMode - Whether to output JSON
  */
 export async function openNote(
@@ -203,7 +203,7 @@ export async function openNote(
 
 export function parseAppMode(value: string | undefined): AppMode {
   // Use explicit value, then env var, then default to obsidian
-  const effectiveValue = value ?? process.env['PIKA_DEFAULT_APP'];
+  const effectiveValue = value ?? process.env['BWRB_DEFAULT_APP'];
   
   if (!effectiveValue) return 'obsidian';
   

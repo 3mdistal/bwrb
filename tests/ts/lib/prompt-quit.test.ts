@@ -14,11 +14,11 @@ import { NumberedSelectPrompt } from '../../../src/lib/numberedSelect.js';
  * - prompts (npm): Used for confirm/text inputs
  * 
  * Manual verification:
- *   1. Run `pika audit --fix` on a vault with issues
+ *   1. Run `bwrb audit --fix` on a vault with issues
  *   2. Press Ctrl+C at any prompt (y/n or selection)
  *   3. Verify the command exits immediately (shows "→ Quit")
  *   
- *   Repeat for: `pika new`, `pika edit`
+ *   Repeat for: `bwrb new`, `bwrb edit`
  */
 
 describe('Ctrl+C quit behavior', () => {
@@ -206,7 +206,7 @@ describe('Optional field skip behavior (documented)', () => {
     //     2  Active Milestone
     //
     // Manual verification:
-    //   1. Run `pika new objective/task`
+    //   1. Run `bwrb new objective/task`
     //   2. At the milestone prompt, verify "(skip)" appears first
     //   3. Select (skip), verify the field is empty/default in the created note
     expect(true).toBe(true);
@@ -226,7 +226,7 @@ describe('Optional field skip behavior (documented)', () => {
     //     4  in-flight
     //
     // Manual verification:
-    //   1. Run `pika edit` on an existing note
+    //   1. Run `bwrb edit` on an existing note
     //   2. At any select prompt, verify "(keep current)" appears first
     //   3. Select it, verify the field value is unchanged
     expect(true).toBe(true);

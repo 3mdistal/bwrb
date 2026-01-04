@@ -1,11 +1,11 @@
 {
-  "name": "pika",
+  "name": "bwrb",
   "version": "0.2.0",
   "description": "Schema-driven note management for markdown vaults",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "pika": "./dist/index.js"
+    "bwrb": "./dist/index.js"
   },
   "scripts": {
     "dev": "sh -c 'shift $([ \"$1\" = \"--\" ] && echo 1 || echo 0); exec tsx src/index.ts \"$@\"' --",
@@ -20,7 +20,7 @@
     "postinstall": "chmod +x node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true"
   },
   "keywords": [
-    "pika",
+    "bwrb",
     "pkm",
     "markdown",
     "frontmatter",

@@ -15,7 +15,7 @@ describe('JSON I/O', () => {
     await cleanupTestVault(vaultDir);
   });
 
-  describe('pika new --json', () => {
+  describe('bwrb new --json', () => {
     it('should create a note with JSON frontmatter', async () => {
       const result = await runCLI(
         ['new', 'idea', '--json', '{"name": "Test Idea", "status": "raw", "priority": "high"}'],
@@ -384,7 +384,7 @@ describe('JSON I/O', () => {
     });
   });
 
-  describe('pika edit --json', () => {
+  describe('bwrb edit --json', () => {
     it('should update a note with JSON patch', async () => {
       const result = await runCLI(
         ['edit', 'Ideas/Sample Idea.md', '--json', '{"status": "backlog"}'],
@@ -452,7 +452,7 @@ describe('JSON I/O', () => {
     });
   });
 
-  describe('pika list --output json', () => {
+  describe('bwrb list --output json', () => {
     it('should output list as JSON array', async () => {
       const result = await runCLI(
         ['list', 'idea', '--output', 'json'],
@@ -517,7 +517,7 @@ describe('JSON I/O', () => {
     });
   });
 
-  describe('pika schema show --output json', () => {
+  describe('bwrb schema show --output json', () => {
     it('should output type details as JSON', async () => {
       const result = await runCLI(
         ['schema', 'show', 'idea', '--output', 'json'],
@@ -568,7 +568,7 @@ describe('JSON I/O', () => {
     });
   });
 
-  describe('pika schema validate --output json', () => {
+  describe('bwrb schema validate --output json', () => {
     it('should return success for valid schema', async () => {
       const result = await runCLI(
         ['schema', 'validate', '--output', 'json'],

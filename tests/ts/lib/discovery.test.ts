@@ -49,9 +49,9 @@ describe('Discovery', () => {
   });
 
   describe('getExcludedDirectories', () => {
-    it('should always exclude .pika', () => {
+    it('should always exclude .bwrb', () => {
       const excluded = getExcludedDirectories(schema);
-      expect(excluded.has('.pika')).toBe(true);
+      expect(excluded.has('.bwrb')).toBe(true);
     });
 
     it('should include schema-configured exclusions', () => {
@@ -59,18 +59,18 @@ describe('Discovery', () => {
       expect(excluded.has('Templates')).toBe(true);
     });
 
-    it('should respect PIKA_AUDIT_EXCLUDE env var', () => {
-      const originalEnv = process.env.PIKA_AUDIT_EXCLUDE;
+    it('should respect BWRB_AUDIT_EXCLUDE env var', () => {
+      const originalEnv = process.env.BWRB_AUDIT_EXCLUDE;
       try {
-        process.env.PIKA_AUDIT_EXCLUDE = 'Archive,Drafts/';
+        process.env.BWRB_AUDIT_EXCLUDE = 'Archive,Drafts/';
         const excluded = getExcludedDirectories(schema);
         expect(excluded.has('Archive')).toBe(true);
         expect(excluded.has('Drafts')).toBe(true); // Trailing slash normalized
       } finally {
         if (originalEnv === undefined) {
-          delete process.env.PIKA_AUDIT_EXCLUDE;
+          delete process.env.BWRB_AUDIT_EXCLUDE;
         } else {
-          process.env.PIKA_AUDIT_EXCLUDE = originalEnv;
+          process.env.BWRB_AUDIT_EXCLUDE = originalEnv;
         }
       }
     });

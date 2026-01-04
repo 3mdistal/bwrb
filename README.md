@@ -1,10 +1,10 @@
-# pika
+# bwrb
 
 Schema-driven note management for markdown vaults.
 
 ## Overview
 
-`pika` is a CLI tool that creates and edits markdown files based on a hierarchical type schema. It supports:
+`bwrb` is a CLI tool that creates and edits markdown files based on a hierarchical type schema. It supports:
 
 - Interactive type selection with subtype navigation
 - Dynamic frontmatter prompts (enums, text input, vault queries)
@@ -22,10 +22,10 @@ Schema-driven note management for markdown vaults.
 ### From source (development)
 
 ```sh
-cd ~/Developer/pika
+cd ~/Developer/bwrb
 pnpm install
 pnpm build
-pnpm link --global  # Makes 'pika' available globally
+pnpm link --global  # Makes 'bwrb' available globally
 ```
 
 ### Development mode
@@ -36,64 +36,64 @@ pnpm dev -- new idea  # Run without building
 
 ## Setup
 
-Create a `.pika/schema.json` in each vault you want to use with pika.
+Create a `.bwrb/schema.json` in each vault you want to use with bwrb.
 
 ## Usage
 
 ```sh
 # Vault path resolution (in order of precedence):
 # 1. --vault=<path> or -v <path> argument
-# 2. PIKA_VAULT environment variable  
+# 2. BWRB_VAULT environment variable  
 # 3. Current working directory
 
 # Interactive mode - prompts for type selection
-pika new
-pika --vault=/path/to/vault new
+bwrb new
+bwrb --vault=/path/to/vault new
 
 # Direct creation - specify type
-pika new objective    # Then select subtype (task/milestone/project/goal)
-pika new idea         # Creates idea directly (no subtypes)
+bwrb new objective    # Then select subtype (task/milestone/project/goal)
+bwrb new idea         # Creates idea directly (no subtypes)
 
 # Templates
-pika new task --template bug-report  # Use specific template
-pika new task --default              # Use default.md template  
-pika new task --no-template          # Skip templates, use schema only
+bwrb new task --template bug-report  # Use specific template
+bwrb new task --default              # Use default.md template  
+bwrb new task --no-template          # Skip templates, use schema only
 
 # Edit existing file
-pika edit path/to/file.md
-pika edit Objectives/Tasks/My\ Task.md
+bwrb edit path/to/file.md
+bwrb edit Objectives/Tasks/My\ Task.md
 
 # List objects by type
-pika list idea                 # List all ideas (names only)
-pika list objective            # List all objectives (tasks, milestones, etc.)
-pika list objective/task       # List only tasks
-pika list objective/milestone  # List only milestones
+bwrb list idea                 # List all ideas (names only)
+bwrb list objective            # List all objectives (tasks, milestones, etc.)
+bwrb list objective/task       # List only tasks
+bwrb list objective/milestone  # List only milestones
 
 # List output options
-pika list --paths idea                       # Show vault-relative paths
-pika list --fields=status,priority idea      # Show selected frontmatter fields in a table
-pika list --paths --fields=status objective  # Combine paths + fields
+bwrb list --paths idea                       # Show vault-relative paths
+bwrb list --fields=status,priority idea      # Show selected frontmatter fields in a table
+bwrb list --paths --fields=status objective  # Combine paths + fields
 
 # Open a note by query (or browse all)
-pika open                                    # Browse all notes with picker
-pika open "My Note"                          # Open in Obsidian (default)
-pika open "My Note" --app editor             # Open in $EDITOR
-pika open "My Note" --app print              # Just print the path
-pika open "Amb" --picker fzf                 # Use fzf for ambiguous matches
+bwrb open                                    # Browse all notes with picker
+bwrb open "My Note"                          # Open in Obsidian (default)
+bwrb open "My Note" --app editor             # Open in $EDITOR
+bwrb open "My Note" --app print              # Just print the path
+bwrb open "Amb" --picker fzf                 # Use fzf for ambiguous matches
 
 # Generate a wikilink (or browse all)
-pika search                                  # Browse all notes with picker
-pika search "My Note" --wikilink             # Output: [[My Note]]
-pika search "My Note"                        # Output: My Note (name only)
-pika search "Amb" --output json              # JSON output for scripting
+bwrb search                                  # Browse all notes with picker
+bwrb search "My Note" --wikilink             # Output: [[My Note]]
+bwrb search "My Note"                        # Output: My Note (name only)
+bwrb search "Amb" --output json              # JSON output for scripting
 
 # Help
-pika help
+bwrb help
 ```
 
 ## Schema Structure
 
-The schema file is expected at `<vault>/.pika/schema.json`. It defines:
+The schema file is expected at `<vault>/.bwrb/schema.json`. It defines:
 
 ### Enums
 
@@ -237,13 +237,13 @@ Content types: `none`, `paragraphs`, `bullets`, `checkboxes`
 
 ## Templates
 
-Templates provide reusable defaults and body structure for note creation. They're stored in `.pika/templates/`, organized by type path.
+Templates provide reusable defaults and body structure for note creation. They're stored in `.bwrb/templates/`, organized by type path.
 
 ### Template Location
 
 ```
 my-vault/
-└── .pika/
+└── .bwrb/
     ├── schema.json
     └── templates/
         ├── idea/
@@ -307,26 +307,26 @@ The template body becomes the note body, with variable substitution:
 
 ```sh
 # Auto-use default.md if it exists
-pika new task
+bwrb new task
 
 # Use specific template
-pika new task --template bug-report
+bwrb new task --template bug-report
 
 # Require default template (error if not found)
-pika new task --default
+bwrb new task --default
 
 # Skip template system
-pika new task --no-template
+bwrb new task --no-template
 
 # JSON mode with templates
-pika new task --json '{"name": "Fix bug"}' --template bug-report
+bwrb new task --json '{"name": "Fix bug"}' --template bug-report
 ```
 
 ### Template Discovery
 
 Templates use **strict matching** - only templates in the exact type path directory are considered:
-- `objective/task` -> `.pika/templates/objective/task/*.md`
-- `idea` -> `.pika/templates/idea/*.md`
+- `objective/task` -> `.bwrb/templates/objective/task/*.md`
+- `idea` -> `.bwrb/templates/idea/*.md`
 
 There is no inheritance from parent types.
 
@@ -336,28 +336,28 @@ Use the `template` command to manage templates:
 
 ```sh
 # List all templates
-pika template list
-pika template list objective/task    # Filter by type
+bwrb template list
+bwrb template list objective/task    # Filter by type
 
 # Show template details
-pika template show idea default
+bwrb template show idea default
 
 # Validate templates against schema
-pika template validate               # All templates
-pika template validate idea          # Templates for specific type
+bwrb template validate               # All templates
+bwrb template validate idea          # Templates for specific type
 
 # Create new template interactively
-pika template new idea
-pika template new objective/task --name bug-report
+bwrb template new idea
+bwrb template new objective/task --name bug-report
 
 # Create template from JSON
-pika template new idea --name quick --json '{"defaults": {"status": "raw"}}'
+bwrb template new idea --name quick --json '{"defaults": {"status": "raw"}}'
 
 # Edit template interactively
-pika template edit idea default
+bwrb template edit idea default
 
 # Edit template from JSON
-pika template edit idea default --json '{"defaults": {"priority": "high"}}'
+bwrb template edit idea default --json '{"defaults": {"priority": "high"}}'
 ```
 
 ## Adding a New Type
@@ -399,9 +399,9 @@ The schema structure is defined by `schema.schema.json` (JSON Schema draft-07). 
 
 ## File Structure
 
-**pika repo:**
+**bwrb repo:**
 ```
-pika/
+bwrb/
 ├── src/
 │   ├── index.ts              # CLI entry point
 │   ├── commands/
@@ -428,24 +428,24 @@ pika/
 **Each vault:**
 ```
 my-vault/
-└── .pika/
+└── .bwrb/
     └── schema.json     # Vault-specific type definitions
 ```
 
 ## Navigation Commands
 
-### `pika open [query]`
+### `bwrb open [query]`
 
 Open a note by name or path query. If no query is provided, shows a picker to browse all notes.
 
 ```sh
-pika open                              # Browse all notes with picker
-pika open "My Note"                    # Open in Obsidian (default)
-pika open "my note"                    # Case-insensitive
-pika open "Ideas/My Note"              # By path
-pika open "My Note" --app editor       # Open in $VISUAL or $EDITOR
-pika open "My Note" --app system       # Open with system default
-pika open "My Note" --app print        # Just print the resolved path
+bwrb open                              # Browse all notes with picker
+bwrb open "My Note"                    # Open in Obsidian (default)
+bwrb open "my note"                    # Case-insensitive
+bwrb open "Ideas/My Note"              # By path
+bwrb open "My Note" --app editor       # Open in $VISUAL or $EDITOR
+bwrb open "My Note" --app system       # Open with system default
+bwrb open "My Note" --app print        # Just print the resolved path
 ```
 
 **App modes:**
@@ -454,9 +454,9 @@ pika open "My Note" --app print        # Just print the resolved path
 - `system` - Open with system default handler
 - `print` - Just print the resolved path
 
-**Environment variable:** Set `PIKA_DEFAULT_APP` to change the default app mode:
+**Environment variable:** Set `BWRB_DEFAULT_APP` to change the default app mode:
 ```sh
-export PIKA_DEFAULT_APP=editor  # Always open in $EDITOR by default
+export BWRB_DEFAULT_APP=editor  # Always open in $EDITOR by default
 ```
 
 **Picker modes** (when query matches multiple files or no query):
@@ -467,29 +467,29 @@ export PIKA_DEFAULT_APP=editor  # Always open in $EDITOR by default
 
 **JSON output** (implies `--picker none`):
 ```sh
-pika open "My Note" --app print --output json
+bwrb open "My Note" --app print --output json
 ```
 
-### `pika search [query]`
+### `bwrb search [query]`
 
 Find notes and generate wikilinks. If no query is provided, shows a picker to browse all notes. Uses shortest unambiguous form:
 - Basename if unique across vault: `[[My Note]]`
 - Full path if ambiguous: `[[Ideas/My Note]]`
 
 ```sh
-pika search                              # Browse all notes with picker
-pika search "My Note" --wikilink         # Output: [[My Note]]
-pika search "My Note"                    # Output: My Note
-pika search "Amb" --picker none --output json  # Scripting mode
+bwrb search                              # Browse all notes with picker
+bwrb search "My Note" --wikilink         # Output: [[My Note]]
+bwrb search "My Note"                    # Output: My Note
+bwrb search "Amb" --picker none --output json  # Scripting mode
 ```
 
 **Neovim/scripting example:**
 ```sh
 # Copy wikilink to clipboard (macOS)
-pika search "My Note" --wikilink | pbcopy
+bwrb search "My Note" --wikilink | pbcopy
 
 # Use in a Lua script
-local link = vim.fn.system("pika search 'My Note' --picker none")
+local link = vim.fn.system("bwrb search 'My Note' --picker none")
 ```
 
 ## Shell Completion
@@ -501,7 +501,7 @@ Enable tab completion for commands, types, and paths.
 Add to `~/.bashrc`:
 
 ```bash
-eval "$(pika completion bash)"
+eval "$(bwrb completion bash)"
 ```
 
 ### Zsh
@@ -509,7 +509,7 @@ eval "$(pika completion bash)"
 Add to `~/.zshrc`:
 
 ```zsh
-eval "$(pika completion zsh)"
+eval "$(bwrb completion zsh)"
 ```
 
 ### Fish
@@ -517,15 +517,15 @@ eval "$(pika completion zsh)"
 Run once to install:
 
 ```fish
-pika completion fish > ~/.config/fish/completions/pika.fish
+bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 ```
 
 ### What Gets Completed
 
-- **Commands**: `pika <TAB>` shows `new`, `edit`, `list`, `open`, etc.
-- **Options**: `pika list -<TAB>` shows `--type`, `--path`, `--where`, etc.
-- **Types**: `pika list --type <TAB>` shows types from your schema (task, idea, etc.)
-- **Paths**: `pika list --path <TAB>` shows vault directories (Ideas/, Objectives/, etc.)
+- **Commands**: `bwrb <TAB>` shows `new`, `edit`, `list`, `open`, etc.
+- **Options**: `bwrb list -<TAB>` shows `--type`, `--path`, `--where`, etc.
+- **Types**: `bwrb list --type <TAB>` shows types from your schema (task, idea, etc.)
+- **Paths**: `bwrb list --path <TAB>` shows vault directories (Ideas/, Objectives/, etc.)
 
 ## Running Tests
 

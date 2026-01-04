@@ -14,7 +14,7 @@ const describePty = shouldSkipPtyTests() ? describe.skip : describe;
 
 // Template files for the test vault
 const DEFAULT_IDEA_TEMPLATE: TempVaultFile = {
-  path: '.pika/templates/idea/default.md',
+  path: '.bwrb/templates/idea/default.md',
   content: `---
 type: template
 template-for: idea
@@ -59,7 +59,7 @@ describePty('template command PTY tests', () => {
           await proc.waitFor('Created:', 5000);
 
           // Verify file was created
-          const templatePath = join(vaultPath, '.pika/templates/idea', 'quick-idea.md');
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'quick-idea.md');
           expect(existsSync(templatePath)).toBe(true);
 
           const content = await readFile(templatePath, 'utf-8');
@@ -107,7 +107,7 @@ describePty('template command PTY tests', () => {
           await proc.waitFor('Created:', 10000);
 
           // Verify
-          const templatePath = join(vaultPath, '.pika/templates/idea', 'with-defaults.md');
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'with-defaults.md');
           expect(existsSync(templatePath)).toBe(true);
 
           const content = await readFile(templatePath, 'utf-8');
@@ -130,7 +130,7 @@ describePty('template command PTY tests', () => {
           await proc.waitFor('Cancelled', 5000);
 
           // Verify no file was created
-          const templatePath = join(vaultPath, '.pika/templates/idea', 'cancelled.md');
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'cancelled.md');
           expect(existsSync(templatePath)).toBe(false);
         },
         { schema: TEST_SCHEMA }
@@ -183,7 +183,7 @@ describePty('template command PTY tests', () => {
           await proc.waitFor('Updated:', 5000);
 
           // Verify update
-          const templatePath = join(vaultPath, '.pika/templates/idea', 'default.md');
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'default.md');
           const content = await readFile(templatePath, 'utf-8');
           expect(content).toContain('Updated via interactive edit');
         },
@@ -196,7 +196,7 @@ describePty('template command PTY tests', () => {
         ['template', 'edit', 'idea', 'default'],
         async (proc, vaultPath) => {
           // Get original content
-          const templatePath = join(vaultPath, '.pika/templates/idea', 'default.md');
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'default.md');
           const originalContent = await readFile(templatePath, 'utf-8');
 
           await proc.waitFor('Current description:', 10000);
@@ -220,7 +220,7 @@ describePty('template command PTY tests', () => {
       await withTempVault(
         ['template', 'delete', 'idea', 'default'],
         async (proc, vaultPath) => {
-          const templatePath = join(vaultPath, '.pika/templates/idea', 'default.md');
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'default.md');
           
           // Verify file exists before delete
           expect(existsSync(templatePath)).toBe(true);
@@ -243,7 +243,7 @@ describePty('template command PTY tests', () => {
       await withTempVault(
         ['template', 'delete', 'idea', 'default'],
         async (proc, vaultPath) => {
-          const templatePath = join(vaultPath, '.pika/templates/idea', 'default.md');
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'default.md');
           
           // Verify file exists before
           expect(existsSync(templatePath)).toBe(true);
@@ -266,7 +266,7 @@ describePty('template command PTY tests', () => {
       await withTempVault(
         ['template', 'delete', 'idea', 'default'],
         async (proc, vaultPath) => {
-          const templatePath = join(vaultPath, '.pika/templates/idea', 'default.md');
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'default.md');
           
           // Verify file exists before
           expect(existsSync(templatePath)).toBe(true);

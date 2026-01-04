@@ -6,7 +6,7 @@
 
 ## Overview
 
-The `pika bulk` command performs mass changes across notes matching filter criteria:
+The `bwrb bulk` command performs mass changes across notes matching filter criteria:
 
 - Set or clear field values
 - Rename fields (for migrations)
@@ -19,7 +19,7 @@ The `pika bulk` command performs mass changes across notes matching filter crite
 ## Command Syntax
 
 ```bash
-pika bulk <type> [options]
+bwrb bulk <type> [options]
 
 # Operations
 --set <field>=<value>       # Set field value
@@ -50,7 +50,7 @@ pika bulk <type> [options]
 All bulk operations are dry-run by default for safety:
 
 ```bash
-pika bulk task --set status=done --where "status == 'in-progress'"
+bwrb bulk task --set status=done --where "status == 'in-progress'"
 
 # Dry run - no changes will be made
 # 
@@ -72,28 +72,28 @@ pika bulk task --set status=done --where "status == 'in-progress'"
 
 ```bash
 # Set single field
-pika bulk task --set status=done --where "status == 'in-progress'" --execute
+bwrb bulk task --set status=done --where "status == 'in-progress'" --execute
 
 # Set multiple fields
-pika bulk task --set status=done --set "completion-date=$(date +%Y-%m-%d)" --where "status == 'in-progress'" --execute
+bwrb bulk task --set status=done --set "completion-date=$(date +%Y-%m-%d)" --where "status == 'in-progress'" --execute
 
 # Set with special values
-pika bulk task --set deadline=today --where "isEmpty(deadline)" --execute
-pika bulk task --set "milestone=[[Q1 Release]]" --where "type == 'task'" --execute
+bwrb bulk task --set deadline=today --where "isEmpty(deadline)" --execute
+bwrb bulk task --set "milestone=[[Q1 Release]]" --where "type == 'task'" --execute
 ```
 
 ### Clear Field
 
 ```bash
 # Remove field entirely
-pika bulk task --set deadline= --where "status == 'done'" --execute
+bwrb bulk task --set deadline= --where "status == 'done'" --execute
 ```
 
 ### Rename Field
 
 ```bash
 # For schema migrations
-pika bulk objective --rename old-field=new-field --execute
+bwrb bulk objective --rename old-field=new-field --execute
 
 # All affected files:
 #   Objectives/Tasks/Task A.md
@@ -104,14 +104,14 @@ pika bulk objective --rename old-field=new-field --execute
 
 ```bash
 # Explicit deletion (same as --set field=)
-pika bulk task --delete legacy-field --execute
+bwrb bulk task --delete legacy-field --execute
 ```
 
 ### Move Files
 
 ```bash
 # Move to different directory
-pika bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
+bwrb bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
 
 # Output:
 #   Moving 15 files...
@@ -123,7 +123,7 @@ pika bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
 
 ```bash
 # Add tag to all matching files
-pika bulk task --append tags=urgent --where "priority == 'critical'" --execute
+bwrb bulk task --append tags=urgent --where "priority == 'critical'" --execute
 
 # Before: tags: [bug]
 # After:  tags: [bug, urgent]
@@ -133,31 +133,31 @@ pika bulk task --append tags=urgent --where "priority == 'critical'" --execute
 
 ```bash
 # Remove tag from files
-pika bulk task --remove tags=legacy --where "contains(tags, 'legacy')" --execute
+bwrb bulk task --remove tags=legacy --where "contains(tags, 'legacy')" --execute
 ```
 
 ---
 
 ## Filter Expressions
 
-Filters use the same expression syntax as `pika list`:
+Filters use the same expression syntax as `bwrb list`:
 
 ```bash
 # Simple equality
-pika bulk task --set status=done --where "status == 'in-progress'"
+bwrb bulk task --set status=done --where "status == 'in-progress'"
 
 # Comparison operators
-pika bulk task --set priority=high --where "priority < 2"
+bwrb bulk task --set priority=high --where "priority < 2"
 
 # Boolean logic
-pika bulk task --set status=backlog --where "status == 'inbox' && isEmpty(deadline)"
+bwrb bulk task --set status=backlog --where "status == 'inbox' && isEmpty(deadline)"
 
 # Functions
-pika bulk task --set status=overdue --where "deadline < today()"
-pika bulk idea --move Archive/Ideas --where "contains(tags, 'archived')"
+bwrb bulk task --set status=overdue --where "deadline < today()"
+bwrb bulk idea --move Archive/Ideas --where "contains(tags, 'archived')"
 
 # Multiple --where (AND logic)
-pika bulk task --set status=done --where "status == 'in-progress'" --where "scope == 'day'"
+bwrb bulk task --set status=done --where "status == 'in-progress'" --where "scope == 'day'"
 ```
 
 ---
@@ -167,20 +167,20 @@ pika bulk task --set status=done --where "status == 'in-progress'" --where "scop
 ### Specific Type
 
 ```bash
-pika bulk objective/task --set status=done ...
+bwrb bulk objective/task --set status=done ...
 ```
 
 ### Parent Type (All Subtypes)
 
 ```bash
-pika bulk objective --set status=done ...
+bwrb bulk objective --set status=done ...
 # Affects both tasks and milestones
 ```
 
 ### All Types
 
 ```bash
-pika bulk --all --set status=done --where "status == 'in-progress'" ...
+bwrb bulk --all --set status=done --where "status == 'in-progress'" ...
 # Warning: This affects ALL managed files. Are you sure? [y/N]
 ```
 
@@ -191,17 +191,17 @@ pika bulk --all --set status=done --where "status == 'in-progress'" ...
 ### 1. Dry-Run by Default
 
 ```bash
-pika bulk task --set status=done --where "status == 'in-progress'"
+bwrb bulk task --set status=done --where "status == 'in-progress'"
 # Shows what would change, doesn't change anything
 ```
 
 ### 2. Backup Option
 
 ```bash
-pika bulk task --set status=done --where "status == 'in-progress'" --execute --backup
+bwrb bulk task --set status=done --where "status == 'in-progress'" --execute --backup
 
 # Creating backup...
-#   Backup saved to .pika/backups/2025-01-15T10-30-00/
+#   Backup saved to .bwrb/backups/2025-01-15T10-30-00/
 # 
 # Applying changes...
 #   ✓ Updated 12 files
@@ -209,7 +209,7 @@ pika bulk task --set status=done --where "status == 'in-progress'" --execute --b
 
 Restore from backup:
 ```bash
-pika backup restore 2025-01-15T10-30-00
+bwrb backup restore 2025-01-15T10-30-00
 # Restoring 12 files from backup...
 # ✓ Restored
 ```
@@ -217,7 +217,7 @@ pika backup restore 2025-01-15T10-30-00
 ### 3. Git Status Warning
 
 ```bash
-pika bulk task --set status=done --where "status == 'in-progress'" --execute
+bwrb bulk task --set status=done --where "status == 'in-progress'" --execute
 
 # ⚠ Warning: You have uncommitted changes in your vault.
 # Bulk operations will modify files. Consider committing first.
@@ -233,7 +233,7 @@ pika bulk task --set status=done --where "status == 'in-progress'" --execute
 
 ```bash
 # Apply to first 5 matches only
-pika bulk task --set status=done --where "status == 'in-progress'" --execute --limit 5
+bwrb bulk task --set status=done --where "status == 'in-progress'" --execute --limit 5
 
 # Updated 5 of 12 matching files.
 # Run without --limit to update remaining 7 files.
@@ -242,7 +242,7 @@ pika bulk task --set status=done --where "status == 'in-progress'" --execute --l
 ### 5. Confirmation for Large Operations
 
 ```bash
-pika bulk task --set status=archived --execute
+bwrb bulk task --set status=archived --execute
 
 # This will modify 247 files.
 # Are you sure? [y/N]
@@ -255,7 +255,7 @@ pika bulk task --set status=archived --execute
 When `--move` relocates files, wikilinks are automatically updated:
 
 ```bash
-pika bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
+bwrb bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
 
 # Moving 5 files...
 #   Ideas/Old Idea 1.md → Archive/Ideas/Old Idea 1.md
@@ -295,7 +295,7 @@ If using Obsidian's "shortest path when possible" setting:
 ### Default (Interactive)
 
 ```bash
-pika bulk task --set status=done --where "status == 'in-progress'" --execute
+bwrb bulk task --set status=done --where "status == 'in-progress'" --execute
 
 # Applying changes to 12 files...
 #   ✓ Objectives/Tasks/Task A.md
@@ -308,7 +308,7 @@ pika bulk task --set status=done --where "status == 'in-progress'" --execute
 ### Verbose
 
 ```bash
-pika bulk task --set status=done --where "status == 'in-progress'" --execute --verbose
+bwrb bulk task --set status=done --where "status == 'in-progress'" --execute --verbose
 
 # Applying changes...
 # 
@@ -326,7 +326,7 @@ pika bulk task --set status=done --where "status == 'in-progress'" --execute --v
 ### Quiet
 
 ```bash
-pika bulk task --set status=done --where "status == 'in-progress'" --execute --quiet
+bwrb bulk task --set status=done --where "status == 'in-progress'" --execute --quiet
 
 # ✓ Updated 12 files
 ```
@@ -334,7 +334,7 @@ pika bulk task --set status=done --where "status == 'in-progress'" --execute --q
 ### JSON (for scripting)
 
 ```bash
-pika bulk task --set status=done --where "status == 'in-progress'" --execute --format json
+bwrb bulk task --set status=done --where "status == 'in-progress'" --execute --format json
 
 # {
 #   "success": true,
@@ -353,21 +353,21 @@ pika bulk task --set status=done --where "status == 'in-progress'" --execute --f
 ### Operating on Parent Type
 
 ```bash
-pika bulk draft --set status=archived --where "status == 'done'" --execute
+bwrb bulk draft --set status=archived --where "status == 'done'" --execute
 # Only affects parent notes (Drafts/X/X.md)
 ```
 
 ### Operating on Subtypes
 
 ```bash
-pika bulk draft/version --set canonical=false --execute
+bwrb bulk draft/version --set canonical=false --execute
 # Affects all version files across all drafts
 ```
 
 ### Moving Entire Instances
 
 ```bash
-pika bulk draft --move Archive/Drafts --where "status == 'archived'" --execute
+bwrb bulk draft --move Archive/Drafts --where "status == 'archived'" --execute
 
 # This will move entire draft instances (parent + subtypes):
 #   Drafts/Old Project/ → Archive/Drafts/Old Project/
@@ -386,44 +386,44 @@ pika bulk draft --move Archive/Drafts --where "status == 'archived'" --execute
 
 ```bash
 # 1. Check current usage
-pika list task --where "status == 'wip'" --count
+bwrb list task --where "status == 'wip'" --count
 # 47 files
 
 # 2. Bulk update
-pika bulk task --set status=in-progress --where "status == 'wip'" --execute --backup
+bwrb bulk task --set status=in-progress --where "status == 'wip'" --execute --backup
 
 # 3. Update schema
-pika schema edit-enum status --remove wip
+bwrb schema edit-enum status --remove wip
 ```
 
 ### Cleanup: Archive Old Items
 
 ```bash
 # Archive settled ideas
-pika bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
+bwrb bulk idea --move Archive/Ideas --where "status == 'settled'" --execute
 
 # Archive completed tasks older than 30 days
-pika bulk task --move Archive/Tasks --where "status == 'done' && completion-date < today() - '30d'" --execute
+bwrb bulk task --move Archive/Tasks --where "status == 'done' && completion-date < today() - '30d'" --execute
 ```
 
 ### Tagging: Add Tags Based on Criteria
 
 ```bash
 # Tag all high-priority items
-pika bulk task --append tags=priority --where "priority == 'high' || priority == 'critical'" --execute
+bwrb bulk task --append tags=priority --where "priority == 'high' || priority == 'critical'" --execute
 
 # Tag overdue items
-pika bulk task --append tags=overdue --where "deadline < today() && status != 'done'" --execute
+bwrb bulk task --append tags=overdue --where "deadline < today() && status != 'done'" --execute
 ```
 
 ### Field Migration: Rename or Remove
 
 ```bash
 # Rename field across all types
-pika bulk --all --rename assignee=owner --execute
+bwrb bulk --all --rename assignee=owner --execute
 
 # Remove deprecated field
-pika bulk --all --delete legacy-notes --execute
+bwrb bulk --all --delete legacy-notes --execute
 ```
 
 ---
@@ -496,7 +496,7 @@ async function findWikilinks(
 ### Backup Structure
 
 ```
-.pika/
+.bwrb/
   backups/
     2025-01-15T10-30-00/
       manifest.json           # What was backed up and why

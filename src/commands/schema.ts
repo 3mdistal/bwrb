@@ -52,11 +52,11 @@ export const schemaCommand = new Command('schema')
   .description('Schema introspection commands')
   .addHelpText('after', `
 Examples:
-  pika schema show              # Show all types
-  pika schema show objective    # Show objective type details
-  pika schema show objective/task  # Show task subtype details
-  pika schema show task --output json  # Show as JSON for AI/scripting
-  pika schema validate          # Validate schema structure`);
+  bwrb schema show              # Show all types
+  bwrb schema show objective    # Show objective type details
+  bwrb schema show objective/task  # Show task subtype details
+  bwrb schema show task --output json  # Show as JSON for AI/scripting
+  bwrb schema validate          # Validate schema structure`);
 
 // schema show
 schemaCommand
@@ -212,7 +212,7 @@ async function promptFieldDefinition(
     if (promptType === 'select') {
       const enumNames = Array.from(schema.enums.keys());
       if (enumNames.length === 0) {
-        printError('No enums defined in schema. Create an enum first with: pika schema enum add <name>');
+        printError('No enums defined in schema. Create an enum first with: bwrb schema enum add <name>');
         return promptFieldDefinition(schema);
       }
       const enumResult = await promptSelection('Enum to use', enumNames);
@@ -266,12 +266,12 @@ schemaCommand
   .addHelpText('after', `
 Examples:
   # Non-interactive type creation (requires --output-dir):
-  pika schema add-type book --output-dir Books -o json
-  pika schema add-type entity --output-dir Entities
-  pika schema add-type person --extends entity --output-dir Entities/People -o json
+  bwrb schema add-type book --output-dir Books -o json
+  bwrb schema add-type entity --output-dir Entities
+  bwrb schema add-type person --extends entity --output-dir Entities/People -o json
 
   # Interactive mode (prompts for options):
-  pika schema add-type book`)
+  bwrb schema add-type book`)
   .action(async (name: string, options: AddTypeOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
@@ -588,7 +588,7 @@ async function promptSingleFieldDefinition(
     if (promptType === 'select') {
       const enumNames = Array.from(schema.enums.keys());
       if (enumNames.length === 0) {
-        throw new Error('No enums defined in schema. Create an enum first with: pika schema enum add <name>');
+        throw new Error('No enums defined in schema. Create an enum first with: bwrb schema enum add <name>');
       }
       const enumResult = await promptSelection('Enum to use', enumNames);
       if (enumResult === null) return null;
@@ -645,15 +645,15 @@ schemaCommand
   .addHelpText('after', `
 Examples:
   # Non-interactive field creation (requires --type flag):
-  pika schema add-field book title --type input --required -o json
-  pika schema add-field book status --type select --enum status -o json
-  pika schema add-field book author --type dynamic --source person --format wikilink -o json
-  pika schema add-field book edition --type fixed --value "1st" -o json
-  pika schema add-field book published --type date -o json
-  pika schema add-field book tags --type multi-input -o json
+  bwrb schema add-field book title --type input --required -o json
+  bwrb schema add-field book status --type select --enum status -o json
+  bwrb schema add-field book author --type dynamic --source person --format wikilink -o json
+  bwrb schema add-field book edition --type fixed --value "1st" -o json
+  bwrb schema add-field book published --type date -o json
+  bwrb schema add-field book tags --type multi-input -o json
 
   # Interactive mode (prompts for field definition):
-  pika schema add-field book title`)
+  bwrb schema add-field book title`)
   .action(async (typeName: string, fieldName: string | undefined, options: AddFieldOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
@@ -825,7 +825,7 @@ Examples:
         
         // Hint about updating existing notes
         console.log('');
-        console.log(chalk.gray(`Run 'pika audit' to check existing notes for this field.`));
+        console.log(chalk.gray(`Run 'bwrb audit' to check existing notes for this field.`));
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1121,7 +1121,7 @@ schemaCommand
             await writeSchema(vaultDir, rawSchema);
             printSuccess(`Removed type '${typeName}'`);
             if (affectedCount > 0) {
-              console.log(chalk.gray(`Run 'pika audit' to review affected files.`));
+              console.log(chalk.gray(`Run 'bwrb audit' to review affected files.`));
             }
           } else {
             console.log(chalk.gray('No changes made.'));
@@ -1139,7 +1139,7 @@ schemaCommand
       } else {
         printSuccess(`Removed type '${typeName}'`);
         if (affectedCount > 0) {
-          console.log(chalk.gray(`Run 'pika audit' to review ${affectedCount} affected file(s).`));
+          console.log(chalk.gray(`Run 'bwrb audit' to review ${affectedCount} affected file(s).`));
         }
       }
     } catch (err) {
@@ -1489,7 +1489,7 @@ schemaCommand
             await writeSchema(vaultDir, schema.raw);
             printSuccess(`Removed field '${fieldName}' from type '${typeName}'`);
             if (affectedCount > 0) {
-              console.log(chalk.gray(`Run 'pika audit' to review affected files.`));
+              console.log(chalk.gray(`Run 'bwrb audit' to review affected files.`));
             }
           } else {
             console.log(chalk.gray('No changes made.'));
@@ -1514,7 +1514,7 @@ schemaCommand
       } else {
         printSuccess(`Removed field '${fieldName}' from type '${typeName}'`);
         if (affectedCount > 0) {
-          console.log(chalk.gray(`Run 'pika audit' to review ${affectedCount} affected file(s).`));
+          console.log(chalk.gray(`Run 'bwrb audit' to review ${affectedCount} affected file(s).`));
         }
       }
     } catch (err) {
@@ -1922,14 +1922,14 @@ const enumCommand = new Command('enum')
   .description('Manage enum definitions')
   .addHelpText('after', `
 Examples:
-  pika schema enum list              # Show all enums
-  pika schema enum add status        # Create enum (prompts for values)
-  pika schema enum add status --values "raw,active,done"
-  pika schema enum update status --add archived
-  pika schema enum update status --remove raw
-  pika schema enum update status --rename active=in-progress
-  pika schema enum delete old-status
-  pika schema enum delete unused --force  # Delete even if in use`);
+  bwrb schema enum list              # Show all enums
+  bwrb schema enum add status        # Create enum (prompts for values)
+  bwrb schema enum add status --values "raw,active,done"
+  bwrb schema enum update status --add archived
+  bwrb schema enum update status --remove raw
+  bwrb schema enum update status --rename active=in-progress
+  bwrb schema enum delete old-status
+  bwrb schema enum delete unused --force  # Delete even if in use`);
 
 // schema enum list
 enumCommand
@@ -2083,7 +2083,7 @@ enumCommand
         // Warn about notes that may have this value
         if (!jsonMode) {
           console.log(chalk.yellow(`\nNote: Existing notes with ${name}: ${options.remove} are now invalid.`));
-          console.log(chalk.yellow(`Run \`pika audit --fix\` to update affected notes.`));
+          console.log(chalk.yellow(`Run \`bwrb audit --fix\` to update affected notes.`));
         }
       } else if (options.rename) {
         // Parse old=new format (split on first = only)
@@ -2109,7 +2109,7 @@ enumCommand
         // Warn about notes that need updating
         if (!jsonMode) {
           console.log(chalk.yellow(`\nNote: Existing notes with ${name}: ${oldValue} need to be updated.`));
-          console.log(chalk.yellow(`Run: pika bulk --set ${name}=${newValue} --where "${name}=${oldValue}" --execute`));
+          console.log(chalk.yellow(`Run: bwrb bulk --set ${name}=${newValue} --where "${name}=${oldValue}" --execute`));
         }
       } else {
         throw new Error('Unexpected state');
@@ -2166,7 +2166,7 @@ enumCommand
         const usageList = usages.map(u => `${u.typeName}.${u.fieldName}`).join(', ');
         throw new Error(
           `Cannot delete enum "${name}" - used by: ${usageList}\n` +
-          `To delete anyway: pika schema enum delete ${name} --force`
+          `To delete anyway: bwrb schema enum delete ${name} --force`
         );
       }
       
@@ -2186,7 +2186,7 @@ enumCommand
           for (const usage of usages) {
             console.log(chalk.yellow(`  • ${usage.typeName}.${usage.fieldName}`));
           }
-          console.log(chalk.yellow(`\nRun \`pika audit\` to find affected notes.`));
+          console.log(chalk.yellow(`\nRun \`bwrb audit\` to find affected notes.`));
         }
       }
     } catch (err) {
@@ -2235,8 +2235,8 @@ schemaCommand
   .option('-o, --output <format>', 'Output format: text (default) or json')
   .addHelpText('after', `
 Examples:
-  pika schema diff              # Show what changed
-  pika schema diff -o json      # Output as JSON for scripting`)
+  bwrb schema diff              # Show what changed
+  bwrb schema diff -o json      # Output as JSON for scripting`)
   .action(async (options: DiffOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
@@ -2251,14 +2251,14 @@ Examples:
       if (!await snapshotExists(vaultDir)) {
         if (jsonMode) {
           printJson(jsonSuccess({
-            message: 'No previous schema snapshot found. Run `pika schema migrate --execute` to create initial snapshot.',
+            message: 'No previous schema snapshot found. Run `bwrb schema migrate --execute` to create initial snapshot.',
             data: { hasSnapshot: false, changes: [] },
           }));
         } else {
           console.log(chalk.yellow('No previous schema snapshot found.'));
           console.log('');
           console.log('This is either a new vault or migrations haven\'t been used yet.');
-          console.log('Run `pika schema migrate --execute` to create the initial snapshot.');
+          console.log('Run `bwrb schema migrate --execute` to create the initial snapshot.');
         }
         return;
       }
@@ -2285,12 +2285,12 @@ Examples:
           console.log(formatDiffForDisplay(diff));
           if (currentVersion === snapshotVersion) {
             console.log(chalk.yellow(`\nNote: Schema version is still ${currentVersion}.`));
-            console.log(chalk.yellow('You\'ll be prompted to update it when running `pika schema migrate --execute`.'));
+            console.log(chalk.yellow('You\'ll be prompted to update it when running `bwrb schema migrate --execute`.'));
           }
           
           console.log('');
-          console.log('Run `pika schema migrate` to preview the migration.');
-          console.log('Run `pika schema migrate --execute` to apply changes.');
+          console.log('Run `bwrb schema migrate` to preview the migration.');
+          console.log('Run `bwrb schema migrate --execute` to apply changes.');
         }
       }
     } catch (err) {
@@ -2313,9 +2313,9 @@ schemaCommand
   .option('--no-backup', 'Skip backup creation (not recommended)')
   .addHelpText('after', `
 Examples:
-  pika schema migrate              # Preview migration (dry-run)
-  pika schema migrate --execute    # Apply migration with backup
-  pika schema migrate --execute --no-backup  # Apply without backup`)
+  bwrb schema migrate              # Preview migration (dry-run)
+  bwrb schema migrate --execute    # Apply migration with backup
+  bwrb schema migrate --execute --no-backup  # Apply without backup`)
   .action(async (options: MigrateOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
     const execute = options.execute ?? false;
@@ -2384,7 +2384,7 @@ Examples:
             console.log(`  1. Create initial schema snapshot (version ${currentVersion})`);
             console.log('  2. Record this as the baseline for future migrations');
             console.log('');
-            console.log('Run `pika schema migrate --execute` to create the snapshot.');
+            console.log('Run `bwrb schema migrate --execute` to create the snapshot.');
           }
         } else {
           // Execute dry-run migration to show what would happen
@@ -2414,7 +2414,7 @@ Examples:
             console.log(chalk.cyan(`Files scanned: ${result.totalFiles}`));
             console.log(chalk.cyan(`Files affected: ${result.affectedFiles}`));
             console.log('');
-            console.log('Run `pika schema migrate --execute` to apply these changes.');
+            console.log('Run `bwrb schema migrate --execute` to apply these changes.');
           }
         }
         return;
@@ -2553,9 +2553,9 @@ schemaCommand
   .option('--limit <n>', 'Number of entries to show (default: 10)')
   .addHelpText('after', `
 Examples:
-  pika schema history              # Show recent migrations
-  pika schema history --limit 5    # Show last 5 migrations
-  pika schema history -o json      # Output as JSON`)
+  bwrb schema history              # Show recent migrations
+  bwrb schema history --limit 5    # Show last 5 migrations
+  bwrb schema history -o json      # Output as JSON`)
   .action(async (options: HistoryOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
     const limit = options.limit ? parseInt(options.limit, 10) : 10;
@@ -2575,7 +2575,7 @@ Examples:
         } else {
           console.log('No migration history found.');
           console.log('');
-          console.log('Run `pika schema migrate --execute` to start tracking migrations.');
+          console.log('Run `bwrb schema migrate --execute` to start tracking migrations.');
         }
         return;
       }

@@ -2,19 +2,19 @@
  * Completion command - outputs shell completion scripts.
  * 
  * Usage:
- *   pika completion bash   # Output bash completion script
- *   pika completion zsh    # Output zsh completion script
- *   pika completion fish   # Output fish completion script
+ *   bwrb completion bash   # Output bash completion script
+ *   bwrb completion zsh    # Output zsh completion script
+ *   bwrb completion fish   # Output fish completion script
  * 
  * Installation:
  *   # Bash (add to ~/.bashrc)
- *   eval "$(pika completion bash)"
+ *   eval "$(bwrb completion bash)"
  *   
  *   # Zsh (add to ~/.zshrc)
- *   eval "$(pika completion zsh)"
+ *   eval "$(bwrb completion zsh)"
  *   
  *   # Fish (run once)
- *   pika completion fish > ~/.config/fish/completions/pika.fish
+ *   bwrb completion fish > ~/.config/fish/completions/bwrb.fish
  */
 
 import { Command } from 'commander';
@@ -28,13 +28,13 @@ export const completionCommand = new Command('completion')
   .addHelpText('after', `
 Examples:
   # Bash (add to ~/.bashrc)
-  eval "$(pika completion bash)"
+  eval "$(bwrb completion bash)"
 
   # Zsh (add to ~/.zshrc)  
-  eval "$(pika completion zsh)"
+  eval "$(bwrb completion zsh)"
 
   # Fish (run once)
-  pika completion fish > ~/.config/fish/completions/pika.fish
+  bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 `)
   .action((shell: string) => {
     const normalizedShell = shell.toLowerCase();

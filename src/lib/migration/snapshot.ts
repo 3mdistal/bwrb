@@ -1,6 +1,6 @@
 /**
  * Schema snapshot management.
- * Manages .pika/schema.applied.json for tracking last-applied schema state.
+ * Manages .bwrb/schema.applied.json for tracking last-applied schema state.
  */
 
 import * as fs from 'node:fs/promises';
@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import { Schema } from '../../types/schema.js';
 import { SchemaSnapshot, SchemaSnapshotSchema } from '../../types/migration.js';
 
-const SNAPSHOT_FILE = '.pika/schema.applied.json';
+const SNAPSHOT_FILE = '.bwrb/schema.applied.json';
 
 /**
  * Load the last-applied schema snapshot.

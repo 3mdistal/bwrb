@@ -50,10 +50,10 @@ describe('schema enum commands', () => {
 
     it('should show empty message when no enums', async () => {
       // Create vault with no enums
-      const emptyVaultDir = await mkdtemp(join(tmpdir(), 'pika-noenum-'));
-      await mkdir(join(emptyVaultDir, '.pika'), { recursive: true });
+      const emptyVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-noenum-'));
+      await mkdir(join(emptyVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(emptyVaultDir, '.pika', 'schema.json'),
+        join(emptyVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({ version: 2, types: { note: { output_dir: 'Notes' } } })
       );
 
@@ -72,10 +72,10 @@ describe('schema enum commands', () => {
 
     beforeEach(async () => {
       // Create fresh vault for each add test
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-enumadd-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-enumadd-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           enums: { existing: ['a', 'b'] },
@@ -102,7 +102,7 @@ describe('schema enum commands', () => {
       expect(result.stdout).toContain('critical');
 
       // Verify it was written to schema
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.enums.severity).toEqual(['low', 'medium', 'high', 'critical']);
     });
 
@@ -180,10 +180,10 @@ describe('schema enum commands', () => {
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-enumupd-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-enumupd-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           enums: { status: ['open', 'closed', 'pending'] },
@@ -207,7 +207,7 @@ describe('schema enum commands', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Added "archived"');
 
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.enums.status).toContain('archived');
     });
 
@@ -220,7 +220,7 @@ describe('schema enum commands', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Removed "pending"');
 
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.enums.status).not.toContain('pending');
       expect(schema.enums.status).toContain('open');
       expect(schema.enums.status).toContain('closed');
@@ -235,7 +235,7 @@ describe('schema enum commands', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Renamed "open" to "active"');
 
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.enums.status).not.toContain('open');
       expect(schema.enums.status).toContain('active');
     });
@@ -247,7 +247,7 @@ describe('schema enum commands', () => {
       );
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('pika bulk');
+      expect(result.stdout).toContain('bwrb bulk');
     });
 
     it('should output JSON format', async () => {
@@ -332,10 +332,10 @@ describe('schema enum commands', () => {
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-enumdel-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-enumdel-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
           enums: {
@@ -369,7 +369,7 @@ describe('schema enum commands', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Deleted enum "unused"');
 
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.enums.unused).toBeUndefined();
       expect(schema.enums.used).toBeDefined();
     });
@@ -396,7 +396,7 @@ describe('schema enum commands', () => {
       expect(result.stdout).toContain('Warning');
       expect(result.stdout).toContain('note.category');
 
-      const schema = JSON.parse(await readFile(join(tempVaultDir, '.pika', 'schema.json'), 'utf-8'));
+      const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.enums.used).toBeUndefined();
     });
 

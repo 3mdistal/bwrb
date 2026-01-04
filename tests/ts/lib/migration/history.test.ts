@@ -10,12 +10,12 @@ import type { MigrationPlan, MigrationResult } from "../../../../src/types/migra
 
 describe("history", () => {
   let tempDir: string;
-  let pikaDir: string;
+  let bwrbDir: string;
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "pika-history-test-"));
-    pikaDir = join(tempDir, ".pika");
-    await mkdir(pikaDir, { recursive: true });
+    tempDir = await mkdtemp(join(tmpdir(), "bwrb-history-test-"));
+    bwrbDir = join(tempDir, ".bwrb");
+    await mkdir(bwrbDir, { recursive: true });
   });
 
   afterEach(async () => {
@@ -51,7 +51,7 @@ describe("history", () => {
 
       await recordMigration(tempDir, plan, result);
 
-      const historyPath = join(pikaDir, "migrations.json");
+      const historyPath = join(bwrbDir, "migrations.json");
       const content = await readFile(historyPath, "utf-8");
       const history = JSON.parse(content);
 

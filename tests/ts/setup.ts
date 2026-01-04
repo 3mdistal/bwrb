@@ -2,7 +2,7 @@
  * Vitest setup file for test isolation and PTY cleanup.
  *
  * This file:
- * 1. Sets PIKA_VAULT to the fixture vault to prevent tests from
+ * 1. Sets BWRB_VAULT to the fixture vault to prevent tests from
  *    accidentally reading a developer's real vault
  * 2. Ensures orphaned PTY processes are killed:
  *    - After each test (via afterEach hook)
@@ -19,11 +19,11 @@ import { fileURLToPath } from 'url';
 import { afterEach } from 'vitest';
 import { killAllPtyProcesses } from './lib/pty-helpers.js';
 
-// Set PIKA_VAULT to fixture vault as a safety net.
+// Set BWRB_VAULT to fixture vault as a safety net.
 // This ensures tests that forget --vault don't accidentally use the developer's real vault.
 // Individual tests can still override via --vault flag or by creating temp vaults.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-process.env.PIKA_VAULT = path.resolve(__dirname, 'fixtures/vault');
+process.env.BWRB_VAULT = path.resolve(__dirname, 'fixtures/vault');
 
 // Kill any orphaned PTY processes after each test
 afterEach(() => {

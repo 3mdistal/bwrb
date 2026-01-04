@@ -5,13 +5,13 @@ import {
   formatDiffForJson,
   suggestVersionBump,
 } from "../../../../src/lib/migration/diff.js";
-import { PikaSchema } from "../../../../src/types/schema.js";
+import { BwrbSchema } from "../../../../src/types/schema.js";
 import type { z } from "zod";
 
-type PikaSchemaType = z.infer<typeof PikaSchema>;
+type BwrbSchemaType = z.infer<typeof BwrbSchema>;
 
 describe("diffSchemas", () => {
-  const baseSchema: PikaSchemaType = {
+  const baseSchema: BwrbSchemaType = {
     version: 2,
     schemaVersion: "1.0.0",
     enums: {
@@ -38,7 +38,7 @@ describe("diffSchemas", () => {
 
   describe("field changes", () => {
     it("should detect added fields", () => {
-      const newSchema: PikaSchemaType = {
+      const newSchema: BwrbSchemaType = {
         ...baseSchema,
         schemaVersion: "1.1.0",
         types: {
@@ -65,7 +65,7 @@ describe("diffSchemas", () => {
     });
 
     it("should detect removed fields as non-deterministic", () => {
-      const newSchema: PikaSchemaType = {
+      const newSchema: BwrbSchemaType = {
         ...baseSchema,
         schemaVersion: "2.0.0",
         types: {
@@ -93,7 +93,7 @@ describe("diffSchemas", () => {
 
   describe("enum changes", () => {
     it("should detect added enum values as deterministic", () => {
-      const newSchema: PikaSchemaType = {
+      const newSchema: BwrbSchemaType = {
         ...baseSchema,
         schemaVersion: "1.1.0",
         enums: {
@@ -113,7 +113,7 @@ describe("diffSchemas", () => {
     });
 
     it("should detect removed enum values as non-deterministic", () => {
-      const newSchema: PikaSchemaType = {
+      const newSchema: BwrbSchemaType = {
         ...baseSchema,
         schemaVersion: "2.0.0",
         enums: {
@@ -135,7 +135,7 @@ describe("diffSchemas", () => {
 
   describe("type changes", () => {
     it("should detect added types as deterministic", () => {
-      const newSchema: PikaSchemaType = {
+      const newSchema: BwrbSchemaType = {
         ...baseSchema,
         schemaVersion: "1.1.0",
         types: {
@@ -159,7 +159,7 @@ describe("diffSchemas", () => {
     });
 
     it("should detect removed types as non-deterministic", () => {
-      const newSchema: PikaSchemaType = {
+      const newSchema: BwrbSchemaType = {
         ...baseSchema,
         schemaVersion: "2.0.0",
         types: {

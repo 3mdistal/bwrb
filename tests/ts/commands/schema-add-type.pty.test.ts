@@ -1,5 +1,5 @@
 /**
- * PTY-based integration tests for the `pika schema add-type` command.
+ * PTY-based integration tests for the `bwrb schema add-type` command.
  *
  * Tests the interactive wizard for creating new type definitions, including:
  * - Full interactive flow (extends, output dir, field wizard)
@@ -61,7 +61,7 @@ const MINIMAL_SCHEMA = {
   types: {},
 };
 
-describePty('pika schema add-type PTY tests', () => {
+describePty('bwrb schema add-type PTY tests', () => {
   // Clean up any orphaned PTY processes after each test
   afterEach(() => {
     killAllPtyProcesses();
@@ -92,7 +92,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitForExit(5000);
 
           // Verify schema was updated
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeDefined();
           expect(schema.types.task.extends).toBe('note');
@@ -118,7 +118,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.idea).toBeDefined();
           expect(schema.types.idea.extends).toBeUndefined();
@@ -145,7 +145,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeDefined();
           // Default is computed, just verify it exists
@@ -208,7 +208,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields.description).toEqual({
             prompt: 'input',
@@ -261,7 +261,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields.description).toEqual({
             prompt: 'input',
@@ -309,7 +309,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields.priority).toMatchObject({
             prompt: 'select',
@@ -355,7 +355,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields['due-date']).toMatchObject({
             prompt: 'date',
@@ -399,7 +399,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields.tags).toMatchObject({
             prompt: 'multi-input',
@@ -451,7 +451,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields['parent-project']).toMatchObject({
             prompt: 'dynamic',
@@ -494,7 +494,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields.type).toEqual({
             value: 'task',
@@ -519,7 +519,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitForExit(5000);
 
           // Schema should not have task type
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeUndefined();
         },
@@ -539,7 +539,7 @@ describePty('pika schema add-type PTY tests', () => {
 
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeUndefined();
         },
@@ -562,7 +562,7 @@ describePty('pika schema add-type PTY tests', () => {
 
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeUndefined();
         },
@@ -590,7 +590,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitForExit(5000);
 
           // Type should NOT have been created (atomic operation)
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeUndefined();
         },
@@ -619,7 +619,7 @@ describePty('pika schema add-type PTY tests', () => {
 
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeUndefined();
         },
@@ -651,7 +651,7 @@ describePty('pika schema add-type PTY tests', () => {
 
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeUndefined();
         },
@@ -683,7 +683,7 @@ describePty('pika schema add-type PTY tests', () => {
 
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeUndefined();
         },
@@ -715,7 +715,7 @@ describePty('pika schema add-type PTY tests', () => {
 
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeUndefined();
         },
@@ -748,7 +748,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeDefined();
           expect(schema.types.task.fields).toBeUndefined(); // No fields
@@ -773,7 +773,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeDefined();
           expect(schema.types.task.output_dir).toBe('Tasks');
@@ -803,7 +803,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeDefined();
         },
@@ -857,7 +857,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields['valid-field']).toBeDefined();
         },
@@ -908,7 +908,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields['my-field']).toBeDefined();
         },
@@ -934,7 +934,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitForExit(5000);
 
           // Schema should not have task type
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeUndefined();
         },
@@ -971,7 +971,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeDefined();
           expect(schema.types.task.fields).toBeUndefined();
@@ -1009,7 +1009,7 @@ describePty('pika schema add-type PTY tests', () => {
           await proc.waitFor('Created type');
           await proc.waitForExit(5000);
 
-          const schemaContent = await readVaultFile(vaultPath, '.pika/schema.json');
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task).toBeDefined();
         },

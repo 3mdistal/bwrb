@@ -28,56 +28,56 @@ describe('vault', () => {
   });
 
   describe('resolveVaultDir', () => {
-    const originalEnv = process.env['PIKA_VAULT'];
+    const originalEnv = process.env['BWRB_VAULT'];
 
     afterEach(() => {
       if (originalEnv !== undefined) {
-        process.env['PIKA_VAULT'] = originalEnv;
+        process.env['BWRB_VAULT'] = originalEnv;
       } else {
-        delete process.env['PIKA_VAULT'];
+        delete process.env['BWRB_VAULT'];
       }
     });
 
     it('should default to fixture vault in tests (regression test for vault isolation)', () => {
-      // This test verifies that tests/ts/setup.ts sets PIKA_VAULT to the fixture vault.
+      // This test verifies that tests/ts/setup.ts sets BWRB_VAULT to the fixture vault.
       // Without this, tests could accidentally read a developer's real vault.
-      // See issue pika-smjf.
+      // See issue bwrb-smjf.
       const result = resolveVaultDir({});
       expect(result).toContain('tests/ts/fixtures/vault');
     });
 
     it('should use --vault option first', () => {
-      process.env['PIKA_VAULT'] = '/env/path';
+      process.env['BWRB_VAULT'] = '/env/path';
       const result = resolveVaultDir({ vault: '/option/path' });
       expect(result).toBe('/option/path');
     });
 
     it('should use env var if no option', () => {
-      process.env['PIKA_VAULT'] = '/env/path';
+      process.env['BWRB_VAULT'] = '/env/path';
       const result = resolveVaultDir({});
       expect(result).toBe('/env/path');
     });
 
     it('should use cwd as fallback', () => {
-      delete process.env['PIKA_VAULT'];
+      delete process.env['BWRB_VAULT'];
       const result = resolveVaultDir({});
       expect(result).toBe(process.cwd());
     });
 
     it('should preserve relative path from --vault option', () => {
-      delete process.env['PIKA_VAULT'];
+      delete process.env['BWRB_VAULT'];
       const result = resolveVaultDir({ vault: './my-vault' });
       expect(result).toBe('./my-vault');
     });
 
     it('should preserve relative path from env var', () => {
-      process.env['PIKA_VAULT'] = '../other-vault';
+      process.env['BWRB_VAULT'] = '../other-vault';
       const result = resolveVaultDir({});
       expect(result).toBe('../other-vault');
     });
 
     it('should preserve dotted relative path', () => {
-      delete process.env['PIKA_VAULT'];
+      delete process.env['BWRB_VAULT'];
       const result = resolveVaultDir({ vault: '../../some/nested/vault' });
       expect(result).toBe('../../some/nested/vault');
     });

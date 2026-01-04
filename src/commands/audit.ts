@@ -78,16 +78,16 @@ Targeting Options:
   --text <query>    Filter by body content
 
 Examples:
-  pika audit                      # Check all files (report only)
-  pika audit --type objective/task  # Check only tasks
-  pika audit --strict             # Error on unknown fields
-  pika audit --path "Ideas/**"    # Check specific directory
-  pika audit --where "status=active"  # Check files with specific status
-  pika audit --text "TODO"        # Check files containing TODO
-  pika audit --only missing-required
-  pika audit --ignore unknown-field
-  pika audit --output json        # JSON output for CI
-  pika audit --allow-field custom # Allow specific extra field`)
+  bwrb audit                      # Check all files (report only)
+  bwrb audit --type objective/task  # Check only tasks
+  bwrb audit --strict             # Error on unknown fields
+  bwrb audit --path "Ideas/**"    # Check specific directory
+  bwrb audit --where "status=active"  # Check files with specific status
+  bwrb audit --text "TODO"        # Check files containing TODO
+  bwrb audit --only missing-required
+  bwrb audit --ignore unknown-field
+  bwrb audit --output json        # JSON output for CI
+  bwrb audit --allow-field custom # Allow specific extra field`)
   .argument('[target]', 'Type, path, or where expression (auto-detected)')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path pattern')

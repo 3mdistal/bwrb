@@ -1,5 +1,5 @@
 /**
- * PTY-based integration tests for the `pika audit --fix` command.
+ * PTY-based integration tests for the `bwrb audit --fix` command.
  *
  * Tests interactive fix mode for various audit issues.
  */
@@ -54,7 +54,7 @@ const AUDIT_SCHEMA = {
   },
 };
 
-describePty('pika audit --fix command PTY tests', () => {
+describePty('bwrb audit --fix command PTY tests', () => {
   beforeAll(() => {
     expect(existsSync(TEST_VAULT_PATH)).toBe(true);
   });

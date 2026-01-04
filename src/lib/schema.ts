@@ -1,7 +1,7 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import {
-  PikaSchema,
+  BwrbSchema,
   type Schema,
   type Field,
   type BodySection,
@@ -12,7 +12,7 @@ import {
   type OwnerInfo,
 } from '../types/schema.js';
 
-const SCHEMA_PATH = '.pika/schema.json';
+const SCHEMA_PATH = '.bwrb/schema.json';
 const META_TYPE = 'meta';
 
 // ============================================================================
@@ -66,7 +66,7 @@ export async function loadSchema(vaultDir: string): Promise<LoadedSchema> {
   const json = JSON.parse(content) as unknown;
   
   // Parse as v2 schema
-  const schema = PikaSchema.parse(json);
+  const schema = BwrbSchema.parse(json);
   return resolveSchema(schema);
 }
 
@@ -77,7 +77,7 @@ export async function loadRawSchema(vaultDir: string): Promise<Schema> {
   const schemaPath = join(vaultDir, SCHEMA_PATH);
   const content = await readFile(schemaPath, 'utf-8');
   const json = JSON.parse(content) as unknown;
-  return PikaSchema.parse(json);
+  return BwrbSchema.parse(json);
 }
 
 

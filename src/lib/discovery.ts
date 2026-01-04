@@ -68,8 +68,8 @@ export async function loadGitignore(vaultDir: string): Promise<Ignore | null> {
 export function getExcludedDirectories(schema: LoadedSchema): Set<string> {
   const excluded = new Set<string>();
   
-  // Always exclude .pika
-  excluded.add('.pika');
+  // Always exclude .bwrb
+  excluded.add('.bwrb');
   
   // Add schema-configured exclusions
   const schemaExclusions = schema.raw.audit?.ignored_directories;
@@ -80,7 +80,7 @@ export function getExcludedDirectories(schema: LoadedSchema): Set<string> {
   }
   
   // Add env var exclusions (comma-separated)
-  const envExclusions = process.env.PIKA_AUDIT_EXCLUDE;
+  const envExclusions = process.env.BWRB_AUDIT_EXCLUDE;
   if (envExclusions) {
     for (const dir of envExclusions.split(',')) {
       const trimmed = dir.trim().replace(/\/$/, '');
@@ -146,7 +146,7 @@ export async function collectAllMarkdownFiles(
  */
 export async function collectAllMarkdownFilenames(vaultDir: string): Promise<Set<string>> {
   const filenames = new Set<string>();
-  const excluded = new Set(['.pika']);
+  const excluded = new Set(['.bwrb']);
   const gitignore = await loadGitignore(vaultDir);
   
   const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, gitignore);
@@ -166,7 +166,7 @@ export async function collectAllMarkdownFilenames(vaultDir: string): Promise<Set
  */
 export async function buildNotePathMap(vaultDir: string): Promise<Map<string, string>> {
   const pathMap = new Map<string, string>();
-  const excluded = new Set(['.pika']);
+  const excluded = new Set(['.bwrb']);
   const gitignore = await loadGitignore(vaultDir);
   
   const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, gitignore);
@@ -188,7 +188,7 @@ export async function buildNoteTypeMap(
   vaultDir: string
 ): Promise<Map<string, string>> {
   const typeMap = new Map<string, string>();
-  const excluded = new Set(['.pika']);
+  const excluded = new Set(['.bwrb']);
   const gitignore = await loadGitignore(vaultDir);
   
   const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, gitignore);

@@ -143,7 +143,7 @@ export const AppliedMigrationSchema = z.object({
 export type AppliedMigration = z.infer<typeof AppliedMigrationSchema>;
 
 /**
- * Migration history stored in .pika/migrations.json
+ * Migration history stored in .bwrb/migrations.json
  */
 export const MigrationHistorySchema = z.object({
   /** List of applied migrations (oldest first) */
@@ -156,10 +156,10 @@ export type MigrationHistory = z.infer<typeof MigrationHistorySchema>;
 // Schema Snapshot
 // ============================================================================
 
-import { PikaSchema, type Schema } from './schema.js';
+import { BwrbSchema, type Schema } from './schema.js';
 
 /**
- * Schema snapshot stored in .pika/schema.applied.json
+ * Schema snapshot stored in .bwrb/schema.applied.json
  * This is the full schema content at the time of last migration.
  */
 export const SchemaSnapshotSchema = z.object({
@@ -168,7 +168,7 @@ export const SchemaSnapshotSchema = z.object({
   /** When snapshot was taken */
   snapshotAt: z.string(), // ISO 8601
   /** Full schema content (for diff comparison) */
-  schema: PikaSchema,
+  schema: BwrbSchema,
 });
 
 export interface SchemaSnapshot {

@@ -46,8 +46,8 @@ describe('audit command', () => {
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       // Schema with a required field that has NO default
       const schemaWithRequired = {
         ...TEST_SCHEMA,
@@ -63,7 +63,7 @@ describe('audit command', () => {
         },
       };
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(schemaWithRequired, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -95,10 +95,10 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -147,10 +147,10 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -221,10 +221,10 @@ tags:
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -255,10 +255,10 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -307,10 +307,10 @@ status: raw
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -367,10 +367,10 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -458,10 +458,10 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-test-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -515,10 +515,10 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-fix-test-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-fix-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -637,10 +637,10 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-fix-test-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-fix-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -690,10 +690,10 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-vaultwide-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-vaultwide-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -811,7 +811,7 @@ priority: medium
       expect(result.stdout).not.toContain('temp.tmp.md');
     });
 
-    it('should respect PIKA_AUDIT_EXCLUDE env var', async () => {
+    it('should respect BWRB_AUDIT_EXCLUDE env var', async () => {
       // Create a directory that should be excluded via env var
       await mkdir(join(tempVaultDir, 'Archive'), { recursive: true });
       await writeFile(
@@ -834,8 +834,8 @@ priority: medium
       );
 
       // Set env var and run
-      const originalEnv = process.env.PIKA_AUDIT_EXCLUDE;
-      process.env.PIKA_AUDIT_EXCLUDE = 'Archive';
+      const originalEnv = process.env.BWRB_AUDIT_EXCLUDE;
+      process.env.BWRB_AUDIT_EXCLUDE = 'Archive';
 
       try {
         const result = await runCLI(['audit'], tempVaultDir);
@@ -846,9 +846,9 @@ priority: medium
       } finally {
         // Restore env
         if (originalEnv === undefined) {
-          delete process.env.PIKA_AUDIT_EXCLUDE;
+          delete process.env.BWRB_AUDIT_EXCLUDE;
         } else {
-          process.env.PIKA_AUDIT_EXCLUDE = originalEnv;
+          process.env.BWRB_AUDIT_EXCLUDE = originalEnv;
         }
       }
     });
@@ -862,7 +862,7 @@ priority: medium
         },
       };
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(schemaWithExclusions, null, 2)
       );
 
@@ -908,10 +908,10 @@ priority: medium
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-orphan-fix-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-orphan-fix-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -1018,10 +1018,10 @@ title: Random note
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-allow-field-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-allow-field-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -1097,11 +1097,11 @@ otherField: value
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-format-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-format-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       // Use schema with wikilink format field
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
@@ -1192,10 +1192,10 @@ milestone: "[[Q1 Release]]"
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-stale-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-stale-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
@@ -1379,8 +1379,8 @@ Link with both: [[Missing Note#Section|Alias]]
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-schema-allow-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-schema-allow-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
     });
 
@@ -1397,7 +1397,7 @@ Link with both: [[Missing Note#Section|Alias]]
         },
       };
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(schemaWithAllowed, null, 2)
       );
 
@@ -1466,10 +1466,10 @@ unknownField: should warn
     };
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-context-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-context-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(V2_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'objectives/milestones'), { recursive: true });
@@ -1607,7 +1607,7 @@ milestone: "[[Non Existent]]"
         types: {},
       };
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(invalidSchema, null, 2)
       );
 
@@ -1650,7 +1650,7 @@ status: raw
         },
       };
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(schemaWithMultiple, null, 2)
       );
 
@@ -1734,8 +1734,8 @@ milestone: "[[Some Idea]]"
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-audit-cycle-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-cycle-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       // Schema with a recursive type
       const schemaWithRecursive = {
         version: 2,
@@ -1753,7 +1753,7 @@ milestone: "[[Some Idea]]"
         }
       };
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(schemaWithRecursive, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Tasks'), { recursive: true });

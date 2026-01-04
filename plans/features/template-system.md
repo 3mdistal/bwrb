@@ -263,15 +263,15 @@ Empty sections indicate expected content type:
 
 ```bash
 # Use default template
-pika new task --default
+bwrb new task --default
 # → Uses Templates/objective/task/default.md
 
 # Specify template
-pika new task --template bug-report
+bwrb new task --template bug-report
 # → Uses Templates/objective/task/bug-report.md
 
 # Interactive selection (if multiple templates)
-pika new task
+bwrb new task
 # Multiple templates found:
 #   1. default
 #   2. bug-report
@@ -283,20 +283,20 @@ pika new task
 
 ```bash
 # Skip template, use schema only
-pika new task --no-template
+bwrb new task --no-template
 ```
 
 ### List Templates
 
 ```bash
-pika template list
+bwrb template list
 # TYPE           TEMPLATE         DESCRIPTION
 # objective/task default          Standard task
 # objective/task bug-report       Bug report with reproduction steps
 # objective/task feature-request  Feature request with acceptance criteria
 # idea           default          Quick idea capture
 
-pika template list task
+bwrb template list task
 # TEMPLATE         DESCRIPTION
 # default          Standard task
 # bug-report       Bug report with reproduction steps
@@ -377,7 +377,7 @@ Blog post for Builder.io about [topic].
 ### CLI Behavior
 
 ```bash
-pika new draft --template builder-blog --set title="Q1 Feature Announcement"
+bwrb new draft --template builder-blog --set title="Q1 Feature Announcement"
 
 # Creating draft: Q1 Feature Announcement
 # 
@@ -487,7 +487,7 @@ Templates can **narrow** but not **loosen** schema requirements:
 ### On Load
 
 ```bash
-pika template validate
+bwrb template validate
 
 # Validating templates...
 # 
@@ -503,7 +503,7 @@ pika template validate
 
 ### On Use
 
-If a template has validation errors, `pika new` will:
+If a template has validation errors, `bwrb new` will:
 1. Warn about the errors
 2. Offer to continue without template
 3. Or abort
@@ -515,7 +515,7 @@ If a template has validation errors, `pika new` will:
 ### Create Template
 
 ```bash
-pika template new task
+bwrb template new task
 # Template name: quick-task
 # Description: Fast task capture with minimal fields
 # 
@@ -535,7 +535,7 @@ Templates are just markdown files — edit in Obsidian or any editor.
 ### Audit Templates
 
 ```bash
-pika audit --templates
+bwrb audit --templates
 
 # Template Issues:
 #   Templates/draft/version/old.md

@@ -1,5 +1,5 @@
 /**
- * PTY-based integration tests for the `pika edit` command.
+ * PTY-based integration tests for the `bwrb edit` command.
  *
  * Tests field editing, value preservation, and cancellation behavior.
  */
@@ -45,7 +45,7 @@ const EDIT_SCHEMA = {
   },
 };
 
-describePty('pika edit command PTY tests', () => {
+describePty('bwrb edit command PTY tests', () => {
   beforeAll(() => {
     expect(existsSync(TEST_VAULT_PATH)).toBe(true);
   });

@@ -107,7 +107,7 @@ export const AuditConfigSchema = z.object({
 // ============================================================================
 
 /**
- * Pika schema - the root configuration for a vault.
+ * Bowerbird schema - the root configuration for a vault.
  * 
  * Version 2 uses the new inheritance model:
  * - Flat types with 'extends' for inheritance
@@ -115,7 +115,7 @@ export const AuditConfigSchema = z.object({
  * - Implicit 'meta' root type
  * - Type-based 'source' on fields (no more dynamic_sources)
  */
-export const PikaSchema = z.object({
+export const BwrbSchema = z.object({
   // Schema format version (2 = inheritance model)
   version: z.number().optional().default(2),
   // User-controlled schema content version for migrations (semver)
@@ -152,7 +152,7 @@ export type BodySectionInput = {
 };
 export type FilterCondition = z.infer<typeof FilterConditionSchema>;
 export type Type = z.infer<typeof TypeSchema>;
-export type Schema = z.infer<typeof PikaSchema>;
+export type Schema = z.infer<typeof BwrbSchema>;
 
 // ============================================================================
 // Resolved Type (Computed at Load Time)

@@ -110,13 +110,13 @@ describe('hierarchy', () => {
     let tempDir: string;
 
     beforeAll(async () => {
-      tempDir = await mkdtemp(join(tmpdir(), 'pika-hierarchy-test-'));
-      await mkdir(join(tempDir, '.pika'), { recursive: true });
+      tempDir = await mkdtemp(join(tmpdir(), 'bwrb-hierarchy-test-'));
+      await mkdir(join(tempDir, '.bwrb'), { recursive: true });
       await mkdir(join(tempDir, 'Tasks'), { recursive: true });
 
       // Create schema with recursive task type
       await writeFile(
-        join(tempDir, '.pika/schema.json'),
+        join(tempDir, '.bwrb/schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -183,12 +183,12 @@ parent: "[[Child Task]]"
     let tempDir: string;
 
     beforeAll(async () => {
-      tempDir = await mkdtemp(join(tmpdir(), 'pika-notepath-test-'));
-      await mkdir(join(tempDir, '.pika'), { recursive: true });
+      tempDir = await mkdtemp(join(tmpdir(), 'bwrb-notepath-test-'));
+      await mkdir(join(tempDir, '.bwrb'), { recursive: true });
       await mkdir(join(tempDir, 'Tasks'), { recursive: true });
 
       await writeFile(
-        join(tempDir, '.pika/schema.json'),
+        join(tempDir, '.bwrb/schema.json'),
         JSON.stringify({
           version: 2,
           types: {
@@ -226,12 +226,12 @@ title: My Task
     let tempDir: string;
 
     beforeAll(async () => {
-      tempDir = await mkdtemp(join(tmpdir(), 'pika-validate-cycle-test-'));
-      await mkdir(join(tempDir, '.pika'), { recursive: true });
+      tempDir = await mkdtemp(join(tmpdir(), 'bwrb-validate-cycle-test-'));
+      await mkdir(join(tempDir, '.bwrb'), { recursive: true });
       await mkdir(join(tempDir, 'Tasks'), { recursive: true });
 
       await writeFile(
-        join(tempDir, '.pika/schema.json'),
+        join(tempDir, '.bwrb/schema.json'),
         JSON.stringify({
           version: 2,
           types: {

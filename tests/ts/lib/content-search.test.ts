@@ -40,14 +40,14 @@ describe('content-search', () => {
 
   beforeAll(async () => {
     // Create a temporary vault for testing
-    vaultDir = join(tmpdir(), `pika-content-search-test-${Date.now()}`);
-    await mkdir(join(vaultDir, '.pika'), { recursive: true });
+    vaultDir = join(tmpdir(), `bwrb-content-search-test-${Date.now()}`);
+    await mkdir(join(vaultDir, '.bwrb'), { recursive: true });
     await mkdir(join(vaultDir, 'Notes'), { recursive: true });
     await mkdir(join(vaultDir, 'Tasks'), { recursive: true });
 
     // Write schema
     await writeFile(
-      join(vaultDir, '.pika', 'schema.json'),
+      join(vaultDir, '.bwrb', 'schema.json'),
       JSON.stringify(schema_RAW, null, 2)
     );
 

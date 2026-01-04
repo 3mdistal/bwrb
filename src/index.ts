@@ -40,7 +40,7 @@ if (completionsIndex !== -1) {
     });
 } else {
   program
-    .name('pika')
+    .name('bwrb')
     .description('Schema-driven note management for markdown vaults')
     .version('0.2.0')
     .option('-v, --vault <path>', 'Path to the vault directory');

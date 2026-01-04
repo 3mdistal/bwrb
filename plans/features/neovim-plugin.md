@@ -1,14 +1,14 @@
-# Neovim Plugin for Pika
+# Neovim Plugin for Bowerbird
 
 > Native Neovim integration with full CLI feature parity
 
-**Beads Issue:** `pika-tic`
+**Beads Issue:** `bwrb-tic`
 
 ---
 
 ## Overview
 
-A Neovim plugin (`pika.nvim`) that brings the full power of pika into the editor. The goal is **feature parity with the CLI** for human-usable operations, making Neovim a complete PKM (Personal Knowledge Management) environment.
+A Neovim plugin (`bwrb.nvim`) that brings the full power of bwrb into the editor. The goal is **feature parity with the CLI** for human-usable operations, making Neovim a complete PKM (Personal Knowledge Management) environment.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -21,7 +21,7 @@ A Neovim plugin (`pika.nvim`) that brings the full power of pika into the editor
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────┐
-│                    pika.nvim                             │
+│                    bwrb.nvim                             │
 │  • CLI wrapper (--json mode)                            │
 │  • Native Lua for hot paths                             │
 │  • UI component library                                 │
@@ -29,7 +29,7 @@ A Neovim plugin (`pika.nvim`) that brings the full power of pika into the editor
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────┐
-│                    pika CLI                              │
+│                    bwrb CLI                              │
 │  • JSON mode for all commands                           │
 │  • Single source of truth for logic                     │
 └─────────────────────────────────────────────────────────┘
@@ -52,7 +52,7 @@ A Neovim plugin (`pika.nvim`) that brings the full power of pika into the editor
 **Hybrid approach:**
 - **CLI with `--json`** for complex operations (new, edit, audit, bulk)
 - **Native Lua** for hot paths (search picker, list display, wikilink completion)
-- **Shared schema understanding** via parsed JSON from `pika schema show --output json`
+- **Shared schema understanding** via parsed JSON from `bwrb schema show --output json`
 
 ---
 
@@ -60,15 +60,15 @@ A Neovim plugin (`pika.nvim`) that brings the full power of pika into the editor
 
 | CLI Command | Neovim Command | Implementation |
 |-------------|----------------|----------------|
-| `pika new [type]` | `:PikaNew [type]` | CLI + floating inputs |
-| `pika edit <file>` | `:PikaEdit` | CLI + floating inputs |
-| `pika list <type>` | `:PikaList <type>` | CLI + buffer/Telescope |
-| `pika search <query>` | `:PikaSearch` | CLI + Telescope |
-| `pika open <file>` | `:PikaOpen` | Native `:edit` |
-| `pika audit` | `:PikaAudit` | CLI + diagnostics |
-| `pika bulk` | `:PikaBulk` | CLI + preview buffer |
-| `pika schema show` | `:PikaSchema` | CLI + floating window |
-| `pika template list` | `:PikaTemplates` | CLI + Telescope |
+| `bwrb new [type]` | `:BowerbirdNew [type]` | CLI + floating inputs |
+| `bwrb edit <file>` | `:BowerbirdEdit` | CLI + floating inputs |
+| `bwrb list <type>` | `:BowerbirdList <type>` | CLI + buffer/Telescope |
+| `bwrb search <query>` | `:BowerbirdSearch` | CLI + Telescope |
+| `bwrb open <file>` | `:BowerbirdOpen` | Native `:edit` |
+| `bwrb audit` | `:BowerbirdAudit` | CLI + diagnostics |
+| `bwrb bulk` | `:BowerbirdBulk` | CLI + preview buffer |
+| `bwrb schema show` | `:BowerbirdSchema` | CLI + floating window |
+| `bwrb template list` | `:BowerbirdTemplates` | CLI + Telescope |
 
 ---
 
@@ -77,11 +77,11 @@ A Neovim plugin (`pika.nvim`) that brings the full power of pika into the editor
 ### 1.1 Core Infrastructure
 
 ```lua
--- lua/pika/init.lua
+-- lua/bwrb/init.lua
 local M = {}
 
 M.setup = function(opts)
-  -- Vault detection (find .pika/schema.json)
+  -- Vault detection (find .bwrb/schema.json)
   -- CLI path configuration
   -- Keybinding setup
 end
@@ -91,44 +91,44 @@ return M
 
 **Deliverables:**
 - [ ] Plugin structure with lazy.nvim/packer support
-- [ ] Vault detection (walk up to find `.pika/`)
-- [ ] CLI wrapper module (`lua/pika/cli.lua`)
+- [ ] Vault detection (walk up to find `.bwrb/`)
+- [ ] CLI wrapper module (`lua/bwrb/cli.lua`)
 - [ ] JSON response parser
 - [ ] Error handling with `vim.notify`
 
 ### 1.2 Basic Commands
 
-**`:PikaOpen [query]`** — Open note by name
-- Uses `pika search --json` for resolution
+**`:BowerbirdOpen [query]`** — Open note by name
+- Uses `bwrb search --json` for resolution
 - Falls back to Telescope if ambiguous
 - Direct `:edit` for exact match
 
-**`:PikaList <type>`** — List notes in buffer
-- Calls `pika list <type> --output json`
+**`:BowerbirdList <type>`** — List notes in buffer
+- Calls `bwrb list <type> --output json`
 - Renders in scratch buffer or quickfix
 - Supports `--where` expressions
 
-**`:PikaSchema`** — Show schema tree
-- Calls `pika schema show`
+**`:BowerbirdSchema`** — Show schema tree
+- Calls `bwrb schema show`
 - Floating window with type hierarchy
 
 ### 1.3 Telescope Integration
 
 ```lua
--- lua/telescope/_extensions/pika.lua
+-- lua/telescope/_extensions/bwrb.lua
 return require("telescope").register_extension({
   exports = {
-    search = require("pika.telescope.search"),
-    list = require("pika.telescope.list"),
-    types = require("pika.telescope.types"),
+    search = require("bwrb.telescope.search"),
+    list = require("bwrb.telescope.list"),
+    types = require("bwrb.telescope.types"),
   },
 })
 ```
 
 **Pickers:**
-- `Telescope pika search` — Note search with wikilink output
-- `Telescope pika list` — Filtered list with type selection
-- `Telescope pika types` — Type hierarchy navigation
+- `Telescope bwrb search` — Note search with wikilink output
+- `Telescope bwrb list` — Filtered list with type selection
+- `Telescope bwrb types` — Type hierarchy navigation
 
 ---
 
@@ -139,7 +139,7 @@ return require("telescope").register_extension({
 Custom UI for schema-driven prompts:
 
 ```lua
--- lua/pika/ui/input.lua
+-- lua/bwrb/ui/input.lua
 local M = {}
 
 -- Single line input with validation
@@ -161,7 +161,7 @@ end
 return M
 ```
 
-### 2.2 `:PikaNew [type]`
+### 2.2 `:BowerbirdNew [type]`
 
 Interactive note creation:
 
@@ -169,12 +169,12 @@ Interactive note creation:
 2. Navigate subtypes if needed
 3. Prompt for template if multiple available
 4. Show floating inputs for each field (respecting schema order)
-5. Call `pika new <type> --json '{...}'`
+5. Call `bwrb new <type> --json '{...}'`
 6. Open created file
 
 **Flow diagram:**
 ```
-:PikaNew
+:BowerbirdNew
     │
     ├─► Type picker (Telescope)
     │       │
@@ -192,27 +192,27 @@ Interactive note creation:
     │   └── ... (dynamic fields)
     │       │
     │       ▼
-    └─► pika new --json → :edit <path>
+    └─► bwrb new --json → :edit <path>
 ```
 
-### 2.3 `:PikaEdit`
+### 2.3 `:BowerbirdEdit`
 
 Edit frontmatter of current buffer:
 
 1. Detect type from frontmatter
 2. Show current values with edit prompts
-3. Call `pika edit <path> --json '{...}'`
+3. Call `bwrb edit <path> --json '{...}'`
 4. Refresh buffer
 
 ---
 
 ## Phase 3: Advanced Features (Weeks 8-10)
 
-### 3.1 `:PikaAudit` with Diagnostics
+### 3.1 `:BowerbirdAudit` with Diagnostics
 
 ```lua
 -- Register diagnostic namespace
-local ns = vim.diagnostic.get_namespace("pika")
+local ns = vim.diagnostic.get_namespace("bwrb")
 
 -- Run audit and populate diagnostics
 M.audit = function()
@@ -227,7 +227,7 @@ M.audit = function()
           and vim.diagnostic.severity.ERROR
           or vim.diagnostic.severity.WARN,
         message = issue.message,
-        source = "pika",
+        source = "bwrb",
       })
     end
     vim.diagnostic.set(ns, bufnr, diagnostics)
@@ -238,25 +238,25 @@ end
 **Features:**
 - Populate `vim.diagnostic` for all open buffers
 - Quickfix list with all issues
-- `:PikaAuditFix` for interactive fixing
+- `:BowerbirdAuditFix` for interactive fixing
 
-### 3.2 `:PikaBulk`
+### 3.2 `:BowerbirdBulk`
 
 Bulk operations with preview:
 
 1. Show matching files in preview buffer
 2. Display proposed changes
 3. Confirm before execution
-4. Call `pika bulk --execute`
+4. Call `bwrb bulk --execute`
 
 ### 3.3 Wikilink Completion
 
 ```lua
--- lua/pika/completion.lua
+-- lua/bwrb/completion.lua
 -- Integrates with nvim-cmp or built-in completion
 
 -- Trigger on [[ 
--- Call pika search --json with prefix
+-- Call bwrb search --json with prefix
 -- Return completion items with wikilink format
 ```
 
@@ -266,17 +266,17 @@ Bulk operations with preview:
 
 ### 4.1 Dashboard Integration
 
-Saved queries (linked issue: `pika-48g`):
+Saved queries (linked issue: `bwrb-48g`):
 
 ```lua
-:PikaDashboard           -- Show saved query list
-:PikaDashboardSave       -- Save current list query
-:PikaDashboardRun <name> -- Run saved query
+:BowerbirdDashboard           -- Show saved query list
+:BowerbirdDashboardSave       -- Save current list query
+:BowerbirdDashboardRun <name> -- Run saved query
 ```
 
 ### 4.2 Formatted Table Output
 
-Better list display (linked issue: `pika-hvf`):
+Better list display (linked issue: `bwrb-hvf`):
 
 - Aligned columns in buffer
 - Sortable headers
@@ -284,19 +284,19 @@ Better list display (linked issue: `pika-hvf`):
 
 ### 4.3 Wikilink Insertion Picker
 
-Fuzzy finder for links (linked issue: `pika-ng6`):
+Fuzzy finder for links (linked issue: `bwrb-ng6`):
 
 ```lua
-:PikaLink           -- Insert [[wikilink]] at cursor
-:PikaLinkVisual     -- Wrap selection in [[]]
+:BowerbirdLink           -- Insert [[wikilink]] at cursor
+:BowerbirdLinkVisual     -- Wrap selection in [[]]
 ```
 
 ### 4.4 Status Line Integration
 
 ```lua
 -- For lualine, etc.
-require("pika").statusline()
--- Returns: "pika: Tasks (12 active)"
+require("bwrb").statusline()
+-- Returns: "bwrb: Tasks (12 active)"
 ```
 
 ---
@@ -325,7 +325,7 @@ tests/
 ├── integration/
 │   ├── minimal_init.lua    -- Minimal plugin config
 │   ├── fixtures/           -- Test vault with schema
-│   ├── commands_spec.lua   -- :Pika* commands
+│   ├── commands_spec.lua   -- :Bowerbird* commands
 │   └── telescope_spec.lua  -- Picker behavior
 ```
 
@@ -357,7 +357,7 @@ nvim --headless -c "PlenaryBustedDirectory tests/integration"
 
 **Required:**
 - Neovim 0.9+ (for `vim.ui`, floating windows, diagnostics API)
-- `pika` CLI installed and in PATH
+- `bwrb` CLI installed and in PATH
 
 **Optional:**
 - `telescope.nvim` — Enhanced pickers
@@ -369,9 +369,9 @@ nvim --headless -c "PlenaryBustedDirectory tests/integration"
 ## Configuration
 
 ```lua
-require("pika").setup({
-  -- Path to pika CLI (default: "pika")
-  cli_path = "pika",
+require("bwrb").setup({
+  -- Path to bwrb CLI (default: "bwrb")
+  cli_path = "bwrb",
   
   -- Vault path (default: auto-detect from cwd)
   vault_path = nil,
@@ -405,7 +405,7 @@ require("pika").setup({
 | Week | Milestone | Deliverables |
 |------|-----------|--------------|
 | 1 | Setup | Plugin structure, CLI wrapper, error handling |
-| 2 | Basic commands | `:PikaOpen`, `:PikaSchema` |
+| 2 | Basic commands | `:BowerbirdOpen`, `:BowerbirdSchema` |
 | 3 | Telescope | Search picker, type picker |
 | 4 | List command | Buffer display, quickfix |
 | 5 | UI components | Floating input, select, multi-input |
@@ -422,10 +422,10 @@ require("pika").setup({
 
 ## Related Issues
 
-- `pika-tic` — Parent issue: Create Neovim plugin for pika integration
-- `pika-ng6` — Fuzzy finder window for wikilink insertion
-- `pika-hvf` — Formatted table output for list queries
-- `pika-48g` — Dashboard integration for saved queries
+- `bwrb-tic` — Parent issue: Create Neovim plugin for bwrb integration
+- `bwrb-ng6` — Fuzzy finder window for wikilink insertion
+- `bwrb-hvf` — Formatted table output for list queries
+- `bwrb-48g` — Dashboard integration for saved queries
 
 ---
 
@@ -441,7 +441,7 @@ Detect Obsidian sync conflicts and surface them.
 
 ### Mobile Companion
 
-If pika ever has a mobile story, the Neovim plugin could share config/saved queries.
+If bwrb ever has a mobile story, the Neovim plugin could share config/saved queries.
 
 ### LSP Integration
 

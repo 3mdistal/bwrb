@@ -16,7 +16,7 @@ describe('move utilities', () => {
     let tempDir: string;
 
     beforeEach(async () => {
-      tempDir = await mkdtemp(join(tmpdir(), 'pika-move-test-'));
+      tempDir = await mkdtemp(join(tmpdir(), 'bwrb-move-test-'));
     });
 
     afterEach(async () => {
@@ -142,7 +142,7 @@ describe('move utilities', () => {
     let tempDir: string;
 
     beforeEach(async () => {
-      tempDir = await mkdtemp(join(tmpdir(), 'pika-wikilink-test-'));
+      tempDir = await mkdtemp(join(tmpdir(), 'bwrb-wikilink-test-'));
     });
 
     afterEach(async () => {
@@ -340,7 +340,7 @@ Links to [[Target]] itself.
     let tempDir: string;
 
     beforeEach(async () => {
-      tempDir = await mkdtemp(join(tmpdir(), 'pika-bulk-move-test-'));
+      tempDir = await mkdtemp(join(tmpdir(), 'bwrb-bulk-move-test-'));
       await mkdir(join(tempDir, 'Ideas'));
       await mkdir(join(tempDir, 'Archive'));
     });

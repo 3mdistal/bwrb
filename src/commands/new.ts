@@ -82,7 +82,7 @@ interface NewCommandOptions {
 export const newCommand = new Command('new')
   .description('Create a new note (interactive type navigation if type omitted)')
   .argument('[type]', 'Type of note to create (e.g., idea, objective/task)')
-  .option('--open', 'Open the note after creation (uses PIKA_DEFAULT_APP or Obsidian)')
+  .option('--open', 'Open the note after creation (uses BWRB_DEFAULT_APP or Obsidian)')
   .option('--json <frontmatter>', 'Create note non-interactively with JSON frontmatter')
   .option('--instance <name>', 'Parent instance name (for instance-grouped subtypes)')
   .option('--template <name>', 'Use a specific template')
@@ -92,28 +92,28 @@ export const newCommand = new Command('new')
   .option('--standalone', 'Create as standalone (skip owner selection for ownable types)')
   .addHelpText('after', `
 Examples:
-  pika new                    # Interactive type selection
-  pika new idea               # Create an idea
-  pika new objective/task     # Create a task
-  pika new draft --open       # Create and open (respects PIKA_DEFAULT_APP)
+  bwrb new                    # Interactive type selection
+  bwrb new idea               # Create an idea
+  bwrb new objective/task     # Create a task
+  bwrb new draft --open       # Create and open (respects BWRB_DEFAULT_APP)
 
 Templates:
-  pika new task --template bug-report  # Use specific template
-  pika new task --default              # Use default.md template
-  pika new task --no-template          # Skip templates, use schema only
+  bwrb new task --template bug-report  # Use specific template
+  bwrb new task --default              # Use default.md template
+  bwrb new task --no-template          # Skip templates, use schema only
 
 Ownership:
-  pika new research                        # Prompted: standalone or owned?
-  pika new research --standalone           # Create in shared location
-  pika new research --owner "[[My Novel]]" # Create owned by specific note
+  bwrb new research                        # Prompted: standalone or owned?
+  bwrb new research --standalone           # Create in shared location
+  bwrb new research --owner "[[My Novel]]" # Create owned by specific note
 
 Non-interactive (JSON) mode:
-  pika new idea --json '{"name": "My Idea", "status": "raw"}'
-  pika new objective/task --json '{"name": "Fix bug", "status": "in-progress"}'
-  pika new task --json '{"name": "Bug"}' --template bug-report
+  bwrb new idea --json '{"name": "My Idea", "status": "raw"}'
+  bwrb new objective/task --json '{"name": "Fix bug", "status": "in-progress"}'
+  bwrb new task --json '{"name": "Bug"}' --template bug-report
 
 Body sections (JSON mode):
-  pika new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'
+  bwrb new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'
   The _body field accepts section names as keys, with string or string[] values.
 
 Template Discovery:
@@ -170,7 +170,7 @@ or create a parent instance folder.`)
         
         printJson(jsonSuccess({ path: relative(vaultDir, filePath) }));
         
-        // Open if requested (respects PIKA_DEFAULT_APP)
+        // Open if requested (respects BWRB_DEFAULT_APP)
         if (options.open && filePath) {
           const { openNote } = await import('./open.js');
           await openNote(vaultDir, filePath);
@@ -238,7 +238,7 @@ or create a parent instance folder.`)
         standalone: options.standalone,
       });
 
-      // Open if requested (respects PIKA_DEFAULT_APP)
+      // Open if requested (respects BWRB_DEFAULT_APP)
       if (options.open && filePath) {
         const { openNote } = await import('./open.js');
         await openNote(vaultDir, filePath);

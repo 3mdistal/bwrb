@@ -10,7 +10,7 @@ import type { BackupManifest, BackupInfo } from './types.js';
  * Get the backups directory path.
  */
 function getBackupsDir(vaultDir: string): string {
-  return join(vaultDir, '.pika', 'backups');
+  return join(vaultDir, '.bwrb', 'backups');
 }
 
 /**

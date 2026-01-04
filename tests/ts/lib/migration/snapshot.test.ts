@@ -10,12 +10,12 @@ import {
 
 describe("snapshot", () => {
   let tempDir: string;
-  let pikaDir: string;
+  let bwrbDir: string;
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "pika-snapshot-test-"));
-    pikaDir = join(tempDir, ".pika");
-    await mkdir(pikaDir, { recursive: true });
+    tempDir = await mkdtemp(join(tmpdir(), "bwrb-snapshot-test-"));
+    bwrbDir = join(tempDir, ".bwrb");
+    await mkdir(bwrbDir, { recursive: true });
   });
 
   afterEach(async () => {
@@ -29,7 +29,7 @@ describe("snapshot", () => {
     });
 
     it("should return true when snapshot exists", async () => {
-      const snapshotPath = join(pikaDir, "schema.applied.json");
+      const snapshotPath = join(bwrbDir, "schema.applied.json");
       await writeFile(
         snapshotPath,
         JSON.stringify({
@@ -55,7 +55,7 @@ describe("snapshot", () => {
 
       await saveSchemaSnapshot(tempDir, schema, "1.0.0");
 
-      const snapshotPath = join(pikaDir, "schema.applied.json");
+      const snapshotPath = join(bwrbDir, "schema.applied.json");
       const content = await readFile(snapshotPath, "utf-8");
       const snapshot = JSON.parse(content);
 

@@ -59,29 +59,29 @@ Targeting Selectors (compose via AND):
   --text <query>       Filter by body content (uses ripgrep)
 
 Expression Filters (--where):
-  pika list --type task --where "status == 'in-progress'"
-  pika list --type task --where "priority < 3 && !isEmpty(deadline)"
-  pika list --type task --where "deadline < today() + '7d'"
+  bwrb list --type task --where "status == 'in-progress'"
+  bwrb list --type task --where "priority < 3 && !isEmpty(deadline)"
+  bwrb list --type task --where "deadline < today() + '7d'"
 
 Smart Positional Detection:
-  pika list task                    # Detected as --type task
-  pika list Projects/**             # Detected as --path Projects/**
-  pika list "status=active"         # Detected as --where "status=active"
+  bwrb list task                    # Detected as --type task
+  bwrb list Projects/**             # Detected as --path Projects/**
+  bwrb list "status=active"         # Detected as --where "status=active"
 
 Examples:
-  pika list --type idea
-  pika list --type task --where "status == 'done'"
-  pika list --path "Projects/**" --text "TODO"
-  pika list --type task --output json
-  pika list --type task --open                    # Pick from tasks and open
-  pika list --type task --where "status=inbox" --open
+  bwrb list --type idea
+  bwrb list --type task --where "status == 'done'"
+  bwrb list --path "Projects/**" --text "TODO"
+  bwrb list --type task --output json
+  bwrb list --type task --open                    # Pick from tasks and open
+  bwrb list --type task --where "status=inbox" --open
 
 Open Options:
   --open               Open a note from the results (picker if multiple)
   --app <mode>         How to open: obsidian (default), editor, system, print
 
 Note: In zsh, use single quotes for expressions with '!' to avoid history expansion:
-  pika list --type task --where '!isEmpty(deadline)'`)
+  bwrb list --type task --where '!isEmpty(deadline)'`)
   .argument('[positional]', 'Smart positional: type, path (contains /), or where expression (contains =<>~)')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path glob (e.g., Projects/**, Ideas/)')
@@ -245,7 +245,7 @@ interface ListOptions {
  * Show list command usage.
  */
 function showListUsage(schema: LoadedSchema): void {
-  console.log('Usage: pika list [options] [positional]');
+  console.log('Usage: bwrb list [options] [positional]');
   console.log('');
   console.log('Targeting Selectors:');
   console.log('  --type <type>        Filter by type path');

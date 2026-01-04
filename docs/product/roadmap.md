@@ -1,6 +1,6 @@
-# Pika Roadmap
+# Bowerbird Roadmap
 
-> Versioned milestones for Pika development
+> Versioned milestones for Bowerbird development
 
 ---
 
@@ -23,38 +23,38 @@ Work should proceed in this order due to dependencies:
 #### Phase 1: The Big Rename + Refactor
 | Priority | Issue | Title | Blocked By |
 |----------|-------|-------|------------|
-| P0 | `pika-cr7` | Rename ovault to pika | — |
-| P0 | `pika-wbz` | Implement inheritance model | `pika-cr7` |
+| P0 | `bwrb-cr7` | Rename ovault to bwrb | — |
+| P0 | `bwrb-wbz` | Implement inheritance model | `bwrb-cr7` |
 
 #### Phase 2: Core Inheritance Features
 After inheritance model is in place:
 | Priority | Issue | Title |
 |----------|-------|-------|
-| P1 | `pika-9g9` | Implement ownership and folder computation |
-| P1 | `pika-0k0` | Update tests for new schema format |
-| P1 | `pika-taz` | Implement context field validation |
-| P1 | `pika-ita` | Implement recursive type support |
-| P1 | `pika-oa8` | Update audit for new type resolution |
+| P1 | `bwrb-9g9` | Implement ownership and folder computation |
+| P1 | `bwrb-0k0` | Update tests for new schema format |
+| P1 | `bwrb-taz` | Implement context field validation |
+| P1 | `bwrb-ita` | Implement recursive type support |
+| P1 | `bwrb-oa8` | Update audit for new type resolution |
 
 #### Phase 3: Schema Management CLI
 | Priority | Issue | Title |
 |----------|-------|-------|
-| P1 | `pika-tsh` | Schema Management CLI |
-| P2 | `pika-w2a` | `pika schema add-type` command |
-| P2 | `pika-tev` | `pika schema add-field` command |
-| P2 | `pika-1kr` | `pika schema enum` management |
+| P1 | `bwrb-tsh` | Schema Management CLI |
+| P2 | `bwrb-w2a` | `bwrb schema add-type` command |
+| P2 | `bwrb-tev` | `bwrb schema add-field` command |
+| P2 | `bwrb-1kr` | `bwrb schema enum` management |
 
 #### Phase 4: Polish
 | Priority | Issue | Title |
 |----------|-------|-------|
-| P2 | `pika-3nd` | Schema migration system |
-| P2 | `pika-fkd` | Finalize command surface |
-| P2 | `pika-oay` | Template spawning with ownership |
-| P2 | `pika-xy1` | Remove name_field, standardize on 'name' |
+| P2 | `bwrb-3nd` | Schema migration system |
+| P2 | `bwrb-fkd` | Finalize command surface |
+| P2 | `bwrb-oay` | Template spawning with ownership |
+| P2 | `bwrb-xy1` | Remove name_field, standardize on 'name' |
 
 ### v1.0 Exit Criteria
 
-- [ ] Renamed to Pika (CLI, config, docs, repo)
+- [ ] Renamed to Bowerbird (CLI, config, docs, repo)
 - [ ] Inheritance model fully implemented
 - [ ] Ownership/colocation working
 - [ ] Context field validation in audit
@@ -72,11 +72,11 @@ Make the schema useful for knowledge work.
 
 | Feature | Issue | Description |
 |---------|-------|-------------|
-| Neovim plugin | `pika-tic` | Full CLI parity in Neovim |
-| LSP | `pika-0wp` | Real-time schema validation in editors |
-| Dashboards | `pika-f9u` | Saved queries, visibility into notes |
-| Link validation | `pika-6f0` | Broken link detection in audit |
-| Command consolidation | `pika-fkd` | Merge list/search/open |
+| Neovim plugin | `bwrb-tic` | Full CLI parity in Neovim |
+| LSP | `bwrb-0wp` | Real-time schema validation in editors |
+| Dashboards | `bwrb-f9u` | Saved queries, visibility into notes |
+| Link validation | `bwrb-6f0` | Broken link detection in audit |
+| Command consolidation | `bwrb-fkd` | Merge list/search/open |
 
 ### v2.0 Exit Criteria
 
@@ -96,14 +96,14 @@ Optional AI-powered features for automation.
 
 | Feature | Issue | Description |
 |---------|-------|-------------|
-| AI Ingest | `pika-acd` | Extract tasks/ideas/entities from notes |
-| Entity matching | `pika-h9o` | Link mentions to existing notes |
+| AI Ingest | `bwrb-acd` | Extract tasks/ideas/entities from notes |
+| Entity matching | `bwrb-h9o` | Link mentions to existing notes |
 | Agentic workflows | — | Run AI workflows from vault |
 | Cost tracking | — | Monitor AI spend |
 
 ### v3.0 Exit Criteria
 
-- [ ] `pika ingest` command working
+- [ ] `bwrb ingest` command working
 - [ ] Interactive approval flow for AI suggestions
 - [ ] Entity matching and auto-linking
 - [ ] Optional—works without AI keys
@@ -114,8 +114,8 @@ Optional AI-powered features for automation.
 
 | Feature | Issue | Notes |
 |---------|-------|-------|
-| Recurrence | `pika-yuq` | Recurring task creation |
-| Schema discovery | `pika-onp` | Suggest schema from existing files |
+| Recurrence | `bwrb-yuq` | Recurring task creation |
+| Schema discovery | `bwrb-onp` | Suggest schema from existing files |
 | Obsidian plugin | — | If there's demand |
 
 ---

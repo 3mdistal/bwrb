@@ -6,7 +6,7 @@
 
 ## Overview
 
-The `pika schema` command provides full CLI control over the schema:
+The `bwrb schema` command provides full CLI control over the schema:
 
 - Explore types, fields, and enums
 - Add, edit, and remove types (with inheritance via `--extends`)
@@ -28,30 +28,30 @@ The goal is to **never require direct JSON editing**.
 
 ```bash
 # Exploration
-pika schema show                          # Tree view of all types
-pika schema show task                     # Show specific type
-pika schema validate                      # Validate schema structure
+bwrb schema show                          # Tree view of all types
+bwrb schema show task                     # Show specific type
+bwrb schema validate                      # Validate schema structure
 
 # Type management
-pika schema add-type <name>               # Create new type (--extends for inheritance)
-pika schema edit-type <name>              # Modify type settings
-pika schema remove-type <name>            # Remove type (dry-run + prompt)
+bwrb schema add-type <name>               # Create new type (--extends for inheritance)
+bwrb schema edit-type <name>              # Modify type settings
+bwrb schema remove-type <name>            # Remove type (dry-run + prompt)
 
 # Field management
-pika schema add-field <type> [field]      # Add field to type
-pika schema edit-field <type> <field>     # Modify field properties
-pika schema remove-field <type> <field>   # Remove field (dry-run + prompt)
+bwrb schema add-field <type> [field]      # Add field to type
+bwrb schema edit-field <type> <field>     # Modify field properties
+bwrb schema remove-field <type> <field>   # Remove field (dry-run + prompt)
 
 # Enum management
-pika schema enum list                     # List all enums
-pika schema enum add <name>               # Create new enum
-pika schema enum update <name>            # Modify enum (--add, --remove, --rename)
-pika schema enum delete <name>            # Remove enum
+bwrb schema enum list                     # List all enums
+bwrb schema enum add <name>               # Create new enum
+bwrb schema enum update <name>            # Modify enum (--add, --remove, --rename)
+bwrb schema enum delete <name>            # Remove enum
 
 # Migration
-pika schema diff                          # Show pending migrations
-pika schema migrate                       # Apply migrations
-pika schema history                       # Show migration history
+bwrb schema diff                          # Show pending migrations
+bwrb schema migrate                       # Apply migrations
+bwrb schema history                       # Show migration history
 ```
 
 ---
@@ -61,7 +61,7 @@ pika schema history                       # Show migration history
 ### Show All Types
 
 ```bash
-pika schema show
+bwrb schema show
 
 # Schema v3
 # 
@@ -92,7 +92,7 @@ pika schema show
 ### Show Specific Type
 
 ```bash
-pika schema show task
+bwrb schema show task
 
 # Type: task
 # Extends: objective
@@ -117,7 +117,7 @@ pika schema show task
 ### Validate Schema
 
 ```bash
-pika schema validate
+bwrb schema validate
 
 # Validating schema...
 # 
@@ -139,11 +139,11 @@ pika schema validate
 
 ```bash
 # Non-interactive (requires --output-dir):
-pika schema add-type book --output-dir Books
-pika schema add-type person --extends entity --output-dir Entities/People
+bwrb schema add-type book --output-dir Books
+bwrb schema add-type person --extends entity --output-dir Entities/People
 
 # Interactive mode (prompts for options):
-pika schema add-type project
+bwrb schema add-type project
 
 # Creating new type: project
 # 
@@ -182,7 +182,7 @@ pika schema add-type project
 ### Edit Type
 
 ```bash
-pika schema edit-type project
+bwrb schema edit-type project
 
 # Editing type: project
 # 
@@ -198,13 +198,13 @@ pika schema edit-type project
 # OK Updated output directory for 'project'
 #   Projects → Projects/Active
 # 
-# Note: Existing files not moved. Run 'pika bulk project --move' to relocate.
+# Note: Existing files not moved. Run 'bwrb bulk project --move' to relocate.
 ```
 
 ### Remove Type
 
 ```bash
-pika schema remove-type project
+bwrb schema remove-type project
 
 # Removing type: project
 # 
@@ -218,10 +218,10 @@ pika schema remove-type project
 # 
 # OK Removed type 'project'
 # 
-# Tip: Run 'pika audit' to find orphaned files.
+# Tip: Run 'bwrb audit' to find orphaned files.
 
 # Non-interactive:
-pika schema remove-type project --execute
+bwrb schema remove-type project --execute
 ```
 
 ---
@@ -232,7 +232,7 @@ pika schema remove-type project --execute
 
 ```bash
 # Interactive:
-pika schema add-field task
+bwrb schema add-field task
 
 # Adding field to task
 # 
@@ -245,14 +245,14 @@ pika schema add-field task
 # OK Added field 'deadline' to task
 
 # Non-interactive with flags:
-pika schema add-field task deadline --prompt date --label "Due Date"
-pika schema add-field task priority --prompt select --enum priority --default medium
+bwrb schema add-field task deadline --prompt date --label "Due Date"
+bwrb schema add-field task priority --prompt select --enum priority --default medium
 ```
 
 ### Edit Field
 
 ```bash
-pika schema edit-field task priority
+bwrb schema edit-field task priority
 
 # Editing field 'priority' in task
 # 
@@ -285,7 +285,7 @@ pika schema edit-field task priority
 ### Remove Field
 
 ```bash
-pika schema remove-field task legacy-notes
+bwrb schema remove-field task legacy-notes
 
 # Removing field 'legacy-notes' from task
 # 
@@ -300,10 +300,10 @@ pika schema remove-field task legacy-notes
 # OK Removed field 'legacy-notes' from schema
 # 
 # Note: 23 files still have 'legacy-notes' field.
-# Run 'pika bulk task --delete legacy-notes --execute' to remove from files.
+# Run 'bwrb bulk task --delete legacy-notes --execute' to remove from files.
 
 # Non-interactive:
-pika schema remove-field task legacy-notes --execute
+bwrb schema remove-field task legacy-notes --execute
 ```
 
 ---
@@ -313,7 +313,7 @@ pika schema remove-field task legacy-notes --execute
 ### List Enums
 
 ```bash
-pika schema enum list
+bwrb schema enum list
 
 # Enums:
 #   status      inbox, backlog, planned, in-progress, done, cancelled
@@ -329,7 +329,7 @@ pika schema enum list
 ### Add Enum
 
 ```bash
-pika schema enum add scope
+bwrb schema enum add scope
 
 # Creating enum: scope
 # 
@@ -342,7 +342,7 @@ pika schema enum add scope
 
 ```bash
 # Add value
-pika schema enum update status --add archived
+bwrb schema enum update status --add archived
 
 # Adding 'archived' to enum 'status'
 # Current: inbox, backlog, planned, in-progress, done, cancelled
@@ -351,7 +351,7 @@ pika schema enum update status --add archived
 # OK Added 'archived' to enum 'status'
 
 # Rename value
-pika schema enum update status --rename in-flight=in-progress
+bwrb schema enum update status --rename in-flight=in-progress
 
 # Renaming in enum 'status': in-flight → in-progress
 # 
@@ -359,10 +359,10 @@ pika schema enum update status --rename in-flight=in-progress
 # This change will be tracked as a pending migration.
 # 
 # OK Renamed 'in-flight' to 'in-progress'
-# Run 'pika schema migrate' to update affected files.
+# Run 'bwrb schema migrate' to update affected files.
 
 # Remove value
-pika schema enum update status --remove deprecated
+bwrb schema enum update status --remove deprecated
 
 # Removing 'deprecated' from enum 'status'
 # 
@@ -370,13 +370,13 @@ pika schema enum update status --remove deprecated
 # This change will be tracked as a pending migration.
 # 
 # OK Removed 'deprecated' from enum 'status'
-# Run 'pika schema migrate' to update affected files.
+# Run 'bwrb schema migrate' to update affected files.
 ```
 
 ### Delete Enum
 
 ```bash
-pika schema enum delete old-status
+bwrb schema enum delete old-status
 
 # Deleting enum: old-status
 # 
@@ -387,7 +387,7 @@ pika schema enum delete old-status
 # OK Deleted enum 'old-status'
 
 # If enum is in use:
-pika schema enum delete status
+bwrb schema enum delete status
 
 # X Cannot delete enum 'status'
 #   It is used by field 'meta.status'
@@ -402,14 +402,14 @@ pika schema enum delete status
 ### How It Works
 
 1. Schema changes that affect existing files create **pending migrations**
-2. `pika schema diff` shows what migrations are pending
-3. `pika schema migrate` executes migrations (dry-run + prompt by default)
-4. Migrations are logged in `.pika/migrations/`
+2. `bwrb schema diff` shows what migrations are pending
+3. `bwrb schema migrate` executes migrations (dry-run + prompt by default)
+4. Migrations are logged in `.bwrb/migrations/`
 
 ### Schema Diff
 
 ```bash
-pika schema diff
+bwrb schema diff
 
 # Pending migrations:
 # 
@@ -425,13 +425,13 @@ pika schema diff
 #    Affects: 12 files
 #    Auto-applicable: no (needs replacement value)
 # 
-# Run 'pika schema migrate' to apply.
+# Run 'bwrb schema migrate' to apply.
 ```
 
 ### Schema Migrate
 
 ```bash
-pika schema migrate
+bwrb schema migrate
 
 # Applying migrations...
 # 
@@ -458,7 +458,7 @@ pika schema migrate
 # OK Applied 3 migrations, updated 82 files
 
 # Non-interactive:
-pika schema migrate --execute
+bwrb schema migrate --execute
 ```
 
 ### Auto-Apply vs Prompt
@@ -476,7 +476,7 @@ pika schema migrate --execute
 ### Migration History
 
 ```bash
-pika schema history
+bwrb schema history
 
 # Schema migration history:
 # 
@@ -510,7 +510,7 @@ Previously, shared fields were defined at the schema level and referenced by typ
 - **Old way:** Define `status` as a shared field, reference it in multiple types
 - **New way:** Define `status` on `meta`, all types inherit it automatically
 
-See issue `pika-iqng` for deprecation plan.
+See issue `bwrb-iqng` for deprecation plan.
 
 ### Subtypes (deprecated)
 
@@ -530,7 +530,7 @@ The `add-type --extends` flag handles this cleanly.
 ### Invalid Operation
 
 ```bash
-pika schema enum delete status
+bwrb schema enum delete status
 
 # X Cannot delete enum 'status'
 #   It is used by field 'meta.status'
@@ -541,7 +541,7 @@ pika schema enum delete status
 ### Circular Inheritance
 
 ```bash
-pika schema edit-type meta --extends task
+bwrb schema edit-type meta --extends task
 
 # X Cannot set parent type
 #   This would create circular inheritance: meta → task → objective → meta
@@ -550,7 +550,7 @@ pika schema edit-type meta --extends task
 ### Type Not Found
 
 ```bash
-pika schema edit-type nonexistent
+bwrb schema edit-type nonexistent
 
 # X Type 'nonexistent' not found
 # 
@@ -575,7 +575,7 @@ pika schema edit-type nonexistent
 - [x] `schema migrate` - Apply migrations
 - [x] `schema history` - Migration history
 
-### To Implement (pika-tsh)
+### To Implement (bwrb-tsh)
 
 - [ ] `schema edit-type <name>` - Modify type settings
 - [ ] `schema remove-type <name>` - Remove type (dry-run + prompt)

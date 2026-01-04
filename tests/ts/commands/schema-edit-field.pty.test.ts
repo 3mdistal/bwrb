@@ -56,7 +56,7 @@ describe.skipIf(skipPty)('schema edit-field PTY', () => {
 
           // Verify the field was updated
           const schema = JSON.parse(
-            await readVaultFile(vaultPath, '.pika/schema.json')
+            await readVaultFile(vaultPath, '.bwrb/schema.json')
           );
           expect(schema.types.task.fields.notes.required).toBe(true);
         },
@@ -87,7 +87,7 @@ describe.skipIf(skipPty)('schema edit-field PTY', () => {
 
           // Verify the field was updated
           const schema = JSON.parse(
-            await readVaultFile(vaultPath, '.pika/schema.json')
+            await readVaultFile(vaultPath, '.bwrb/schema.json')
           );
           expect(schema.types.task.fields.notes.required).toBeUndefined();
         },
@@ -102,7 +102,7 @@ describe.skipIf(skipPty)('schema edit-field PTY', () => {
           await proc.waitForExit(10000);
 
           const schema = JSON.parse(
-            await readVaultFile(vaultPath, '.pika/schema.json')
+            await readVaultFile(vaultPath, '.bwrb/schema.json')
           );
           expect(schema.types.task.fields.notes.default).toBe('N/A');
         },
@@ -117,7 +117,7 @@ describe.skipIf(skipPty)('schema edit-field PTY', () => {
           await proc.waitForExit(10000);
 
           const schema = JSON.parse(
-            await readVaultFile(vaultPath, '.pika/schema.json')
+            await readVaultFile(vaultPath, '.bwrb/schema.json')
           );
           expect(schema.types.task.fields.priority.default).toBeUndefined();
         },
@@ -132,7 +132,7 @@ describe.skipIf(skipPty)('schema edit-field PTY', () => {
           await proc.waitForExit(10000);
 
           const schema = JSON.parse(
-            await readVaultFile(vaultPath, '.pika/schema.json')
+            await readVaultFile(vaultPath, '.bwrb/schema.json')
           );
           expect(schema.types.task.fields.notes.label).toBe('Extra Notes');
         },
@@ -169,7 +169,7 @@ describe.skipIf(skipPty)('schema edit-field PTY', () => {
 
           // Verify the field was updated
           const schema = JSON.parse(
-            await readVaultFile(vaultPath, '.pika/schema.json')
+            await readVaultFile(vaultPath, '.bwrb/schema.json')
           );
           expect(schema.types.task.fields.notes.required).toBe(true);
         },
@@ -196,7 +196,7 @@ describe.skipIf(skipPty)('schema edit-field PTY', () => {
           await proc.waitForExit(10000);
 
           const schema = JSON.parse(
-            await readVaultFile(vaultPath, '.pika/schema.json')
+            await readVaultFile(vaultPath, '.bwrb/schema.json')
           );
           expect(schema.types.task.fields.notes.default).toBe('No notes provided');
         },
@@ -223,7 +223,7 @@ describe.skipIf(skipPty)('schema edit-field PTY', () => {
           await proc.waitForExit(10000);
 
           const schema = JSON.parse(
-            await readVaultFile(vaultPath, '.pika/schema.json')
+            await readVaultFile(vaultPath, '.bwrb/schema.json')
           );
           expect(schema.types.task.fields.notes.label).toBe('Extra Notes');
         },

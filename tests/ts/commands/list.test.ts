@@ -204,8 +204,8 @@ describe('list command', () => {
       const { tmpdir } = await import('os');
       const { join } = await import('path');
 
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'pika-list-hierarchy-'));
-      await mkdir(join(tempVaultDir, '.pika'), { recursive: true });
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-list-hierarchy-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
       // Schema with a recursive type
       const schemaWithRecursive = {
         version: 2,
@@ -223,7 +223,7 @@ describe('list command', () => {
         }
       };
       await writeFile(
-        join(tempVaultDir, '.pika', 'schema.json'),
+        join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(schemaWithRecursive, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Tasks'), { recursive: true });

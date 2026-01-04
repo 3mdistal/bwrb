@@ -60,7 +60,7 @@ export const TEST_VAULT_PATH = path.resolve(
   '../../fixtures/vault'
 );
 
-// Path to the project root (for running pika via tsx)
+// Path to the project root (for running bwrb via tsx)
 export const PROJECT_ROOT = path.resolve(import.meta.dirname, '../../..');
 
 // Path to tsx binary in node_modules
@@ -322,20 +322,20 @@ export class PtyProcess {
 }
 
 /**
- * Spawn pika in a PTY with the given arguments.
+ * Spawn bwrb in a PTY with the given arguments.
  *
- * @param args Command-line arguments to pass to pika
+ * @param args Command-line arguments to pass to bwrb
  * @param options Spawn options
  * @returns A PtyProcess wrapper
  *
  * @example
  * ```ts
- * const proc = await spawnPika(['new', 'task'], { cwd: testVaultPath });
+ * const proc = await spawnBowerbird(['new', 'task'], { cwd: testVaultPath });
  * await proc.waitFor('Name');
  * proc.write('My Task\r');
  * ```
  */
-export function spawnPika(
+export function spawnBowerbird(
   args: string[],
   options: SpawnOptions = {}
 ): PtyProcess {
@@ -357,7 +357,7 @@ export function spawnPika(
       // Force color output even in non-TTY-like environments
       FORCE_COLOR: '1',
       // Set the vault path
-      PIKA_VAULT: cwd,
+      BWRB_VAULT: cwd,
       ...env,
     },
   });
@@ -366,7 +366,7 @@ export function spawnPika(
 }
 
 // Alias for backward compatibility in tests
-export const spawnOvault = spawnPika;
+export const spawnOvault = spawnBowerbird;
 
 /**
  * Spawn a generic command in a PTY.
@@ -405,16 +405,16 @@ export function spawnCommand(
 /**
  * Helper to run a quick PTY test with automatic cleanup.
  *
- * @param args pika arguments
+ * @param args bwrb arguments
  * @param fn Test function receiving the PtyProcess
  * @param options Spawn options
  */
-export async function withPika(
+export async function withBowerbird(
   args: string[],
   fn: (proc: PtyProcess) => Promise<void>,
   options: SpawnOptions = {}
 ): Promise<void> {
-  const proc = spawnPika(args, options);
+  const proc = spawnBowerbird(args, options);
   try {
     await fn(proc);
   } finally {
@@ -427,7 +427,7 @@ export async function withPika(
 }
 
 // Alias for backward compatibility in tests
-export const withOvault = withPika;
+export const withOvault = withBowerbird;
 
 // ============================================================================
 // Temporary Vault Management
@@ -483,7 +483,7 @@ export interface WithTempVaultOptions {
 }
 
 // Path to the fixture vault templates
-const FIXTURE_TEMPLATES_PATH = path.join(TEST_VAULT_PATH, '.pika', 'templates');
+const FIXTURE_TEMPLATES_PATH = path.join(TEST_VAULT_PATH, '.bwrb', 'templates');
 
 /**
  * Recursively copy a directory.
@@ -513,7 +513,7 @@ export async function copyFixtureTemplates(
   targetVaultPath: string,
   types?: string[]
 ): Promise<void> {
-  const targetTemplatesPath = path.join(targetVaultPath, '.pika', 'templates');
+  const targetTemplatesPath = path.join(targetVaultPath, '.bwrb', 'templates');
   
   // Ensure target templates directory exists
   await fs.mkdir(targetTemplatesPath, { recursive: true });
@@ -550,13 +550,13 @@ export async function createTempVault(
   includeTemplates?: boolean | string[]
 ): Promise<string> {
   // Create temp directory
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pika-test-'));
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bwrb-test-'));
 
-  // Create .pika directory with schema
-  const pikaDir = path.join(tempDir, '.pika');
-  await fs.mkdir(pikaDir, { recursive: true });
+  // Create .bwrb directory with schema
+  const bwrbDir = path.join(tempDir, '.bwrb');
+  await fs.mkdir(bwrbDir, { recursive: true });
   await fs.writeFile(
-    path.join(pikaDir, 'schema.json'),
+    path.join(bwrbDir, 'schema.json'),
     JSON.stringify(schema, null, 2)
   );
 
@@ -650,7 +650,7 @@ export async function listVaultFiles(
 /**
  * Helper to run a PTY test with a temporary vault that gets cleaned up.
  * 
- * @param args pika arguments
+ * @param args bwrb arguments
  * @param fn Test function receiving the PtyProcess and vault path
  * @param options Options for vault creation (files, schema, includeTemplates)
  * 
@@ -670,7 +670,7 @@ export async function withTempVault(
 
   const vaultPath = await createTempVault(files, schema, includeTemplates);
   try {
-    const proc = spawnPika(args, { cwd: vaultPath });
+    const proc = spawnBowerbird(args, { cwd: vaultPath });
     try {
       await fn(proc, vaultPath);
     } finally {
@@ -698,7 +698,7 @@ export function getRelativePath(vaultDir: string): string {
  * Helper to run a PTY test with a relative vault path.
  * This tests the CLI's ability to handle relative paths correctly.
  * 
- * @param args pika arguments
+ * @param args bwrb arguments
  * @param fn Test function receiving the PtyProcess and absolute vault path
  * @param options Options for vault creation (files, schema, includeTemplates)
  * 
@@ -719,10 +719,10 @@ export async function withTempVaultRelative(
   const vaultPath = await createTempVault(files, schema, includeTemplates);
   const relativePath = getRelativePath(vaultPath);
   try {
-    // Use relative path via PIKA_VAULT env var
-    const proc = spawnPika(args, { 
+    // Use relative path via BWRB_VAULT env var
+    const proc = spawnBowerbird(args, { 
       cwd: vaultPath,  // Still pass absolute path for internal use
-      env: { PIKA_VAULT: relativePath }  // But set env var to relative
+      env: { BWRB_VAULT: relativePath }  // But set env var to relative
     });
     try {
       await fn(proc, vaultPath);

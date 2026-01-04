@@ -10,7 +10,7 @@ function runCli(args: string, cwd: string = VAULT_DIR): string {
     return execSync(`node ${CLI_PATH} ${args}`, {
       cwd,
       encoding: "utf-8",
-      env: { ...process.env, NO_COLOR: "1", PIKA_VAULT: cwd },
+      env: { ...process.env, NO_COLOR: "1", BWRB_VAULT: cwd },
     }).trim();
   } catch (error: unknown) {
     const execError = error as { stdout?: string; stderr?: string };
@@ -20,7 +20,7 @@ function runCli(args: string, cwd: string = VAULT_DIR): string {
   }
 }
 
-describe("pika completion command", () => {
+describe("bwrb completion command", () => {
   beforeAll(() => {
     // Ensure the CLI is built
     execSync("pnpm build", {
@@ -34,8 +34,8 @@ describe("pika completion command", () => {
       const output = runCli("completion bash");
 
       // Should contain bash-specific completion setup
-      expect(output).toContain("_pika_completions()");
-      expect(output).toContain("complete -F _pika_completions pika");
+      expect(output).toContain("_bwrb_completions()");
+      expect(output).toContain("complete -F _bwrb_completions bwrb");
       expect(output).toContain("COMPREPLY");
       expect(output).toContain("--completions");
     });
@@ -54,9 +54,9 @@ describe("pika completion command", () => {
       const output = runCli("completion zsh");
 
       // Should contain zsh-specific completion setup
-      expect(output).toContain("#compdef pika");
-      expect(output).toContain("_pika()");
-      expect(output).toContain("compdef _pika pika");
+      expect(output).toContain("#compdef bwrb");
+      expect(output).toContain("_bwrb()");
+      expect(output).toContain("compdef _bwrb bwrb");
       expect(output).toContain("--completions");
     });
   });
@@ -66,14 +66,14 @@ describe("pika completion command", () => {
       const output = runCli("completion fish");
 
       // Should contain fish-specific completion setup
-      expect(output).toContain("complete -c pika");
+      expect(output).toContain("complete -c bwrb");
       expect(output).toContain("--completions");
     });
   });
 
   describe("--completions flag", () => {
     it("should return type completions after --type", () => {
-      const output = runCli("--completions pika list --type ''");
+      const output = runCli("--completions bwrb list --type ''");
       const completions = output.split("\n").filter((l) => l.trim());
 
       // Should include types from the test vault schema
@@ -82,7 +82,7 @@ describe("pika completion command", () => {
     });
 
     it("should filter type completions by prefix", () => {
-      const output = runCli("--completions pika list --type ta");
+      const output = runCli("--completions bwrb list --type ta");
       const completions = output.split("\n").filter((l) => l.trim());
 
       expect(completions).toContain("task");
@@ -90,7 +90,7 @@ describe("pika completion command", () => {
     });
 
     it("should return path completions after --path", () => {
-      const output = runCli("--completions pika list --path ''");
+      const output = runCli("--completions bwrb list --path ''");
       const completions = output.split("\n").filter((l) => l.trim());
 
       // Should include directories from the test vault
@@ -98,8 +98,8 @@ describe("pika completion command", () => {
       expect(completions.some((c) => c.includes("Objectives"))).toBe(true);
     });
 
-    it("should return command completions for bare pika", () => {
-      const output = runCli("--completions pika ''");
+    it("should return command completions for bare bwrb", () => {
+      const output = runCli("--completions bwrb ''");
       const completions = output.split("\n").filter((l) => l.trim());
 
       // Should include available commands
@@ -110,7 +110,7 @@ describe("pika completion command", () => {
     });
 
     it("should return option completions when current word starts with -", () => {
-      const output = runCli("--completions pika list --");
+      const output = runCli("--completions bwrb list --");
       const completions = output.split("\n").filter((l) => l.trim());
 
       // Should include targeting options for list command
@@ -121,7 +121,7 @@ describe("pika completion command", () => {
 
     it("should fail silently outside a vault", () => {
       // Run from a non-vault directory
-      const output = runCli("--completions pika list --type ''", "/tmp");
+      const output = runCli("--completions bwrb list --type ''", "/tmp");
 
       // Should return empty or just not crash
       expect(output).toBeDefined();

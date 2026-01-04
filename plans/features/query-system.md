@@ -6,12 +6,12 @@
 
 ## Overview
 
-pika's query system provides powerful filtering capabilities compatible with Obsidian Bases. This enables:
+bwrb's query system provides powerful filtering capabilities compatible with Obsidian Bases. This enables:
 
-- Complex filters in `pika list`
-- Conditions in `pika bulk`
+- Complex filters in `bwrb list`
+- Conditions in `bwrb bulk`
 - Validation rules in templates
-- Future: `pika base` for generating Bases queries
+- Future: `bwrb base` for generating Bases queries
 
 ---
 
@@ -21,34 +21,34 @@ pika's query system provides powerful filtering capabilities compatible with Obs
 
 ```bash
 # Equality
-pika list task --where "status == 'in-progress'"
-pika list task --where "priority == 'high'"
+bwrb list task --where "status == 'in-progress'"
+bwrb list task --where "priority == 'high'"
 
 # Inequality
-pika list task --where "status != 'done'"
+bwrb list task --where "status != 'done'"
 
 # Numeric comparison
-pika list task --where "priority < 3"
-pika list task --where "priority >= 2"
+bwrb list task --where "priority < 3"
+bwrb list task --where "priority >= 2"
 
 # String comparison (lexicographic)
-pika list task --where "title < 'M'"
+bwrb list task --where "title < 'M'"
 ```
 
 ### Boolean Logic
 
 ```bash
 # AND
-pika list task --where "status == 'in-progress' && priority == 'high'"
+bwrb list task --where "status == 'in-progress' && priority == 'high'"
 
 # OR
-pika list task --where "status == 'done' || status == 'cancelled'"
+bwrb list task --where "status == 'done' || status == 'cancelled'"
 
 # NOT
-pika list task --where "!isEmpty(deadline)"
+bwrb list task --where "!isEmpty(deadline)"
 
 # Grouped
-pika list task --where "(status == 'inbox' || status == 'backlog') && priority == 'critical'"
+bwrb list task --where "(status == 'inbox' || status == 'backlog') && priority == 'critical'"
 ```
 
 ### Multiple --where Clauses
@@ -56,9 +56,9 @@ pika list task --where "(status == 'inbox' || status == 'backlog') && priority =
 Multiple `--where` flags are ANDed together:
 
 ```bash
-pika list task --where "status == 'in-progress'" --where "priority == 'high'"
+bwrb list task --where "status == 'in-progress'" --where "priority == 'high'"
 # Equivalent to:
-pika list task --where "status == 'in-progress' && priority == 'high'"
+bwrb list task --where "status == 'in-progress' && priority == 'high'"
 ```
 
 ---
@@ -136,8 +136,8 @@ Durations can be added/subtracted from dates:
 | `'30min'` | 30 minutes |
 
 ```bash
-pika list task --where "deadline < today() + '7d'"
-pika list task --where "file.mtime > now() - '24h'"
+bwrb list task --where "deadline < today() + '7d'"
+bwrb list task --where "file.mtime > now() - '24h'"
 ```
 
 ### Null/Empty Functions
@@ -173,9 +173,9 @@ pika list task --where "file.mtime > now() - '24h'"
 Access frontmatter fields directly by name:
 
 ```bash
-pika list task --where "status == 'done'"
-pika list task --where "priority < 3"
-pika list task --where "contains(tags, 'urgent')"
+bwrb list task --where "status == 'done'"
+bwrb list task --where "priority < 3"
+bwrb list task --where "contains(tags, 'urgent')"
 ```
 
 ### File Properties
@@ -193,8 +193,8 @@ Access file metadata via `file.*`:
 | `file.mtime` | Modification time |
 
 ```bash
-pika list task --where "file.mtime > now() - '24h'"
-pika list task --where "inFolder('Archive/')"
+bwrb list task --where "file.mtime > now() - '24h'"
+bwrb list task --where "inFolder('Archive/')"
 ```
 
 ### Nested Access
@@ -202,7 +202,7 @@ pika list task --where "inFolder('Archive/')"
 For nested frontmatter (if supported):
 
 ```bash
-pika list task --where "metadata.author == 'alice'"
+bwrb list task --where "metadata.author == 'alice'"
 ```
 
 ---
@@ -229,38 +229,38 @@ The query engine handles type coercion:
 
 ```bash
 # Overdue tasks
-pika list task --where "deadline < today() && status != 'done'"
+bwrb list task --where "deadline < today() && status != 'done'"
 
 # High priority inbox items
-pika list task --where "status == 'inbox' && (priority == 'high' || priority == 'critical')"
+bwrb list task --where "status == 'inbox' && (priority == 'high' || priority == 'critical')"
 
 # Recently modified
-pika list --all --where "file.mtime > now() - '24h'"
+bwrb list --all --where "file.mtime > now() - '24h'"
 
 # Tasks without deadlines
-pika list task --where "isEmpty(deadline) && status != 'done'"
+bwrb list task --where "isEmpty(deadline) && status != 'done'"
 
 # Tasks for this week
-pika list task --where "scope == 'week' && status != 'done'"
+bwrb list task --where "scope == 'week' && status != 'done'"
 
 # Items with specific tag
-pika list --all --where "contains(tags, 'review')"
+bwrb list --all --where "contains(tags, 'review')"
 
 # Drafts in progress
-pika list draft --where "status == 'drafting' || status == 'revising'"
+bwrb list draft --where "status == 'drafting' || status == 'revising'"
 ```
 
 ### Bulk Operations
 
 ```bash
 # Mark overdue as urgent
-pika bulk task --append tags=overdue --where "deadline < today() && status != 'done'" --execute
+bwrb bulk task --append tags=overdue --where "deadline < today() && status != 'done'" --execute
 
 # Archive old completed tasks
-pika bulk task --move Archive/Tasks --where "status == 'done' && file.mtime < now() - '30d'" --execute
+bwrb bulk task --move Archive/Tasks --where "status == 'done' && file.mtime < now() - '30d'" --execute
 
 # Set default priority
-pika bulk task --set priority=medium --where "isEmpty(priority)" --execute
+bwrb bulk task --set priority=medium --where "isEmpty(priority)" --execute
 ```
 
 ### Template Constraints
@@ -280,7 +280,7 @@ constraints:
 
 ## Bases Compatibility
 
-pika queries align with Obsidian Bases syntax for easy mental model sharing:
+bwrb queries align with Obsidian Bases syntax for easy mental model sharing:
 
 ### Bases Syntax
 
@@ -293,16 +293,16 @@ filters:
         gte: 2
 ```
 
-### pika Equivalent
+### bwrb Equivalent
 
 ```bash
-pika list task --where "status == 'in-progress' && priority >= 2"
+bwrb list task --where "status == 'in-progress' && priority >= 2"
 ```
 
 ### Future: Base Generation
 
 ```bash
-pika base task --where "status == 'in-progress'" --where "priority >= 2"
+bwrb base task --where "status == 'in-progress'" --where "priority >= 2"
 
 # Output:
 # filters:
@@ -319,7 +319,7 @@ pika base task --where "status == 'in-progress'" --where "priority >= 2"
 ### Syntax Errors
 
 ```bash
-pika list task --where "status = 'done'"
+bwrb list task --where "status = 'done'"
 # Error: Invalid operator '=' at position 7
 # Did you mean '=='?
 # 
@@ -330,7 +330,7 @@ pika list task --where "status = 'done'"
 ### Unknown Fields
 
 ```bash
-pika list task --where "stauts == 'done'"
+bwrb list task --where "stauts == 'done'"
 # Warning: Unknown field 'stauts'. Did you mean 'status'?
 # No results found.
 ```
@@ -338,7 +338,7 @@ pika list task --where "stauts == 'done'"
 ### Type Errors
 
 ```bash
-pika list task --where "deadline == 'not-a-date'"
+bwrb list task --where "deadline == 'not-a-date'"
 # Warning: Cannot compare date field 'deadline' with non-date value
 ```
 

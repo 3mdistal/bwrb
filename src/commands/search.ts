@@ -139,26 +139,26 @@ App Modes:
   print       Print the resolved path (for scripting)
 
 Environment Variables:
-  PIKA_DEFAULT_APP    Default app mode (obsidian, editor, system, print)
+  BWRB_DEFAULT_APP    Default app mode (obsidian, editor, system, print)
 
 Examples:
   # Name search
-  pika search "My Note"                    # Find by name
-  pika search "My Note" --wikilink         # Output: [[My Note]]
-  pika search "My Note" --open             # Find and open in Obsidian
-  pika search "My Note" --open --app editor  # Find and open in $EDITOR
+  bwrb search "My Note"                    # Find by name
+  bwrb search "My Note" --wikilink         # Output: [[My Note]]
+  bwrb search "My Note" --open             # Find and open in Obsidian
+  bwrb search "My Note" --open --app editor  # Find and open in $EDITOR
   
   # Content search
-  pika search "deploy" --text              # Search all notes for "deploy"
-  pika search "deploy" -t --type task      # Search only in tasks
-  pika search "TODO" -t --status!=done     # Simple filter syntax
-  pika search "TODO" -t --where "status != 'done'"  # Expression filter
-  pika search "error.*log" -t --regex      # Regex search
-  pika search "deploy" -t --output json    # JSON output with matches
-  pika search "deploy" -t --open           # Search and open first match
+  bwrb search "deploy" --text              # Search all notes for "deploy"
+  bwrb search "deploy" -t --type task      # Search only in tasks
+  bwrb search "TODO" -t --status!=done     # Simple filter syntax
+  bwrb search "TODO" -t --where "status != 'done'"  # Expression filter
+  bwrb search "error.*log" -t --regex      # Regex search
+  bwrb search "deploy" -t --output json    # JSON output with matches
+  bwrb search "deploy" -t --open           # Search and open first match
   
   # Piping
-  pika search "bug" -t --path | xargs -I {} code {}`)
+  bwrb search "bug" -t --path | xargs -I {} code {}`)
   .action(async (query: string | undefined, options: SearchOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 

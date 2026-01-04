@@ -33,25 +33,25 @@ describe('template library', () => {
   describe('getTemplateDir', () => {
     it('returns correct path for simple type', () => {
       const result = getTemplateDir('/vault', 'idea');
-      expect(result).toBe('/vault/.pika/templates/idea');
+      expect(result).toBe('/vault/.bwrb/templates/idea');
     });
 
     it('returns correct path for nested type', () => {
       const result = getTemplateDir('/vault', 'task');
-      expect(result).toBe('/vault/.pika/templates/task');
+      expect(result).toBe('/vault/.bwrb/templates/task');
     });
 
     it('returns correct path for deeply nested type', () => {
       const result = getTemplateDir('/vault', 'a/b/c');
-      expect(result).toBe('/vault/.pika/templates/a/b/c');
+      expect(result).toBe('/vault/.bwrb/templates/a/b/c');
     });
   });
 
   describe('parseTemplate', () => {
     it('parses valid template file', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'default.md'),
+        join(tempDir, '.bwrb/templates/idea', 'default.md'),
         `---
 type: template
 template-for: idea
@@ -66,7 +66,7 @@ Body content here.
 `
       );
 
-      const template = await parseTemplate(join(tempDir, '.pika/templates/idea', 'default.md'));
+      const template = await parseTemplate(join(tempDir, '.bwrb/templates/idea', 'default.md'));
 
       expect(template).not.toBeNull();
       expect(template?.name).toBe('default');
@@ -95,9 +95,9 @@ Just a regular note.
     });
 
     it('returns null for missing template-for field', async () => {
-      await mkdir(join(tempDir, '.pika/templates'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates', 'bad.md'),
+        join(tempDir, '.bwrb/templates', 'bad.md'),
         `---
 type: template
 ---
@@ -106,7 +106,7 @@ Missing template-for.
 `
       );
 
-      const template = await parseTemplate(join(tempDir, '.pika/templates', 'bad.md'));
+      const template = await parseTemplate(join(tempDir, '.bwrb/templates', 'bad.md'));
       expect(template).toBeNull();
     });
 
@@ -116,9 +116,9 @@ Missing template-for.
     });
 
     it('parses template with prompt-fields', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'special.md'),
+        join(tempDir, '.bwrb/templates/idea', 'special.md'),
         `---
 type: template
 template-for: idea
@@ -131,16 +131,16 @@ Body.
 `
       );
 
-      const template = await parseTemplate(join(tempDir, '.pika/templates/idea', 'special.md'));
+      const template = await parseTemplate(join(tempDir, '.bwrb/templates/idea', 'special.md'));
 
       expect(template).not.toBeNull();
       expect(template?.promptFields).toEqual(['status', 'priority']);
     });
 
     it('parses template with filename-pattern', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'dated.md'),
+        join(tempDir, '.bwrb/templates/idea', 'dated.md'),
         `---
 type: template
 template-for: idea
@@ -151,7 +151,7 @@ Body.
 `
       );
 
-      const template = await parseTemplate(join(tempDir, '.pika/templates/idea', 'dated.md'));
+      const template = await parseTemplate(join(tempDir, '.bwrb/templates/idea', 'dated.md'));
 
       expect(template).not.toBeNull();
       expect(template?.filenamePattern).toBe('{date} - {title}');
@@ -160,9 +160,9 @@ Body.
 
   describe('findTemplates', () => {
     it('finds all templates for a type', async () => {
-      await mkdir(join(tempDir, '.pika/templates/task'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/task'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/task', 'default.md'),
+        join(tempDir, '.bwrb/templates/task', 'default.md'),
         `---
 type: template
 template-for: task
@@ -170,7 +170,7 @@ template-for: task
 `
       );
       await writeFile(
-        join(tempDir, '.pika/templates/task', 'bug-report.md'),
+        join(tempDir, '.bwrb/templates/task', 'bug-report.md'),
         `---
 type: template
 template-for: task
@@ -186,9 +186,9 @@ template-for: task
     });
 
     it('sorts templates with default first', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'zebra.md'),
+        join(tempDir, '.bwrb/templates/idea', 'zebra.md'),
         `---
 type: template
 template-for: idea
@@ -196,7 +196,7 @@ template-for: idea
 `
       );
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'default.md'),
+        join(tempDir, '.bwrb/templates/idea', 'default.md'),
         `---
 type: template
 template-for: idea
@@ -204,7 +204,7 @@ template-for: idea
 `
       );
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'alpha.md'),
+        join(tempDir, '.bwrb/templates/idea', 'alpha.md'),
         `---
 type: template
 template-for: idea
@@ -226,9 +226,9 @@ template-for: idea
     });
 
     it('excludes templates for wrong type', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'wrong.md'),
+        join(tempDir, '.bwrb/templates/idea', 'wrong.md'),
         `---
 type: template
 template-for: task
@@ -242,11 +242,11 @@ template-for: task
 
     it('does not inherit templates from parent type (strict matching)', async () => {
       // Create template in parent directory
-      await mkdir(join(tempDir, '.pika/templates/objective'), { recursive: true });
-      await mkdir(join(tempDir, '.pika/templates/task'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/objective'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/task'), { recursive: true });
       
       await writeFile(
-        join(tempDir, '.pika/templates/objective', 'parent-template.md'),
+        join(tempDir, '.bwrb/templates/objective', 'parent-template.md'),
         `---
 type: template
 template-for: objective
@@ -262,9 +262,9 @@ template-for: objective
 
   describe('findDefaultTemplate', () => {
     it('finds default.md template', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'default.md'),
+        join(tempDir, '.bwrb/templates/idea', 'default.md'),
         `---
 type: template
 template-for: idea
@@ -281,9 +281,9 @@ description: The default
     });
 
     it('returns null when no default template exists', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'other.md'),
+        join(tempDir, '.bwrb/templates/idea', 'other.md'),
         `---
 type: template
 template-for: idea
@@ -296,9 +296,9 @@ template-for: idea
     });
 
     it('returns null when default.md has wrong template-for', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'default.md'),
+        join(tempDir, '.bwrb/templates/idea', 'default.md'),
         `---
 type: template
 template-for: task
@@ -313,9 +313,9 @@ template-for: task
 
   describe('findTemplateByName', () => {
     it('finds template by name', async () => {
-      await mkdir(join(tempDir, '.pika/templates/task'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/task'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/task', 'bug-report.md'),
+        join(tempDir, '.bwrb/templates/task', 'bug-report.md'),
         `---
 type: template
 template-for: task
@@ -332,9 +332,9 @@ description: Bug template
     });
 
     it('finds template by name with .md extension', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'special.md'),
+        join(tempDir, '.bwrb/templates/idea', 'special.md'),
         `---
 type: template
 template-for: idea
@@ -353,9 +353,9 @@ template-for: idea
     });
 
     it('returns null when template-for does not match', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'wrong.md'),
+        join(tempDir, '.bwrb/templates/idea', 'wrong.md'),
         `---
 type: template
 template-for: task
@@ -435,9 +435,9 @@ template-for: task
     });
 
     it('finds specific template by name', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'special.md'),
+        join(tempDir, '.bwrb/templates/idea', 'special.md'),
         `---
 type: template
 template-for: idea
@@ -460,9 +460,9 @@ template-for: idea
     });
 
     it('finds default template when useDefault is true', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'default.md'),
+        join(tempDir, '.bwrb/templates/idea', 'default.md'),
         `---
 type: template
 template-for: idea
@@ -478,9 +478,9 @@ template-for: idea
     });
 
     it('auto-selects default.md when no flags provided', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'default.md'),
+        join(tempDir, '.bwrb/templates/idea', 'default.md'),
         `---
 type: template
 template-for: idea
@@ -488,7 +488,7 @@ template-for: idea
 `
       );
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'other.md'),
+        join(tempDir, '.bwrb/templates/idea', 'other.md'),
         `---
 type: template
 template-for: idea
@@ -505,9 +505,9 @@ template-for: idea
     });
 
     it('prompts when multiple templates but no default', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'alpha.md'),
+        join(tempDir, '.bwrb/templates/idea', 'alpha.md'),
         `---
 type: template
 template-for: idea
@@ -515,7 +515,7 @@ template-for: idea
 `
       );
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'beta.md'),
+        join(tempDir, '.bwrb/templates/idea', 'beta.md'),
         `---
 type: template
 template-for: idea
@@ -541,9 +541,9 @@ template-for: idea
 
   describe('parseTemplate with constraints', () => {
     it('parses template with constraints', async () => {
-      await mkdir(join(tempDir, '.pika/templates/idea'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/idea', 'urgent.md'),
+        join(tempDir, '.bwrb/templates/idea', 'urgent.md'),
         `---
 type: template
 template-for: idea
@@ -560,7 +560,7 @@ constraints:
 `
       );
 
-      const template = await parseTemplate(join(tempDir, '.pika/templates/idea', 'urgent.md'));
+      const template = await parseTemplate(join(tempDir, '.bwrb/templates/idea', 'urgent.md'));
 
       expect(template).not.toBeNull();
       expect(template?.constraints).toBeDefined();
@@ -571,9 +571,9 @@ constraints:
     });
 
     it('parses template with instances', async () => {
-      await mkdir(join(tempDir, '.pika/templates/draft'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/draft'), { recursive: true });
       await writeFile(
-        join(tempDir, '.pika/templates/draft', 'blog.md'),
+        join(tempDir, '.bwrb/templates/draft', 'blog.md'),
         `---
 type: template
 template-for: draft
@@ -591,7 +591,7 @@ instances:
 `
       );
 
-      const template = await parseTemplate(join(tempDir, '.pika/templates/draft', 'blog.md'));
+      const template = await parseTemplate(join(tempDir, '.bwrb/templates/draft', 'blog.md'));
 
       expect(template).not.toBeNull();
       expect(template?.instances).toBeDefined();
@@ -1023,9 +1023,9 @@ describe('createScaffoldedInstances', () => {
 
   it('loads and applies template if specified', async () => {
     // Create a template for the research type
-    await mkdir(join(tempDir, '.pika', 'templates', 'research'), { recursive: true });
+    await mkdir(join(tempDir, '.bwrb', 'templates', 'research'), { recursive: true });
     await writeFile(
-      join(tempDir, '.pika', 'templates', 'research', 'seo.md'),
+      join(tempDir, '.bwrb', 'templates', 'research', 'seo.md'),
       `---
 type: template
 template-for: research

@@ -19,8 +19,8 @@ export function resolveVaultDir(options: { vault?: string }): string {
   if (options.vault) {
     return options.vault;
   }
-  if (process.env['PIKA_VAULT']) {
-    return process.env['PIKA_VAULT'];
+  if (process.env['BWRB_VAULT']) {
+    return process.env['BWRB_VAULT'];
   }
   return process.cwd();
 }

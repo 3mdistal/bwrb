@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Pika** is a CLI tool for schema-driven note creation and editing in markdown vaults. It enforces consistent frontmatter structure, enables dynamic field prompts, and provides batch operations for vault maintenance.
+**Bowerbird** is a CLI tool for schema-driven note creation and editing in markdown vaults. It enforces consistent frontmatter structure, enables dynamic field prompts, and provides batch operations for vault maintenance.
 
 ## Architecture
 
@@ -36,9 +36,9 @@ src/
 
 ## Key Concepts
 
-- **Schema**: Each vault has `.pika/schema.json` defining types, enums, and dynamic sources
+- **Schema**: Each vault has `.bwrb/schema.json` defining types, enums, and dynamic sources
 - **Types**: Hierarchical (e.g., `objective/task`) with frontmatter definitions
-- **Templates**: Reusable note templates in `.pika/templates/{type}/{subtype}/*.md` with defaults and body structure
+- **Templates**: Reusable note templates in `.bwrb/templates/{type}/{subtype}/*.md` with defaults and body structure
 - **Dynamic sources**: Query vault files for field values (e.g., active milestones)
 - **Wikilinks**: `[[Note]]` or `"[[Note]]"` format for Obsidian linking
 

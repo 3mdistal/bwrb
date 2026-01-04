@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Pika are documented in this file.
+All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
@@ -10,58 +10,58 @@ All notable changes to Pika are documented in this file.
   - Types with `recursive: true` can now self-nest (e.g., tasks with subtasks)
   - Mixed hierarchies: recursive types that `extend` another type can have parent of either type
     - Example: A `scene` extends `chapter` with `recursive: true` - parent can be a chapter OR another scene
-  - Eager cycle detection: `pika new` and `pika edit` block parent references that would create cycles
+  - Eager cycle detection: `bwrb new` and `bwrb edit` block parent references that would create cycles
     - Error message shows the full cycle path for debugging
   - `source` field property now accepts an array of types for multi-type validation
   - New `src/lib/hierarchy.ts` module with shared cycle detection utilities
 
 - **Context field validation** (#99)
-  - `pika new --json` and `pika edit --json` now validate context field references
+  - `bwrb new --json` and `bwrb edit --json` now validate context field references
   - Validates that wikilink targets exist and match the field's `source` type constraint
   - Returns `invalid_context_source` errors with details (field, value, expected types, actual type)
-  - `pika audit --fix` now handles `invalid-source-type` issues interactively
+  - `bwrb audit --fix` now handles `invalid-source-type` issues interactively
   - Fix options: select valid replacement note, clear field, skip, or quit
 
 ### Changed
 
-- **Ownership model completion** (pika-9g9/#88)
+- **Ownership model completion** (bwrb-9g9/#88)
   - `queryByType()` now explicitly excludes owned notes from dynamic source results
   - Owned notes cannot be selected when populating frontmatter fields on other notes
-  - `pika list` continues to show all notes including owned (for discoverability)
+  - `bwrb list` continues to show all notes including owned (for discoverability)
   - Added documentation for ownership visibility semantics in type-system.md
 
 ### Added
 
-- **Schema management CLI** (pika-tsh)
-  - `pika schema edit-type <name>` - Modify type settings (output directory, extends, filename pattern)
-  - `pika schema remove-type <name>` - Remove a type from schema (dry-run by default, `--execute` to apply)
-  - `pika schema edit-field <type> <field>` - Modify field properties (required, default, label)
-  - `pika schema remove-field <type> <field>` - Remove a field from a type (dry-run by default)
+- **Schema management CLI** (bwrb-tsh)
+  - `bwrb schema edit-type <name>` - Modify type settings (output directory, extends, filename pattern)
+  - `bwrb schema remove-type <name>` - Remove a type from schema (dry-run by default, `--execute` to apply)
+  - `bwrb schema edit-field <type> <field>` - Modify field properties (required, default, label)
+  - `bwrb schema remove-field <type> <field>` - Remove a field from a type (dry-run by default)
   - All destructive operations show impact analysis (affected files, child types) before confirmation
   - Interactive mode for edit-field when no flags provided
   - Full JSON output support with `--output json`
 
-- **Schema migration system** (pika-3nd)
-  - `pika schema diff` - Shows pending changes between current schema and last-applied snapshot
-  - `pika schema migrate` - Applies schema changes to existing notes (dry-run by default)
-  - `pika schema history` - Shows migration history
+- **Schema migration system** (bwrb-3nd)
+  - `bwrb schema diff` - Shows pending changes between current schema and last-applied snapshot
+  - `bwrb schema migrate` - Applies schema changes to existing notes (dry-run by default)
+  - `bwrb schema history` - Shows migration history
   - Automatic change classification: deterministic (auto-apply) vs non-deterministic (requires confirmation)
   - Smart version suggestions based on change severity (major/minor/patch)
   - Backup by default when executing migrations (`--no-backup` to skip)
-  - Schema snapshots stored in `.pika/schema.applied.json`
-  - Migration history tracked in `.pika/migrations.json`
+  - Schema snapshots stored in `.bwrb/schema.applied.json`
+  - Migration history tracked in `.bwrb/migrations.json`
   - Supports field, enum, and type operations
   - See `docs/product/migrations.md` for full documentation
 
-- **Shell completion for bash, zsh, and fish** (pika-nn8b)
-  - `pika completion bash|zsh|fish` outputs shell scripts for tab completion
+- **Shell completion for bash, zsh, and fish** (bwrb-nn8b)
+  - `bwrb completion bash|zsh|fish` outputs shell scripts for tab completion
   - Completes commands, options, `--type` values (from schema), and `--path` values (vault directories)
   - Dynamic completions that always match the installed version
   - See README for installation instructions
 
-- **Unified CLI targeting model** (pika-s8kt)
+- **Unified CLI targeting model** (bwrb-s8kt)
   - All set-operating commands now support four composable selectors: `--type`, `--path`, `--where`, `--text`
-  - Selectors compose via AND: `pika list --type task --where "status=active" --path "Projects/*"`
+  - Selectors compose via AND: `bwrb list --type task --where "status=active" --path "Projects/*"`
   - Smart positional detection: first argument auto-detected as type, path (contains `/`), or where expression
   - **`list` command**: Added `--type`, `--path`, `--text` options; type positional now deprecated
   - **`bulk` command**: Added `--path`, `--text` options; type positional now deprecated
@@ -70,16 +70,16 @@ All notable changes to Pika are documented in this file.
   - **`delete` command**: Now supports bulk deletion with full targeting selectors
     - Two-gate safety model: requires explicit targeting + `--execute` flag
     - Dry-run by default shows files that would be deleted
-    - Example: `pika delete --type task --where "status=done" --execute`
+    - Example: `bwrb delete --type task --where "status=done" --execute`
   - Deprecation warnings for type positional argument (use `--type` instead)
   - New shared targeting module (`src/lib/targeting.ts`) for consistent behavior
 
-- **Targeting safety gate for `bulk` command** (pika-da6s)
+- **Targeting safety gate for `bulk` command** (bwrb-da6s)
   - Bulk operations now require explicit targeting to prevent accidental vault-wide mutations
   - Must specify `--where` filter(s) OR use `--all` flag before any operation runs
-  - Without targeting: `pika bulk idea --set x=y` now errors with:
+  - Without targeting: `bwrb bulk idea --set x=y` now errors with:
     `No files selected. Use --type, --path, --where, --text, or --all.`
-  - With targeting: `pika bulk idea --all --set x=y` or `pika bulk idea --where "status == 'x'" --set x=y`
+  - With targeting: `bwrb bulk idea --all --set x=y` or `bwrb bulk idea --where "status == 'x'" --set x=y`
   - This implements the "two-gate safety model" from docs/product/cli-targeting.md:
     1. **Targeting gate**: Must specify explicit scope (`--where` or `--all`)
     2. **Execution gate**: Must use `--execute` to apply changes (existing behavior)
@@ -88,14 +88,14 @@ All notable changes to Pika are documented in this file.
 
 ### Fixed
 
-- **`pika schema add-field meta` now works correctly** (pika-tsbb)
+- **`bwrb schema add-field meta` now works correctly** (bwrb-tsbb)
   - Previously failed with `Type "meta" not found in raw schema` when meta was implicit
   - Now creates the meta type definition in schema.json when adding a field to implicit meta
   - Fields added to meta correctly inherit to all types as documented in type-system.md
 
 ### Improved
 
-- **Better error messages for `--source` flag in dynamic fields** (pika-dbvv)
+- **Better error messages for `--source` flag in dynamic fields** (bwrb-dbvv)
   - Detects when user provides an enum value instead of a type name
     - e.g., `"person" is a value in the "entity-type" enum, not a type name`
   - Detects legacy path format usage and suggests correct syntax
@@ -107,7 +107,7 @@ All notable changes to Pika are documented in this file.
 
 ### Added
 
-- **`pika schema add-field` command** (pika-tev)
+- **`bwrb schema add-field` command** (bwrb-tev)
   - Add fields to existing types via CLI without editing schema.json directly
   - Interactive mode: prompts for field name, prompt type, and relevant options
   - Non-interactive mode: use `--type`, `--enum`, `--source`, `--value` flags with `--output json`
@@ -116,9 +116,9 @@ All notable changes to Pika are documented in this file.
   - Prevents duplicate fields and overriding inherited fields
   - Automatically updates field_order and validates the schema
   - Shows inheritance notes when adding fields to parent types
-  - Example: `pika schema add-field task priority --type select --enum priority`
+  - Example: `bwrb schema add-field task priority --type select --enum priority`
 
-- **PTY tests for schema add-type interactive wizard** (pika-h3xh)
+- **PTY tests for schema add-type interactive wizard** (bwrb-h3xh)
   - Comprehensive coverage for the interactive type creation flow
   - Tests for all field wizard prompt types: input, select, date, multi-input, dynamic, fixed value
   - Cancellation tests at each step (extends, output dir, field wizard)
@@ -126,7 +126,7 @@ All notable changes to Pika are documented in this file.
   - Error handling tests (non-existent parent type, no enums for select, no types for dynamic)
   - Early completion tests (done immediately, answer no to add fields)
 
-- **`pika schema add-type` command** (pika-w2a)
+- **`bwrb schema add-type` command** (bwrb-w2a)
   - Create new type definitions via CLI without editing schema.json directly
   - Interactive mode: prompts for parent type, output directory, and field definitions
   - Non-interactive mode: use `--extends`, `--output-dir` flags with `--output json`
@@ -134,20 +134,20 @@ All notable changes to Pika are documented in this file.
   - Validates type names (lowercase, alphanumeric with hyphens, no reserved names)
   - Validates parent type exists before creating child type
   - Automatically updates schema.json and validates the result
-  - Example: `pika schema add-type task --extends objective --output-dir Tasks`
+  - Example: `bwrb schema add-type task --extends objective --output-dir Tasks`
 
-- **`--open` flag for `search` and `list` commands** (pika-fkd)
-  - `pika search "My Note" --open` - Search for a note and open it in Obsidian/editor
-  - `pika list task --status=inbox --open` - Filter notes and pick one to open
+- **`--open` flag for `search` and `list` commands** (bwrb-fkd)
+  - `bwrb search "My Note" --open` - Search for a note and open it in Obsidian/editor
+  - `bwrb list task --status=inbox --open` - Filter notes and pick one to open
   - `--app <mode>` flag specifies how to open: obsidian (default), editor, system, print
-  - Respects `PIKA_DEFAULT_APP` environment variable
+  - Respects `BWRB_DEFAULT_APP` environment variable
   - Works with both name search and content search modes
   - For `list`, uses picker when multiple results (in interactive mode)
   - The `open` command is now an alias for `search --open` (kept for backward compatibility)
 
 ### Breaking Changes
 
-- **Removed `dynamic_sources` - use type-based sources instead** (pika-fqh)
+- **Removed `dynamic_sources` - use type-based sources instead** (bwrb-fqh)
   - The `dynamic_sources` section in schema.json is no longer supported
   - Schemas using `dynamic_sources` will error on load with a migration guide
   - **Migration**: Replace `source: "dynamic_source_name"` with `source: "type_name"` on fields
@@ -195,47 +195,47 @@ All notable changes to Pika are documented in this file.
 
 ### Added
 
-- **Enum management commands** (pika-1kr)
-  - `pika schema enum list` - Show all enums with their values and field usage
-  - `pika schema enum add <name>` - Create a new enum (interactive or `--values` flag)
-  - `pika schema enum update <name>` - Modify enum values (`--add`, `--remove`, `--rename`)
-  - `pika schema enum delete <name>` - Delete an enum (refuses if in use, `--force` to override)
+- **Enum management commands** (bwrb-1kr)
+  - `bwrb schema enum list` - Show all enums with their values and field usage
+  - `bwrb schema enum add <name>` - Create a new enum (interactive or `--values` flag)
+  - `bwrb schema enum update <name>` - Modify enum values (`--add`, `--remove`, `--rename`)
+  - `bwrb schema enum delete <name>` - Delete an enum (refuses if in use, `--force` to override)
   - Full JSON output support with `--output json` for all enum commands
   - Validation: enum names must be alphanumeric with hyphens/underscores, values cannot contain commas or newlines
-  - Note: Enum changes only update schema.json; use `pika bulk` or `pika audit --fix` to update existing notes
+  - Note: Enum changes only update schema.json; use `bwrb bulk` or `bwrb audit --fix` to update existing notes
 
 ### Breaking Changes
 
-- **Renamed project from ovault to pika**
-  - CLI command: `ovault` -> `pika`
-  - Config directory: `.ovault/` -> `.pika/`
-  - Environment variables: `OVAULT_*` -> `PIKA_*`
-    - `OVAULT_VAULT` -> `PIKA_VAULT`
-    - `OVAULT_DEFAULT_APP` -> `PIKA_DEFAULT_APP`
-    - `OVAULT_AUDIT_EXCLUDE` -> `PIKA_AUDIT_EXCLUDE`
-  - **Migration required**: Rename `.ovault/` to `.pika/` in your vaults
+- **Renamed project from ovault to bwrb**
+  - CLI command: `ovault` -> `bwrb`
+  - Config directory: `.ovault/` -> `.bwrb/`
+  - Environment variables: `OVAULT_*` -> `BWRB_*`
+    - `OVAULT_VAULT` -> `BWRB_VAULT`
+    - `OVAULT_DEFAULT_APP` -> `BWRB_DEFAULT_APP`
+    - `OVAULT_AUDIT_EXCLUDE` -> `BWRB_AUDIT_EXCLUDE`
+  - **Migration required**: Rename `.ovault/` to `.bwrb/` in your vaults
   - **Migration required**: Update any scripts or shell configs using `OVAULT_*` environment variables
 
 ### Added
 
-- **Ownership model for colocated notes** (pika-9g9)
+- **Ownership model for colocated notes** (bwrb-9g9)
   - Parent notes can declare ownership of child notes via `owned: true` on context fields
   - Owned notes are automatically colocated with their owner (e.g., `drafts/My Novel/research/`)
-  - `pika new` prompts for owner selection when creating ownable note types
+  - `bwrb new` prompts for owner selection when creating ownable note types
   - Supports `--owner "[[Note Name]]"` and `--standalone` flags for non-interactive use
-  - `pika audit` detects ownership violations:
+  - `bwrb audit` detects ownership violations:
     - `owned-note-referenced`: Non-owner referencing an owned note
     - `owned-wrong-location`: Owned note not in expected folder location
   - New schema field: `owned: true` on dynamic source fields declares child ownership
 
-- **Context field type validation in audit** (pika-taz)
-  - `pika audit` now validates that context fields (wikilink fields with `source` property) reference notes of the correct type
+- **Context field type validation in audit** (bwrb-taz)
+  - `bwrb audit` now validates that context fields (wikilink fields with `source` property) reference notes of the correct type
   - New issue code: `invalid-source-type` - reports when a field references a note of the wrong type
   - Example: If a task's `milestone` field has `source: "milestone"`, audit will error if it links to a task instead
   - Supports parent types: `source: "objective"` accepts objectives and all descendants (task, milestone, etc.)
   - JSON output includes `expectedType` and `actualType` for debugging
 
-- **Custom plural names for folder computation** (pika-2e1)
+- **Custom plural names for folder computation** (bwrb-2e1)
   - Add `plural` property to type definitions for custom folder naming
   - Example: `"research": { "plural": "research" }` → folder is `research/` not `researches/`
   - Auto-pluralization fallback for types without explicit plural (task → tasks, story → stories)
@@ -246,19 +246,19 @@ All notable changes to Pika are documented in this file.
    - Templates can now use dynamic date expressions like `today()` or `today() + '7d'` in defaults
    - Supported functions: `today()` (YYYY-MM-DD), `now()` (YYYY-MM-DD HH:MM)
    - Supports addition/subtraction with duration literals: `'7d'`, `'1w'`, `'2h'`, `'30min'`, `'1mon'`, `'1y'`
-   - Date expressions are validated during `pika template validate`
+   - Date expressions are validated during `bwrb template validate`
    - Example template default: `deadline: "today() + '7d'"` sets deadline to 7 days from creation
 
-- **`pika delete` command** (ovault-44z)
-   - Delete notes from the vault: `pika delete [query]`
+- **`bwrb delete` command** (ovault-44z)
+   - Delete notes from the vault: `bwrb delete [query]`
   - Query resolution with picker support (fzf, numbered, or auto-detect)
   - Interactive confirmation prompt (use `--force` to skip)
   - Backlink detection warns if other notes link to the file being deleted
   - JSON output mode with `--output json` (requires `--force`)
   - Completes the CRUD cycle for notes: new, edit, list, open, delete
 
-- **`pika template delete` command** (ovault-3gb)
-   - Delete templates via CLI: `pika template delete <type> <name>`
+- **`bwrb template delete` command** (ovault-3gb)
+   - Delete templates via CLI: `bwrb template delete <type> <name>`
   - Interactive confirmation prompt (use `--force` to skip)
   - JSON output mode with `--output json`
   - Completes the template CRUD cycle (list, show, new, edit, delete)
@@ -275,7 +275,7 @@ All notable changes to Pika are documented in this file.
    - The `name_field` property is no longer supported in schema definitions
    - All types now use a standard `"name"` field in JSON mode payloads
    - Interactive prompts show "Name:" for all types instead of custom labels
-   - **Migration required**: Remove all `name_field` entries from your `.pika/schema.json`
+   - **Migration required**: Remove all `name_field` entries from your `.bwrb/schema.json`
   - **JSON API change**: Use `{"name": "My Note"}` instead of `{"Task name": "My Note"}`
 
 ### Added
@@ -330,13 +330,13 @@ All notable changes to Pika are documented in this file.
 
 ### Breaking Changes
 
-- **Template location changed from `Templates/` to `.pika/templates/`** (ovault-33b)
-   - Templates are now stored in `.pika/templates/{type}/{subtype}/*.md`
+- **Template location changed from `Templates/` to `.bwrb/templates/`** (ovault-33b)
+   - Templates are now stored in `.bwrb/templates/{type}/{subtype}/*.md`
   - This keeps templates hidden from Obsidian's note browser and prevents accidental edits
   - Existing templates in `Templates/` will need to be migrated manually
 
 - **Renamed `link` command to `search`** (ovault-boe)
-   - `pika link` is now `pika search` with more flexible output options
+   - `bwrb link` is now `bwrb search` with more flexible output options
   - Default output is now just the note name (previously was wikilink `[[Name]]`)
   - Use `--wikilink` flag to get the old default behavior
   - Removed `--bare` flag (name-only output is now the default)
@@ -345,10 +345,10 @@ All notable changes to Pika are documented in this file.
 ### Added
 
 - **Body sections via `_body` in JSON mode** (ovault-slq)
-   - The `--json` flag for `pika new` now accepts a `_body` field to populate body sections
+   - The `--json` flag for `bwrb new` now accepts a `_body` field to populate body sections
   - Eliminates the need to create a note, read it, then edit it to populate body content
   - Section content can be string (for paragraphs) or string[] (for bullets/checkboxes)
-   - Example: `pika new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'`
+   - Example: `bwrb new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'`
   - Validates section names against schema and provides helpful error messages with available sections
   - Works with templates: body input is merged into template body
 
@@ -363,7 +363,7 @@ All notable changes to Pika are documented in this file.
   - `-E, --regex` treats pattern as regex (default: literal string)
   - `-l, --limit <n>` caps maximum files returned (default: 100)
   - JSON output includes match details with line numbers and context
-   - Example: `pika search "deploy" --text --type task --status!=done`
+   - Example: `bwrb search "deploy" --text --type task --status!=done`
 
 - **New `search` command output formats** (ovault-boe)
   - `--wikilink` - Output `[[Name]]` format for Obsidian links
@@ -380,11 +380,11 @@ All notable changes to Pika are documented in this file.
   - Use `--content` flag to include file contents in JSON output (opt-in to avoid large payloads)
 
 - **New `template` command for template management** (ovault-33b)
-   - `pika template list [type]` - List all templates or filter by type
-   - `pika template show <type> <name>` - Show template details
-   - `pika template validate [type]` - Validate templates against schema with full error reporting
-   - `pika template new <type>` - Create new templates interactively or via JSON
-   - `pika template edit <type> <name>` - Edit existing templates interactively or via JSON
+   - `bwrb template list [type]` - List all templates or filter by type
+   - `bwrb template show <type> <name>` - Show template details
+   - `bwrb template validate [type]` - Validate templates against schema with full error reporting
+   - `bwrb template new <type>` - Create new templates interactively or via JSON
+   - `bwrb template edit <type> <name>` - Edit existing templates interactively or via JSON
   - Full validation: type path exists, defaults match field enums, prompt-fields reference valid fields
   - Typo suggestions using Levenshtein distance for field names and enum values
   - JSON mode support for all subcommands (`--output json` or `--json`)
@@ -465,8 +465,8 @@ Complete rewrite from shell scripts to TypeScript with significant new features.
   - Full JSON mode support for automation
 
 - **Navigation commands** (`open`, `link`)
-  - `pika open [query]` - Open notes in Obsidian, editor, or system default
-   - `pika search [query]` - Find notes and generate wikilinks
+  - `bwrb open [query]` - Open notes in Obsidian, editor, or system default
+   - `bwrb search [query]` - Find notes and generate wikilinks
   - Picker modes: fzf, numbered select, or auto-detect
   - `OVAULT_DEFAULT_APP` environment variable for default app mode
   - PR #10

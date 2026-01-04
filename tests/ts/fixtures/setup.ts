@@ -100,12 +100,12 @@ export const TEST_SCHEMA = {
 };
 
 export async function createTestVault(): Promise<string> {
-  const vaultDir = await mkdtemp(join(tmpdir(), 'pika-test-'));
+  const vaultDir = await mkdtemp(join(tmpdir(), 'bwrb-test-'));
 
-  // Create .pika directory and schema
-  await mkdir(join(vaultDir, '.pika'), { recursive: true });
+  // Create .bwrb directory and schema
+  await mkdir(join(vaultDir, '.bwrb'), { recursive: true });
   await writeFile(
-    join(vaultDir, '.pika', 'schema.json'),
+    join(vaultDir, '.bwrb', 'schema.json'),
     JSON.stringify(TEST_SCHEMA, null, 2)
   );
 
@@ -167,12 +167,12 @@ status: settled
 `
   );
 
-  // Create template directories and sample templates in .pika/templates/
-  await mkdir(join(vaultDir, '.pika/templates/idea'), { recursive: true });
-  await mkdir(join(vaultDir, '.pika/templates/task'), { recursive: true });
+  // Create template directories and sample templates in .bwrb/templates/
+  await mkdir(join(vaultDir, '.bwrb/templates/idea'), { recursive: true });
+  await mkdir(join(vaultDir, '.bwrb/templates/task'), { recursive: true });
 
   await writeFile(
-    join(vaultDir, '.pika/templates/idea', 'default.md'),
+    join(vaultDir, '.bwrb/templates/idea', 'default.md'),
     `---
 type: template
 template-for: idea
@@ -197,7 +197,7 @@ defaults:
   );
 
   await writeFile(
-    join(vaultDir, '.pika/templates/task', 'default.md'),
+    join(vaultDir, '.bwrb/templates/task', 'default.md'),
     `---
 type: template
 template-for: task
@@ -216,7 +216,7 @@ defaults:
   );
 
   await writeFile(
-    join(vaultDir, '.pika/templates/task', 'bug-report.md'),
+    join(vaultDir, '.bwrb/templates/task', 'bug-report.md'),
     `---
 type: template
 template-for: task
@@ -246,7 +246,7 @@ prompt-fields:
 
   // Template with date expression defaults for testing
   await writeFile(
-    join(vaultDir, '.pika/templates/task', 'weekly-review.md'),
+    join(vaultDir, '.bwrb/templates/task', 'weekly-review.md'),
     `---
 type: template
 template-for: task
@@ -281,7 +281,7 @@ export interface CLIResult {
 }
 
 /**
- * Run the pika CLI with arguments and capture output.
+ * Run the bwrb CLI with arguments and capture output.
  * @param args CLI arguments (e.g., ['list', 'idea', '--status=raw'])
  * @param vaultDir Optional vault directory (passed via --vault)
  * @param stdin Optional stdin input for interactive commands
