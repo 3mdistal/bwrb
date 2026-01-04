@@ -75,7 +75,7 @@ Targeting Options:
   --type <type>     Filter by type (e.g., idea, objective/task)
   --path <glob>     Filter by file path pattern
   --where <expr>    Filter by frontmatter expression
-  --text <query>    Filter by body content
+  --body <query>    Filter by body content
 
 Examples:
   bwrb audit                      # Check all files (report only)
@@ -83,7 +83,7 @@ Examples:
   bwrb audit --strict             # Error on unknown fields
   bwrb audit --path "Ideas/**"    # Check specific directory
   bwrb audit --where "status=active"  # Check files with specific status
-  bwrb audit --text "TODO"        # Check files containing TODO
+  bwrb audit --body "TODO"        # Check files containing TODO
   bwrb audit --only missing-required
   bwrb audit --ignore unknown-field
   bwrb audit --output json        # JSON output for CI
@@ -92,7 +92,8 @@ Examples:
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path pattern')
   .option('-w, --where <expr...>', 'Filter by frontmatter expression')
-  .option('--text <query>', 'Filter by body content')
+  .option('-b, --body <query>', 'Filter by body content')
+  .option('--text <query>', 'Filter by body content (deprecated: use --body)', undefined)
   .option('--strict', 'Treat unknown fields as errors instead of warnings')
   .option('--only <issue-type>', 'Only report specific issue type')
   .option('--ignore <issue-type>', 'Ignore specific issue type')
@@ -103,7 +104,8 @@ Examples:
   .action(async (target: string | undefined, options: AuditOptions & {
     type?: string;
     where?: string[];
-    text?: string;
+    body?: string;
+    text?: string; // deprecated
   }, cmd: Command) => {
     const jsonMode = options.output === 'json';
     const fixMode = options.fix ?? false;
@@ -126,10 +128,16 @@ Examples:
       const vaultDir = resolveVaultDir(parentOpts ?? {});
       const schema = await loadSchema(vaultDir);
 
+      // Handle --text deprecation
+      if (options.text) {
+        console.error('Warning: --text is deprecated, use --body instead');
+      }
+
       // Build targeting options from flags
       let typePath = options.type;
       let pathGlob = options.path;
       let whereExprs = options.where;
+      const bodyQuery = options.body ?? options.text;
 
       // Handle positional argument with smart detection
       if (target) {
@@ -198,7 +206,7 @@ Examples:
         strict: options.strict ?? false,
         pathFilter: pathGlob,
         whereExpressions: whereExprs,
-        textQuery: options.text,
+        textQuery: bodyQuery,
         onlyIssue: options.only as IssueCode | undefined,
         ignoreIssue: options.ignore as IssueCode | undefined,
         allowedFields,

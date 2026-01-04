@@ -253,9 +253,9 @@ status: backlog
     });
   });
 
-  describe('content search (--text)', () => {
-    it('should search file contents with --text flag', async () => {
-      const result = await runCLI(['search', 'type', '--text'], vaultDir);
+  describe('content search (--body)', () => {
+    it('should search file contents with --body flag', async () => {
+      const result = await runCLI(['search', 'type', '--body'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       // Should find "type:" in frontmatter
@@ -263,14 +263,14 @@ status: backlog
     });
 
     it('should require a pattern for content search', async () => {
-      const result = await runCLI(['search', '--text'], vaultDir);
+      const result = await runCLI(['search', '--body'], vaultDir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('pattern is required');
     });
 
     it('should filter by type with --type flag', async () => {
-      const result = await runCLI(['search', 'status', '--text', '--type', 'idea'], vaultDir);
+      const result = await runCLI(['search', 'status', '--body', '--type', 'idea'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       // Should only find matches in Ideas directory
@@ -282,7 +282,7 @@ status: backlog
     });
 
     it('should output JSON with matches', async () => {
-      const result = await runCLI(['search', 'status', '--text', '--output', 'json'], vaultDir);
+      const result = await runCLI(['search', 'status', '--body', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -296,7 +296,7 @@ status: backlog
     });
 
     it('should show context lines by default', async () => {
-      const result = await runCLI(['search', 'status', '--text'], vaultDir);
+      const result = await runCLI(['search', 'status', '--body'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       // Context lines use - as separator, match lines use :
@@ -308,7 +308,7 @@ status: backlog
     });
 
     it('should hide context with --no-context', async () => {
-      const result = await runCLI(['search', 'status', '--text', '--no-context'], vaultDir);
+      const result = await runCLI(['search', 'status', '--body', '--no-context'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       // All lines should be match lines (with :line:)
@@ -320,7 +320,7 @@ status: backlog
     });
 
     it('should be case-insensitive by default', async () => {
-      const result = await runCLI(['search', 'STATUS', '--text', '--no-context'], vaultDir);
+      const result = await runCLI(['search', 'STATUS', '--body', '--no-context'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       // Should find matches even though we searched uppercase
@@ -328,8 +328,8 @@ status: backlog
     });
 
     it('should respect --case-sensitive flag', async () => {
-      const resultInsensitive = await runCLI(['search', 'STATUS', '--text', '--no-context'], vaultDir);
-      const resultSensitive = await runCLI(['search', 'STATUS', '--text', '--no-context', '--case-sensitive'], vaultDir);
+      const resultInsensitive = await runCLI(['search', 'STATUS', '--body', '--no-context'], vaultDir);
+      const resultSensitive = await runCLI(['search', 'STATUS', '--body', '--no-context', '--case-sensitive'], vaultDir);
 
       // Case-insensitive should find matches
       expect(resultInsensitive.stdout.trim().length).toBeGreaterThan(0);
@@ -338,7 +338,7 @@ status: backlog
     });
 
     it('should support regex with --regex flag', async () => {
-      const result = await runCLI(['search', 'status:.*', '--text', '--no-context', '--regex'], vaultDir);
+      const result = await runCLI(['search', 'status:.*', '--body', '--no-context', '--regex'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       // Should find "status: raw", "status: backlog", etc.
@@ -347,7 +347,7 @@ status: backlog
 
     it('should filter results with --where expression', async () => {
       const result = await runCLI([
-        'search', 'status', '--text', '--type', 'idea',
+        'search', 'status', '--body', '--type', 'idea',
         '--where', "status == 'raw'",
         '--no-context'
       ], vaultDir);
@@ -362,7 +362,7 @@ status: backlog
 
     it('should filter results with simple --field=value syntax', async () => {
       const result = await runCLI([
-        'search', 'status', '--text', '--type', 'idea',
+        'search', 'status', '--body', '--type', 'idea',
         '--status=raw',
         '--no-context'
       ], vaultDir);
@@ -377,7 +377,7 @@ status: backlog
 
     it('should filter results with negation --field!=value syntax', async () => {
       const result = await runCLI([
-        'search', 'status', '--text', '--type', 'idea',
+        'search', 'status', '--body', '--type', 'idea',
         '--status!=raw',
         '--no-context'
       ], vaultDir);
@@ -391,14 +391,14 @@ status: backlog
     });
 
     it('should return empty for no matches', async () => {
-      const result = await runCLI(['search', 'xyznonexistent123', '--text'], vaultDir);
+      const result = await runCLI(['search', 'xyznonexistent123', '--body'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout.trim()).toBe('');
     });
 
     it('should return empty JSON for no matches', async () => {
-      const result = await runCLI(['search', 'xyznonexistent123', '--text', '--output', 'json'], vaultDir);
+      const result = await runCLI(['search', 'xyznonexistent123', '--body', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -407,7 +407,7 @@ status: backlog
     });
 
     it('should respect --limit flag', async () => {
-      const result = await runCLI(['search', 'type', '--text', '--output', 'json', '--limit', '1'], vaultDir);
+      const result = await runCLI(['search', 'type', '--body', '--output', 'json', '--limit', '1'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -419,7 +419,7 @@ status: backlog
       const result = await runCLI(['search', '--help'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('--text');
+      expect(result.stdout).toContain('--body');
       expect(result.stdout).toContain('--type');
       expect(result.stdout).toContain('--where');
       expect(result.stdout).toContain('--context');
@@ -431,7 +431,7 @@ status: backlog
     describe('filter validation with --type', () => {
       it('should error on invalid filter field when --type is specified', async () => {
         const result = await runCLI([
-          'search', 'status', '--text', '--type', 'idea',
+          'search', 'status', '--body', '--type', 'idea',
           '--nonexistent=value'
         ], vaultDir);
 
@@ -442,7 +442,7 @@ status: backlog
 
       it('should error on invalid enum value when --type is specified', async () => {
         const result = await runCLI([
-          'search', 'status', '--text', '--type', 'idea',
+          'search', 'status', '--body', '--type', 'idea',
           '--status=invalid'
         ], vaultDir);
 
@@ -453,7 +453,7 @@ status: backlog
 
       it('should output JSON error for invalid field when --type is specified', async () => {
         const result = await runCLI([
-          'search', 'status', '--text', '--type', 'idea',
+          'search', 'status', '--body', '--type', 'idea',
           '--nonexistent=value', '--output', 'json'
         ], vaultDir);
 
@@ -465,7 +465,7 @@ status: backlog
 
       it('should output JSON error for invalid enum value when --type is specified', async () => {
         const result = await runCLI([
-          'search', 'status', '--text', '--type', 'idea',
+          'search', 'status', '--body', '--type', 'idea',
           '--status=invalid', '--output', 'json'
         ], vaultDir);
 
@@ -479,7 +479,7 @@ status: backlog
         // Without --type, there's no schema context, so filters are not validated
         // They just silently won't match anything
         const result = await runCLI([
-          'search', 'status', '--text',
+          'search', 'status', '--body',
           '--nonexistent=value'
         ], vaultDir);
 
@@ -489,7 +489,7 @@ status: backlog
 
       it('should accept valid filter with --type', async () => {
         const result = await runCLI([
-          'search', 'status', '--text', '--type', 'idea',
+          'search', 'status', '--body', '--type', 'idea',
           '--status=raw', '--no-context'
         ], vaultDir);
 

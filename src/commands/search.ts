@@ -3,7 +3,7 @@
  *
  * Two modes:
  * 1. Name search (default): Resolves a query to notes by name/path
- * 2. Content search (--text): Full-text search using ripgrep
+ * 2. Content search (--body): Full-text search using ripgrep
  */
 
 import { Command } from 'commander';
@@ -47,6 +47,8 @@ interface SearchOptions {
   app?: string;
   preview?: boolean;
   // Content search options
+  body?: boolean;
+  /** @deprecated Use body instead */
   text?: boolean;
   type?: string;
   where?: string[];
@@ -73,7 +75,7 @@ interface SearchResultData {
 
 export const searchCommand = new Command('search')
   .description('Search for notes by name or content')
-  .argument('[query]', 'Search pattern (name/path for default mode, content pattern for --text)')
+  .argument('[query]', 'Search pattern (name/path for default mode, content pattern for --body)')
   .option('--wikilink', 'Output [[Name]] format for Obsidian links')
   .option('--path', 'Output vault-relative path with extension')
   .option('--content', 'Output full file contents (frontmatter + body)')
@@ -83,8 +85,9 @@ export const searchCommand = new Command('search')
   .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
   .option('-o, --output <format>', 'Output format: text (default) or json')
   // Content search options
-  .option('-t, --text', 'Full-text content search (uses ripgrep)')
-  .option('--type <type>', 'Restrict search to a type (e.g., idea, objective/task)')
+  .option('-b, --body', 'Full-text content search (uses ripgrep)')
+  .option('--text', 'DEPRECATED: use --body')
+  .option('-t, --type <type>', 'Restrict search to a type (e.g., idea, objective/task)')
   .option('--path-glob <pattern>', 'Filter by file path glob pattern (e.g., "Projects/**")')
   .option('-w, --where <expression...>', 'Filter results by frontmatter expression')
   .option('-C, --context <lines>', 'Lines of context around matches (default: 2)')
@@ -109,12 +112,12 @@ Name Search (default):
     numbered    Force numbered select
     none        Error on ambiguity (for non-interactive use)
 
-Content Search (--text):
+Content Search (--body):
   Full-text search across note contents using ripgrep.
   
   Options:
-    -t, --text           Enable content search mode
-    --type <type>        Restrict to specific type (e.g., task, objective/task)
+    -b, --body           Enable content search mode
+    -t, --type <type>    Restrict to specific type (e.g., task, objective/task)
     --path-glob <pat>    Filter by path pattern (e.g., "Projects/**")
     -w, --where <expr>   Filter by frontmatter (e.g., "status != 'done'")
     -C, --context <n>    Show n lines of context (default: 2)
@@ -151,18 +154,24 @@ Examples:
   bwrb search "My Note" --open --app editor  # Find and open in $EDITOR
   
   # Content search
-  bwrb search "deploy" --text              # Search all notes for "deploy"
-  bwrb search "deploy" -t --type task      # Search only in tasks
-  bwrb search "TODO" -t --status!=done     # Simple filter syntax
-  bwrb search "TODO" -t --where "status != 'done'"  # Expression filter
-  bwrb search "error.*log" -t --regex      # Regex search
-  bwrb search "deploy" -t --output json    # JSON output with matches
-  bwrb search "deploy" -t --open           # Search and open first match
+  bwrb search "deploy" --body              # Search all notes for "deploy"
+  bwrb search "deploy" -b -t task          # Search only in tasks
+  bwrb search "TODO" -b --status!=done     # Simple filter syntax
+  bwrb search "TODO" -b --where "status != 'done'"  # Expression filter
+  bwrb search "error.*log" -b --regex      # Regex search
+  bwrb search "deploy" -b --output json    # JSON output with matches
+  bwrb search "deploy" -b --open           # Search and open first match
   
   # Piping
   bwrb search "bug" -t --path | xargs -I {} code {}`)
   .action(async (query: string | undefined, options: SearchOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
+
+    // Handle deprecated --text flag
+    if (options.text) {
+      console.error('Warning: --text is deprecated, use --body instead');
+      options.body = true;
+    }
 
     try {
       const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
@@ -170,7 +179,7 @@ Examples:
       const schema = await loadSchema(vaultDir);
 
       // Dispatch to appropriate search mode
-      if (options.text) {
+      if (options.body) {
         await handleContentSearch(query, options, vaultDir, schema, jsonMode, cmd);
       } else {
         await handleNameSearch(query, options, vaultDir, schema, jsonMode, cmd);
@@ -200,7 +209,7 @@ async function handleContentSearch(
 ): Promise<void> {
   // Validate query is provided for content search
   if (!query) {
-    const error = 'Search pattern is required for content search (--text)';
+    const error = 'Search pattern is required for content search (--body)';
     if (jsonMode) {
       printJson(jsonError(error));
       process.exit(ExitCodes.VALIDATION_ERROR);

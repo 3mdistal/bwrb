@@ -41,7 +41,8 @@ import type { LoadedSchema } from '../types/schema.js';
 interface BulkCommandOptions {
   type?: string;
   path?: string;
-  text?: string;
+  body?: string;
+  text?: string; // deprecated
   all?: boolean;
   set?: string[];
   rename?: string[];
@@ -64,7 +65,7 @@ export const bulkCommand = new Command('bulk')
 Safety (Two-Gate Model):
   Bulk operations require explicit targeting to prevent accidents.
   
-  1. Targeting gate: Specify selectors (--type, --path, --where, --text) OR use --all
+  1. Targeting gate: Specify selectors (--type, --path, --where, --body) OR use --all
   2. Execution gate: Use --execute to apply changes (dry-run by default)
 
   # Error: no targeting specified
@@ -84,7 +85,7 @@ Selectors (compose via AND):
   -t, --type <type>           Filter by type (e.g., task, objective/milestone)
   -p, --path <glob>           Filter by file path (supports globs)
   -w, --where <expression>    Filter by frontmatter (can repeat, ANDed)
-  --text <query>              Filter by body content
+  --body <query>              Filter by body content
 
 Operations:
   --set <field>=<value>       Set field value
@@ -117,7 +118,7 @@ Examples:
   bwrb bulk --path "Archive/**" --set archived=true --execute
 
   # Target by content
-  bwrb bulk --text "TODO" --set needs-review=true --execute
+  bwrb bulk --body "TODO" --set needs-review=true --execute
 
   # Target all managed files
   bwrb bulk --all --set reviewed=true --execute
@@ -139,7 +140,8 @@ Examples:
   .argument('[target]', 'Type, path, or where expression (auto-detected) [DEPRECATED: use --type, --path, or --where]')
   .option('-t, --type <type>', 'Filter by type (e.g., task, objective/milestone)')
   .option('-p, --path <glob>', 'Filter by file path (supports globs)')
-  .option('--text <query>', 'Filter by body content')
+  .option('-b, --body <query>', 'Filter by body content')
+  .option('--text <query>', 'Filter by body content (deprecated: use --body)', undefined)
   .option('--set <field=value...>', 'Set field value (or clear with --set field=)')
   .option('--rename <old=new...>', 'Rename field')
   .option('--delete <field...>', 'Delete field')
@@ -163,10 +165,16 @@ Examples:
       const vaultDir = resolveVaultDir(parentOpts ?? {});
       const schema = await loadSchema(vaultDir);
 
+      // Handle --text deprecation
+      if (options.text) {
+        console.error('Warning: --text is deprecated, use --body instead');
+      }
+
       // Build targeting options from flags
       let typePath = options.type;
       let pathGlob = options.path;
       let whereExpressions = options.where ?? [];
+      const bodyQuery = options.body ?? options.text;
 
       // Handle positional argument (deprecated)
       if (target) {
@@ -240,7 +248,7 @@ Examples:
         ...(typePath && { type: typePath }),
         ...(pathGlob && { path: pathGlob }),
         ...(whereExpressions.length > 0 && { where: whereExpressions }),
-        ...(options.text && { text: options.text }),
+        ...(bodyQuery && { body: bodyQuery }),
         ...(options.all && { all: options.all }),
       });
 
@@ -390,7 +398,7 @@ Hint: Bulk operations require explicit targeting to prevent accidents.
       const result = await executeBulk({
         ...(typePath !== undefined && { typePath }),
         ...(pathGlob !== undefined && { pathGlob }),
-        ...(options.text !== undefined && { textQuery: options.text }),
+        ...(bodyQuery !== undefined && { textQuery: bodyQuery }),
         operations,
         whereExpressions,
         simpleFilters,

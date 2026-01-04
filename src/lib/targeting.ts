@@ -6,7 +6,7 @@
  * - --type: Filter by note type (e.g., 'task', 'idea')
  * - --path: Filter by file path glob (e.g., 'Projects/**')
  * - --where: Filter by frontmatter expression (e.g., 'status=active')
- * - --text: Filter by body content search
+ * - --body: Filter by body content search
  *
  * Safety model:
  * - Read-only commands: implicit --all (no targeting = all notes)
@@ -46,6 +46,8 @@ export interface TargetingOptions {
   /** Filter by frontmatter expression (e.g., 'status=active') */
   where?: string[];
   /** Filter by body content search pattern */
+  body?: string;
+  /** @deprecated Use `body` instead */
   text?: string;
   /** Explicit flag to target all notes (required for destructive commands without other targeting) */
   all?: boolean;
@@ -280,7 +282,8 @@ export async function resolveTargets(
   schema: LoadedSchema,
   vaultDir: string
 ): Promise<TargetingResult> {
-  const hasTargeting = !!(options.type || options.path || options.where?.length || options.text);
+  const bodyFilter = options.body ?? options.text;
+  const hasTargeting = !!(options.type || options.path || options.where?.length || bodyFilter);
 
   try {
     // Step 1: Discover base files
@@ -308,11 +311,11 @@ export async function resolveTargets(
       }
     }
 
-    // Step 3: Filter by content search (--text)
+    // Step 3: Filter by content search (--body)
     // Do this BEFORE frontmatter parsing to reduce the set of files we need to parse
-    if (options.text) {
+    if (bodyFilter) {
       const searchOpts: Parameters<typeof searchContent>[0] = {
-        pattern: options.text,
+        pattern: bodyFilter,
         vaultDir,
         schema,
         contextLines: 0, // We don't need context for filtering
@@ -414,6 +417,7 @@ export function validateDestructiveTargeting(
     options.type ||
     options.path ||
     options.where?.length ||
+    options.body ||
     options.text
   );
 
@@ -426,7 +430,7 @@ export function validateDestructiveTargeting(
         '  --type <type>     Filter by note type\n' +
         '  --path <glob>     Filter by file path\n' +
         '  --where <expr>    Filter by frontmatter\n' +
-        '  --text <query>    Filter by content\n' +
+        '  --body <query>    Filter by content\n' +
         '  --all             Target all notes\n\n' +
         'Then add --execute to apply changes.',
     };
@@ -470,8 +474,8 @@ export function formatTargetingSummary(options: TargetingOptions): string {
   if (options.where && options.where.length > 0) {
     parts.push(`where=(${options.where.join(' AND ')})`);
   }
-  if (options.text) {
-    parts.push(`text="${options.text}"`);
+  if (options.body || options.text) {
+    parts.push(`body="${options.body ?? options.text}"`);
   }
 
   if (parts.length === 0) {
@@ -489,6 +493,7 @@ export function hasAnyTargeting(options: TargetingOptions): boolean {
     options.type ||
     options.path ||
     options.where?.length ||
+    options.body ||
     options.text ||
     options.all
   );

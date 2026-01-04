@@ -186,8 +186,8 @@ describe('targeting', () => {
       expect(result.valid).toBe(true);
     });
 
-    it('passes with --text', () => {
-      const result = validateDestructiveTargeting({ text: 'TODO' });
+    it('passes with --body', () => {
+      const result = validateDestructiveTargeting({ body: 'TODO' });
       expect(result.valid).toBe(true);
     });
 
@@ -208,7 +208,7 @@ describe('targeting', () => {
     it('formats single selector', () => {
       expect(formatTargetingSummary({ type: 'task' })).toBe('type=task');
       expect(formatTargetingSummary({ path: 'Projects/**' })).toBe('path=Projects/**');
-      expect(formatTargetingSummary({ text: 'TODO' })).toBe('text="TODO"');
+      expect(formatTargetingSummary({ body: 'TODO' })).toBe('body="TODO"');
     });
 
     it('formats --all', () => {
@@ -239,7 +239,7 @@ describe('targeting', () => {
       expect(hasAnyTargeting({ type: 'task' })).toBe(true);
       expect(hasAnyTargeting({ path: '**' })).toBe(true);
       expect(hasAnyTargeting({ where: ['status=active'] })).toBe(true);
-      expect(hasAnyTargeting({ text: 'TODO' })).toBe(true);
+      expect(hasAnyTargeting({ body: 'TODO' })).toBe(true);
       expect(hasAnyTargeting({ all: true })).toBe(true);
     });
   });

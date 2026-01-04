@@ -51,7 +51,8 @@ interface DeleteOptions {
   type?: string;
   path?: string;
   where?: string[];
-  text?: string;
+  body?: string;
+  text?: string; // deprecated
   all?: boolean;
   execute?: boolean;
 }
@@ -132,7 +133,8 @@ export const deleteCommand = new Command('delete')
   .option('-t, --type <type>', 'Filter by type (e.g., "task", "objective/milestone")')
   .option('-p, --path <glob>', 'Filter by path glob (e.g., "Projects/**")')
   .option('-w, --where <expr...>', 'Filter by frontmatter expression (e.g., "status=active")')
-  .option('--text <query>', 'Filter by body content search')
+  .option('-b, --body <query>', 'Filter by body content search')
+  .option('--text <query>', 'Filter by body content search (deprecated: use --body)', undefined)
   .option('-a, --all', 'Select all notes (required for bulk delete without other targeting)')
   .option('-x, --execute', 'Actually delete files (default is dry-run for bulk operations)')
   // Original options
@@ -149,12 +151,12 @@ Modes:
     bwrb delete --type task         Dry-run: show tasks that would be deleted
     bwrb delete --type task -x      Actually delete all tasks
     bwrb delete --where "status=archived" --execute
-    bwrb delete --text "DELETE ME" --execute
+    bwrb delete --body "DELETE ME" --execute
     bwrb delete --all --execute     Delete ALL notes (dangerous!)
 
 Safety:
   Bulk delete requires TWO gates:
-  1. Explicit targeting (--type, --path, --where, --text) or --all
+  1. Explicit targeting (--type, --path, --where, --body) or --all
   2. --execute flag to actually perform deletion
 
 Picker Modes:
@@ -182,12 +184,18 @@ Note: Deletion is permanent. The file is removed from the filesystem.
       const vaultDir = resolveVaultDir(parentOpts ?? {});
       const schema = await loadSchema(vaultDir);
 
+      // Handle --text deprecation
+      if (options.text) {
+        console.error('Warning: --text is deprecated, use --body instead');
+      }
+
       // Check if using bulk targeting selectors
+      const bodyQuery = options.body ?? options.text;
       const targetingOpts: TargetingOptions = {
         ...(options.type && { type: options.type }),
         ...(options.path && { path: options.path }),
         ...(options.where && { where: options.where }),
-        ...(options.text && { text: options.text }),
+        ...(bodyQuery && { body: bodyQuery }),
         ...(options.all && { all: options.all }),
       };
 

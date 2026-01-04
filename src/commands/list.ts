@@ -32,7 +32,8 @@ import {
 interface ListCommandOptions {
   type?: string;
   path?: string;
-  text?: string;
+  body?: string;
+  text?: string; // deprecated
   paths?: boolean;
   fields?: string;
   where?: string[];
@@ -55,7 +56,7 @@ Targeting Selectors (compose via AND):
   --type <type>        Filter by type (e.g., task, objective/milestone)
   --path <glob>        Filter by file path (e.g., Projects/**, Ideas/)
   --where <expr>       Filter by frontmatter expression (can repeat)
-  --text <query>       Filter by body content (uses ripgrep)
+  --body <query>       Filter by body content (uses ripgrep)
 
 Expression Filters (--where):
   bwrb list --type task --where "status == 'in-progress'"
@@ -70,7 +71,7 @@ Smart Positional Detection:
 Examples:
   bwrb list --type idea
   bwrb list --type task --where "status == 'done'"
-  bwrb list --path "Projects/**" --text "TODO"
+  bwrb list --path "Projects/**" --body "TODO"
   bwrb list --type task --output json
   bwrb list --type task --open                    # Pick from tasks and open
   bwrb list --type task --where "status=inbox" --open
@@ -84,7 +85,8 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .argument('[positional]', 'Smart positional: type, path (contains /), or where expression (contains =<>~)')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path glob (e.g., Projects/**, Ideas/)')
-  .option('--text <query>', 'Filter by body content search')
+  .option('-b, --body <query>', 'Filter by body content search')
+  .option('--text <query>', 'Filter by body content search (deprecated: use --body)', undefined)
   .option('--paths', 'Show file paths instead of names')
   .option('--fields <fields>', 'Show frontmatter fields in a table (comma-separated)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
@@ -112,7 +114,12 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       if (options.type) targeting.type = options.type;
       if (options.path) targeting.path = options.path;
       if (options.where) targeting.where = options.where;
-      if (options.text) targeting.text = options.text;
+      // Handle --body (new) and --text (deprecated)
+      if (options.text) {
+        console.error('Warning: --text is deprecated, use --body instead');
+      }
+      const bodyQuery = options.body ?? options.text;
+      if (bodyQuery) targeting.body = bodyQuery;
 
       // Check for deprecated simple filter flags (--field=value)
       const filterArgs = cmd.args.slice(positional ? 1 : 0);
@@ -245,7 +252,7 @@ function showListUsage(schema: LoadedSchema): void {
   console.log('  --type <type>        Filter by type path');
   console.log('  --path <glob>        Filter by file path glob');
   console.log('  --where "expr"       Filter with expression (can be repeated)');
-  console.log('  --text <query>       Filter by body content');
+  console.log('  --body <query>       Filter by body content');
   console.log('');
   console.log('Other Options:');
   console.log('  --paths              Show file paths instead of names');
