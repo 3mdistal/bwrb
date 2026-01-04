@@ -87,7 +87,7 @@ describe('relative vault path handling', () => {
 
     it('should show paths with relative vault path', async () => {
       const result = await runCLI([
-        '--vault', relativeVaultPath, 'search', '--path', 'Sample Task', '--picker', 'none',
+        '--vault', relativeVaultPath, 'search', '--output', 'paths', 'Sample Task', '--picker', 'none',
       ]);
 
       expect(result.exitCode).toBe(0);

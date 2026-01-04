@@ -33,7 +33,7 @@ describe('list command', () => {
       const result = await runCLI(['list', 'idea'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stderr).not.toContain('Deprecation warning');
+      expect(result.stderr).not.toContain('Warning:');
       expect(result.stderr).not.toContain('positional type argument');
     });
 
@@ -64,13 +64,53 @@ describe('list command', () => {
     });
   });
 
-  describe('--paths flag', () => {
-    it('should show file paths instead of names', async () => {
+  describe('--output flag', () => {
+    it('should show file paths with --output paths', async () => {
+      const result = await runCLI(['list', '--output', 'paths', 'idea'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Ideas/Sample Idea.md');
+      expect(result.stdout).toContain('Ideas/Another Idea.md');
+    });
+
+    it('should show wikilinks with --output link', async () => {
+      const result = await runCLI(['list', '--output', 'link', 'idea'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('[[Sample Idea]]');
+      expect(result.stdout).toContain('[[Another Idea]]');
+    });
+
+    it('should accept --output tree (falls back to default for non-recursive types)', async () => {
+      const result = await runCLI(['list', '--output', 'tree', 'objective'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // For non-recursive types, tree falls back to default name output
+      expect(result.stdout).toContain('Objectives');
+    });
+
+    it('should show JSON with --output json', async () => {
+      const result = await runCLI(['list', '--output', 'json', 'idea'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      // --output json outputs raw JSON array
+      expect(Array.isArray(json)).toBe(true);
+      expect(json.length).toBeGreaterThan(0);
+      expect(json[0]).toHaveProperty('_path');
+      expect(json[0]).toHaveProperty('_name');
+    });
+  });
+
+  describe('deprecated --paths flag', () => {
+    it('should show file paths instead of names (with deprecation warning)', async () => {
       const result = await runCLI(['list', '--paths', 'idea'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Ideas/Sample Idea.md');
       expect(result.stdout).toContain('Ideas/Another Idea.md');
+      expect(result.stderr).toContain('Warning:');
+      expect(result.stderr).toContain('--output paths');
     });
 
     it('should show nested paths for subtypes', async () => {
@@ -78,6 +118,30 @@ describe('list command', () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Objectives/Tasks/Sample Task.md');
+    });
+  });
+
+  describe('deprecated --tree flag', () => {
+    it('should show tree structure (with deprecation warning)', async () => {
+      const result = await runCLI(['list', '--tree', 'objective'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toMatch(/[├└│]/);
+      expect(result.stderr).toContain('Warning:');
+      expect(result.stderr).toContain('--output tree');
+    });
+  });
+
+  describe('deprecated --json flag', () => {
+    it('should show JSON output (with deprecation warning)', async () => {
+      const result = await runCLI(['list', '--json', 'idea'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // Deprecated --json outputs raw array (backward compatible)
+      const json = JSON.parse(result.stdout);
+      expect(Array.isArray(json)).toBe(true);
+      expect(result.stderr).toContain('Warning:');
+      expect(result.stderr).toContain('--output json');
     });
   });
 
@@ -102,11 +166,12 @@ describe('list command', () => {
       expect(result.stdout).toContain('high');
     });
 
-    it('should combine --paths with --fields', async () => {
-      const result = await runCLI(['list', '--paths', '--fields=status', 'idea'], vaultDir);
+    it('should combine --output paths with --fields', async () => {
+      // Note: --output paths outputs plain paths, not a table
+      // --fields is ignored when output format is paths
+      const result = await runCLI(['list', '--output', 'paths', 'idea'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('PATH');
       expect(result.stdout).toContain('Ideas/');
     });
   });

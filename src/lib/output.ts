@@ -6,6 +6,26 @@ import chalk from 'chalk';
 export type OutputMode = 'text' | 'json';
 
 /**
+ * Output format options for list command.
+ * 'text' is an alias for 'default' (the standard table/name output).
+ */
+export type ListOutputFormat = 'default' | 'text' | 'paths' | 'tree' | 'link' | 'json';
+
+/**
+ * Output format options for search command.
+ * 'text' is an alias for 'default' (filename + matching lines).
+ */
+export type SearchOutputFormat = 'default' | 'text' | 'paths' | 'link' | 'content' | 'json';
+
+/**
+ * Emit a deprecation warning to stderr.
+ * Warnings go to stderr so they don't interfere with piped output.
+ */
+export function warnDeprecated(oldFlag: string, newUsage: string): void {
+  console.error(chalk.yellow(`Warning: ${oldFlag} is deprecated, use ${newUsage} instead`));
+}
+
+/**
  * JSON output wrapper for success results.
  */
 export interface JsonSuccess<T = unknown> {

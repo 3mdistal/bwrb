@@ -16,6 +16,8 @@ import {
   printJson,
   jsonError,
   ExitCodes,
+  warnDeprecated,
+  type ListOutputFormat,
 } from '../lib/output.js';
 import { openNote } from './open.js';
 import { pickFile, parsePickerMode } from '../lib/picker.js';
@@ -29,15 +31,51 @@ import {
   type TargetingOptions,
 } from '../lib/targeting.js';
 
+/**
+ * Resolve the output format from --output flag and deprecated flags.
+ * Emits deprecation warnings for old flags.
+ */
+function resolveListOutputFormat(options: ListCommandOptions): ListOutputFormat {
+  // Check deprecated flags first (they take precedence for backwards compat)
+  if (options.json) {
+    warnDeprecated('--json', '--output json');
+    return 'json';
+  }
+  if (options.paths) {
+    warnDeprecated('--paths', '--output paths');
+    return 'paths';
+  }
+  if (options.tree) {
+    warnDeprecated('--tree', '--output tree');
+    return 'tree';
+  }
+
+  // Check --output flag
+  if (options.output) {
+    // 'text' is an alias for 'default'
+    if (options.output === 'text') {
+      return 'default';
+    }
+    const validFormats: ListOutputFormat[] = ['default', 'paths', 'tree', 'link', 'json'];
+    if (validFormats.includes(options.output as ListOutputFormat)) {
+      return options.output as ListOutputFormat;
+    }
+    // Invalid format - will be caught by validation or default to 'default'
+  }
+
+  return 'default';
+}
+
 interface ListCommandOptions {
   type?: string;
   path?: string;
   body?: string;
   text?: string; // deprecated
-  paths?: boolean;
+  paths?: boolean; // deprecated
   fields?: string;
   where?: string[];
   output?: string;
+  json?: boolean; // deprecated
   // Open options
   open?: boolean;
   app?: string;
@@ -45,7 +83,7 @@ interface ListCommandOptions {
   roots?: boolean;
   childrenOf?: string;
   descendantsOf?: string;
-  tree?: boolean;
+  tree?: boolean; // deprecated (use --output tree)
   depth?: string;
 }
 
@@ -87,10 +125,11 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('-p, --path <glob>', 'Filter by file path glob (e.g., Projects/**, Ideas/)')
   .option('-b, --body <query>', 'Filter by body content search')
   .option('--text <query>', 'Filter by body content search (deprecated: use --body)', undefined)
-  .option('--paths', 'Show file paths instead of names')
+  .option('--paths', 'Output file paths (deprecated: use --output paths)')
+  .option('--json', 'Output as JSON (deprecated: use --output json)')
   .option('--fields <fields>', 'Show frontmatter fields in a table (comma-separated)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('-o, --output <format>', 'Output format: text (default), paths, tree, link, json')
   // Open options
   .option('--open', 'Open the first result (or pick from results interactively)')
   .option('--app <mode>', 'How to open: obsidian (default), editor, system, print')
@@ -98,11 +137,13 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--roots', 'Only show notes with no parent (root nodes)')
   .option('--children-of <note>', 'Only show direct children of the specified note (wikilink format)')
   .option('--descendants-of <note>', 'Only show all descendants of the specified note')
-  .option('--tree', 'Display notes as a tree hierarchy')
+  .option('--tree', 'Display as tree (deprecated: use --output tree)')
   .option('--depth <n>', 'Limit tree/descendants depth (use with --tree or --descendants-of)')
   .allowUnknownOption(true)
   .action(async (positional: string | undefined, options: ListCommandOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
+    // Resolve output format from --output flag and deprecated flags
+    const outputFormat = resolveListOutputFormat(options);
+    const jsonMode = outputFormat === 'json';
 
     try {
       const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
@@ -199,11 +240,10 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       const depth = options.depth ? parseInt(options.depth, 10) : undefined;
       
       await listObjects(schema, vaultDir, targeting.type, targetResult.files, {
-        showPaths: options.paths ?? false,
+        outputFormat,
         ...(fields !== undefined && { fields }),
         filters,
         whereExpressions: [], // Already applied by resolveTargets
-        jsonMode,
         // Open options
         open: options.open,
         app: options.app,
@@ -211,7 +251,6 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         roots: options.roots,
         childrenOf: options.childrenOf,
         descendantsOf: options.descendantsOf,
-        tree: options.tree,
         depth,
       });
     } catch (err) {
@@ -226,11 +265,10 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   });
 
 interface ListOptions {
-  showPaths: boolean;
+  outputFormat: ListOutputFormat;
   fields?: string[] | undefined;
   filters: { field: string; operator: 'eq' | 'neq'; values: string[] }[];
   whereExpressions: string[];
-  jsonMode: boolean;
   // Open options
   open?: boolean | undefined;
   app?: string | undefined;
@@ -238,7 +276,6 @@ interface ListOptions {
   roots?: boolean | undefined;
   childrenOf?: string | undefined;
   descendantsOf?: string | undefined;
-  tree?: boolean | undefined;
   depth?: number | undefined;
 }
 
@@ -287,13 +324,15 @@ async function listObjects(
     frontmatter: f.frontmatter,
   }));
 
+  const jsonMode = options.outputFormat === 'json';
+
   // Apply any remaining deprecated filters
   if (options.filters.length > 0) {
     filteredFiles = await applyFrontmatterFilters(filteredFiles, {
       filters: options.filters,
       whereExpressions: options.whereExpressions,
       vaultDir,
-      silent: options.jsonMode,
+      silent: jsonMode,
     });
   }
 
@@ -349,7 +388,7 @@ async function listObjects(
 
   // Handle no results
   if (filteredFiles.length === 0) {
-    if (options.jsonMode) {
+    if (jsonMode) {
       console.log(JSON.stringify([], null, 2));
     }
     return;
@@ -382,36 +421,54 @@ async function listObjects(
       targetPath = filteredFiles[0]!.path;
     }
     
-    await openNote(vaultDir, targetPath, options.app, options.jsonMode);
-    return;
-  }
-
-  // JSON output mode
-  if (options.jsonMode) {
-    const jsonOutput = filteredFiles.map(({ path, frontmatter }) => ({
-      _path: relative(vaultDir, path),
-      _name: basename(path, '.md'),
-      ...frontmatter,
-    }));
-    console.log(JSON.stringify(jsonOutput, null, 2));
-    return;
-  }
-
-  // Tree output for recursive types
-  if (options.tree && isRecursive) {
-    const parentMap = buildParentMap(filteredFiles);
-    const tree = buildTree(filteredFiles, parentMap, options.depth);
-    printTree(tree, vaultDir, options.showPaths ?? false);
+    await openNote(vaultDir, targetPath, options.app, jsonMode);
     return;
   }
 
   // Output based on format
-  if (options.fields && options.fields.length > 0) {
-    printTable(filteredFiles, vaultDir, options);
-  } else if (options.showPaths) {
-    for (const { path } of filteredFiles) {
-      console.log(relative(vaultDir, path));
+  const showPaths = options.outputFormat === 'paths';
+
+  switch (options.outputFormat) {
+    case 'json': {
+      const jsonOutput = filteredFiles.map(({ path, frontmatter }) => ({
+        _path: relative(vaultDir, path),
+        _name: basename(path, '.md'),
+        ...frontmatter,
+      }));
+      console.log(JSON.stringify(jsonOutput, null, 2));
+      return;
     }
+
+    case 'tree': {
+      if (isRecursive) {
+        const parentMap = buildParentMap(filteredFiles);
+        const tree = buildTree(filteredFiles, parentMap, options.depth);
+        printTree(tree, vaultDir, showPaths);
+        return;
+      }
+      // Fall through to default if not recursive
+      break;
+    }
+
+    case 'link': {
+      for (const { path } of filteredFiles) {
+        const name = basename(path, '.md');
+        console.log(`[[${name}]]`);
+      }
+      return;
+    }
+
+    case 'paths': {
+      for (const { path } of filteredFiles) {
+        console.log(relative(vaultDir, path));
+      }
+      return;
+    }
+  }
+
+  // Default output (table with fields or simple names)
+  if (options.fields && options.fields.length > 0) {
+    printTable(filteredFiles, vaultDir, showPaths, options.fields);
   } else {
     for (const { path } of filteredFiles) {
       console.log(basename(path, '.md'));
@@ -425,10 +482,10 @@ async function listObjects(
 function printTable(
   files: { path: string; frontmatter: Record<string, unknown> }[],
   vaultDir: string,
-  options: ListOptions
+  showPaths: boolean,
+  fields: string[]
 ): void {
-  const fields = options.fields ?? [];
-  const headers = [options.showPaths ? 'PATH' : 'NAME', ...fields.map(f => f.toUpperCase())];
+  const headers = [showPaths ? 'PATH' : 'NAME', ...fields.map(f => f.toUpperCase())];
 
   const table = new Table({
     head: headers,
@@ -436,7 +493,7 @@ function printTable(
   });
 
   for (const { path, frontmatter } of files) {
-    const name = options.showPaths ? relative(vaultDir, path) : basename(path, '.md');
+    const name = showPaths ? relative(vaultDir, path) : basename(path, '.md');
     const row: string[] = [name];
 
     for (const field of fields) {

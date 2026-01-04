@@ -4,6 +4,18 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Unified `--output` flag for list and search commands** (#118)
+  - `list` command: `--output <format>` with choices: `default`, `paths`, `tree`, `link`, `json`
+  - `search` command: `--output <format>` with choices: `default`, `paths`, `link`, `content`, `json`
+  - New `link` format outputs wikilinks (`[[Note Name]]`)
+  - Renamed `--path-glob` to `--path`/`-p` for file path filtering in search (targeting)
+  - **Deprecated flags** (still work but emit warnings):
+    - `list`: `--paths` → use `--output paths`, `--tree` → use `--output tree`, `--json` → use `--output json`
+    - `search`: `--wikilink` → use `--output link`, `--content` → use `--output content`, `--path-output` → use `--output paths`
+  - Aligns with CLI design principle: "same flag means same thing everywhere"
+
 ### Added
 
 - **Recursive type support with cycle detection** (#95)

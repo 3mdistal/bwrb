@@ -37,38 +37,78 @@ describe('search command', () => {
     });
   });
 
-  describe('--wikilink output', () => {
-    it('should output wikilink with --wikilink flag', async () => {
-      const result = await runCLI(['search', 'Sample Idea', '--wikilink'], vaultDir);
+  describe('--output flag', () => {
+    it('should output wikilink with --output link', async () => {
+      const result = await runCLI(['search', 'Sample Idea', '--output', 'link'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout.trim()).toBe('[[Sample Idea]]');
     });
-  });
 
-  describe('--path output', () => {
-    it('should output relative path with --path flag', async () => {
-      const result = await runCLI(['search', 'Sample Idea', '--path'], vaultDir);
+    it('should output relative path with --output paths', async () => {
+      const result = await runCLI(['search', 'Sample Idea', '--output', 'paths'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout.trim()).toBe('Ideas/Sample Idea.md');
     });
-  });
 
-  describe('--content output', () => {
-    it('should output full file contents with --content flag', async () => {
-      const result = await runCLI(['search', 'Sample Idea', '--content'], vaultDir);
+    it('should output full file contents with --output content', async () => {
+      const result = await runCLI(['search', 'Sample Idea', '--output', 'content'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('---');
       expect(result.stdout).toContain('type: idea');
       expect(result.stdout).toContain('status: raw');
     });
+
+    it('should output JSON with --output json', async () => {
+      const result = await runCLI(['search', 'Sample Idea', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(Array.isArray(json.data)).toBe(true);
+    });
   });
 
-  describe('output format priority', () => {
-    it('should prioritize --content over --path and --wikilink', async () => {
-      const result = await runCLI(['search', 'Sample Idea', '--wikilink', '--path', '--content'], vaultDir);
+  describe('deprecated --wikilink flag', () => {
+    it('should output wikilink with --wikilink flag (with deprecation warning)', async () => {
+      const result = await runCLI(['search', 'Sample Idea', '--wikilink'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('[[Sample Idea]]');
+      expect(result.stderr).toContain('Warning');
+      expect(result.stderr).toContain('--output link');
+    });
+  });
+
+  describe('deprecated --path-output flag', () => {
+    it('should output relative path with --path-output flag (with deprecation warning)', async () => {
+      const result = await runCLI(['search', 'Sample Idea', '--path-output'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('Ideas/Sample Idea.md');
+      expect(result.stderr).toContain('Warning');
+      expect(result.stderr).toContain('--output paths');
+    });
+  });
+
+  describe('deprecated --content flag', () => {
+    it('should output full file contents with --content flag (with deprecation warning)', async () => {
+      const result = await runCLI(['search', 'Sample Idea', '--content'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('---');
+      expect(result.stdout).toContain('type: idea');
+      expect(result.stdout).toContain('status: raw');
+      expect(result.stderr).toContain('Warning');
+      expect(result.stderr).toContain('--output content');
+    });
+  });
+
+  describe('deprecated output format priority', () => {
+    it('should prioritize --content over --wikilink', async () => {
+      const result = await runCLI(['search', 'Sample Idea', '--wikilink', '--content'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       // Should output content (highest priority)
@@ -77,13 +117,39 @@ describe('search command', () => {
       expect(result.stderr).toContain('Warning');
       expect(result.stderr).toContain('--content');
     });
+  });
 
-    it('should prioritize --path over --wikilink', async () => {
-      const result = await runCLI(['search', 'Sample Idea', '--wikilink', '--path'], vaultDir);
+  describe('--path targeting (renamed from --path-glob)', () => {
+    it('should filter by file path pattern with -p', async () => {
+      const result = await runCLI(['search', 'Idea', '-p', 'Ideas/*', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout.trim()).toBe('Ideas/Sample Idea.md');
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      // Should only find ideas in Ideas/ directory
+      for (const item of json.data) {
+        expect(item.path).toMatch(/^Ideas\//);
+      }
+    });
+
+    it('should filter by file path pattern with --path (targeting)', async () => {
+      const result = await runCLI(['search', 'Task', '--path', 'Objectives/**/*', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+    });
+  });
+
+  describe('deprecated --path-glob flag', () => {
+    it('should still work with deprecation warning', async () => {
+      const result = await runCLI(['search', 'Idea', '--path-glob', 'Ideas/*', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
       expect(result.stderr).toContain('Warning');
+      expect(result.stderr).toContain('--path');
     });
   });
 

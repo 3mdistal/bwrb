@@ -12,7 +12,7 @@ import { basename } from 'path';
 import { resolveVaultDir } from '../lib/vault.js';
 import { loadSchema, getTypeDefByPath } from '../lib/schema.js';
 import { printError } from '../lib/prompt.js';
-import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError } from '../lib/output.js';
+import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError, warnDeprecated, type SearchOutputFormat } from '../lib/output.js';
 import { openNote } from './open.js';
 import {
   buildNoteIndex,
@@ -38,10 +38,13 @@ import { minimatch } from 'minimatch';
 interface SearchOptions {
   picker?: string;
   output?: string;
+  // Deprecated output flags (use --output instead)
   wikilink?: boolean;
-  path?: boolean;
-  pathGlob?: string;  // --path-glob for filtering by path pattern
+  pathOutput?: boolean;  // old --path (output flag), now deprecated
   content?: boolean;
+  // Targeting options
+  path?: string;  // new --path for targeting (was --path-glob)
+  pathGlob?: string;  // deprecated alias for --path
   // Open options
   open?: boolean;
   app?: string;
@@ -59,8 +62,6 @@ interface SearchOptions {
   limit?: string;
 }
 
-type OutputFormat = 'name' | 'wikilink' | 'path' | 'content';
-
 interface SearchResultData {
   name: string;
   wikilink: string;
@@ -70,25 +71,73 @@ interface SearchResultData {
 }
 
 // ============================================================================
+// Output Format Resolution
+// ============================================================================
+
+/**
+ * Resolve the search output format from options.
+ * Handles deprecated flags (--wikilink, --path-output, --content) with warnings.
+ * Priority: explicit --output > deprecated flags > default
+ */
+function resolveSearchOutputFormat(options: SearchOptions): SearchOutputFormat {
+  // Check for deprecated flags first and emit warnings
+  if (options.wikilink) {
+    warnDeprecated('--wikilink', '--output link');
+  }
+  if (options.pathOutput) {
+    warnDeprecated('--path-output', '--output paths');
+  }
+  if (options.content) {
+    warnDeprecated('--content', '--output content');
+  }
+
+  // If explicit --output is provided, use it (takes precedence)
+  if (options.output) {
+    // 'text' is an alias for 'default'
+    if (options.output === 'text') {
+      return 'default';
+    }
+    const format = options.output as SearchOutputFormat;
+    // Validate the format
+    const validFormats: SearchOutputFormat[] = ['default', 'paths', 'link', 'content', 'json'];
+    if (validFormats.includes(format)) {
+      return format;
+    }
+    // Invalid format - fall through to deprecated flag handling
+  }
+
+  // Fall back to deprecated flags (priority: content > path > wikilink > default)
+  if (options.content) return 'content';
+  if (options.pathOutput) return 'paths';
+  if (options.wikilink) return 'link';
+
+  return 'default';
+}
+
+// ============================================================================
 // Command Definition
 // ============================================================================
 
 export const searchCommand = new Command('search')
   .description('Search for notes by name or content')
   .argument('[query]', 'Search pattern (name/path for default mode, content pattern for --body)')
-  .option('--wikilink', 'Output [[Name]] format for Obsidian links')
-  .option('--path', 'Output vault-relative path with extension')
-  .option('--content', 'Output full file contents (frontmatter + body)')
+  // Output format (new unified flag)
+  .option('-o, --output <format>', 'Output format: text (default), paths, link, content, json')
+  // Deprecated output flags (still work but emit warnings)
+  .option('--wikilink', 'DEPRECATED: use --output link')
+  .option('--path-output', 'DEPRECATED: use --output paths')
+  .option('--content', 'DEPRECATED: use --output content')
+  // Open and picker options
   .option('--open', 'Open the selected note after search')
   .option('--app <mode>', 'How to open: obsidian (default), editor, system, print')
   .option('--preview', 'Show file preview in fzf picker (requires fzf)')
   .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
   // Content search options
   .option('-b, --body', 'Full-text content search (uses ripgrep)')
   .option('--text', 'DEPRECATED: use --body')
   .option('-t, --type <type>', 'Restrict search to a type (e.g., idea, objective/task)')
-  .option('--path-glob <pattern>', 'Filter by file path glob pattern (e.g., "Projects/**")')
+  .option('-p, --path <pattern>', 'Filter by file path glob pattern (e.g., "Projects/**")')
+  .option('--path-glob <pattern>', 'DEPRECATED: use --path')
   .option('-w, --where <expression...>', 'Filter results by frontmatter expression')
   .option('-C, --context <lines>', 'Lines of context around matches (default: 2)')
   .option('--no-context', 'Do not show context lines')
@@ -100,11 +149,12 @@ export const searchCommand = new Command('search')
 Name Search (default):
   Searches by note name, basename, or path.
   
-  Output Formats (mutually exclusive, priority: content > path > wikilink > name):
-    (default)     Output just the note name (basename without .md)
-    --wikilink    Output [[Name]] format for Obsidian links
-    --path        Output vault-relative path with extension
-    --content     Output full file contents (frontmatter + body)
+  Output Formats (--output):
+    name        Output just the note name (default)
+    paths       Output vault-relative path with extension
+    link        Output [[Name]] format for Obsidian links
+    content     Output full file contents (frontmatter + body)
+    json        Output as JSON
 
   Picker Modes:
     auto        Use fzf if available, else numbered select (default)
@@ -118,7 +168,7 @@ Content Search (--body):
   Options:
     -b, --body           Enable content search mode
     -t, --type <type>    Restrict to specific type (e.g., task, objective/task)
-    --path-glob <pat>    Filter by path pattern (e.g., "Projects/**")
+    -p, --path <pat>     Filter by path pattern (e.g., "Projects/**")
     -w, --where <expr>   Filter by frontmatter (e.g., "status != 'done'")
     -C, --context <n>    Show n lines of context (default: 2)
     --no-context         Don't show context lines
@@ -149,7 +199,7 @@ Environment Variables:
 Examples:
   # Name search
   bwrb search "My Note"                    # Find by name
-  bwrb search "My Note" --wikilink         # Output: [[My Note]]
+  bwrb search "My Note" --output link      # Output: [[My Note]]
   bwrb search "My Note" --open             # Find and open in Obsidian
   bwrb search "My Note" --open --app editor  # Find and open in $EDITOR
   
@@ -163,14 +213,22 @@ Examples:
   bwrb search "deploy" -b --open           # Search and open first match
   
   # Piping
-  bwrb search "bug" -t --path | xargs -I {} code {}`)
+  bwrb search "bug" -t --output paths | xargs -I {} code {}`)
   .action(async (query: string | undefined, options: SearchOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
+    // Resolve output format from deprecated flags and new --output option
+    const outputFormat = resolveSearchOutputFormat(options);
+    const jsonMode = outputFormat === 'json';
 
     // Handle deprecated --text flag
     if (options.text) {
-      console.error('Warning: --text is deprecated, use --body instead');
+      warnDeprecated('--text', '--body');
       options.body = true;
+    }
+
+    // Handle deprecated --path-glob flag
+    if (options.pathGlob && !options.path) {
+      warnDeprecated('--path-glob', '--path');
+      options.path = options.pathGlob;
     }
 
     try {
@@ -180,9 +238,9 @@ Examples:
 
       // Dispatch to appropriate search mode
       if (options.body) {
-        await handleContentSearch(query, options, vaultDir, schema, jsonMode, cmd);
+        await handleContentSearch(query, options, vaultDir, schema, jsonMode, outputFormat, cmd);
       } else {
-        await handleNameSearch(query, options, vaultDir, schema, jsonMode, cmd);
+        await handleNameSearch(query, options, vaultDir, schema, jsonMode, outputFormat, cmd);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -205,6 +263,7 @@ async function handleContentSearch(
   vaultDir: string,
   schema: import('../types/schema.js').LoadedSchema,
   jsonMode: boolean,
+  outputFormat: SearchOutputFormat,
   cmd: Command
 ): Promise<void> {
   // Validate query is provided for content search
@@ -340,7 +399,6 @@ async function handleContentSearch(
 
     // Output the selected file based on format
     const index = await buildNoteIndex(schema, vaultDir);
-    const outputFormat = determineOutputFormat(options, jsonMode);
     await outputTextResult(index, pickerResult.selected, outputFormat);
   } else {
     // Non-interactive mode
@@ -422,10 +480,10 @@ async function handleNameSearch(
   vaultDir: string,
   schema: import('../types/schema.js').LoadedSchema,
   jsonMode: boolean,
+  outputFormat: SearchOutputFormat,
   _cmd: Command
 ): Promise<void> {
   const pickerMode = parsePickerMode(options.picker);
-  const outputFormat = determineOutputFormat(options, jsonMode);
 
   // JSON mode implies non-interactive (but returns all matches instead of error)
   const effectivePickerMode: PickerMode = jsonMode ? 'none' : pickerMode;
@@ -482,26 +540,7 @@ async function handleNameSearch(
 // Helpers
 // ============================================================================
 
-/**
- * Determine output format from options with priority handling.
- * Priority: content > path > wikilink > name (default)
- */
-function determineOutputFormat(options: SearchOptions, jsonMode: boolean): OutputFormat {
-  const flags: OutputFormat[] = [];
-
-  if (options.content) flags.push('content');
-  if (options.path) flags.push('path');
-  if (options.wikilink) flags.push('wikilink');
-
-  // Warn if multiple flags provided (to stderr so it doesn't break piping)
-  if (flags.length > 1 && !jsonMode) {
-    const flagNames = flags.map(f => `--${f}`).join(', ');
-    console.error(`Warning: Multiple output format flags provided (${flagNames}). Using --${flags[0]}.`);
-  }
-
-  // Return highest priority flag, or default to 'name'
-  return flags[0] ?? 'name';
-}
+// determineOutputFormat is now replaced by resolveSearchOutputFormat above
 
 /**
  * Build search result data for one or more files.
@@ -540,7 +579,7 @@ async function buildSearchResults(
 async function outputTextResult(
   index: NoteIndex,
   file: ManagedFile,
-  format: OutputFormat
+  format: SearchOutputFormat
 ): Promise<void> {
   switch (format) {
     case 'content': {
@@ -548,13 +587,13 @@ async function outputTextResult(
       console.log(content);
       break;
     }
-    case 'path':
+    case 'paths':
       console.log(file.relativePath);
       break;
-    case 'wikilink':
+    case 'link':
       console.log(generateWikilink(index, file));
       break;
-    case 'name':
+    case 'default':
     default:
       console.log(basename(file.relativePath, '.md'));
       break;
