@@ -217,17 +217,37 @@ Target: <15 top-level commands that cover all use cases.
 - `bwrb schema` — Inspect and manage schema
 - `bwrb template` — Manage note templates
 
-**Open questions:**
-- Merge `list` and `search`?
-- Merge `open` into `search`?
-- Add AI commands (`ingest`, `costs`)?
+**Schema and Template use unified verbs:**
+
+The same verbs that work on notes also work on schema and templates, reducing learning burden:
+
+```bash
+# Schema management
+bwrb schema new [type|field|enum]    # Create (prompts if noun omitted)
+bwrb schema edit [type|field|enum]   # Edit with picker
+bwrb schema delete [type|field|enum] # Delete (dry-run default)
+bwrb schema list [types|fields|enums] # List/show
+
+# Template management
+bwrb template new [type]      # Create template
+bwrb template edit [type/name] # Edit with picker
+bwrb template delete [type/name]
+bwrb template list [type]
+```
+
+**Decisions made:**
+- `open` is an alias for `search --open`
+- `edit` is an alias for `search --edit`
+- `list` remains separate (structured query output vs search/action)
+- AI commands deferred to post-V1.0
 
 ### Design Principles
 
 1. **Consistent flags** — Same flag means same thing everywhere
-2. **JSON mode everywhere** — `--output json` on all commands
-3. **Dry-run default for destructive ops** — `--execute` to apply
-4. **Predictable nesting** — Subcommands only where natural (`schema show`, `template list`)
+2. **Unified verbs** — `new`, `edit`, `delete`, `list`, `search` work everywhere
+3. **JSON mode everywhere** — `--output json` on all commands
+4. **Dry-run default for destructive ops** — `--execute` to apply
+5. **Discoverable prompts** — Missing required info prompts, doesn't error
 
 ---
 
