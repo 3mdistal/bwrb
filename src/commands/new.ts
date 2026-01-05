@@ -141,7 +141,8 @@ Template Discovery:
           vaultDir,
           typePath,
           options.json!,
-          template
+          template,
+          { owner: options.owner, standalone: options.standalone }
         );
         
         printJson(jsonSuccess({ path: relative(vaultDir, filePath) }));
@@ -237,7 +238,8 @@ async function createNoteFromJson(
   vaultDir: string,
   typePath: string,
   jsonInput: string,
-  template?: Template | null
+  template?: Template | null,
+  ownershipOptions?: { owner?: string | undefined; standalone?: boolean | undefined }
 ): Promise<string> {
   // Parse JSON input
   let inputData: Record<string, unknown>;
@@ -254,6 +256,40 @@ async function createNoteFromJson(
   if (!typeDef) {
     printJson(jsonError(`Unknown type: ${typePath}`));
     process.exit(ExitCodes.VALIDATION_ERROR);
+  }
+
+  // Validate ownership flags
+  const ownerArg = ownershipOptions?.owner;
+  const standaloneArg = ownershipOptions?.standalone;
+  
+  // Error if both --owner and --standalone are provided
+  if (ownerArg && standaloneArg) {
+    printJson(jsonError('Cannot use both --owner and --standalone flags together'));
+    process.exit(ExitCodes.VALIDATION_ERROR);
+  }
+  
+  const typeName = typeDef.name;
+  const canBeOwned = typeCanBeOwned(schema, typeName);
+  
+  // Error if --standalone is used on a type that cannot be owned (meaningless flag)
+  if (standaloneArg && !canBeOwned) {
+    printJson(jsonError(`Type '${typePath}' cannot be owned, so --standalone is not applicable.`));
+    process.exit(ExitCodes.VALIDATION_ERROR);
+  }
+  
+  // Resolve ownership if --owner is provided
+  let owner: OwnerNoteRef | undefined;
+  if (ownerArg) {
+    if (!canBeOwned) {
+      printJson(jsonError(`Type '${typePath}' cannot be owned. Remove the --owner flag.`));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    
+    owner = await findOwnerFromArg(schema, vaultDir, typeName, ownerArg);
+    if (!owner) {
+      printJson(jsonError(`Owner not found: ${ownerArg}`));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
   }
 
   // Extract _body from input (special field for body section content)
@@ -364,7 +400,23 @@ async function createNoteFromJson(
     process.exit(ExitCodes.VALIDATION_ERROR);
   }
 
-  // Create pooled note
+  // Create note (owned or pooled)
+  if (owner) {
+    const filePath = await createOwnedNoteFromJson(
+      schema,
+      vaultDir,
+      typePath,
+      typeDef,
+      frontmatter,
+      itemName,
+      owner,
+      template,
+      bodyInput
+    );
+    return filePath;
+  }
+
+  // Create pooled note (default behavior)
   const filePath = await createPooledNoteFromJson(
     schema,
     vaultDir,
@@ -416,7 +468,40 @@ async function createPooledNoteFromJson(
   return filePath;
 }
 
+/**
+ * Create an owned note from JSON input.
+ */
+async function createOwnedNoteFromJson(
+  _schema: LoadedSchema,
+  vaultDir: string,
+  _typePath: string,
+  typeDef: ResolvedType,
+  frontmatter: Record<string, unknown>,
+  itemName: string,
+  owner: OwnerNoteRef,
+  template?: Template | null,
+  bodyInput?: Record<string, unknown>
+): Promise<string> {
+  const typeName = typeDef.name;
+  
+  // Ensure the owned output directory exists
+  const outputDir = await ensureOwnedOutputDir(owner.ownerPath, typeName);
+  const filePath = join(outputDir, `${itemName}.md`);
 
+  if (existsSync(filePath)) {
+    printJson(jsonError(`File already exists: ${relative(vaultDir, filePath)}`));
+    process.exit(ExitCodes.IO_ERROR);
+  }
+
+  // Generate body content
+  const body = generateBodyForJson(typeDef, frontmatter, template, bodyInput);
+  
+  const fieldOrder = getFrontmatterOrder(typeDef);
+  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
+
+  await writeNote(filePath, frontmatter, body, orderedFields);
+  return filePath;
+}
 
 /**
  * Generate body content for JSON mode.
@@ -787,8 +872,11 @@ async function findOwnerFromArg(
   childTypeName: string,
   ownerArg: string
 ): Promise<OwnerNoteRef | undefined> {
-  // Parse wikilink format: "[[Note Name]]" or just "Note Name"
-  const ownerName = ownerArg.replace(/^\[\[/, '').replace(/\]\]$/, '').replace(/^"/, '').replace(/"$/, '');
+  // Parse wikilink format: "[[Note Name]]", [[Note Name]], or just "Note Name"
+  // Strip quotes first (they may wrap the entire wikilink), then brackets
+  const ownerName = ownerArg
+    .replace(/^"/, '').replace(/"$/, '')   // Strip surrounding quotes first
+    .replace(/^\[\[/, '').replace(/\]\]$/, '');  // Then strip wikilink brackets
   
   // Get possible owner types
   const ownerTypes = getPossibleOwnerTypes(schema, childTypeName);

@@ -6,6 +6,13 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Fixed
 
+- **`new --json` now honors `--owner` and `--standalone` flags** (#138)
+  - Previously, ownership flags were silently ignored in JSON mode, always creating pooled notes
+  - `--owner "[[Note]]"` creates the note in the owner's folder
+  - `--standalone` explicitly creates a pooled note (default behavior)
+  - Using both flags together now returns a clear error
+  - Invalid ownership scenarios (non-ownable type, non-existent owner, meaningless `--standalone`) return structured JSON errors
+
 - **search/edit/open now find notes in gitignored type directories** (#149)
   - Previously, notes in type directories that were also in `.gitignore` or `schema.audit.ignored_directories` were invisible to `search`, `edit`, and `open` commands, while `list --type` could find them
   - Fix: navigation/search now uses hybrid discovery - type files ignore exclusion rules (matching `list --type` behavior), while unmanaged files still respect exclusions
