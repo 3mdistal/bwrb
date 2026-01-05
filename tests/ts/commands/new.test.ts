@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { createTestVault, cleanupTestVault, runCLI, createOwnershipTestVault } from '../fixtures/setup.js';
 
 // Note: The `new` command uses the `prompts` library which requires a TTY.
 // Interactive tests cannot be run via piped stdin.
@@ -187,148 +187,171 @@ describe('new command', () => {
     });
   });
 
-  describe('JSON mode with ownership flags', () => {
-    it('should create owned note with --owner flag', async () => {
-      const result = await runCLI(
-        ['new', 'research', '--json', '{"name": "Project Research"}', '--owner', '[[My Project]]'],
-        vaultDir
-      );
+  // Ownership tests are in a separate describe block with their own vault
+  // to avoid affecting other tests with the ownership schema configuration
+});
 
-      expect(result.exitCode).toBe(0);
-      const output = JSON.parse(result.stdout);
-      expect(output.success).toBe(true);
-      // Should be in the owner's folder
-      expect(output.path).toContain('Projects/My Project/research/Project Research.md');
-    });
+describe('new command - JSON mode ownership flags', () => {
+  let ownershipVaultDir: string;
 
-    it('should create pooled note with --standalone flag', async () => {
-      const result = await runCLI(
-        ['new', 'research', '--json', '{"name": "Standalone Research"}', '--standalone'],
-        vaultDir
-      );
-
-      expect(result.exitCode).toBe(0);
-      const output = JSON.parse(result.stdout);
-      expect(output.success).toBe(true);
-      // Should be in the pooled Research folder
-      expect(output.path).toBe('Research/Standalone Research.md');
-    });
-
-    it('should default to pooled when neither --owner nor --standalone provided', async () => {
-      const result = await runCLI(
-        ['new', 'research', '--json', '{"name": "Default Research"}'],
-        vaultDir
-      );
-
-      expect(result.exitCode).toBe(0);
-      const output = JSON.parse(result.stdout);
-      expect(output.success).toBe(true);
-      // Should be in the pooled Research folder
-      expect(output.path).toBe('Research/Default Research.md');
-    });
-
-    it('should error when both --owner and --standalone provided', async () => {
-      const result = await runCLI(
-        ['new', 'research', '--json', '{"name": "Test"}', '--owner', '[[My Project]]', '--standalone'],
-        vaultDir
-      );
-
-      expect(result.exitCode).not.toBe(0);
-      const output = JSON.parse(result.stdout);
-      expect(output.success).toBe(false);
-      expect(output.error).toContain('Cannot use both --owner and --standalone');
-    });
-
-    it('should error when --owner used with non-ownable type', async () => {
-      const result = await runCLI(
-        ['new', 'idea', '--json', '{"name": "Test Idea"}', '--owner', '[[My Project]]'],
-        vaultDir
-      );
-
-      expect(result.exitCode).not.toBe(0);
-      const output = JSON.parse(result.stdout);
-      expect(output.success).toBe(false);
-      expect(output.error).toContain('cannot be owned');
-    });
-
-    it('should error when --owner references non-existent note', async () => {
-      const result = await runCLI(
-        ['new', 'research', '--json', '{"name": "Test Research"}', '--owner', '[[Nonexistent Project]]'],
-        vaultDir
-      );
-
-      expect(result.exitCode).not.toBe(0);
-      const output = JSON.parse(result.stdout);
-      expect(output.success).toBe(false);
-      expect(output.error).toContain('Owner not found');
-    });
-
-    it('should handle --owner with plain name (no brackets)', async () => {
-      const result = await runCLI(
-        ['new', 'research', '--json', '{"name": "Plain Owner Research"}', '--owner', 'My Project'],
-        vaultDir
-      );
-
-      expect(result.exitCode).toBe(0);
-      const output = JSON.parse(result.stdout);
-      expect(output.success).toBe(true);
-      expect(output.path).toContain('Projects/My Project/research/');
-    });
-
-    it('should error when --standalone used with non-ownable type', async () => {
-      const result = await runCLI(
-        ['new', 'idea', '--json', '{"name": "Test Idea"}', '--standalone'],
-        vaultDir
-      );
-
-      expect(result.exitCode).not.toBe(0);
-      const output = JSON.parse(result.stdout);
-      expect(output.success).toBe(false);
-      expect(output.error).toContain('cannot be owned');
-      expect(output.error).toContain('--standalone is not applicable');
-    });
+  beforeEach(async () => {
+    ownershipVaultDir = await createOwnershipTestVault();
   });
 
-  describe('date expression evaluation in templates', () => {
-    it('should evaluate date expressions in template defaults', async () => {
-      // Use the weekly-review template which has deadline: "today() + '7d'"
-      const result = await runCLI(
-        ['new', 'task', '--json', '{"name": "Weekly Review Test"}', '--template', 'weekly-review'],
-        vaultDir
-      );
+  afterEach(async () => {
+    await cleanupTestVault(ownershipVaultDir);
+  });
 
-      expect(result.exitCode).toBe(0);
-      const output = JSON.parse(result.stdout);
-      expect(output.success).toBe(true);
+  it('should create owned note with --owner flag', async () => {
+    const result = await runCLI(
+      ['new', 'research', '--json', '{"name": "Project Research"}', '--owner', '[[My Project]]'],
+      ownershipVaultDir
+    );
 
-      // Read the created file
-      const content = await readFile(join(vaultDir, output.path), 'utf-8');
-      
-      // deadline should be a date string (YYYY-MM-DD), not the expression
-      expect(content).not.toContain("today()");
-      expect(content).toMatch(/deadline: \d{4}-\d{2}-\d{2}/);
-      
-      // The date should be 7 days from today
-      const today = new Date();
-      const expectedDate = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-      const expectedDateStr = expectedDate.toISOString().slice(0, 10);
-      expect(content).toContain(`deadline: ${expectedDateStr}`);
-    });
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(true);
+    // Should be in the owner's folder
+    expect(output.path).toContain('Projects/My Project/research/Project Research.md');
+  });
 
-    it('should allow JSON input to override date expression defaults', async () => {
-      // Template has deadline: "today() + '7d'" but JSON input overrides it
-      const result = await runCLI(
-        ['new', 'task', '--json', '{"name": "Override Date", "deadline": "2030-01-15"}', '--template', 'weekly-review'],
-        vaultDir
-      );
+  it('should create pooled note with --standalone flag', async () => {
+    const result = await runCLI(
+      ['new', 'research', '--json', '{"name": "Standalone Research"}', '--standalone'],
+      ownershipVaultDir
+    );
 
-      expect(result.exitCode).toBe(0);
-      const output = JSON.parse(result.stdout);
-      expect(output.success).toBe(true);
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(true);
+    // Should be in the pooled Research folder
+    expect(output.path).toBe('Research/Standalone Research.md');
+  });
 
-      const content = await readFile(join(vaultDir, output.path), 'utf-8');
-      // Should use the JSON-provided date, not the expression
-      expect(content).toContain('deadline: 2030-01-15');
-    });
+  it('should default to pooled when neither --owner nor --standalone provided', async () => {
+    const result = await runCLI(
+      ['new', 'research', '--json', '{"name": "Default Research"}'],
+      ownershipVaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(true);
+    // Should be in the pooled Research folder
+    expect(output.path).toBe('Research/Default Research.md');
+  });
+
+  it('should error when both --owner and --standalone provided', async () => {
+    const result = await runCLI(
+      ['new', 'research', '--json', '{"name": "Test"}', '--owner', '[[My Project]]', '--standalone'],
+      ownershipVaultDir
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(false);
+    expect(output.error).toContain('Cannot use both --owner and --standalone');
+  });
+
+  it('should error when --owner used with non-ownable type', async () => {
+    const result = await runCLI(
+      ['new', 'idea', '--json', '{"name": "Test Idea"}', '--owner', '[[My Project]]'],
+      ownershipVaultDir
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(false);
+    expect(output.error).toContain('cannot be owned');
+  });
+
+  it('should error when --owner references non-existent note', async () => {
+    const result = await runCLI(
+      ['new', 'research', '--json', '{"name": "Test Research"}', '--owner', '[[Nonexistent Project]]'],
+      ownershipVaultDir
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(false);
+    expect(output.error).toContain('Owner not found');
+  });
+
+  it('should handle --owner with plain name (no brackets)', async () => {
+    const result = await runCLI(
+      ['new', 'research', '--json', '{"name": "Plain Owner Research"}', '--owner', 'My Project'],
+      ownershipVaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(true);
+    expect(output.path).toContain('Projects/My Project/research/');
+  });
+
+  it('should error when --standalone used with non-ownable type', async () => {
+    const result = await runCLI(
+      ['new', 'idea', '--json', '{"name": "Test Idea"}', '--standalone'],
+      ownershipVaultDir
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(false);
+    expect(output.error).toContain('cannot be owned');
+    expect(output.error).toContain('--standalone is not applicable');
+  });
+});
+
+describe('new command - date expression evaluation', () => {
+  let vaultDir: string;
+
+  beforeEach(async () => {
+    vaultDir = await createTestVault();
+  });
+
+  afterEach(async () => {
+    await cleanupTestVault(vaultDir);
+  });
+
+  it('should evaluate date expressions in template defaults', async () => {
+    // Use the weekly-review template which has deadline: "today() + '7d'"
+    const result = await runCLI(
+      ['new', 'task', '--json', '{"name": "Weekly Review Test"}', '--template', 'weekly-review'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(true);
+
+    // Read the created file
+    const content = await readFile(join(vaultDir, output.path), 'utf-8');
+    
+    // deadline should be a date string (YYYY-MM-DD), not the expression
+    expect(content).not.toContain("today()");
+    expect(content).toMatch(/deadline: \d{4}-\d{2}-\d{2}/);
+    
+    // The date should be 7 days from today
+    const today = new Date();
+    const expectedDate = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const expectedDateStr = expectedDate.toISOString().slice(0, 10);
+    expect(content).toContain(`deadline: ${expectedDateStr}`);
+  });
+
+  it('should allow JSON input to override date expression defaults', async () => {
+    // Template has deadline: "today() + '7d'" but JSON input overrides it
+    const result = await runCLI(
+      ['new', 'task', '--json', '{"name": "Override Date", "deadline": "2030-01-15"}', '--template', 'weekly-review'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(true);
+
+    const content = await readFile(join(vaultDir, output.path), 'utf-8');
+    // Should use the JSON-provided date, not the expression
+    expect(content).toContain('deadline: 2030-01-15');
   });
 });

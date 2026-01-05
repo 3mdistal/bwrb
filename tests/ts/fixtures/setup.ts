@@ -93,37 +93,6 @@ export const TEST_SCHEMA = {
       },
       field_order: ['type', 'status', 'priority'],
     },
-    project: {
-      output_dir: 'Projects',
-      fields: {
-        type: { value: 'project' },
-        status: {
-          prompt: 'select',
-          enum: 'status',
-          default: 'raw',
-        },
-        research: {
-          prompt: 'dynamic',
-          source: 'research',
-          format: 'wikilink',
-          multiple: true,
-          owned: true,
-        },
-      },
-      field_order: ['type', 'status'],
-    },
-    research: {
-      output_dir: 'Research',
-      fields: {
-        type: { value: 'research' },
-        status: {
-          prompt: 'select',
-          enum: 'status',
-          default: 'raw',
-        },
-      },
-      field_order: ['type', 'status'],
-    },
   },
   audit: {
     ignored_directories: ['Templates'],
@@ -144,8 +113,6 @@ export async function createTestVault(): Promise<string> {
   await mkdir(join(vaultDir, 'Ideas'), { recursive: true });
   await mkdir(join(vaultDir, 'Objectives/Tasks'), { recursive: true });
   await mkdir(join(vaultDir, 'Objectives/Milestones'), { recursive: true });
-  await mkdir(join(vaultDir, 'Projects/My Project/research'), { recursive: true });
-  await mkdir(join(vaultDir, 'Research'), { recursive: true });
 
   // Create sample files
   await writeFile(
@@ -197,18 +164,6 @@ status: in-flight
 type: milestone
 status: settled
 ---
-`
-  );
-
-  // Create a project owner note for ownership testing
-  await writeFile(
-    join(vaultDir, 'Projects/My Project', 'My Project.md'),
-    `---
-type: project
-status: in-flight
----
-
-A test project for ownership testing.
 `
   );
 
@@ -317,6 +272,96 @@ defaults:
 
 export async function cleanupTestVault(vaultDir: string): Promise<void> {
   await rm(vaultDir, { recursive: true, force: true });
+}
+
+/**
+ * Schema with ownership types for testing JSON mode ownership flags.
+ * Kept separate from TEST_SCHEMA to avoid affecting other tests.
+ */
+export const OWNERSHIP_TEST_SCHEMA = {
+  version: 2,
+  enums: {
+    status: ['raw', 'backlog', 'in-flight', 'settled'],
+  },
+  types: {
+    project: {
+      output_dir: 'Projects',
+      fields: {
+        type: { value: 'project' },
+        status: {
+          prompt: 'select',
+          enum: 'status',
+          default: 'raw',
+        },
+        research: {
+          prompt: 'dynamic',
+          source: 'research',
+          format: 'wikilink',
+          multiple: true,
+          owned: true,
+        },
+      },
+      field_order: ['type', 'status'],
+    },
+    research: {
+      output_dir: 'Research',
+      fields: {
+        type: { value: 'research' },
+        status: {
+          prompt: 'select',
+          enum: 'status',
+          default: 'raw',
+        },
+      },
+      field_order: ['type', 'status'],
+    },
+    idea: {
+      output_dir: 'Ideas',
+      fields: {
+        type: { value: 'idea' },
+        status: {
+          prompt: 'select',
+          enum: 'status',
+          default: 'raw',
+        },
+      },
+      field_order: ['type', 'status'],
+    },
+  },
+};
+
+/**
+ * Create a test vault specifically for ownership testing.
+ * Uses OWNERSHIP_TEST_SCHEMA which includes project/research with ownership.
+ */
+export async function createOwnershipTestVault(): Promise<string> {
+  const vaultDir = await mkdtemp(join(tmpdir(), 'bwrb-ownership-test-'));
+
+  // Create .bwrb directory and schema
+  await mkdir(join(vaultDir, '.bwrb'), { recursive: true });
+  await writeFile(
+    join(vaultDir, '.bwrb', 'schema.json'),
+    JSON.stringify(OWNERSHIP_TEST_SCHEMA, null, 2)
+  );
+
+  // Create directories
+  await mkdir(join(vaultDir, 'Projects/My Project/research'), { recursive: true });
+  await mkdir(join(vaultDir, 'Research'), { recursive: true });
+  await mkdir(join(vaultDir, 'Ideas'), { recursive: true });
+
+  // Create owner note
+  await writeFile(
+    join(vaultDir, 'Projects/My Project', 'My Project.md'),
+    `---
+type: project
+status: in-flight
+---
+
+A test project for ownership testing.
+`
+  );
+
+  return vaultDir;
 }
 
 export interface CLIResult {
