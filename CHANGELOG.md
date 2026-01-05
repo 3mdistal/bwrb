@@ -4,6 +4,24 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`--type`/`-t` flag for `new` command** (#120)
+  - Explicit type selection: `bwrb new --type task` or `bwrb new -t task`
+  - Positional argument still works: `bwrb new task`
+  - Flag takes precedence if both provided
+
+### Removed
+
+- **Deprecated flags from `new` command** (#120)
+  - `--default` flag removed - use `--template default` instead
+  - `--instance` flag removed (instance-grouped mode was never enabled)
+
+- **Instance-grouped dead code cleanup** (#120)
+  - Removed ~500 lines of unused instance-grouped note creation code
+  - Removed `getDirMode`, `isInstanceGroupedSubtype`, and related vault functions
+  - Removed `collectInstanceGroupedFiles` from discovery module
+
 ### Changed
 
 - **Unified search/open/edit commands** (#119)

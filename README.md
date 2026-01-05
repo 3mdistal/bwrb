@@ -58,7 +58,7 @@ bwrb new idea         # Creates idea directly (no subtypes)
 
 # Templates
 bwrb new task --template bug-report  # Use specific template
-bwrb new task --default              # Use default.md template  
+bwrb new task --template default     # Use default.md template explicitly
 bwrb new task --no-template          # Skip templates, use schema only
 
 # Edit existing file
@@ -315,7 +315,7 @@ bwrb new task
 bwrb new task --template bug-report
 
 # Require default template (error if not found)
-bwrb new task --default
+bwrb new task --template default
 
 # Skip template system
 bwrb new task --no-template

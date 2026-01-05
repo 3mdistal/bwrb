@@ -263,7 +263,7 @@ Empty sections indicate expected content type:
 
 ```bash
 # Use default template
-bwrb new task --default
+bwrb new task --template default
 # → Uses Templates/objective/task/default.md
 
 # Specify template

@@ -27,6 +27,20 @@ describe('new command', () => {
       expect(result.stderr).toContain('Unknown type');
     });
 
+    it('should accept --type flag as alternative to positional argument', async () => {
+      const result = await runCLI(['new', '--type', 'nonexistent'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Unknown type');
+    });
+
+    it('should accept -t shorthand for --type flag', async () => {
+      const result = await runCLI(['new', '-t', 'nonexistent'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Unknown type');
+    });
+
     it('should error on unknown subtype', async () => {
       const result = await runCLI(['new', 'objective/nonexistent'], vaultDir);
 
@@ -56,7 +70,7 @@ describe('new command', () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('--template');
-      expect(result.stdout).toContain('--default');
+      expect(result.stdout).toContain('--type');
       expect(result.stdout).toContain('--no-template');
     });
   });
@@ -74,16 +88,16 @@ describe('new command', () => {
       expect(output.error).toContain('Template not found');
     });
 
-    it('should error when --default but no default.md exists', async () => {
+    it('should error when --template default but no default.md exists', async () => {
       const result = await runCLI(
-        ['new', 'milestone', '--json', '{"name": "Test"}', '--default'],
+        ['new', 'milestone', '--json', '{"name": "Test"}', '--template', 'default'],
         vaultDir
       );
 
       expect(result.exitCode).not.toBe(0);
       const output = JSON.parse(result.stdout);
       expect(output.success).toBe(false);
-      expect(output.error).toContain('No default template');
+      expect(output.error).toContain('Template not found');
     });
 
     it('should create note with --template flag applying defaults', async () => {
@@ -105,10 +119,10 @@ describe('new command', () => {
       expect(content).toContain('Expected Behavior');
     });
 
-    it('should create note with --default flag', async () => {
+    it('should create note with --template default', async () => {
       // default.md for idea has defaults: status: raw, priority: medium
       const result = await runCLI(
-        ['new', 'idea', '--json', '{"name": "My Great Idea"}', '--default'],
+        ['new', 'idea', '--json', '{"name": "My Great Idea"}', '--template', 'default'],
         vaultDir
       );
 
@@ -127,7 +141,7 @@ describe('new command', () => {
       // Template defaults status: raw, priority: medium
       // JSON input overrides priority to high
       const result = await runCLI(
-        ['new', 'idea', '--json', '{"name": "Override Test", "priority": "high"}', '--default'],
+        ['new', 'idea', '--json', '{"name": "Override Test", "priority": "high"}', '--template', 'default'],
         vaultDir
       );
 
@@ -159,7 +173,7 @@ describe('new command', () => {
 
     it('should substitute {title} in template body', async () => {
       const result = await runCLI(
-        ['new', 'idea', '--json', '{"name": "Substitution Test"}', '--default'],
+        ['new', 'idea', '--json', '{"name": "Substitution Test"}', '--template', 'default'],
         vaultDir
       );
 

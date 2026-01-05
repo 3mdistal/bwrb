@@ -17,16 +17,6 @@ import {
   resolveVaultDir,
   queryByType,
   formatValue,
-  getDirMode,
-  isInstanceGroupedSubtype,
-  getParentTypeName,
-  listInstanceFolders,
-  getInstanceFolderPath,
-  getParentNotePath,
-  createInstanceFolder,
-  generateFilename,
-  getFilenamePattern,
-  getOutputDir,
   typeCanBeOwned,
   getPossibleOwnerTypes,
   findOwnerNotes,
@@ -57,12 +47,10 @@ import {
   ExitCodes,
 } from '../lib/output.js';
 import {
-  resolveTemplate,
   findTemplateByName,
-  findDefaultTemplate,
+  resolveTemplate,
   processTemplateBody,
   validateConstraints,
-  createScaffoldedInstances,
 } from '../lib/template.js';
 import { evaluateTemplateDefault } from '../lib/date-expression.js';
 import type { LoadedSchema, Field, BodySection, Template, ResolvedType } from '../types/schema.js';
@@ -71,9 +59,8 @@ import { UserCancelledError } from '../lib/errors.js';
 interface NewCommandOptions {
   open?: boolean;
   json?: string;
-  instance?: string;
+  type?: string;
   template?: string;
-  default?: boolean;
   noTemplate?: boolean;
   owner?: string;
   standalone?: boolean;
@@ -82,11 +69,10 @@ interface NewCommandOptions {
 export const newCommand = new Command('new')
   .description('Create a new note (interactive type navigation if type omitted)')
   .argument('[type]', 'Type of note to create (e.g., idea, objective/task)')
+  .option('-t, --type <type>', 'Type of note to create (alternative to positional argument)')
   .option('--open', 'Open the note after creation (uses BWRB_DEFAULT_APP or Obsidian)')
   .option('--json <frontmatter>', 'Create note non-interactively with JSON frontmatter')
-  .option('--instance <name>', 'Parent instance name (for instance-grouped subtypes)')
-  .option('--template <name>', 'Use a specific template')
-  .option('--default', 'Use the default template for the type')
+  .option('--template <name>', 'Use a specific template (use "default" for default.md)')
   .option('--no-template', 'Skip template selection, use schema only')
   .option('--owner <wikilink>', 'Owner note for owned types (e.g., "[[My Novel]]")')
   .option('--standalone', 'Create as standalone (skip owner selection for ownable types)')
@@ -99,7 +85,7 @@ Examples:
 
 Templates:
   bwrb new task --template bug-report  # Use specific template
-  bwrb new task --default              # Use default.md template
+  bwrb new task --template default     # Use default.md template explicitly
   bwrb new task --no-template          # Skip templates, use schema only
 
 Ownership:
@@ -121,10 +107,11 @@ Template Discovery:
   If default.md exists, it's used automatically (unless --no-template).
   If multiple templates exist without default.md, you'll be prompted to select.
 
-For instance-grouped types (like drafts), you'll be prompted to select
-or create a parent instance folder.`)
-  .action(async (typePath: string | undefined, options: NewCommandOptions, cmd: Command) => {
+`)
+  .action(async (positionalType: string | undefined, options: NewCommandOptions, cmd: Command) => {
     const jsonMode = options.json !== undefined;
+    // Merge --type flag with positional argument (flag takes precedence)
+    const typePath = options.type ?? positionalType;
     
     try {
       const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
@@ -141,22 +128,12 @@ or create a parent instance folder.`)
 
         // Resolve template for JSON mode
         let template: Template | null = null;
-        if (!options.noTemplate) {
-          if (options.template) {
-            template = await findTemplateByName(vaultDir, typePath, options.template);
-            if (!template) {
-              printJson(jsonError(`Template not found: ${options.template}`));
-              process.exit(ExitCodes.VALIDATION_ERROR);
-            }
-          } else if (options.default) {
-            template = await findDefaultTemplate(vaultDir, typePath);
-            if (!template) {
-              printJson(jsonError(`No default template found for type: ${typePath}`));
-              process.exit(ExitCodes.VALIDATION_ERROR);
-            }
+        if (!options.noTemplate && options.template) {
+          template = await findTemplateByName(vaultDir, typePath, options.template);
+          if (!template) {
+            printJson(jsonError(`Template not found: ${options.template}`));
+            process.exit(ExitCodes.VALIDATION_ERROR);
           }
-          // Note: In JSON mode without explicit --template or --default, 
-          // we don't auto-select templates (explicit is better for automation)
         }
 
         const filePath = await createNoteFromJson(
@@ -164,7 +141,6 @@ or create a parent instance folder.`)
           vaultDir,
           typePath,
           options.json!,
-          options.instance,
           template
         );
         
@@ -195,17 +171,10 @@ or create a parent instance folder.`)
       let template: Template | null = null;
       if (!options.noTemplate) {
         if (options.template) {
-          // --template <name>: Find specific template
+          // --template <name>: Find specific template (use "default" for default.md)
           template = await findTemplateByName(vaultDir, resolvedPath, options.template);
           if (!template) {
             printError(`Template not found: ${options.template}`);
-            process.exit(1);
-          }
-        } else if (options.default) {
-          // --default: Find default.md
-          template = await findDefaultTemplate(vaultDir, resolvedPath);
-          if (!template) {
-            printError(`No default template found for type: ${resolvedPath}`);
             process.exit(1);
           }
         } else {
@@ -268,7 +237,6 @@ async function createNoteFromJson(
   vaultDir: string,
   typePath: string,
   jsonInput: string,
-  instanceName?: string,
   template?: Template | null
 ): Promise<string> {
   // Parse JSON input
@@ -396,50 +364,17 @@ async function createNoteFromJson(
     process.exit(ExitCodes.VALIDATION_ERROR);
   }
 
-  // Determine output path based on type
-  const segments = typePath.split('/');
-  const dirMode = getDirMode(schema, typePath);
-  const isSubtype = isInstanceGroupedSubtype(schema, typePath);
-
-  let filePath: string;
-
-  if (dirMode === 'instance-grouped' && isSubtype) {
-    // Instance-grouped subtype
-    filePath = await createInstanceGroupedNoteFromJson(
-      schema,
-      vaultDir,
-      typePath,
-      typeDef,
-      frontmatter,
-      instanceName,
-      template,
-      bodyInput
-    );
-  } else if (dirMode === 'instance-grouped' && segments.length === 1) {
-    // Instance-grouped parent
-    filePath = await createInstanceParentFromJson(
-      schema,
-      vaultDir,
-      typePath,
-      typeDef,
-      frontmatter,
-      itemName,
-      template,
-      bodyInput
-    );
-  } else {
-    // Pooled mode
-    filePath = await createPooledNoteFromJson(
-      schema,
-      vaultDir,
-      typePath,
-      typeDef,
-      frontmatter,
-      itemName,
-      template,
-      bodyInput
-    );
-  }
+  // Create pooled note
+  const filePath = await createPooledNoteFromJson(
+    schema,
+    vaultDir,
+    typePath,
+    typeDef,
+    frontmatter,
+    itemName,
+    template,
+    bodyInput
+  );
 
   return filePath;
 }
@@ -481,124 +416,7 @@ async function createPooledNoteFromJson(
   return filePath;
 }
 
-/**
- * Create an instance parent from JSON input.
- */
-async function createInstanceParentFromJson(
-  schema: LoadedSchema,
-  vaultDir: string,
-  typePath: string,
-  typeDef: ResolvedType,
-  frontmatter: Record<string, unknown>,
-  instanceName: string,
-  template?: Template | null,
-  bodyInput?: Record<string, unknown>
-): Promise<string> {
-  const outputDir = getOutputDir(schema, typePath);
-  if (!outputDir) {
-    printJson(jsonError(`No output_dir defined for type: ${typePath}`));
-    process.exit(ExitCodes.SCHEMA_ERROR);
-  }
 
-  await createInstanceFolder(vaultDir, outputDir, instanceName);
-  const filePath = getParentNotePath(vaultDir, outputDir, instanceName);
-
-  if (existsSync(filePath)) {
-    printJson(jsonError(`Instance already exists: ${relative(vaultDir, filePath)}`));
-    process.exit(ExitCodes.IO_ERROR);
-  }
-
-  // Generate body content
-  const body = generateBodyForJson(typeDef, frontmatter, template, bodyInput);
-  
-  const fieldOrder = getFrontmatterOrder(typeDef);
-  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
-
-  await writeNote(filePath, frontmatter, body, orderedFields);
-
-  // Scaffold instance files if template defines them
-  if (template?.instances && template.instances.length > 0) {
-    const instanceDir = getInstanceFolderPath(vaultDir, outputDir, instanceName);
-    
-    await createScaffoldedInstances(
-      schema,
-      vaultDir,
-      typePath,
-      instanceDir,
-      template.instances,
-      frontmatter
-    );
-    // In JSON mode, we don't print progress - the result is in the JSON output
-  }
-
-  return filePath;
-}
-
-/**
- * Create an instance-grouped subtype note from JSON input.
- */
-async function createInstanceGroupedNoteFromJson(
-  schema: LoadedSchema,
-  vaultDir: string,
-  typePath: string,
-  typeDef: ResolvedType,
-  frontmatter: Record<string, unknown>,
-  instanceName?: string,
-  template?: Template | null,
-  bodyInput?: Record<string, unknown>
-): Promise<string> {
-  const parentTypeName = getParentTypeName(schema, typePath);
-  if (!parentTypeName) {
-    printJson(jsonError('Could not determine parent type'));
-    process.exit(ExitCodes.SCHEMA_ERROR);
-  }
-
-  const parentOutputDir = getOutputDir(schema, parentTypeName);
-  if (!parentOutputDir) {
-    printJson(jsonError(`No output_dir defined for parent type: ${parentTypeName}`));
-    process.exit(ExitCodes.SCHEMA_ERROR);
-  }
-
-  // Instance name is required for instance-grouped subtypes
-  if (!instanceName) {
-    // Try to get from frontmatter (_instance field)
-    instanceName = frontmatter['_instance'] as string | undefined;
-    if (!instanceName) {
-      printJson(jsonError('Instance name required for instance-grouped subtypes. Use --instance flag or _instance field in JSON.'));
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-  }
-
-  // Verify instance exists
-  const instances = await listInstanceFolders(vaultDir, parentOutputDir);
-  if (!instances.includes(instanceName)) {
-    printJson(jsonError(`Instance not found: ${instanceName}. Available: ${instances.join(', ') || 'none'}`));
-    process.exit(ExitCodes.IO_ERROR);
-  }
-
-  const instanceDir = getInstanceFolderPath(vaultDir, parentOutputDir, instanceName);
-  const filenamePattern = getFilenamePattern(schema, typePath);
-  const subtypeName = typePath.split('/').pop() ?? 'note';
-  const filename = await generateFilename(filenamePattern, instanceDir, subtypeName);
-  const filePath = join(instanceDir, filename);
-
-  if (existsSync(filePath)) {
-    printJson(jsonError(`File already exists: ${relative(vaultDir, filePath)}`));
-    process.exit(ExitCodes.IO_ERROR);
-  }
-
-  // Remove _instance from frontmatter before writing
-  const { _instance, ...cleanFrontmatter } = frontmatter;
-
-  // Generate body content
-  const body = generateBodyForJson(typeDef, cleanFrontmatter, template, bodyInput);
-  
-  const fieldOrder = getFrontmatterOrder(typeDef);
-  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(cleanFrontmatter);
-
-  await writeNote(filePath, cleanFrontmatter, body, orderedFields);
-  return filePath;
-}
 
 /**
  * Generate body content for JSON mode.
@@ -708,8 +526,6 @@ async function createNote(
   const segments = typePath.split('/');
   const displayTypeName = segments[0] ?? typePath;  // For header display
   const typeName = typeDef.name;  // For ownership checks
-  const dirMode = getDirMode(schema, typePath);
-  const isSubtype = isInstanceGroupedSubtype(schema, typePath);
 
   printInfo(`\n=== New ${displayTypeName} ===`);
   
@@ -730,16 +546,6 @@ async function createNote(
       return await createOwnedNote(schema, vaultDir, typePath, typeDef, template, ownershipDecision.owner);
     }
     // Fall through to standard creation if standalone
-  }
-
-  // Handle instance-grouped subtypes differently
-  if (dirMode === 'instance-grouped' && isSubtype) {
-    return await createInstanceGroupedNote(schema, vaultDir, typePath, typeDef, template);
-  }
-
-  // Handle instance-grouped parent types (creating new instance)
-  if (dirMode === 'instance-grouped' && segments.length === 1) {
-    return await createInstanceParent(schema, vaultDir, typePath, typeDef, template);
   }
 
   // Standard pooled mode
@@ -775,190 +581,6 @@ async function createPooledNote(
 
   // Create file
   const filePath = join(fullOutputDir, `${itemName}.md`);
-
-  if (existsSync(filePath)) {
-    printWarning(`\nWarning: File already exists: ${filePath}`);
-    const overwrite = await promptConfirm('Overwrite?');
-    if (overwrite === null) {
-      throw new UserCancelledError();
-    }
-    if (overwrite === false) {
-      console.log('Aborted.');
-      process.exit(1);
-    }
-  }
-
-  await writeNote(filePath, frontmatter, body, orderedFields);
-  printSuccess(`\n✓ Created: ${filePath}`);
-  return filePath;
-}
-
-/**
- * Create the parent/index note for an instance-grouped type.
- */
-async function createInstanceParent(
-  schema: LoadedSchema,
-  vaultDir: string,
-  typePath: string,
-  typeDef: ResolvedType,
-  template?: Template | null
-): Promise<string> {
-  // Get output directory (e.g., "Drafts")
-  const outputDir = getOutputDir(schema, typePath);
-  if (!outputDir) {
-    printError(`No output_dir defined for type: ${typePath}`);
-    process.exit(1);
-  }
-
-  // Prompt for instance name
-  const instanceName = await promptRequired('Name');
-  if (instanceName === null) {
-    throw new UserCancelledError();
-  }
-
-  // Build frontmatter and body BEFORE creating folder (may throw UserCancelledError)
-  const { frontmatter, body, orderedFields } = await buildNoteContent(schema, vaultDir, typePath, typeDef, template);
-
-  // Check if instance already exists BEFORE creating folder
-  const filePath = getParentNotePath(vaultDir, outputDir, instanceName);
-  if (existsSync(filePath)) {
-    printWarning(`\nWarning: Instance already exists: ${filePath}`);
-    const overwrite = await promptConfirm('Overwrite parent note?');
-    if (overwrite === null) {
-      throw new UserCancelledError();
-    }
-    if (overwrite === false) {
-      console.log('Aborted.');
-      process.exit(1);
-    }
-  }
-
-  // Only create folder after all prompts succeed
-  await createInstanceFolder(vaultDir, outputDir, instanceName);
-
-  await writeNote(filePath, frontmatter, body, orderedFields);
-  printSuccess(`\n✓ Created instance: ${instanceName}`);
-  printSuccess(`  Parent note: ${filePath}`);
-
-  // Scaffold instance files if template defines them
-  if (template?.instances && template.instances.length > 0) {
-    const instanceDir = getInstanceFolderPath(vaultDir, outputDir, instanceName);
-    
-    printInfo(`\nScaffolding ${template.instances.length} instance files...`);
-    
-    const scaffoldResult = await createScaffoldedInstances(
-      schema,
-      vaultDir,
-      typePath,
-      instanceDir,
-      template.instances,
-      frontmatter
-    );
-    
-    // Report created files
-    for (const path of scaffoldResult.created) {
-      printSuccess(`  ✓ Created: ${relative(vaultDir, path)}`);
-    }
-    
-    // Report skipped files (already exist)
-    for (const path of scaffoldResult.skipped) {
-      printWarning(`  ⚠ Skipped: ${relative(vaultDir, path)} (already exists)`);
-    }
-    
-    // Report errors
-    for (const error of scaffoldResult.errors) {
-      printWarning(`  ✗ ${error.subtype}: ${error.message}`);
-    }
-    
-    const totalFiles = scaffoldResult.created.length + 1; // +1 for parent
-    printSuccess(`\n✓ Created ${totalFiles} files total`);
-  }
-
-  return filePath;
-}
-
-/**
- * Create a note for a subtype within an instance-grouped parent.
- */
-async function createInstanceGroupedNote(
-  schema: LoadedSchema,
-  vaultDir: string,
-  typePath: string,
-  typeDef: ResolvedType,
-  template?: Template | null
-): Promise<string> {
-  const parentTypeName = getParentTypeName(schema, typePath);
-  if (!parentTypeName) {
-    printError('Could not determine parent type');
-    process.exit(1);
-  }
-
-  // Get parent type's output directory
-  const parentOutputDir = getOutputDir(schema, parentTypeName);
-  if (!parentOutputDir) {
-    printError(`No output_dir defined for parent type: ${parentTypeName}`);
-    process.exit(1);
-  }
-
-  // List existing instances
-  const instances = await listInstanceFolders(vaultDir, parentOutputDir);
-
-  // Prompt for instance selection - track if we need to create a new instance
-  let selectedInstance: string;
-  let needsNewInstance = false;
-
-  if (instances.length === 0) {
-    printInfo(`No existing ${parentTypeName} instances found.`);
-    const createNew = await promptConfirm(`Create a new ${parentTypeName}?`);
-    if (createNew === null) {
-      throw new UserCancelledError();
-    }
-    if (createNew === false) {
-      console.log('Aborted.');
-      process.exit(1);
-    }
-    // Will create new instance - get name
-    const instanceName = await promptRequired(`New ${parentTypeName} name`);
-    if (instanceName === null) {
-      throw new UserCancelledError();
-    }
-    selectedInstance = instanceName;
-    needsNewInstance = true;
-  } else {
-    const options = [...instances, `[Create new ${parentTypeName}]`];
-    const selected = await promptSelection(`Select ${parentTypeName}:`, options);
-    if (selected === null) {
-      throw new UserCancelledError();
-    }
-    if (selected.startsWith('[Create new')) {
-      const instanceName = await promptRequired(`New ${parentTypeName} name`);
-      if (instanceName === null) {
-        throw new UserCancelledError();
-      }
-      selectedInstance = instanceName;
-      needsNewInstance = true;
-    } else {
-      selectedInstance = selected;
-    }
-  }
-
-  // Build frontmatter and body BEFORE creating any folders (may throw UserCancelledError)
-  const { frontmatter, body, orderedFields } = await buildNoteContent(schema, vaultDir, typePath, typeDef, template);
-
-  // Now that all prompts have succeeded, create folder if needed
-  if (needsNewInstance) {
-    await createInstanceFolder(vaultDir, parentOutputDir, selectedInstance);
-  }
-
-  // Get instance folder path
-  const instanceDir = getInstanceFolderPath(vaultDir, parentOutputDir, selectedInstance);
-
-  // Generate filename using pattern
-  const filenamePattern = getFilenamePattern(schema, typePath);
-  const subtypeName = typePath.split('/').pop() ?? 'note';
-  const filename = await generateFilename(filenamePattern, instanceDir, subtypeName);
-
-  const filePath = join(instanceDir, filename);
 
   if (existsSync(filePath)) {
     printWarning(`\nWarning: File already exists: ${filePath}`);

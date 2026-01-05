@@ -228,42 +228,8 @@ export function getOutputDir(
 }
 
 // ============================================================================
-// Directory Mode Support
+// Ownership Support
 // ============================================================================
-
-/**
- * Get directory mode for a type.
- * 
- * In the ownership model, notes are either:
- * - "pooled": Live in the type's output_dir (default)
- * - "owned": Live in their owner's folder (determined by `owned: true` on parent's field)
- * 
- * This function returns 'pooled' because the ownership model handles colocation
- * through the ownership system rather than a separate dir_mode property.
- * See docs/technical/inheritance.md for ownership semantics.
- * 
- * @deprecated Consider using canTypeBeOwned() or getOwnerTypes() for ownership checks
- */
-export function getDirMode(
-  _schema: LoadedSchema,
-  _typeName: string
-): 'pooled' | 'instance-grouped' {
-  // Ownership model supersedes dir_mode - owned notes colocate with owner,
-  // all other notes are pooled in their type's output_dir
-  return 'pooled';
-}
-
-/**
- * Check if a type is a subtype of an instance-grouped type.
- * @deprecated Use ownership model instead
- */
-export function isInstanceGroupedSubtype(
-  _schema: LoadedSchema,
-  _typeName: string
-): boolean {
-  // In new model, this is determined by ownership
-  return false;
-}
 
 /**
  * Get the parent type name for an owned type.
@@ -274,58 +240,6 @@ export function getParentTypeName(
 ): string | undefined {
   const type = getType(schema, typeName);
   return type?.parent;
-}
-
-/**
- * List all instance folders for an instance-grouped type.
- */
-export async function listInstanceFolders(
-  vaultDir: string,
-  outputDir: string
-): Promise<string[]> {
-  const fullDir = join(vaultDir, outputDir);
-  if (!existsSync(fullDir)) return [];
-
-  const entries = await readdir(fullDir, { withFileTypes: true });
-  return entries
-    .filter(entry => entry.isDirectory())
-    .map(entry => entry.name);
-}
-
-/**
- * Get the path to an instance folder.
- */
-export function getInstanceFolderPath(
-  vaultDir: string,
-  outputDir: string,
-  instanceName: string
-): string {
-  return join(vaultDir, outputDir, instanceName);
-}
-
-/**
- * Get the path to the parent note (index file) for an instance.
- * The parent note has the same name as the folder.
- */
-export function getParentNotePath(
-  vaultDir: string,
-  outputDir: string,
-  instanceName: string
-): string {
-  return join(vaultDir, outputDir, instanceName, `${instanceName}.md`);
-}
-
-/**
- * Create an instance folder and its parent note.
- */
-export async function createInstanceFolder(
-  vaultDir: string,
-  outputDir: string,
-  instanceName: string
-): Promise<string> {
-  const folderPath = getInstanceFolderPath(vaultDir, outputDir, instanceName);
-  await mkdir(folderPath, { recursive: true });
-  return folderPath;
 }
 
 /**

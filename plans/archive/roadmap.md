@@ -147,7 +147,7 @@ Markdown-based templates with defaults and body structure:
 ```bash
 bwrb new task                           # Prompts for template if multiple
 bwrb new task --template bug-report     # Use specific template
-bwrb new task --default                 # Use default template
+bwrb new task --template default        # Use default template
 ```
 
 Templates live in `Templates/{type}/{subtype}/{name}.md`.

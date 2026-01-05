@@ -8,7 +8,6 @@ import {
   discoverManagedFiles,
   collectFilesForType,
   collectPooledFiles,
-  collectInstanceGroupedFiles,
   findSimilarFiles,
   levenshteinDistance,
   type ManagedFile,
@@ -197,33 +196,6 @@ describe('Discovery', () => {
     it('should return empty for non-existent directory', async () => {
       const files = await collectPooledFiles(vaultDir, 'Nonexistent', 'test');
       expect(files).toEqual([]);
-    });
-  });
-
-  describe('collectInstanceGroupedFiles', () => {
-    it('should collect files from instance-grouped directories', async () => {
-      // Create an instance-grouped structure
-      await mkdir(join(vaultDir, 'Projects/ProjectA'), { recursive: true });
-      await mkdir(join(vaultDir, 'Projects/ProjectB'), { recursive: true });
-      await writeFile(join(vaultDir, 'Projects/ProjectA', 'Note1.md'), '---\ntype: note\n---\n');
-      await writeFile(join(vaultDir, 'Projects/ProjectB', 'Note2.md'), '---\ntype: note\n---\n');
-      
-      const files = await collectInstanceGroupedFiles(vaultDir, 'Projects', 'project');
-      
-      expect(files.length).toBe(2);
-      expect(files.some(f => f.instance === 'ProjectA')).toBe(true);
-      expect(files.some(f => f.instance === 'ProjectB')).toBe(true);
-    });
-
-    it('should set instance field correctly', async () => {
-      await mkdir(join(vaultDir, 'Projects/MyProject'), { recursive: true });
-      await writeFile(join(vaultDir, 'Projects/MyProject', 'Test.md'), '---\ntype: note\n---\n');
-      
-      const files = await collectInstanceGroupedFiles(vaultDir, 'Projects', 'project');
-      
-      const file = files.find(f => f.relativePath.includes('MyProject'));
-      expect(file).toBeDefined();
-      expect(file!.instance).toBe('MyProject');
     });
   });
 

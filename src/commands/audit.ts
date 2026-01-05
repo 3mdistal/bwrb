@@ -39,7 +39,6 @@ import {
 } from '../lib/audit/detection.js';
 import {
   collectPooledFiles,
-  collectInstanceGroupedFiles,
 } from '../lib/discovery.js';
 import {
   runAutoFix,
@@ -258,7 +257,6 @@ export {
   discoverManagedFiles,
   auditFile,
   collectPooledFiles,
-  collectInstanceGroupedFiles,
   
   // Fix functions
   runAutoFix,

@@ -17,7 +17,6 @@ import {
   canTypeBeOwned,
   resolveTypeFromFrontmatter,
 } from './schema.js';
-import { getDirMode } from './vault.js';
 import { parseNote } from './frontmatter.js';
 import type { LoadedSchema, OwnedFieldInfo } from '../types/schema.js';
 
@@ -286,42 +285,6 @@ export async function collectPooledFiles(
   return files;
 }
 
-/**
- * Collect files from instance-grouped directories.
- */
-export async function collectInstanceGroupedFiles(
-  vaultDir: string,
-  outputDir: string,
-  expectedType: string
-): Promise<ManagedFile[]> {
-  const fullDir = join(vaultDir, outputDir);
-  if (!existsSync(fullDir)) return [];
-
-  const files: ManagedFile[] = [];
-  const entries = await readdir(fullDir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
-      const instanceDir = join(fullDir, entry.name);
-      const instanceFiles = await readdir(instanceDir, { withFileTypes: true });
-
-      for (const file of instanceFiles) {
-        if (file.isFile() && file.name.endsWith('.md')) {
-          const fullPath = join(instanceDir, file.name);
-          files.push({
-            path: fullPath,
-            relativePath: join(outputDir, entry.name, file.name),
-            expectedType,
-            instance: entry.name,
-          });
-        }
-      }
-    }
-  }
-
-  return files;
-}
-
 // ============================================================================
 // Ownership-Aware Discovery
 // ============================================================================
@@ -391,7 +354,7 @@ export async function collectOwnedFiles(
 
 /**
  * Collect all files for a type, including:
- * - Notes in the type's output_dir (pooled or instance-grouped)
+ * - Notes in the type's output_dir
  * - Owned notes that live with their owners
  */
 export async function collectFilesForTypeWithOwnership(
@@ -407,14 +370,8 @@ export async function collectFilesForTypeWithOwnership(
   // Collect files in the type's output_dir (non-owned notes)
   const outputDir = getOutputDirFromSchema(schema, typeName);
   if (outputDir) {
-    const dirMode = getDirMode(schema, typeName);
-    if (dirMode === 'instance-grouped') {
-      const typeFiles = await collectInstanceGroupedFiles(vaultDir, outputDir, typeName);
-      files.push(...typeFiles);
-    } else {
-      const typeFiles = await collectPooledFiles(vaultDir, outputDir, typeName);
-      files.push(...typeFiles);
-    }
+    const typeFiles = await collectPooledFiles(vaultDir, outputDir, typeName);
+    files.push(...typeFiles);
   }
   
   // If this type can be owned, also collect owned instances
