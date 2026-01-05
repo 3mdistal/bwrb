@@ -34,6 +34,43 @@ defaults:
 
 describePty('template command PTY tests', () => {
   describe('template new (interactive)', () => {
+    it('should prompt for type when omitted', async () => {
+      await withTempVault(
+        ['template', 'new'],
+        async (proc, vaultPath) => {
+          // Should prompt for type selection
+          await proc.waitFor('Select type', 10000);
+          // numberedSelect uses number keys: press '1' for first item
+          // The first type in TEST_SCHEMA is 'objective'
+          proc.write('1'); // Select first item immediately
+
+          // Then continue with template name prompt
+          await proc.waitFor('Template name', 5000);
+          await proc.typeAndEnter('from-picker');
+
+          // Description prompt
+          await proc.waitFor('Description', 5000);
+          await proc.typeAndEnter('Created after type picker');
+
+          // Set defaults prompt
+          await proc.waitFor('Set default values', 5000);
+          proc.write('n');
+
+          // Custom filename pattern
+          await proc.waitFor('Custom filename', 5000);
+          proc.write('n');
+
+          // Wait for creation
+          await proc.waitFor('Created:', 5000);
+
+          // Verify file was created - first type is 'objective'
+          const templatePath = join(vaultPath, '.bwrb/templates/objective', 'from-picker.md');
+          expect(existsSync(templatePath)).toBe(true);
+        },
+        { schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
     it('should create a template interactively', async () => {
       await withTempVault(
         ['template', 'new', 'idea'],
@@ -153,6 +190,71 @@ describePty('template command PTY tests', () => {
   });
 
   describe('template edit (interactive)', () => {
+    it('should prompt for template when both args omitted', async () => {
+      await withTempVault(
+        ['template', 'edit'],
+        async (proc, vaultPath) => {
+          // Should prompt directly for template selection (showing type / name)
+          await proc.waitFor('Select template to edit', 10000);
+          proc.write('\r'); // Select first template (idea / default)
+
+          // Continue with normal edit flow
+          await proc.waitFor('Current description:', 5000);
+          await proc.typeAndEnter('Edited via picker');
+
+          await proc.waitFor('Edit default values', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Edit prompt-fields', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Edit filename pattern', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Edit body', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Updated:', 5000);
+
+          // Verify update
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'default.md');
+          const content = await readFile(templatePath, 'utf-8');
+          expect(content).toContain('Edited via picker');
+        },
+        { files: [DEFAULT_IDEA_TEMPLATE], schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
+    it('should prompt for template when only type provided', async () => {
+      await withTempVault(
+        ['template', 'edit', 'idea'],
+        async (proc, vaultPath) => {
+          // Should prompt for template selection (not type)
+          await proc.waitFor('Select template', 10000);
+          proc.write('\r'); // Select first template
+
+          // Continue with normal edit flow
+          await proc.waitFor('Current description:', 5000);
+          await proc.typeAndEnter('Edited after template picker');
+
+          await proc.waitFor('Edit default values', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Edit prompt-fields', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Edit filename pattern', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Edit body', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Updated:', 5000);
+        },
+        { files: [DEFAULT_IDEA_TEMPLATE], schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
     it('should edit template interactively', async () => {
       await withTempVault(
         ['template', 'edit', 'idea', 'default'],
@@ -216,6 +318,52 @@ describePty('template command PTY tests', () => {
   });
 
   describe('template delete (interactive)', () => {
+    it('should prompt for template when both args omitted', async () => {
+      await withTempVault(
+        ['template', 'delete'],
+        async (proc, vaultPath) => {
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'default.md');
+          expect(existsSync(templatePath)).toBe(true);
+
+          // Should prompt directly for template selection (showing type / name)
+          await proc.waitFor('Select template to delete', 10000);
+          proc.write('\r'); // Select first template (idea / default)
+
+          // Confirmation prompt
+          await proc.waitFor("Delete template 'default'", 5000);
+          proc.write('y');
+
+          await proc.waitFor('Deleted:', 5000);
+
+          expect(existsSync(templatePath)).toBe(false);
+        },
+        { files: [DEFAULT_IDEA_TEMPLATE], schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
+    it('should prompt for template when only type provided', async () => {
+      await withTempVault(
+        ['template', 'delete', 'idea'],
+        async (proc, vaultPath) => {
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'default.md');
+          expect(existsSync(templatePath)).toBe(true);
+
+          // Should prompt for template selection (not type)
+          await proc.waitFor('Select template', 10000);
+          proc.write('\r'); // Select first template
+
+          // Confirmation prompt
+          await proc.waitFor("Delete template 'default'", 5000);
+          proc.write('y');
+
+          await proc.waitFor('Deleted:', 5000);
+
+          expect(existsSync(templatePath)).toBe(false);
+        },
+        { files: [DEFAULT_IDEA_TEMPLATE], schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
     it('should delete template when confirmed with y', async () => {
       await withTempVault(
         ['template', 'delete', 'idea', 'default'],

@@ -228,11 +228,11 @@ bwrb schema edit [type|field|enum]   # Edit with picker
 bwrb schema delete [type|field|enum] # Delete (dry-run default)
 bwrb schema list [types|fields|enums] # List/show
 
-# Template management
-bwrb template new [type]      # Create template
-bwrb template edit [type/name] # Edit with picker
-bwrb template delete [type/name]
-bwrb template list [type]
+# Template management (uses two separate args like schema commands)
+bwrb template new [type]           # Create template (prompts for type if omitted)
+bwrb template edit [type] [name]   # Edit with picker
+bwrb template delete [type] [name] # Delete with picker
+bwrb template list [type] [name]   # List all, or show details if both provided
 ```
 
 **Decisions made:**

@@ -67,9 +67,9 @@ describe('template command', () => {
     });
   });
 
-  describe('template show', () => {
-    it('should show template details', async () => {
-      const result = await runCLI(['template', 'show', 'idea', 'default'], vaultDir);
+  describe('template list [type] [name] (show details)', () => {
+    it('should show template details when both type and name provided', async () => {
+      const result = await runCLI(['template', 'list', 'idea', 'default'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Template: default');
@@ -80,8 +80,8 @@ describe('template command', () => {
       expect(result.stdout).toContain('Defaults:');
     });
 
-    it('should show JSON format', async () => {
-      const result = await runCLI(['template', 'show', 'idea', 'default', '--output', 'json'], vaultDir);
+    it('should show JSON format for specific template', async () => {
+      const result = await runCLI(['template', 'list', 'idea', 'default', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -93,14 +93,14 @@ describe('template command', () => {
     });
 
     it('should error on unknown template', async () => {
-      const result = await runCLI(['template', 'show', 'idea', 'nonexistent'], vaultDir);
+      const result = await runCLI(['template', 'list', 'idea', 'nonexistent'], vaultDir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('Template not found');
     });
 
     it('should error on unknown type', async () => {
-      const result = await runCLI(['template', 'show', 'nonexistent', 'default'], vaultDir);
+      const result = await runCLI(['template', 'list', 'nonexistent', 'default'], vaultDir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('Unknown type');

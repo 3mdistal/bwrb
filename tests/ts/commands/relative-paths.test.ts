@@ -190,10 +190,10 @@ describe('relative vault path handling', () => {
       expect(result.stdout).toContain('idea');
     });
 
-    it('should show template with relative vault path', async () => {
-      // template show requires both type and template name
+    it('should show template details with relative vault path', async () => {
+      // template list with type and name shows template details
       const result = await runCLI([
-        '--vault', relativeVaultPath, 'template', 'show', 'idea', 'default',
+        '--vault', relativeVaultPath, 'template', 'list', 'idea', 'default',
       ]);
 
       expect(result.exitCode).toBe(0);

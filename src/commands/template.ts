@@ -41,10 +41,6 @@ interface TemplateListOptions {
   output?: string;
 }
 
-interface TemplateShowOptions {
-  output?: string;
-}
-
 interface TemplateValidateOptions {
   output?: string;
 }
@@ -65,21 +61,72 @@ export const templateCommand = new Command('template')
 Examples:
   bwrb template list                      # List all templates
   bwrb template list idea                 # List templates for idea type
-  bwrb template show idea default         # Show template details
+  bwrb template list idea default         # Show template details
   bwrb template validate                  # Validate all templates
-  bwrb template new idea                  # Create new template interactively
-  bwrb template edit idea default         # Edit existing template
-  bwrb template delete idea default       # Delete a template`);
+  bwrb template new                       # Create new template (prompts for type)
+  bwrb template new idea                  # Create new template for idea type
+  bwrb template edit                      # Edit template (shows picker)
+  bwrb template edit idea default         # Edit specific template
+  bwrb template delete                    # Delete template (shows picker)
+  bwrb template delete idea default       # Delete specific template`);
 
 // ============================================================================
-// template list [type]
+// Helper functions for interactive pickers
+// ============================================================================
+
+/**
+ * Prompt user to select a type from the schema.
+ * Returns the selected type path, or null if cancelled.
+ */
+async function promptTypePicker(
+  schema: LoadedSchema,
+  message: string
+): Promise<string | null> {
+  const types = Array.from(schema.types.keys())
+    .filter((t) => t !== 'meta')
+    .sort();
+  if (types.length === 0) {
+    printError('No types defined in schema');
+    return null;
+  }
+
+  const selected = await promptSelection(message, types);
+  return selected;
+}
+
+/**
+ * Prompt user to select a template from all available templates.
+ * Returns the selected template, or null if cancelled.
+ */
+async function promptTemplatePicker(
+  vaultDir: string,
+  message: string
+): Promise<Template | null> {
+  const templates = await findAllTemplates(vaultDir);
+  if (templates.length === 0) {
+    printError('No templates found');
+    return null;
+  }
+
+  // Format as "type  name" for display
+  const options = templates.map(t => `${t.templateFor}  ${t.name}`);
+  const selected = await promptSelection(message, options);
+  if (selected === null) return null;
+
+  // Find the matching template
+  const index = options.indexOf(selected);
+  return templates[index] ?? null;
+}
+
+// ============================================================================
+// template list [type] [name]
 // ============================================================================
 
 templateCommand
-  .command('list [type]')
-  .description('List available templates')
+  .command('list [type] [name]')
+  .description('List templates, or show details if type and name provided')
   .option('-o, --output <format>', 'Output format: text (default) or json')
-  .action(async (typePath: string | undefined, options: TemplateListOptions, cmd: Command) => {
+  .action(async (typePath: string | undefined, templateName: string | undefined, options: TemplateListOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
     try {
@@ -101,6 +148,12 @@ templateCommand
           printError(error);
           process.exit(1);
         }
+      }
+
+      // If both type and name provided, show template details
+      if (typePath && templateName) {
+        await showTemplateDetails(vaultDir, typePath, templateName, jsonMode);
+        return;
       }
 
       // Find templates
@@ -171,109 +224,81 @@ templateCommand
     }
   });
 
-// ============================================================================
-// template show <type> <name>
-// ============================================================================
-
-templateCommand
-  .command('show <type> <name>')
-  .description('Show template details')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
-  .action(async (typePath: string, templateName: string, options: TemplateShowOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
-
-    try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
-      const schema = await loadSchema(vaultDir);
-
-      // Validate type path
-      const typeDef = getTypeDefByPath(schema, typePath);
-      if (!typeDef) {
-        const error = `Unknown type: ${typePath}`;
-        if (jsonMode) {
-          printJson(jsonError(error));
-          process.exit(ExitCodes.VALIDATION_ERROR);
-        }
-        printError(error);
-        process.exit(1);
-      }
-
-      // Find template
-      const template = await findTemplateByName(vaultDir, typePath, templateName);
-      if (!template) {
-        const error = `Template not found: ${templateName} for type ${typePath}`;
-        if (jsonMode) {
-          printJson(jsonError(error));
-          process.exit(ExitCodes.VALIDATION_ERROR);
-        }
-        printError(error);
-        process.exit(1);
-      }
-
-      if (jsonMode) {
-        printJson(jsonSuccess({
-          data: {
-            name: template.name,
-            type: template.templateFor,
-            path: relative(vaultDir, template.path),
-            description: template.description,
-            defaults: template.defaults,
-            promptFields: template.promptFields,
-            filenamePattern: template.filenamePattern,
-            body: template.body,
-          },
-        }));
-        return;
-      }
-
-      // Text output
-      console.log(chalk.bold(`\nTemplate: ${template.name}\n`));
-      console.log(`  ${chalk.cyan('Type:')} ${template.templateFor}`);
-      console.log(`  ${chalk.cyan('Path:')} ${relative(vaultDir, template.path)}`);
-      
-      if (template.description) {
-        console.log(`  ${chalk.cyan('Description:')} ${template.description}`);
-      }
-
-      if (template.defaults && Object.keys(template.defaults).length > 0) {
-        console.log(`\n  ${chalk.cyan('Defaults:')}`);
-        for (const [key, value] of Object.entries(template.defaults)) {
-          const displayValue = Array.isArray(value) ? `[${value.join(', ')}]` : String(value);
-          console.log(`    ${chalk.yellow(key)}: ${displayValue}`);
-        }
-      }
-
-      if (template.promptFields && template.promptFields.length > 0) {
-        console.log(`\n  ${chalk.cyan('Prompt Fields:')} ${template.promptFields.join(', ')}`);
-      }
-
-      if (template.filenamePattern) {
-        console.log(`\n  ${chalk.cyan('Filename Pattern:')} ${template.filenamePattern}`);
-      }
-
-      if (template.body) {
-        console.log(`\n  ${chalk.cyan('Body Preview:')}`);
-        const lines = template.body.split('\n').slice(0, 10);
-        for (const line of lines) {
-          console.log(`    ${chalk.gray(line)}`);
-        }
-        if (template.body.split('\n').length > 10) {
-          console.log(chalk.gray('    ...'));
-        }
-      }
-
-      console.log('');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (jsonMode) {
-        printJson(jsonError(message));
-        process.exit(ExitCodes.SCHEMA_ERROR);
-      }
-      printError(message);
-      process.exit(1);
+/**
+ * Show details for a specific template.
+ */
+async function showTemplateDetails(
+  vaultDir: string,
+  typePath: string,
+  templateName: string,
+  jsonMode: boolean
+): Promise<void> {
+  // Find template
+  const template = await findTemplateByName(vaultDir, typePath, templateName);
+  if (!template) {
+    const error = `Template not found: ${templateName} for type ${typePath}`;
+    if (jsonMode) {
+      printJson(jsonError(error));
+      process.exit(ExitCodes.VALIDATION_ERROR);
     }
-  });
+    printError(error);
+    process.exit(1);
+  }
+
+  if (jsonMode) {
+    printJson(jsonSuccess({
+      data: {
+        name: template.name,
+        type: template.templateFor,
+        path: relative(vaultDir, template.path),
+        description: template.description,
+        defaults: template.defaults,
+        promptFields: template.promptFields,
+        filenamePattern: template.filenamePattern,
+        body: template.body,
+      },
+    }));
+    return;
+  }
+
+  // Text output
+  console.log(chalk.bold(`\nTemplate: ${template.name}\n`));
+  console.log(`  ${chalk.cyan('Type:')} ${template.templateFor}`);
+  console.log(`  ${chalk.cyan('Path:')} ${relative(vaultDir, template.path)}`);
+  
+  if (template.description) {
+    console.log(`  ${chalk.cyan('Description:')} ${template.description}`);
+  }
+
+  if (template.defaults && Object.keys(template.defaults).length > 0) {
+    console.log(`\n  ${chalk.cyan('Defaults:')}`);
+    for (const [key, value] of Object.entries(template.defaults)) {
+      const displayValue = Array.isArray(value) ? `[${value.join(', ')}]` : String(value);
+      console.log(`    ${chalk.yellow(key)}: ${displayValue}`);
+    }
+  }
+
+  if (template.promptFields && template.promptFields.length > 0) {
+    console.log(`\n  ${chalk.cyan('Prompt Fields:')} ${template.promptFields.join(', ')}`);
+  }
+
+  if (template.filenamePattern) {
+    console.log(`\n  ${chalk.cyan('Filename Pattern:')} ${template.filenamePattern}`);
+  }
+
+  if (template.body) {
+    console.log(`\n  ${chalk.cyan('Body Preview:')}`);
+    const lines = template.body.split('\n').slice(0, 10);
+    for (const line of lines) {
+      console.log(`    ${chalk.gray(line)}`);
+    }
+    if (template.body.split('\n').length > 10) {
+      console.log(chalk.gray('    ...'));
+    }
+  }
+
+  console.log('');
+}
 
 // ============================================================================
 // template validate [type]
@@ -395,16 +420,16 @@ templateCommand
   });
 
 // ============================================================================
-// template new <type>
+// template new [type]
 // ============================================================================
 
 templateCommand
-  .command('new <type>')
+  .command('new [type]')
   .description('Create a new template')
   .option('--name <name>', 'Template name (without .md)')
   .option('--description <desc>', 'Template description')
   .option('--json <data>', 'Create template non-interactively from JSON')
-  .action(async (typePath: string, options: TemplateNewOptions, cmd: Command) => {
+  .action(async (typePath: string | undefined, options: TemplateNewOptions, cmd: Command) => {
     const jsonMode = options.json !== undefined;
 
     try {
@@ -412,10 +437,22 @@ templateCommand
       const vaultDir = resolveVaultDir(parentOpts ?? {});
       const schema = await loadSchema(vaultDir);
 
+      // Prompt for type if not provided
+      let resolvedTypePath = typePath;
+      if (!resolvedTypePath) {
+        if (jsonMode) {
+          printJson(jsonError('Type is required in JSON mode'));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        const selected = await promptTypePicker(schema, 'Select type for new template');
+        if (selected === null) throw new UserCancelledError();
+        resolvedTypePath = selected;
+      }
+
       // Validate type path
-      const typeDef = getTypeDefByPath(schema, typePath);
+      const typeDef = getTypeDefByPath(schema, resolvedTypePath);
       if (!typeDef) {
-        const error = `Unknown type: ${typePath}`;
+        const error = `Unknown type: ${resolvedTypePath}`;
         if (jsonMode) {
           printJson(jsonError(error));
           process.exit(ExitCodes.VALIDATION_ERROR);
@@ -425,11 +462,11 @@ templateCommand
       }
 
       if (jsonMode) {
-        await createTemplateFromJson(schema, vaultDir, typePath, options);
+        await createTemplateFromJson(schema, vaultDir, resolvedTypePath, options);
         return;
       }
 
-      await createTemplateInteractive(schema, vaultDir, typePath, options);
+      await createTemplateInteractive(schema, vaultDir, resolvedTypePath, options);
     } catch (err) {
       if (err instanceof UserCancelledError) {
         console.log('\nCancelled.');
@@ -756,14 +793,14 @@ async function selectMultipleFields(
 }
 
 // ============================================================================
-// template edit <type> <name>
+// template edit [type] [name]
 // ============================================================================
 
 templateCommand
-  .command('edit <type> <name>')
+  .command('edit [type] [name]')
   .description('Edit an existing template')
   .option('--json <data>', 'Update template non-interactively with JSON (patch/merge semantics)')
-  .action(async (typePath: string, templateName: string, options: TemplateEditOptions, cmd: Command) => {
+  .action(async (typePath: string | undefined, templateName: string | undefined, options: TemplateEditOptions, cmd: Command) => {
     const jsonMode = options.json !== undefined;
 
     try {
@@ -771,27 +808,61 @@ templateCommand
       const vaultDir = resolveVaultDir(parentOpts ?? {});
       const schema = await loadSchema(vaultDir);
 
-      // Validate type path
-      const typeDef = getTypeDefByPath(schema, typePath);
-      if (!typeDef) {
-        const error = `Unknown type: ${typePath}`;
+      let template: Template | null = null;
+
+      // If no type provided, show picker for all templates
+      if (!typePath) {
         if (jsonMode) {
-          printJson(jsonError(error));
+          printJson(jsonError('Type and name are required in JSON mode'));
           process.exit(ExitCodes.VALIDATION_ERROR);
         }
-        printError(error);
-        process.exit(1);
+        template = await promptTemplatePicker(vaultDir, 'Select template to edit');
+        if (template === null) throw new UserCancelledError();
+      } else {
+        // Validate type path
+        const typeDef = getTypeDefByPath(schema, typePath);
+        if (!typeDef) {
+          const error = `Unknown type: ${typePath}`;
+          if (jsonMode) {
+            printJson(jsonError(error));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(error);
+          process.exit(1);
+        }
+
+        // If type provided but no name, prompt for template within that type
+        if (!templateName) {
+          if (jsonMode) {
+            printJson(jsonError('Template name is required in JSON mode'));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          const templates = await findTemplates(vaultDir, typePath);
+          if (templates.length === 0) {
+            printError(`No templates found for type: ${typePath}`);
+            process.exit(1);
+          }
+          const options = templates.map(t => t.name);
+          const selected = await promptSelection('Select template to edit', options);
+          if (selected === null) throw new UserCancelledError();
+          template = templates.find(t => t.name === selected) ?? null;
+        } else {
+          // Both type and name provided
+          template = await findTemplateByName(vaultDir, typePath, templateName);
+          if (!template) {
+            const error = `Template not found: ${templateName} for type ${typePath}`;
+            if (jsonMode) {
+              printJson(jsonError(error));
+              process.exit(ExitCodes.VALIDATION_ERROR);
+            }
+            printError(error);
+            process.exit(1);
+          }
+        }
       }
 
-      // Find template
-      const template = await findTemplateByName(vaultDir, typePath, templateName);
       if (!template) {
-        const error = `Template not found: ${templateName} for type ${typePath}`;
-        if (jsonMode) {
-          printJson(jsonError(error));
-          process.exit(ExitCodes.VALIDATION_ERROR);
-        }
-        printError(error);
+        printError('No template selected');
         process.exit(1);
       }
 
@@ -1155,7 +1226,7 @@ async function promptFieldDefaultEdit(
 }
 
 // ============================================================================
-// template delete <type> <name>
+// template delete [type] [name]
 // ============================================================================
 
 interface TemplateDeleteOptions {
@@ -1164,11 +1235,11 @@ interface TemplateDeleteOptions {
 }
 
 templateCommand
-  .command('delete <type> <name>')
+  .command('delete [type] [name]')
   .description('Delete a template')
   .option('-f, --force', 'Skip confirmation prompt')
   .option('-o, --output <format>', 'Output format: text (default) or json')
-  .action(async (typePath: string, templateName: string, options: TemplateDeleteOptions, cmd: Command) => {
+  .action(async (typePath: string | undefined, templateName: string | undefined, options: TemplateDeleteOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
     try {
@@ -1176,27 +1247,61 @@ templateCommand
       const vaultDir = resolveVaultDir(parentOpts ?? {});
       const schema = await loadSchema(vaultDir);
 
-      // Validate type path
-      const typeDef = getTypeDefByPath(schema, typePath);
-      if (!typeDef) {
-        const error = `Unknown type: ${typePath}`;
+      let template: Template | null = null;
+
+      // If no type provided, show picker for all templates
+      if (!typePath) {
         if (jsonMode) {
-          printJson(jsonError(error));
+          printJson(jsonError('Type and name are required in JSON mode'));
           process.exit(ExitCodes.VALIDATION_ERROR);
         }
-        printError(error);
-        process.exit(1);
+        template = await promptTemplatePicker(vaultDir, 'Select template to delete');
+        if (template === null) throw new UserCancelledError();
+      } else {
+        // Validate type path
+        const typeDef = getTypeDefByPath(schema, typePath);
+        if (!typeDef) {
+          const error = `Unknown type: ${typePath}`;
+          if (jsonMode) {
+            printJson(jsonError(error));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(error);
+          process.exit(1);
+        }
+
+        // If type provided but no name, prompt for template within that type
+        if (!templateName) {
+          if (jsonMode) {
+            printJson(jsonError('Template name is required in JSON mode'));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          const templates = await findTemplates(vaultDir, typePath);
+          if (templates.length === 0) {
+            printError(`No templates found for type: ${typePath}`);
+            process.exit(1);
+          }
+          const pickerOptions = templates.map(t => t.name);
+          const selected = await promptSelection('Select template to delete', pickerOptions);
+          if (selected === null) throw new UserCancelledError();
+          template = templates.find(t => t.name === selected) ?? null;
+        } else {
+          // Both type and name provided
+          template = await findTemplateByName(vaultDir, typePath, templateName);
+          if (!template) {
+            const error = `Template not found: ${templateName} for type ${typePath}`;
+            if (jsonMode) {
+              printJson(jsonError(error));
+              process.exit(ExitCodes.VALIDATION_ERROR);
+            }
+            printError(error);
+            process.exit(1);
+          }
+        }
       }
 
-      // Find template
-      const template = await findTemplateByName(vaultDir, typePath, templateName);
       if (!template) {
-        const error = `Template not found: ${templateName} for type ${typePath}`;
-        if (jsonMode) {
-          printJson(jsonError(error));
-          process.exit(ExitCodes.VALIDATION_ERROR);
-        }
-        printError(error);
+        printError('No template selected');
         process.exit(1);
       }
 
@@ -1205,7 +1310,7 @@ templateCommand
       // Confirm deletion unless --force
       if (!options.force && !jsonMode) {
         const confirmed = await promptConfirm(
-          `Delete template '${template.name}' for type '${typePath}'?`
+          `Delete template '${template.name}' for type '${template.templateFor}'?`
         );
         if (confirmed === null) throw new UserCancelledError();
         if (!confirmed) {

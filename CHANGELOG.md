@@ -39,6 +39,14 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Changed
 
+- **Template command unified verbs redesign** (#123)
+  - `template list [type] [name]` - Shows template details when both args provided
+  - `template new [type]` - Prompts for type if omitted
+  - `template edit [type] [name]` - Shows template picker if args omitted
+  - `template delete [type] [name]` - Shows template picker if args omitted
+  - Removed `template show` command (absorbed into `template list`)
+  - Consistent with schema command patterns
+
 - **Unified search/open/edit commands** (#119)
   - `search` is now the single note-resolution core with `--open` and `--edit` modes
   - `bwrb search "note" --edit` - Edit frontmatter of matching note
