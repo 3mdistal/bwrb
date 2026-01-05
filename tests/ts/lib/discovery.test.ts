@@ -243,6 +243,45 @@ describe('Discovery', () => {
       // 'sample' should not be in results since it's an exact match
       expect(similar).not.toContain('sample');
     });
+
+    it('should not match files with leading underscores due to empty string bug', () => {
+      // Regression test: files like "_daily-note" split into ["", "daily", "note"]
+      // Empty strings match everything via "".includes(w) being false but w.includes("") being true
+      const allFiles = new Set(['_daily-note', 'improving Vampire _________', '___test___']);
+      const similar = findSimilarFiles('abstract-bloom', allFiles);
+      
+      // None of these should match "abstract-bloom" - no meaningful word overlap
+      expect(similar).not.toContain('_daily-note');
+      expect(similar).not.toContain('improving Vampire _________');
+      expect(similar).not.toContain('___test___');
+    });
+
+    it('should not match short substrings embedded in longer words', () => {
+      // Regression test: "Jailbirds" contains "ai" but should not match file "AI"
+      const allFiles = new Set(['AI', 'Resume', 'dreams']);
+      
+      const jailbirdsMatches = findSimilarFiles('Jailbirds', allFiles);
+      expect(jailbirdsMatches).not.toContain('AI'); // "ai" is in "jailbirds" but too short
+      
+      const readmeMatches = findSimilarFiles('README', allFiles);
+      expect(readmeMatches).not.toContain('Resume'); // Levenshtein 3 but too different proportionally
+    });
+
+    it('should match legitimately similar files', () => {
+      const allFiles = new Set(['Bloob', 'house (de)constructs', 'birds whose bones are empty']);
+      
+      // "bloom" vs "Bloob" - 1 char difference, should match
+      const bloomMatches = findSimilarFiles('bloom', allFiles);
+      expect(bloomMatches).toContain('Bloob');
+      
+      // "Glass House" shares word "house" - should match
+      const houseMatches = findSimilarFiles('Glass House', allFiles);
+      expect(houseMatches).toContain('house (de)constructs');
+      
+      // "Jailbirds" shares word "birds" - should match
+      const birdsMatches = findSimilarFiles('Jailbirds', allFiles);
+      expect(birdsMatches).toContain('birds whose bones are empty');
+    });
   });
 
   describe('levenshteinDistance', () => {

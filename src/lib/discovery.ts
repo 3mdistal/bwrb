@@ -553,26 +553,41 @@ export function findSimilarFiles(target: string, allFiles: Set<string>, maxResul
       score += 50;
     }
     
-    // Contains match
-    if (fileBasename.includes(targetLower) || targetLower.includes(fileBasename)) {
+    // Contains match - require both strings to be substantial to avoid
+    // short strings like "ai" matching as substrings of longer words
+    const bothSubstantial = targetLower.length >= 4 && fileBasename.length >= 4;
+    if (bothSubstantial && (fileBasename.includes(targetLower) || targetLower.includes(fileBasename))) {
       score += 30;
     }
     
-    // Word overlap
-    const targetWords = targetLower.split(/[\s\-_]+/);
-    const fileWords = fileBasename.split(/[\s\-_]+/);
-    const overlap = targetWords.filter(w => fileWords.some(fw => fw.includes(w) || w.includes(fw)));
+    // Word overlap - filter out empty strings and very short words to avoid false matches
+    // (empty strings occur from leading/trailing/consecutive delimiters like "_daily-note")
+    const targetWords = targetLower.split(/[\s\-_]+/).filter(w => w.length >= 2);
+    const fileWords = fileBasename.split(/[\s\-_]+/).filter(w => w.length >= 2);
+    // Require exact word match, or substantial substring match where BOTH words are >= 4 chars
+    // This prevents "ai" in "Jailbirds" from matching the file "AI"
+    const overlap = targetWords.filter(w => 
+      fileWords.some(fw => 
+        fw === w || (w.length >= 4 && fw.length >= 4 && (fw.includes(w) || w.includes(fw)))
+      )
+    );
     score += overlap.length * 10;
     
-    // Levenshtein distance for short strings
+    // Levenshtein distance for short strings - scale threshold by string length
+    // to avoid false positives like "README" matching "Resume" (dist 3)
     if (targetLower.length < 20 && fileBasename.length < 20) {
       const dist = levenshteinDistance(targetLower, fileBasename);
-      if (dist <= 3) {
-        score += (4 - dist) * 15;
+      const minLen = Math.min(targetLower.length, fileBasename.length);
+      // Require edit distance to be at most 20% of the shorter string (min 1)
+      const maxAllowedDist = Math.max(1, Math.floor(minLen * 0.2));
+      if (dist <= maxAllowedDist) {
+        score += (maxAllowedDist + 1 - dist) * 15;
       }
     }
     
-    if (score > 0) {
+    // Require a meaningful similarity score to avoid noise
+    // (10 = one word overlap, 15 = levenshtein dist 3, 30 = contains match)
+    if (score >= 10) {
       results.push({ file, score });
     }
   }

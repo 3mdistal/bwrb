@@ -6,6 +6,11 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Fixed
 
+- **Audit similar files suggestions no longer match unrelated files**
+  - Files with leading/trailing underscores (like `_daily-note`) no longer match everything
+  - Short substrings embedded in words no longer cause false matches (e.g., "Jailbirds" no longer suggests "AI")
+  - Levenshtein distance threshold now scales with string length to avoid weak matches like "README" → "Resume"
+
 - **`new --json` now honors `--owner` and `--standalone` flags** (#138)
   - Previously, ownership flags were silently ignored in JSON mode, always creating pooled notes
   - `--owner "[[Note]]"` creates the note in the owner's folder
