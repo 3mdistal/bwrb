@@ -149,6 +149,83 @@ When creating a type, the user decides:
 
 ---
 
+---
+
+## Field Value Types
+
+Fields have a **prompt type** that determines how values are collected and what data type is stored.
+
+### Prompt Types
+
+| Prompt | UX | Stored As | Use Cases |
+|--------|-----|-----------|-----------|
+| `text` | Single-line input | `string` | Names, descriptions, short answers |
+| `number` | Numeric input | `number` | Priority, word count, ratings |
+| `boolean` | Y/n confirm | `true`/`false` | Completed, archived, pinned |
+| `date` | Date input | `string` (YYYY-MM-DD) | Due dates, created dates |
+| `select` | Numbered picker | `string` or `string[]` | Status, category, tags |
+| `relation` | Picker from vault | `string` (wikilink) | Parent task, milestone, project |
+| `list` | Comma-separated input | `string[]` | Aliases, keywords |
+
+### Select Fields
+
+Select fields define their options inline:
+
+```json
+{
+  "status": {
+    "prompt": "select",
+    "options": ["active", "settled", "dropped"],
+    "required": true
+  }
+}
+```
+
+For multi-select (multiple values allowed):
+
+```json
+{
+  "tags": {
+    "prompt": "select",
+    "options": ["urgent", "blocked", "waiting", "review"],
+    "multiple": true
+  }
+}
+```
+
+### Relation Fields
+
+Relation fields link to notes of a specific type (and its descendants):
+
+```json
+{
+  "milestone": {
+    "prompt": "relation",
+    "source": "milestone",
+    "format": "wikilink"
+  }
+}
+```
+
+The picker shows only notes matching the `source` type constraint.
+
+### Field Inheritance
+
+Fields are inherited from parent types. Define shared fields on a common ancestor:
+
+```
+meta (status, created)        <- all types get these
+├── objective (deadline)      <- objectives and children get deadline
+│   ├── task
+│   └── milestone
+└── draft (draft-status)
+    └── chapter
+```
+
+This eliminates duplication. Change a field on `meta`, all types reflect it.
+
+---
+
 ## Out of Scope
 
 The type system does NOT handle:

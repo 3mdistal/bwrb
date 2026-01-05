@@ -17,8 +17,7 @@ Schemas include a `schemaVersion` field for tracking content versions:
 {
   "version": 2,
   "schemaVersion": "1.0.0",
-  "types": { ... },
-  "enums": { ... }
+  "types": { ... }
 }
 ```
 
@@ -81,14 +80,9 @@ bwrb schema history --json
 | Add field | Deterministic | No action needed (field absent in old notes is valid) |
 | Remove field | Non-deterministic | Removes field from affected notes |
 | Rename field | Non-deterministic | Renames field in affected notes |
-
-### Enum Operations
-
-| Change | Classification | Migration Action |
-|--------|---------------|------------------|
-| Add enum value | Deterministic | No action needed |
-| Remove enum value | Non-deterministic | Prompts for value mapping |
-| Rename enum value | Non-deterministic | Updates references in notes |
+| Add select option | Deterministic | No action needed |
+| Remove select option | Non-deterministic | Prompts for value mapping |
+| Rename select option | Non-deterministic | Updates references in notes |
 
 ### Type Operations
 
