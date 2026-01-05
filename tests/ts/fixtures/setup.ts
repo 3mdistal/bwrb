@@ -93,6 +93,37 @@ export const TEST_SCHEMA = {
       },
       field_order: ['type', 'status', 'priority'],
     },
+    project: {
+      output_dir: 'Projects',
+      fields: {
+        type: { value: 'project' },
+        status: {
+          prompt: 'select',
+          enum: 'status',
+          default: 'raw',
+        },
+        research: {
+          prompt: 'dynamic',
+          source: 'research',
+          format: 'wikilink',
+          multiple: true,
+          owned: true,
+        },
+      },
+      field_order: ['type', 'status'],
+    },
+    research: {
+      output_dir: 'Research',
+      fields: {
+        type: { value: 'research' },
+        status: {
+          prompt: 'select',
+          enum: 'status',
+          default: 'raw',
+        },
+      },
+      field_order: ['type', 'status'],
+    },
   },
   audit: {
     ignored_directories: ['Templates'],
@@ -113,6 +144,8 @@ export async function createTestVault(): Promise<string> {
   await mkdir(join(vaultDir, 'Ideas'), { recursive: true });
   await mkdir(join(vaultDir, 'Objectives/Tasks'), { recursive: true });
   await mkdir(join(vaultDir, 'Objectives/Milestones'), { recursive: true });
+  await mkdir(join(vaultDir, 'Projects/My Project/research'), { recursive: true });
+  await mkdir(join(vaultDir, 'Research'), { recursive: true });
 
   // Create sample files
   await writeFile(
@@ -164,6 +197,18 @@ status: in-flight
 type: milestone
 status: settled
 ---
+`
+  );
+
+  // Create a project owner note for ownership testing
+  await writeFile(
+    join(vaultDir, 'Projects/My Project', 'My Project.md'),
+    `---
+type: project
+status: in-flight
+---
+
+A test project for ownership testing.
 `
   );
 

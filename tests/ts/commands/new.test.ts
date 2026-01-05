@@ -187,6 +187,108 @@ describe('new command', () => {
     });
   });
 
+  describe('JSON mode with ownership flags', () => {
+    it('should create owned note with --owner flag', async () => {
+      const result = await runCLI(
+        ['new', 'research', '--json', '{"name": "Project Research"}', '--owner', '[[My Project]]'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.success).toBe(true);
+      // Should be in the owner's folder
+      expect(output.path).toContain('Projects/My Project/research/Project Research.md');
+    });
+
+    it('should create pooled note with --standalone flag', async () => {
+      const result = await runCLI(
+        ['new', 'research', '--json', '{"name": "Standalone Research"}', '--standalone'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.success).toBe(true);
+      // Should be in the pooled Research folder
+      expect(output.path).toBe('Research/Standalone Research.md');
+    });
+
+    it('should default to pooled when neither --owner nor --standalone provided', async () => {
+      const result = await runCLI(
+        ['new', 'research', '--json', '{"name": "Default Research"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.success).toBe(true);
+      // Should be in the pooled Research folder
+      expect(output.path).toBe('Research/Default Research.md');
+    });
+
+    it('should error when both --owner and --standalone provided', async () => {
+      const result = await runCLI(
+        ['new', 'research', '--json', '{"name": "Test"}', '--owner', '[[My Project]]', '--standalone'],
+        vaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.success).toBe(false);
+      expect(output.error).toContain('Cannot use both --owner and --standalone');
+    });
+
+    it('should error when --owner used with non-ownable type', async () => {
+      const result = await runCLI(
+        ['new', 'idea', '--json', '{"name": "Test Idea"}', '--owner', '[[My Project]]'],
+        vaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.success).toBe(false);
+      expect(output.error).toContain('cannot be owned');
+    });
+
+    it('should error when --owner references non-existent note', async () => {
+      const result = await runCLI(
+        ['new', 'research', '--json', '{"name": "Test Research"}', '--owner', '[[Nonexistent Project]]'],
+        vaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.success).toBe(false);
+      expect(output.error).toContain('Owner not found');
+    });
+
+    it('should handle --owner with plain name (no brackets)', async () => {
+      const result = await runCLI(
+        ['new', 'research', '--json', '{"name": "Plain Owner Research"}', '--owner', 'My Project'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.success).toBe(true);
+      expect(output.path).toContain('Projects/My Project/research/');
+    });
+
+    it('should error when --standalone used with non-ownable type', async () => {
+      const result = await runCLI(
+        ['new', 'idea', '--json', '{"name": "Test Idea"}', '--standalone'],
+        vaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.success).toBe(false);
+      expect(output.error).toContain('cannot be owned');
+      expect(output.error).toContain('--standalone is not applicable');
+    });
+  });
+
   describe('date expression evaluation in templates', () => {
     it('should evaluate date expressions in template defaults', async () => {
       // Use the weekly-review template which has deadline: "today() + '7d'"

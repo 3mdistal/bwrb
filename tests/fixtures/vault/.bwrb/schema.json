@@ -99,6 +99,29 @@
       },
       "field_order": ["type"],
       "body_sections": []
+    },
+    "project": {
+      "output_dir": "Projects",
+      "fields": {
+        "type": { "value": "project" },
+        "status": { "prompt": "select", "enum": "status", "default": "raw" },
+        "research": {
+          "prompt": "dynamic",
+          "source": "research",
+          "format": "wikilink",
+          "multiple": true,
+          "owned": true
+        }
+      },
+      "field_order": ["type", "status"]
+    },
+    "research": {
+      "output_dir": "Research",
+      "fields": {
+        "type": { "value": "research" },
+        "status": { "prompt": "select", "enum": "status", "default": "raw" }
+      },
+      "field_order": ["type", "status"]
     }
   }
 }

@@ -56,7 +56,7 @@ describe('targeting', () => {
 
     it('returns null for ambiguous arguments', () => {
       expect(detectPositionalType('unknown', schema)).toBeNull();
-      expect(detectPositionalType('project', schema)).toBeNull();
+      expect(detectPositionalType('foobar', schema)).toBeNull();
     });
   });
 
