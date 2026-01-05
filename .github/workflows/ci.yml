@@ -52,6 +52,11 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Check for dead code (Knip)
+        run: pnpm knip
+        # Non-blocking initially - will be made blocking once stable
+        continue-on-error: true
+
       - name: Run tests (excluding PTY)
         run: pnpm test -- --exclude='**/*.pty.test.ts'
 
