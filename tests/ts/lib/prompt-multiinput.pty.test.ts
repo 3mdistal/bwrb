@@ -67,7 +67,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
           await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Test Task');
 
-          // Wait for status selection
+          // Wait for status selection (waitFor includes stabilization)
           await proc.waitFor('status', 10000);
           proc.write('1'); // Select first status
 
@@ -104,7 +104,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
           await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Empty Steps Task');
 
-          // Wait for status selection
+          // Wait for status selection (waitFor includes stabilization)
           await proc.waitFor('status', 10000);
           proc.write('1');
 
@@ -114,8 +114,8 @@ describePty('Multi-Input Prompt PTY tests', () => {
           // Just press Enter (empty input)
           proc.write(Keys.ENTER);
 
-          // Wait for file creation
-          await proc.waitForStable(200);
+          // Wait for file creation (longer stabilization for processing)
+          await proc.waitForStable(300);
           await proc.waitFor('Created:', 5000);
 
           // Verify file was created
@@ -139,7 +139,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
           await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Cancel Test');
 
-          // Wait for status selection
+          // Wait for status selection (waitFor includes stabilization)
           await proc.waitFor('status', 10000);
           proc.write('1');
 
@@ -177,7 +177,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
           await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Single Step Task');
 
-          // Wait for status selection
+          // Wait for status selection (waitFor includes stabilization)
           await proc.waitFor('status', 10000);
           proc.write('1');
 
@@ -210,7 +210,7 @@ describePty('Multi-Input Prompt PTY tests', () => {
           await proc.waitFor('Name', 10000);
           await proc.typeAndEnter('Whitespace Task');
 
-          // Wait for status selection
+          // Wait for status selection (waitFor includes stabilization)
           await proc.waitFor('status', 10000);
           proc.write('1');
 

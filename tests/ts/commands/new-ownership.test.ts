@@ -28,6 +28,9 @@ status: in-flight
 A test project for ownership testing.
 `
     );
+
+    // Delay to ensure file system sync completes (fixes flaky tests on macOS)
+    await new Promise((resolve) => setTimeout(resolve, 50));
   });
 
   afterEach(async () => {

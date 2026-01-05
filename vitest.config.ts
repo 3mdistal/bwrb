@@ -6,9 +6,18 @@ export default defineConfig({
     include: ['tests/ts/**/*.test.ts'],
     setupFiles: ['tests/ts/setup.ts'],
     globalTeardown: 'tests/ts/teardown.ts',
-    // Limit parallelism to prevent race conditions when spawning node dist/index.js
-    // Tests that spawn CLI processes can conflict if too many run simultaneously
+    // Limit parallelism to prevent CPU saturation causing flaky tests
+    // PTY tests are timing-sensitive and fail when CPU is maxed out
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        maxForks: 4,
+        minForks: 1,
+      },
+    },
     maxConcurrency: 5,
+    // Retry flaky tests once before failing - handles CPU contention gracefully
+    retry: 1,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

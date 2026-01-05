@@ -189,12 +189,17 @@ export class PtyProcess {
 
   /**
    * Wait for the output to contain a specific pattern.
+   * After finding the pattern, waits for output to stabilize (no new output)
+   * to ensure prompts are fully rendered and ready for input.
+   *
    * @param pattern String or regex to match
    * @param timeoutMs Maximum time to wait (default: 5000ms)
+   * @param stabilizeMs Time output must be stable after match (default: 30ms)
    */
   async waitFor(
     pattern: string | RegExp,
-    timeoutMs: number = 5000
+    timeoutMs: number = 5000,
+    stabilizeMs: number = 30
   ): Promise<void> {
     const startTime = Date.now();
 
@@ -206,6 +211,12 @@ export class PtyProcess {
           : pattern.test(output);
 
       if (matches) {
+        // Wait for output to stabilize (no new output for stabilizeMs)
+        // This ensures prompts are fully rendered before returning
+        if (stabilizeMs > 0) {
+          const remainingTime = timeoutMs - (Date.now() - startTime);
+          await this.waitForStable(stabilizeMs, Math.max(remainingTime, 1000));
+        }
         return;
       }
 

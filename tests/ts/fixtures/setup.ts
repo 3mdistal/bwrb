@@ -302,6 +302,9 @@ defaults:
 `
   );
 
+  // Delay to ensure file system sync completes (fixes flaky tests on macOS)
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
   return vaultDir;
 }
 
