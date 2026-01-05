@@ -41,6 +41,10 @@ src/
 - **Templates**: Reusable note templates in `.bwrb/templates/{type}/{subtype}/*.md` with defaults and body structure
 - **Wikilinks**: `[[Note]]` or `"[[Note]]"` format for Obsidian linking
 
+## Agent Skill
+
+An OpenCode agent skill for programmatic bwrb usage is maintained at `docs/skill/SKILL.md`. Update this file when adding new commands or changing CLI patterns for automation.
+
 ## Development
 
 ```sh
