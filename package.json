@@ -17,6 +17,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "qa": "pnpm typecheck && pnpm lint && pnpm build && pnpm test",
+    "knip": "knip",
+    "knip:prod": "knip --production",
     "postinstall": "chmod +x node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true"
   },
   "keywords": [
@@ -49,6 +51,7 @@
     "@types/prompts": "^2.4.9",
     "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^9.39.2",
+    "knip": "^5.80.0",
     "node-pty": "^1.1.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",

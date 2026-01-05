@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+
+  // tsx is used in the dev script (shell command, not detectable by Knip)
+  "ignoreDependencies": ["tsx"],
+
+  // Vitest plugin doesn't auto-detect globalTeardown from config
+  "vitest": {
+    "entry": ["tests/ts/teardown.ts"]
+  }
+}
