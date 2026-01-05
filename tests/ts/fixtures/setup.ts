@@ -93,6 +93,39 @@ export const TEST_SCHEMA = {
       },
       field_order: ['type', 'status', 'priority'],
     },
+    // Ownership types - project owns research notes
+    project: {
+      output_dir: 'Projects',
+      fields: {
+        type: { value: 'project' },
+        status: {
+          prompt: 'select',
+          enum: 'status',
+          default: 'raw',
+          required: true,
+        },
+        research: {
+          prompt: 'dynamic',
+          source: 'research',
+          owned: true,
+          format: 'quoted-wikilink',
+        },
+      },
+      field_order: ['type', 'status', 'research'],
+    },
+    research: {
+      output_dir: 'Research',
+      fields: {
+        type: { value: 'research' },
+        status: {
+          prompt: 'select',
+          enum: 'status',
+          default: 'raw',
+          required: true,
+        },
+      },
+      field_order: ['type', 'status'],
+    },
   },
   audit: {
     ignored_directories: ['Templates'],
@@ -113,6 +146,8 @@ export async function createTestVault(): Promise<string> {
   await mkdir(join(vaultDir, 'Ideas'), { recursive: true });
   await mkdir(join(vaultDir, 'Objectives/Tasks'), { recursive: true });
   await mkdir(join(vaultDir, 'Objectives/Milestones'), { recursive: true });
+  await mkdir(join(vaultDir, 'Projects'), { recursive: true });
+  await mkdir(join(vaultDir, 'Research'), { recursive: true });
 
   // Create sample files
   await writeFile(

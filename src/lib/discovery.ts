@@ -46,6 +46,20 @@ export interface ManagedFile {
 }
 
 // ============================================================================
+// Sorting Helpers
+// ============================================================================
+
+/**
+ * Locale-stable comparator for deterministic file ordering across platforms.
+ * Uses 'en' locale to ensure consistent ordering regardless of system locale.
+ * 
+ * All discovery functions return ManagedFile[] sorted by relativePath (ascending).
+ * This ensures consistent behavior across macOS (APFS), Linux (ext4), and Windows (NTFS).
+ */
+const stablePathCompare = (a: ManagedFile, b: ManagedFile): number =>
+  a.relativePath.localeCompare(b.relativePath, 'en');
+
+// ============================================================================
 // File Discovery
 // ============================================================================
 
@@ -138,7 +152,8 @@ export async function collectAllMarkdownFiles(
     }
   }
   
-  return files;
+  // Sort for deterministic ordering across platforms (readdir order varies by filesystem)
+  return files.sort(stablePathCompare);
 }
 
 /**
@@ -294,7 +309,8 @@ export async function discoverAllTypeFiles(
     }
   }
   
-  return Array.from(allFiles.values());
+  // Sort for deterministic ordering across platforms
+  return Array.from(allFiles.values()).sort(stablePathCompare);
 }
 
 /**
@@ -339,8 +355,9 @@ export async function discoverFilesForNavigation(
   // Get unmanaged files (respects exclusion rules)
   const unmanagedFiles = await discoverUnmanagedFiles(schema, vaultDir);
   
-  // Combine and return
-  return [...typeFiles, ...unmanagedFiles];
+  // Combine and sort for deterministic ordering across platforms
+  const allFiles = [...typeFiles, ...unmanagedFiles];
+  return allFiles.sort(stablePathCompare);
 }
 
 /**
@@ -368,7 +385,8 @@ export async function collectFilesForType(
     files.push(...descendantFiles);
   }
 
-  return files;
+  // Sort for deterministic ordering across platforms
+  return files.sort(stablePathCompare);
 }
 
 /**
@@ -396,7 +414,8 @@ export async function collectPooledFiles(
     }
   }
 
-  return files;
+  // Sort for deterministic ordering across platforms
+  return files.sort(stablePathCompare);
 }
 
 // ============================================================================
@@ -463,7 +482,8 @@ async function collectOwnedFiles(
     }
   }
   
-  return files;
+  // Sort for deterministic ordering across platforms
+  return files.sort(stablePathCompare);
 }
 
 /**
@@ -502,7 +522,8 @@ async function collectFilesForTypeWithOwnership(
     }
   }
   
-  return files;
+  // Sort for deterministic ordering across platforms
+  return files.sort(stablePathCompare);
 }
 
 // ============================================================================

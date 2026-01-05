@@ -6,6 +6,9 @@ export default defineConfig({
     include: ['tests/ts/**/*.test.ts'],
     setupFiles: ['tests/ts/setup.ts'],
     globalTeardown: 'tests/ts/teardown.ts',
+    // Limit parallelism to prevent race conditions when spawning node dist/index.js
+    // Tests that spawn CLI processes can conflict if too many run simultaneously
+    maxConcurrency: 5,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

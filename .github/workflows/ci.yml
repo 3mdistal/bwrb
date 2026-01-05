@@ -96,7 +96,7 @@ jobs:
         run: pnpm build
 
       - name: Run PTY tests
-        run: pnpm test -- --testNamePattern='\.pty\.test\.ts$' --reporter=verbose
+        run: pnpm test -- --include='**/*.pty.test.ts' --reporter=verbose
         env:
           # Force color output for better debugging
           FORCE_COLOR: 1

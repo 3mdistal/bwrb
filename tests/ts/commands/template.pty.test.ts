@@ -40,9 +40,11 @@ describePty('template command PTY tests', () => {
         async (proc, vaultPath) => {
           // Should prompt for type selection
           await proc.waitFor('Select type', 10000);
-          // numberedSelect uses number keys: press '1' for first item
-          // The first type in TEST_SCHEMA is 'objective'
-          proc.write('1'); // Select first item immediately
+          // Wait for 'idea' option to appear, then select it
+          await proc.waitFor('idea', 5000);
+          proc.write('i'); // Type 'i' to filter/jump to 'idea'
+          await proc.waitFor('idea', 2000);
+          proc.write('\r'); // Press Enter to select
 
           // Then continue with template name prompt
           await proc.waitFor('Template name', 5000);
@@ -63,8 +65,8 @@ describePty('template command PTY tests', () => {
           // Wait for creation
           await proc.waitFor('Created:', 5000);
 
-          // Verify file was created - first type is 'objective'
-          const templatePath = join(vaultPath, '.bwrb/templates/objective', 'from-picker.md');
+          // Verify file was created - selected 'idea' type
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'from-picker.md');
           expect(existsSync(templatePath)).toBe(true);
         },
         { schema: TEST_SCHEMA }
