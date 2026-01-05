@@ -355,7 +355,6 @@ export interface TemplateResolutionResult {
  * Logic:
  * - --no-template: Return null template, no prompt
  * - --template <name>: Find and return that template (error if not found)
- * - --default: Find and return default.md (error if not found)
  * - No flags:
  *   - If default.md exists: Use it automatically
  *   - If multiple templates: Prompt user to select
@@ -367,7 +366,6 @@ export async function resolveTemplate(
   options: {
     noTemplate?: boolean;
     templateName?: string;
-    useDefault?: boolean;
   }
 ): Promise<TemplateResolutionResult> {
   // --no-template: Skip template system entirely
@@ -378,13 +376,6 @@ export async function resolveTemplate(
   // --template <name>: Find specific template
   if (options.templateName) {
     const template = await findTemplateByName(vaultDir, typePath, options.templateName);
-    // Note: Caller should handle null case as an error
-    return { template, shouldPrompt: false, availableTemplates: [] };
-  }
-  
-  // --default: Find default.md
-  if (options.useDefault) {
-    const template = await findDefaultTemplate(vaultDir, typePath);
     // Note: Caller should handle null case as an error
     return { template, shouldPrompt: false, availableTemplates: [] };
   }

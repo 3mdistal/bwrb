@@ -459,24 +459,6 @@ template-for: idea
       expect(result.shouldPrompt).toBe(false);
     });
 
-    it('finds default template when useDefault is true', async () => {
-      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
-      await writeFile(
-        join(tempDir, '.bwrb/templates/idea', 'default.md'),
-        `---
-type: template
-template-for: idea
----
-`
-      );
-
-      const result = await resolveTemplate(tempDir, 'idea', { useDefault: true });
-
-      expect(result.template).not.toBeNull();
-      expect(result.template?.name).toBe('default');
-      expect(result.shouldPrompt).toBe(false);
-    });
-
     it('auto-selects default.md when no flags provided', async () => {
       await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
