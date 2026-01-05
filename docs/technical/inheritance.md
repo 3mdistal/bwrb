@@ -65,7 +65,7 @@ Child types inherit all fields from ancestors:
   "objective": {
     "extends": "meta",
     "fields": {
-      "deadline": { "prompt": "input", "required": false }
+      "deadline": { "prompt": "text", "required": false }
     }
   },
   "task": {
@@ -496,7 +496,7 @@ goal       Ship v1.0            raw
     
     "objective": {
       "fields": {
-        "deadline": { "prompt": "input", "required": false }
+        "deadline": { "prompt": "text", "required": false }
       }
     },
     
@@ -610,21 +610,21 @@ goal       Ship v1.0            raw
     "person": {
       "extends": "entity",
       "fields": {
-        "email": { "prompt": "input" }
+        "email": { "prompt": "text" }
       }
     },
     
     "place": {
       "extends": "entity",
       "fields": {
-        "location": { "prompt": "input" }
+        "location": { "prompt": "text" }
       }
     },
     
     "software": {
       "extends": "entity",
       "fields": {
-        "url": { "prompt": "input" }
+        "url": { "prompt": "text" }
       }
     }
   }

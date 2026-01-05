@@ -18,7 +18,7 @@ export const FilterConditionSchema = z.object({
  */
 export const FieldSchema = z.object({
   // Prompt type (how the field is collected)
-  prompt: z.enum(['input', 'select', 'multi-input', 'date', 'dynamic']).optional(),
+  prompt: z.enum(['text', 'select', 'multi-input', 'date', 'dynamic']).optional(),
   // Static value (no prompting)
   value: z.string().optional(),
   // Enum reference for select prompts

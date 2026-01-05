@@ -347,7 +347,7 @@ describe('schema', () => {
               task: {
                 recursive: true,
                 fields: {
-                  title: { prompt: 'input' }
+                  title: { prompt: 'text' }
                 }
               }
             }
@@ -385,7 +385,7 @@ describe('schema', () => {
               task: {
                 recursive: true,
                 fields: {
-                  title: { prompt: 'input' },
+                  title: { prompt: 'text' },
                   parent: {
                     prompt: 'dynamic',
                     source: 'task',
@@ -438,14 +438,14 @@ describe('schema', () => {
             types: {
               chapter: {
                 fields: {
-                  title: { prompt: 'input' }
+                  title: { prompt: 'text' }
                 }
               },
               scene: {
                 extends: 'chapter',
                 recursive: true,
                 fields: {
-                  content: { prompt: 'input' }
+                  content: { prompt: 'text' }
                 }
               }
             }
@@ -490,7 +490,7 @@ describe('schema', () => {
               task: {
                 recursive: true,
                 fields: {
-                  title: { prompt: 'input' }
+                  title: { prompt: 'text' }
                 }
               }
             }
@@ -615,7 +615,7 @@ describe('schema', () => {
               task: {
                 extends: 'meta',
                 fields: {
-                  status: { prompt: 'input' }
+                  status: { prompt: 'text' }
                 }
               }
             }
@@ -687,13 +687,13 @@ describe('schema', () => {
               objective: {
                 extends: 'meta',
                 fields: {
-                  status: { prompt: 'input' }
+                  status: { prompt: 'text' }
                 }
               },
               task: {
                 extends: 'objective',
                 fields: {
-                  deadline: { prompt: 'input' }
+                  deadline: { prompt: 'text' }
                 }
               }
             }
@@ -741,9 +741,9 @@ describe('schema', () => {
             types: {
               meta: {
                 fields: {
-                  alpha: { prompt: 'input' },
-                  beta: { prompt: 'input' },
-                  gamma: { prompt: 'input' }
+                  alpha: { prompt: 'text' },
+                  beta: { prompt: 'text' },
+                  gamma: { prompt: 'text' }
                 },
                 field_order: ['gamma', 'alpha', 'beta']
               }

@@ -30,7 +30,7 @@
           "format": "quoted-wikilink"
         },
         "creation-date": { "value": "$NOW" },
-        "deadline": { "prompt": "input", "label": "Deadline (YYYY-MM-DD)" }
+        "deadline": { "prompt": "text", "label": "Deadline (YYYY-MM-DD)" }
       },
       "field_order": [
         "type",

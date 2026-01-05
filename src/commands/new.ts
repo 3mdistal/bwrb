@@ -1026,7 +1026,7 @@ async function promptField(
       return formatValue(selected, field.format);
     }
 
-    case 'input': {
+    case 'text': {
       const label = field.label ?? fieldName;
       if (field.required) {
         const value = await promptRequired(label);

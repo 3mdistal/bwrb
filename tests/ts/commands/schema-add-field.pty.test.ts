@@ -102,7 +102,7 @@ describePty('bwrb schema add-field PTY tests', () => {
           const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields.description).toEqual({
-            prompt: 'input',
+            prompt: 'text',
             required: false,
           });
         },
@@ -289,7 +289,7 @@ describePty('bwrb schema add-field PTY tests', () => {
           const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields.name).toEqual({
-            prompt: 'input',
+            prompt: 'text',
             required: true,
           });
         },

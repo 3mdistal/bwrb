@@ -171,7 +171,7 @@ Special values: `$NOW` (datetime), `$TODAY` (date)
 ```json
 {
   "deadline": {
-    "prompt": "input",
+    "prompt": "text",
     "label": "Deadline (YYYY-MM-DD)",
     "required": false
   }

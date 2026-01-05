@@ -124,7 +124,7 @@ describe('hierarchy', () => {
               recursive: true,
               output_dir: 'Tasks',
               fields: {
-                title: { prompt: 'input' },
+                title: { prompt: 'text' },
               },
             },
           },
@@ -194,7 +194,7 @@ parent: "[[Child Task]]"
           types: {
             task: {
               output_dir: 'Tasks',
-              fields: { title: { prompt: 'input' } },
+              fields: { title: { prompt: 'text' } },
             },
           },
         })
@@ -239,7 +239,7 @@ title: My Task
               recursive: true,
               output_dir: 'Tasks',
               fields: {
-                title: { prompt: 'input' },
+                title: { prompt: 'text' },
               },
             },
           },

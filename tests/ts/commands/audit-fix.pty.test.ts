@@ -420,7 +420,7 @@ some: value
             output_dir: 'Items',
             fields: {
               type: { value: 'item' },
-              link: { prompt: 'input', format: 'wikilink' },
+              link: { prompt: 'text', format: 'wikilink' },
             },
             field_order: ['type', 'link'],
           },
