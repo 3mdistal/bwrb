@@ -481,7 +481,7 @@ describePty('bwrb schema add-type PTY tests', () => {
           await proc.typeAndEnter('type');
 
           await proc.waitFor('Prompt type');
-          proc.write('6'); // fixed value
+          proc.write('7'); // fixed value
 
           await proc.waitFor('Fixed value');
           await proc.typeAndEnter('task');

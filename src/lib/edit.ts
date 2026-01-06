@@ -389,6 +389,18 @@ async function promptFieldEdit(
       return newValue || currentValue;
     }
 
+    case 'boolean': {
+      const label = field.label ?? fieldName;
+      const currentBool = currentValue === true || currentValue === 'true';
+      const displayCurrent = currentBool ? 'yes' : 'no';
+      printInfo(`Current ${label}: ${displayCurrent}`);
+      const result = await promptConfirm(`New ${label}`);
+      if (result === null) {
+        throw new UserCancelledError();
+      }
+      return result;
+    }
+
     default:
       return currentValue;
   }

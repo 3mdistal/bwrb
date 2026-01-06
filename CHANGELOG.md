@@ -4,6 +4,14 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **New `boolean` field primitive** (#163)
+  - Fields can now use `prompt: "boolean"` for yes/no values
+  - Uses Y/n confirmation prompt during note creation
+  - Stored as YAML boolean literals: `completed: true` or `archived: false`
+  - Example: `{ "completed": { "prompt": "boolean", "default": false } }`
+
 ### Changed (Breaking)
 
 - **Renamed `input` prompt type to `text`** (#160)
