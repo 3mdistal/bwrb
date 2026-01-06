@@ -15,15 +15,11 @@ describe('schema add-field command', () => {
       join(tempVaultDir, '.bwrb', 'schema.json'),
       JSON.stringify({
         version: 2,
-        enums: {
-          status: ['open', 'closed'],
-          priority: ['low', 'medium', 'high'],
-        },
         types: {
           note: {
             output_dir: 'Notes',
             fields: {
-              status: { prompt: 'select', enum: 'status' },
+              status: { prompt: 'select', options: ['open', 'closed'] },
             },
           },
           task: {
@@ -66,9 +62,9 @@ describe('schema add-field command', () => {
       expect(schema.types.project.fields.description).toEqual({ prompt: 'text' });
     });
 
-    it('should add a select field with enum', async () => {
+    it('should add a select field with inline options', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'priority', '--type', 'select', '--enum', 'priority', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'priority', '--type', 'select', '--options', 'low,medium,high', '--output', 'json'],
         tempVaultDir
       );
 
@@ -76,12 +72,12 @@ describe('schema add-field command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
       expect(json.data.definition.prompt).toBe('select');
-      expect(json.data.definition.enum).toBe('priority');
+      expect(json.data.definition.options).toEqual(['low', 'medium', 'high']);
 
       const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.project.fields.priority).toEqual({
         prompt: 'select',
-        enum: 'priority',
+        options: ['low', 'medium', 'high'],
       });
     });
 
@@ -166,19 +162,19 @@ describe('schema add-field command', () => {
 
     it('should add a field with default value', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'status', '--type', 'select', '--enum', 'status', '--default', 'open', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'priority', '--type', 'select', '--options', 'low,medium,high', '--default', 'medium', '--output', 'json'],
         tempVaultDir
       );
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
-      expect(json.data.definition.default).toBe('open');
+      expect(json.data.definition.default).toBe('medium');
 
       const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
-      expect(schema.types.project.fields.status).toEqual({
+      expect(schema.types.project.fields.priority).toEqual({
         prompt: 'select',
-        enum: 'status',
-        default: 'open',
+        options: ['low', 'medium', 'high'],
+        default: 'medium',
       });
     });
   });
@@ -269,7 +265,7 @@ describe('schema add-field command', () => {
       expect(json.error).toContain('Invalid prompt type');
     });
 
-    it('should reject select without --enum', async () => {
+    it('should reject select without --options', async () => {
       const result = await runCLI(
         ['schema', 'add-field', 'project', 'priority', '--type', 'select', '--output', 'json'],
         tempVaultDir
@@ -278,19 +274,7 @@ describe('schema add-field command', () => {
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
-      expect(json.error).toContain('--enum is required');
-    });
-
-    it('should reject select with non-existent enum', async () => {
-      const result = await runCLI(
-        ['schema', 'add-field', 'project', 'field', '--type', 'select', '--enum', 'nonexistent', '--output', 'json'],
-        tempVaultDir
-      );
-
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
-      expect(json.error).toContain('does not exist');
+      expect(json.error).toContain('--options is required');
     });
 
     it('should reject dynamic without --source', async () => {
@@ -516,21 +500,6 @@ describe('schema add-field command', () => {
   });
 
   describe('dynamic source error messages', () => {
-    it('should detect enum value confusion and provide helpful message', async () => {
-      // 'high' is a value in the 'priority' enum, not a type name
-      const result = await runCLI(
-        ['schema', 'add-field', 'project', 'urgency', '--type', 'relation', '--source', 'high', '--output', 'json'],
-        tempVaultDir
-      );
-
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
-      expect(json.error).toContain('"high" is a value in the "priority" enum');
-      expect(json.error).toContain('Dynamic sources must reference types');
-      expect(json.error).toContain('Available types:');
-    });
-
     it('should detect path format and suggest using type name directly', async () => {
       // note/task uses path format; task is a valid type
       const result = await runCLI(

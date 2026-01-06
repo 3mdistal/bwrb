@@ -1,6 +1,6 @@
 import { basename } from 'path';
 import type { LoadedSchema } from '../types/schema.js';
-import { getAllFieldsForType, getEnumForField, getEnumValues } from './schema.js';
+import { getAllFieldsForType, getOptionsForField } from './schema.js';
 import { matchesExpression, buildEvalContext, type HierarchyData } from './expression.js';
 import { printError } from './prompt.js';
 import { extractWikilinkTarget } from './audit/types.js';
@@ -132,16 +132,15 @@ export function validateFilterValues(
     return { valid: true };
   }
 
-  const enumName = getEnumForField(schema, typeName, fieldName);
-  if (!enumName) {
-    // Not an enum field, any value is valid
+  const validOptions = getOptionsForField(schema, typeName, fieldName);
+  if (validOptions.length === 0) {
+    // Not a select field with options, any value is valid
     return { valid: true };
   }
 
-  const enumValues = getEnumValues(schema, enumName);
   for (const val of values) {
-    if (!enumValues.includes(val)) {
-      const validList = enumValues.join(', ');
+    if (!validOptions.includes(val)) {
+      const validList = validOptions.join(', ');
       return {
         valid: false,
         error: `Invalid value '${val}' for field '${fieldName}'. Valid values: ${validList}`,

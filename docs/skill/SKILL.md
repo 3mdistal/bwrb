@@ -33,11 +33,11 @@ Before creating or querying notes, understand the vault's schema:
 # List all types and their structure
 bwrb schema list
 
-# Show specific type definition
+# Show specific type definition with fields
 bwrb schema list task
 
-# List available enums
-bwrb schema list enums
+# Get JSON output for parsing
+bwrb schema list task --output json
 ```
 
 ## Core Commands for Agents

@@ -21,8 +21,8 @@ export const FieldSchema = z.object({
   prompt: z.enum(['text', 'select', 'list', 'date', 'relation', 'boolean', 'number']).optional(),
   // Static value (no prompting)
   value: z.string().optional(),
-  // Enum reference for select prompts
-  enum: z.string().optional(),
+  // Inline options for select prompts (replaces global enums)
+  options: z.array(z.string()).optional(),
   // Type name(s) for relation prompts (e.g., "milestone", "objective")
   // When specified, queryByType() fetches notes of this type (and descendants)
   // Can be an array to allow multiple valid types (e.g., for recursive types with extends)
@@ -121,8 +121,6 @@ export const BwrbSchema = z.object({
   // User-controlled schema content version for migrations (semver)
   // This tracks the evolution of your schema over time
   schemaVersion: z.string().optional(),
-  // Enum definitions
-  enums: z.record(z.array(z.string())).optional(),
   // Type definitions (flat with 'extends')
   types: z.record(TypeSchema),
   // Audit configuration
@@ -195,8 +193,6 @@ export interface LoadedSchema {
   raw: Schema;
   /** Resolved types indexed by name */
   types: Map<string, ResolvedType>;
-  /** Enum definitions */
-  enums: Map<string, string[]>;
   /** Ownership relationships: which types can own which child types */
   ownership: OwnershipMap;
 }

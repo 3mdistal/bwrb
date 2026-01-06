@@ -1,5 +1,5 @@
 import type { LoadedSchema, Field } from '../types/schema.js';
-import { getFieldsForType, getEnumValues, getDescendants, getType } from './schema.js';
+import { getFieldsForType, getDescendants, getType } from './schema.js';
 import { queryByType } from './vault.js';
 import { extractWikilinkTarget } from './audit/types.js';
 
@@ -78,17 +78,17 @@ export function validateFrontmatter(
       continue;
     }
 
-    // Validate enum fields
-    if (hasValue && field.enum) {
-      const enumValues = getEnumValues(schema, field.enum);
-      if (enumValues.length > 0 && !enumValues.includes(String(value))) {
-        const suggestion = suggestEnumValue(String(value), enumValues);
+    // Validate select fields with options
+    if (hasValue && field.options && field.options.length > 0) {
+      const validOptions = field.options;
+      if (!validOptions.includes(String(value))) {
+        const suggestion = suggestEnumValue(String(value), validOptions);
         errors.push({
           type: 'invalid_enum_value',
           field: fieldName,
           value,
           message: `Invalid value for ${fieldName}: "${value}"`,
-          expected: enumValues,
+          expected: validOptions,
           ...(suggestion && { suggestion: `Did you mean '${suggestion}'?` }),
         });
       }
@@ -266,10 +266,9 @@ function validateFieldType(
 /**
  * Get expected values description for a field.
  */
-function getFieldExpected(schema: LoadedSchema, field: Field): string[] | undefined {
-  if (field.enum) {
-    const values = getEnumValues(schema, field.enum);
-    if (values.length > 0) return values;
+function getFieldExpected(_schema: LoadedSchema, field: Field): string[] | undefined {
+  if (field.options && field.options.length > 0) {
+    return field.options;
   }
   return undefined;
 }

@@ -36,6 +36,22 @@ All notable changes to Bowerbird are documented in this file.
   - Body sections also updated: `{ "prompt": "multi-input" }` → `{ "prompt": "list" }`
   - CLI flag updated: `--type multi-input` → `--type list`
 
+- **Replaced global `enums` block with inline `options` on fields** (#165)
+  - The global `enums` block has been removed from schema.json
+  - Select fields now define their options inline: `{ "prompt": "select", "options": ["a", "b", "c"] }`
+  - Removed CLI commands: `schema enum add`, `schema enum delete`, `schema enum list`, `schema enum edit`
+  - CLI flag change: `--enum <name>` → `--options "a,b,c"` on `schema add-field`
+  - Interactive prompts now ask "Enter options (comma-separated)" instead of "Enum to use"
+  - Migration: Move enum values from `enums.<name>` to inline `options` arrays on each field
+  - Example migration:
+    ```json
+    // Before (v1):
+    { "enums": { "status": ["raw", "done"] }, "types": { "task": { "fields": { "status": { "prompt": "select", "enum": "status" }}}}}
+    
+    // After (v2):
+    { "types": { "task": { "fields": { "status": { "prompt": "select", "options": ["raw", "done"] }}}}}
+    ```
+
 ### Fixed
 
 - **Audit similar files suggestions no longer match unrelated files**
@@ -199,6 +215,10 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Removed
 
+- **Global `enums` block and enum CLI commands** (#165)
+  - `schema enum add`, `schema enum delete`, `schema enum list`, `schema enum edit` commands removed
+  - Global `enums` block no longer supported in schema.json
+  - Use inline `options` arrays on select fields instead
 - **Hierarchy flags on `list` command** (#121) - Use `--where` with hierarchy functions instead
 - **`--default` and `--instance` flags from `new` command** (#120)
 - **Instance-grouped dead code** (#120) - ~500 lines of unused code removed

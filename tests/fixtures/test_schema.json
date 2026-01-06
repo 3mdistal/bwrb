@@ -1,10 +1,6 @@
 {
   "$schema": "../../../schema.schema.json",
   "version": 2,
-  "enums": {
-    "status": ["raw", "backlog", "in-flight", "settled"],
-    "priority": ["low", "medium", "high"]
-  },
   "types": {
     "objective": {
       "output_dir": "Objectives",
@@ -20,7 +16,7 @@
         "type": { "value": "task" },
         "status": {
           "prompt": "select",
-          "enum": "status",
+          "options": ["raw", "backlog", "in-flight", "settled"],
           "default": "raw"
         },
         "milestone": {
@@ -61,7 +57,7 @@
         "type": { "value": "milestone" },
         "status": {
           "prompt": "select",
-          "enum": "status",
+          "options": ["raw", "backlog", "in-flight", "settled"],
           "default": "raw"
         }
       },
@@ -78,8 +74,8 @@
       "output_dir": "Ideas",
       "fields": {
         "type": { "value": "idea" },
-        "status": { "prompt": "select", "enum": "status", "default": "raw" },
-        "priority": { "prompt": "select", "enum": "priority" }
+        "status": { "prompt": "select", "options": ["raw", "backlog", "in-flight", "settled"], "default": "raw" },
+        "priority": { "prompt": "select", "options": ["low", "medium", "high"] }
       },
       "field_order": ["type", "status", "priority"],
       "body_sections": []

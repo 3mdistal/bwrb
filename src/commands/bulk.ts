@@ -15,8 +15,7 @@ import {
   loadSchema,
   getTypeDefByPath,
   getTypeFamilies,
-  getEnumForField,
-  getEnumValues,
+  getOptionsForField,
 } from '../lib/schema.js';
 import { resolveVaultDir } from '../lib/vault.js';
 import { validateFilters } from '../lib/query.js';
@@ -439,19 +438,14 @@ function validateEnumValue(
   field: string,
   value: unknown
 ): string | null {
-  const enumName = getEnumForField(schema, typePath, field);
-  if (!enumName) {
-    return null; // Not an enum field
-  }
-
-  const enumValues = getEnumValues(schema, enumName);
-  if (enumValues.length === 0) {
-    return null; // Enum not defined
+  const validOptions = getOptionsForField(schema, typePath, field);
+  if (validOptions.length === 0) {
+    return null; // Not a select field with options
   }
 
   const strValue = String(value);
-  if (!enumValues.includes(strValue)) {
-    return `Invalid value '${strValue}' for field '${field}'. Valid values: ${enumValues.join(', ')}`;
+  if (!validOptions.includes(strValue)) {
+    return `Invalid value '${strValue}' for field '${field}'. Valid values: ${validOptions.join(', ')}`;
   }
 
   return null;

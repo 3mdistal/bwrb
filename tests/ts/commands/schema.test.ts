@@ -41,24 +41,6 @@ describe('schema command', () => {
       expect(result.stdout).toContain('milestone');
     });
 
-    it('should show enums if defined', async () => {
-      const result = await runCLI(['schema', 'show'], vaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Enums:');
-      expect(result.stdout).toContain('status');
-    });
-
-    it('should show enums when defined', async () => {
-      // Note: shared_fields is a v1 feature that gets resolved into individual types
-      // in the v2 model, so we no longer display a separate "Shared Fields:" section.
-      // Instead we verify the schema display works correctly with enums.
-      const result = await runCLI(['schema', 'show'], vaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Enums:');
-      expect(result.stdout).toContain('Types:');
-    });
   });
 
   describe('schema show <type>', () => {
@@ -188,7 +170,6 @@ describe('schema command', () => {
         join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
-          enums: { status: ['raw', 'done'] },
           types: {
             meta: {
               fields: {
@@ -198,7 +179,7 @@ describe('schema command', () => {
             objective: {
               extends: 'meta',
               fields: {
-                status: { prompt: 'select', enum: 'status' }
+                status: { prompt: 'select', options: ['raw', 'done'] }
               }
             },
             task: {
@@ -236,7 +217,6 @@ describe('schema command', () => {
         join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
-          enums: { status: ['raw', 'done'] },
           types: {
             meta: {
               fields: {
@@ -246,7 +226,7 @@ describe('schema command', () => {
             task: {
               extends: 'meta',
               fields: {
-                status: { prompt: 'select', enum: 'status' }
+                status: { prompt: 'select', options: ['raw', 'done'] }
               }
             }
           }
@@ -1248,43 +1228,12 @@ describe('schema command', () => {
   });
 
   describe('schema new field (unified verb)', () => {
-    // Note: Full field creation with --prompt, --enum, --required, --default flags
+    // Note: Full field creation with --prompt, --options, --required, --default flags
     // is interactive-only in the unified verb implementation.
     // PTY tests cover the interactive flow.
     it.skip('should add a required field with default value (interactive only)', async () => {
       // This test is skipped because schema new field is interactive-only
-      // and doesn't support --prompt, --enum, --required, --default flags
-    });
-  });
-
-  describe('schema new enum (unified verb)', () => {
-    it('should create a new enum with values', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-new-enum-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: { meta: {} }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'new', 'enum', 'priority', '--values', 'low,medium,high'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain('Enum');
-
-        const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
-        );
-        expect(schema.enums.priority).toEqual(['low', 'medium', 'high']);
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
+      // and doesn't support --prompt, --options, --required, --default flags
     });
   });
 
@@ -1395,69 +1344,6 @@ describe('schema command', () => {
     });
   });
 
-  describe('schema delete enum (unified verb)', () => {
-    it('should delete unused enum with --execute flag', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-delete-enum-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          enums: { priority: ['low', 'medium', 'high'], unused: ['a', 'b'] },
-          types: { meta: {} }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'delete', 'enum', 'unused', '--execute'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-
-        const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
-        );
-        expect(schema.enums.unused).toBeUndefined();
-        expect(schema.enums.priority).toBeDefined();
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should error when deleting enum in use', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-delete-enum-used-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          enums: { status: ['raw', 'done'] },
-          types: {
-            meta: {},
-            task: {
-              extends: 'meta',
-              fields: { status: { prompt: 'select', enum: 'status' } }
-            }
-          }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'delete', 'enum', 'status', '--execute'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain('in use');
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-  });
-
   describe('schema list (unified verb)', () => {
     it('should show full schema overview (same as show)', async () => {
       const result = await runCLI(['schema', 'list'], vaultDir);
@@ -1465,7 +1351,6 @@ describe('schema command', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Schema Types');
       expect(result.stdout).toContain('Types:');
-      expect(result.stdout).toContain('Enums:');
     });
 
     it('should list types only with "schema list types"', async () => {
@@ -1476,20 +1361,12 @@ describe('schema command', () => {
       expect(result.stdout).toContain('idea');
     });
 
-    it('should list enums only with "schema list enums"', async () => {
-      const result = await runCLI(['schema', 'list', 'enums'], vaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('status');
-    });
-
     it('should output JSON when --output json is specified', async () => {
       const result = await runCLI(['schema', 'list', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       const data = JSON.parse(result.stdout);
       expect(data.types).toBeDefined();
-      expect(data.enums).toBeDefined();
     });
 
     it('should show deprecation warning for old show command', async () => {
@@ -1516,99 +1393,6 @@ describe('schema command', () => {
     it.skip('should change field properties (interactive only)', async () => {
       // This test is skipped because schema edit field is interactive
       // and requires PTY testing. See schema-edit-field.pty.test.ts
-    });
-  });
-
-  describe('schema edit enum (unified verb)', () => {
-    it('should add values to enum', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-enum-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          enums: { priority: ['low', 'high'] },
-          types: { meta: {} }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit', 'enum', 'priority', '--add', 'medium'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-
-        const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
-        );
-        expect(schema.enums.priority).toContain('medium');
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should remove values from enum', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-enum-remove-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          enums: { priority: ['low', 'medium', 'high'] },
-          types: { meta: {} }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit', 'enum', 'priority', '--remove', 'medium'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-
-        const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
-        );
-        expect(schema.enums.priority).not.toContain('medium');
-        expect(schema.enums.priority).toContain('low');
-        expect(schema.enums.priority).toContain('high');
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should rename enum values', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-enum-rename-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          enums: { status: ['raw', 'done'] },
-          types: { meta: {} }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit', 'enum', 'status', '--rename', 'raw=pending'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-
-        const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
-        );
-        expect(schema.enums.status).not.toContain('raw');
-        expect(schema.enums.status).toContain('pending');
-        expect(schema.enums.status).toContain('done');
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
     });
   });
 });

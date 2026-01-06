@@ -10,7 +10,6 @@ import {
   discriminatorName,
   getFieldsForType,
   getFrontmatterOrder,
-  getEnumValues,
 } from '../lib/schema.js';
 import { writeNote, generateBodyWithContent, generateBodySections, mergeBodySectionContent, extractSectionItems, parseBodyInput } from '../lib/frontmatter.js';
 import {
@@ -969,8 +968,8 @@ async function promptField(
   // Prompt-based value
   switch (field.prompt) {
     case 'select': {
-      if (!field.enum) return field.default;
-      const enumOptions = getEnumValues(schema, field.enum);
+      if (!field.options || field.options.length === 0) return field.default;
+      const selectOptions = field.options;
       
       // For optional fields, add a skip option
       let options: string[];
@@ -978,9 +977,9 @@ async function promptField(
       if (!field.required) {
         const defaultStr = field.default !== undefined ? String(field.default) : undefined;
         skipLabel = defaultStr ? `(skip) [${defaultStr}]` : '(skip)';
-        options = [skipLabel, ...enumOptions];
+        options = [skipLabel, ...selectOptions];
       } else {
-        options = enumOptions;
+        options = selectOptions;
       }
       
       const selected = await promptSelection(`Select ${fieldName}:`, options);

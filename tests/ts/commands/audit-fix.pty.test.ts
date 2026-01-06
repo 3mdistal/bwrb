@@ -23,15 +23,12 @@ const describePty = shouldSkipPtyTests()
 // Schema for audit tests
 const AUDIT_SCHEMA = {
   version: 2,
-  enums: {
-    status: ['raw', 'backlog', 'in-flight', 'settled'],
-  },
   types: {
     idea: {
       output_dir: 'Ideas',
       fields: {
         type: { value: 'idea' },
-        status: { prompt: 'select', enum: 'status', default: 'raw', required: true },
+        status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw', required: true },
       },
       field_order: ['type', 'status'],
     },
@@ -47,7 +44,7 @@ const AUDIT_SCHEMA = {
       output_dir: 'Tasks',
       fields: {
         type: { value: 'task' },
-        status: { prompt: 'select', enum: 'status', default: 'raw', required: true },
+        status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw', required: true },
       },
       field_order: ['type', 'status'],
     },
@@ -188,7 +185,7 @@ Missing required status.
             output_dir: 'Items',
             fields: {
               type: { value: 'item' },
-              category: { prompt: 'select', enum: 'status', required: true }, // No default
+              category: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], required: true }, // No default
             },
             field_order: ['type', 'category'],
           },
@@ -513,7 +510,7 @@ Auto-fixable orphan.
             output_dir: 'Items',
             fields: {
               type: { value: 'item' },
-              category: { prompt: 'select', enum: 'status', required: true },
+              category: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], required: true },
             },
             field_order: ['type', 'category'],
           },

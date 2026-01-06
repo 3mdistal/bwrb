@@ -10,7 +10,6 @@ import { minimatch } from 'minimatch';
 import {
   getType,
   getFieldsForType,
-  getEnumValues,
   resolveTypeFromFrontmatter,
   getOutputDir,
   getTypeFamilies,
@@ -303,24 +302,22 @@ export async function auditFile(
     const field = fields[fieldName];
     if (!field) continue;
 
-    // Check enum values
-    if (field.enum) {
-      const enumValues = getEnumValues(schema, field.enum);
-      if (enumValues.length > 0) {
-        const strValue = String(value);
-        if (!enumValues.includes(strValue)) {
-          const suggestion = suggestEnumValue(strValue, enumValues);
-          issues.push({
-            severity: 'error',
-            code: 'invalid-enum',
-            message: `Invalid ${fieldName} value: '${value}'`,
-            field: fieldName,
-            value,
-            expected: enumValues,
-            ...(suggestion && { suggestion: `Did you mean '${suggestion}'?` }),
-            autoFixable: false,
-          });
-        }
+    // Check select field options
+    if (field.options && field.options.length > 0) {
+      const validOptions = field.options;
+      const strValue = String(value);
+      if (!validOptions.includes(strValue)) {
+        const suggestion = suggestEnumValue(strValue, validOptions);
+        issues.push({
+          severity: 'error',
+          code: 'invalid-enum',
+          message: `Invalid ${fieldName} value: '${value}'`,
+          field: fieldName,
+          value,
+          expected: validOptions,
+          ...(suggestion && { suggestion: `Did you mean '${suggestion}'?` }),
+          autoFixable: false,
+        });
       }
     }
 

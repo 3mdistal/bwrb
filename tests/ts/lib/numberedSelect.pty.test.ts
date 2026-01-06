@@ -308,22 +308,19 @@ describePty('NumberedSelectPrompt PTY tests', () => {
   });
 
   describe('pagination', () => {
-    // Schema with a large enum to test pagination (>10 items)
+    // Schema with a large options list to test pagination (>10 items)
     const PAGINATION_SCHEMA = {
       version: 2,
-      enums: {
-        category: [
-          'category-01', 'category-02', 'category-03', 'category-04', 'category-05',
-          'category-06', 'category-07', 'category-08', 'category-09', 'category-10',
-          'category-11', 'category-12', 'category-13', 'category-14', 'category-15',
-        ],
-      },
       types: {
         item: {
           output_dir: 'Items',
           fields: {
             type: { value: 'item' },
-            category: { prompt: 'select', enum: 'category', required: true },
+            category: { prompt: 'select', options: [
+              'category-01', 'category-02', 'category-03', 'category-04', 'category-05',
+              'category-06', 'category-07', 'category-08', 'category-09', 'category-10',
+              'category-11', 'category-12', 'category-13', 'category-14', 'category-15',
+            ], required: true },
           },
           field_order: ['type', 'category'],
         },
@@ -546,7 +543,6 @@ describePty('NumberedSelectPrompt PTY tests', () => {
       // Schema with type-based source that returns no results (type doesn't exist)
       const emptySchema = {
         version: 2,
-        enums: {},
         types: {
           item: {
             output_dir: 'Items',

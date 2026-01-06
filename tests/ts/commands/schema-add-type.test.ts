@@ -15,15 +15,11 @@ describe('schema add-type command', () => {
       join(tempVaultDir, '.bwrb', 'schema.json'),
       JSON.stringify({
         version: 2,
-        enums: {
-          status: ['open', 'closed'],
-          priority: ['low', 'medium', 'high'],
-        },
         types: {
           note: {
             output_dir: 'Notes',
             fields: {
-              status: { prompt: 'select', enum: 'status' },
+              status: { prompt: 'select', options: ['open', 'closed'] },
             },
           },
           project: {

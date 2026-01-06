@@ -8,11 +8,10 @@ import chalk from 'chalk';
 import {
   getType,
   getFieldsForType,
-  getEnumValues,
   resolveTypeFromFrontmatter,
   getDiscriminatorFieldsFromTypePath,
-  getEnumForField,
-  hasSubtypes,
+  getOptionsForField,
+  getConcreteTypeNames,
 } from '../schema.js';
 import { queryByType } from '../vault.js';
 import { parseNote, writeNote } from '../frontmatter.js';
@@ -411,10 +410,10 @@ async function handleOrphanFileFix(
       typePath = issue.inferredType;
     }
   } else {
-    // Need to prompt user to select type
-    const typeEnum = getEnumValues(schema, 'type');
-    if (typeEnum.length > 0) {
-      const typeOptions = [...typeEnum, '[skip]', '[quit]'];
+    // Need to prompt user to select type from available types
+    const availableTypes = getConcreteTypeNames(schema);
+    if (availableTypes.length > 0) {
+      const typeOptions = [...availableTypes, '[skip]', '[quit]'];
       const selectedType = await promptSelection(
         '    Select type:',
         typeOptions
@@ -427,34 +426,9 @@ async function handleOrphanFileFix(
         return 'skipped';
       }
 
-      // Check if selected type has subtypes
-      const typeDef = getTypeDefByPath(schema, selectedType);
-      if (typeDef && hasSubtypes(typeDef)) {
-        const subtypeEnumName = `${selectedType}-type`;
-        const subtypeEnum = getEnumValues(schema, subtypeEnumName);
-        if (subtypeEnum.length > 0) {
-          const subtypeOptions = [...subtypeEnum, '[skip]', '[quit]'];
-          const selectedSubtype = await promptSelection(
-            `    Select ${subtypeEnumName}:`,
-            subtypeOptions
-          );
-
-          if (selectedSubtype === null || selectedSubtype === '[quit]') {
-            return 'quit';
-          } else if (selectedSubtype === '[skip]') {
-            console.log(chalk.dim('    → Skipped'));
-            return 'skipped';
-          }
-
-          typePath = `${selectedType}/${selectedSubtype}`;
-        } else {
-          typePath = selectedType;
-        }
-      } else {
-        typePath = selectedType;
-      }
+      typePath = selectedType;
     } else {
-      console.log(chalk.dim('    (No type enum defined - skipping)'));
+      console.log(chalk.dim('    (No types defined - skipping)'));
       return 'skipped';
     }
   }
@@ -508,14 +482,13 @@ async function handleMissingRequiredFix(
     return 'skipped';
   }
 
-  // No default - check if field has enum or allow text input
+  // No default - check if field has options or allow text input
   const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
-  const enumName = typePath ? getEnumForField(schema, typePath, issue.field) : undefined;
-  const enumValues = enumName ? getEnumValues(schema, enumName) : [];
+  const fieldOptions = typePath ? getOptionsForField(schema, typePath, issue.field) : [];
 
-  if (enumValues.length > 0) {
-    // Field has enum - prompt to select
-    const options = [...enumValues, '[skip]', '[quit]'];
+  if (fieldOptions.length > 0) {
+    // Field has options - prompt to select
+    const options = [...fieldOptions, '[skip]', '[quit]'];
     const selected = await promptSelection(
       `    Select value for ${issue.field}:`,
       options

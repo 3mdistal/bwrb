@@ -24,8 +24,8 @@ const TEST_SCHEMA = {
       output_dir: 'Tasks',
       fields: {
         title: { prompt: 'text', required: true },
-        status: { enum: 'status' },
-        priority: { enum: 'priority', default: 'medium' },
+        status: { prompt: 'select', options: ['todo', 'in-progress', 'done'] },
+        priority: { prompt: 'select', options: ['low', 'medium', 'high'], default: 'medium' },
         notes: { prompt: 'text', label: 'Additional Notes' },
       },
     },
@@ -36,10 +36,6 @@ const TEST_SCHEMA = {
         deadline: { prompt: 'date' },
       },
     },
-  },
-  enums: {
-    status: ['todo', 'in-progress', 'done'],
-    priority: ['low', 'medium', 'high'],
   },
 };
 

@@ -1430,13 +1430,10 @@ unknownField: should warn
     // V2 schema with type-based sources
     const V2_SCHEMA = {
       version: 2,
-      enums: {
-        status: ['raw', 'backlog', 'in-flight', 'settled'],
-      },
       types: {
         objective: {
           fields: {
-            status: { prompt: 'select', enum: 'status', default: 'raw' },
+            status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw' },
           },
         },
         milestone: {
@@ -1459,7 +1456,7 @@ unknownField: should warn
         },
         idea: {
           fields: {
-            status: { prompt: 'select', enum: 'status', default: 'raw' },
+            status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw' },
           },
         },
       },
@@ -1602,7 +1599,6 @@ milestone: "[[Non Existent]]"
       // Create an invalid schema (missing required 'types' structure)
       const invalidSchema = {
         version: 2,
-        enums: { status: ['raw', 'done'] },
         // Missing valid type definitions
         types: {},
       };
@@ -1759,15 +1755,12 @@ milestone: "[[Some Idea]]"
       // Schema with a recursive type
       const schemaWithRecursive = {
         version: 2,
-        enums: {
-          status: ['raw', 'backlog', 'in-flight', 'settled']
-        },
         types: {
           task: {
             recursive: true,
             output_dir: 'Tasks',
             fields: {
-              status: { prompt: 'select', enum: 'status', default: 'raw' }
+              status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw' }
             }
           }
         }
@@ -2081,14 +2074,11 @@ status: in-flight
       // relative to the computed default directory.
       const schemaWithComputedDir = {
         version: 2,
-        enums: {
-          status: ['raw', 'done'],
-        },
         types: {
           note: {
             // No explicit output_dir - will compute to 'notes'
             fields: {
-              status: { prompt: 'select', enum: 'status', default: 'raw' },
+              status: { prompt: 'select', options: ['raw', 'done'], default: 'raw' },
             },
           },
         },

@@ -853,7 +853,7 @@ describe('createScaffoldedInstances', () => {
         output_dir: 'Drafts',
         fields: {
           Name: { prompt: 'text', required: true },
-          status: { prompt: 'select', enum: 'status', default: 'draft' },
+          status: { prompt: 'select', options: ['draft', 'in-progress', 'done'], default: 'draft' },
         },
       },
       version: {
@@ -874,9 +874,6 @@ describe('createScaffoldedInstances', () => {
           source: { prompt: 'text' },
         },
       },
-    },
-    enums: {
-      status: ['draft', 'in-progress', 'done'],
     },
   };
 

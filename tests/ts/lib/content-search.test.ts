@@ -19,18 +19,15 @@ const schema_RAW: Schema = {
     note: {
       output_dir: 'Notes',
       fields: {
-        status: { prompt: 'select', enum: 'status' },
+        status: { prompt: 'select', options: ['active', 'done', 'archived'] },
       },
     },
     task: {
       output_dir: 'Tasks',
       fields: {
-        status: { prompt: 'select', enum: 'status' },
+        status: { prompt: 'select', options: ['active', 'done', 'archived'] },
       },
     },
-  },
-  enums: {
-    status: ['active', 'done', 'archived'],
   },
 };
 

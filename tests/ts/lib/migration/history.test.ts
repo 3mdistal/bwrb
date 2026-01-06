@@ -74,7 +74,7 @@ describe("history", () => {
         fromVersion: "1.1.0",
         toVersion: "1.2.0",
         hasChanges: true,
-        deterministic: [{ op: "add-enum-value", enum: "status", value: "pending" }],
+        deterministic: [{ op: "add-type", typeName: "project" }],
         nonDeterministic: [],
       };
 

@@ -24,15 +24,12 @@ const describePty = shouldSkipPtyTests()
 // Schema that includes a body section with multi-input prompt
 const TASK_SCHEMA = {
   version: 2,
-  enums: {
-    status: ['raw', 'in-progress', 'done'],
-  },
   types: {
     task: {
       output_dir: 'Tasks',
       fields: {
         type: { value: 'task' },
-        status: { prompt: 'select', enum: 'status', default: 'raw' },
+        status: { prompt: 'select', options: ['raw', 'in-progress', 'done'], default: 'raw' },
       },
       field_order: ['type', 'status'],
       body_sections: [

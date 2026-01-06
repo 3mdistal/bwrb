@@ -14,16 +14,12 @@ describe("diffSchemas", () => {
   const baseSchema: BwrbSchemaType = {
     version: 2,
     schemaVersion: "1.0.0",
-    enums: {
-      status: ["active", "completed", "archived"],
-      priority: ["low", "medium", "high"],
-    },
     types: {
       task: {
         output_dir: "Tasks",
         fields: {
-          status: { prompt: "select", enum: "status", required: true },
-          priority: { prompt: "select", enum: "priority" },
+          status: { prompt: "select", options: ["active", "completed", "archived"], required: true },
+          priority: { prompt: "select", options: ["low", "medium", "high"] },
           due: { prompt: "date" },
         },
       },
@@ -88,48 +84,6 @@ describe("diffSchemas", () => {
         (op) => op.op === "remove-field"
       );
       expect(removeOps.length).toBeGreaterThanOrEqual(1);
-    });
-  });
-
-  describe("enum changes", () => {
-    it("should detect added enum values as deterministic", () => {
-      const newSchema: BwrbSchemaType = {
-        ...baseSchema,
-        schemaVersion: "1.1.0",
-        enums: {
-          ...baseSchema.enums,
-          status: ["active", "completed", "archived", "pending"],
-        },
-      };
-
-      const plan = diffSchemas(baseSchema, newSchema, "1.0.0", "1.1.0");
-
-      expect(plan.hasChanges).toBe(true);
-      expect(plan.deterministic).toContainEqual({
-        op: "add-enum-value",
-        enum: "status",
-        value: "pending",
-      });
-    });
-
-    it("should detect removed enum values as non-deterministic", () => {
-      const newSchema: BwrbSchemaType = {
-        ...baseSchema,
-        schemaVersion: "2.0.0",
-        enums: {
-          ...baseSchema.enums,
-          status: ["active", "completed"], // archived removed
-        },
-      };
-
-      const plan = diffSchemas(baseSchema, newSchema, "1.0.0", "2.0.0");
-
-      expect(plan.hasChanges).toBe(true);
-      expect(plan.nonDeterministic).toContainEqual({
-        op: "remove-enum-value",
-        enum: "status",
-        value: "archived",
-      });
     });
   });
 

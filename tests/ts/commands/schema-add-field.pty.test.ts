@@ -20,18 +20,14 @@ import {
 // Skip PTY tests if running in CI without TTY support or node-pty is incompatible
 const describePty = shouldSkipPtyTests() ? describe.skip : describe;
 
-// Schema with existing types and enums for testing the wizard
+// Schema with existing types for testing the wizard
 const WIZARD_SCHEMA = {
   version: 2,
-  enums: {
-    status: ['open', 'closed'],
-    priority: ['low', 'medium', 'high'],
-  },
   types: {
     note: {
       output_dir: 'Notes',
       fields: {
-        status: { prompt: 'select', enum: 'status' },
+        status: { prompt: 'select', options: ['open', 'closed'] },
       },
     },
     task: {
@@ -44,23 +40,9 @@ const WIZARD_SCHEMA = {
   },
 };
 
-// Schema without enums (for testing select field error)
-const NO_ENUM_SCHEMA = {
-  version: 2,
-  enums: {},
-  types: {
-    note: {
-      output_dir: 'Notes',
-    },
-  },
-};
-
 // Schema without types for dynamic source (for testing dynamic field error)
 const MINIMAL_SCHEMA = {
   version: 2,
-  enums: {
-    status: ['open', 'closed'],
-  },
   types: {},
 };
 
@@ -110,7 +92,7 @@ describePty('bwrb schema add-field PTY tests', () => {
       );
     }, 30000);
 
-    it('should add a select field with enum selection', async () => {
+    it('should add a select field with inline options', async () => {
       await withTempVault(
         ['schema', 'add-field', 'project'],
         async (proc, vaultPath) => {
@@ -118,12 +100,11 @@ describePty('bwrb schema add-field PTY tests', () => {
           await proc.typeAndEnter('mypriority');
 
           await proc.waitFor('Prompt type');
-          proc.write('2'); // select (enum)
+          proc.write('2'); // select (options)
 
-          // Enum selection - insertion order: status=1, priority=2
-          await proc.waitFor('Enum to use');
-          await proc.waitForStable(100);
-          proc.write('2'); // priority
+          // Enter inline options (comma-separated)
+          await proc.waitFor('Enter options');
+          await proc.typeAndEnter('low,medium,high');
 
           await proc.waitFor('Required');
           proc.write('n');
@@ -138,7 +119,7 @@ describePty('bwrb schema add-field PTY tests', () => {
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields.mypriority).toMatchObject({
             prompt: 'select',
-            enum: 'priority',
+            options: ['low', 'medium', 'high'],
             default: 'medium',
           });
         },
@@ -393,7 +374,7 @@ describePty('bwrb schema add-field PTY tests', () => {
       );
     }, 30000);
 
-    it('should cancel cleanly at enum selection', async () => {
+    it('should cancel cleanly at options input', async () => {
       await withTempVault(
         ['schema', 'add-field', 'project'],
         async (proc, vaultPath) => {
@@ -403,7 +384,7 @@ describePty('bwrb schema add-field PTY tests', () => {
           await proc.waitFor('Prompt type');
           proc.write('2'); // select
 
-          await proc.waitFor('Enum to use');
+          await proc.waitFor('Enter options');
           proc.write(Keys.CTRL_C);
 
           await proc.waitForExit(5000);
@@ -478,27 +459,38 @@ describePty('bwrb schema add-field PTY tests', () => {
       );
     }, 30000);
 
-    it('should show error when selecting select field with no enums', async () => {
+    it('should add select field with inline options (no enum selection needed)', async () => {
+      // With inline options, there's no need to have pre-defined enums
       await withTempVault(
-        ['schema', 'add-field', 'note'],
+        ['schema', 'add-field', 'project'],
         async (proc, vaultPath) => {
           await proc.waitFor('Field name');
-          await proc.typeAndEnter('status');
+          await proc.typeAndEnter('category');
 
           await proc.waitFor('Prompt type');
-          proc.write('2'); // select (enum)
+          proc.write('2'); // select (options)
 
-          // Should show error about no enums
-          await proc.waitFor('No enums defined');
+          // Now just enter options directly
+          await proc.waitFor('Enter options');
+          await proc.typeAndEnter('a,b,c');
 
+          await proc.waitFor('Required');
+          proc.write('n');
+
+          await proc.waitFor('Default value');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Added field');
           await proc.waitForExit(5000);
 
-          // Schema should not have new field
           const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
-          expect(schema.types.note.fields).toBeUndefined();
+          expect(schema.types.project.fields.category).toMatchObject({
+            prompt: 'select',
+            options: ['a', 'b', 'c'],
+          });
         },
-        { schema: NO_ENUM_SCHEMA }
+        { schema: WIZARD_SCHEMA }
       );
     }, 30000);
 

@@ -22,10 +22,6 @@ export function getRelativeVaultPath(vaultDir: string): string {
 
 export const TEST_SCHEMA = {
   version: 2,
-  enums: {
-    status: ['raw', 'backlog', 'in-flight', 'settled'],
-    priority: ['low', 'medium', 'high'],
-  },
   types: {
     objective: {
       output_dir: 'Objectives',
@@ -41,7 +37,7 @@ export const TEST_SCHEMA = {
         type: { value: 'task' },
         status: {
           prompt: 'select',
-          enum: 'status',
+          options: ['raw', 'backlog', 'in-flight', 'settled'],
           default: 'backlog',
           required: true,
         },
@@ -72,7 +68,7 @@ export const TEST_SCHEMA = {
         type: { value: 'milestone' },
         status: {
           prompt: 'select',
-          enum: 'status',
+          options: ['raw', 'backlog', 'in-flight', 'settled'],
           default: 'raw',
           required: true,
         },
@@ -85,11 +81,11 @@ export const TEST_SCHEMA = {
         type: { value: 'idea' },
         status: {
           prompt: 'select',
-          enum: 'status',
+          options: ['raw', 'backlog', 'in-flight', 'settled'],
           default: 'raw',
           required: true,
         },
-        priority: { prompt: 'select', enum: 'priority' },
+        priority: { prompt: 'select', options: ['low', 'medium', 'high'] },
       },
       field_order: ['type', 'status', 'priority'],
     },
@@ -100,7 +96,7 @@ export const TEST_SCHEMA = {
         type: { value: 'project' },
         status: {
           prompt: 'select',
-          enum: 'status',
+          options: ['raw', 'backlog', 'in-flight', 'settled'],
           default: 'raw',
           required: true,
         },
@@ -119,7 +115,7 @@ export const TEST_SCHEMA = {
         type: { value: 'research' },
         status: {
           prompt: 'select',
-          enum: 'status',
+          options: ['raw', 'backlog', 'in-flight', 'settled'],
           default: 'raw',
           required: true,
         },

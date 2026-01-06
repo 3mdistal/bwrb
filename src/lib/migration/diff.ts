@@ -47,8 +47,8 @@ function detectChanges(oldSchema: Schema | undefined, newSchema: Schema): Detect
     return [];
   }
   
-  // Compare enums
-  changes.push(...detectEnumChanges(oldSchema.enums ?? {}, newSchema.enums ?? {}));
+  // Note: Global enums have been removed in favor of inline options on fields.
+  // Options changes are detected as part of field changes.
   
   // Compare types
   changes.push(...detectTypeChanges(oldSchema.types ?? {}, newSchema.types ?? {}));
@@ -56,55 +56,7 @@ function detectChanges(oldSchema: Schema | undefined, newSchema: Schema): Detect
   return changes;
 }
 
-/**
- * Detect changes in enum definitions.
- */
-function detectEnumChanges(
-  oldEnums: Record<string, string[]>,
-  newEnums: Record<string, string[]>
-): DetectedChange[] {
-  const changes: DetectedChange[] = [];
-  const oldNames = new Set(Object.keys(oldEnums));
-  const newNames = new Set(Object.keys(newEnums));
-  
-  // Added enums
-  for (const name of newNames) {
-    if (!oldNames.has(name)) {
-      changes.push({ kind: 'enum-added', enum: name, values: newEnums[name] ?? [] });
-    }
-  }
-  
-  // Removed enums
-  for (const name of oldNames) {
-    if (!newNames.has(name)) {
-      changes.push({ kind: 'enum-removed', enum: name });
-    }
-  }
-  
-  // Changed enums (value additions/removals)
-  for (const name of oldNames) {
-    if (newNames.has(name)) {
-      const oldValues = new Set(oldEnums[name]);
-      const newValues = new Set(newEnums[name]);
-      
-      // Added values
-      for (const value of newValues) {
-        if (!oldValues.has(value)) {
-          changes.push({ kind: 'enum-value-added', enum: name, value });
-        }
-      }
-      
-      // Removed values
-      for (const value of oldValues) {
-        if (!newValues.has(value)) {
-          changes.push({ kind: 'enum-value-removed', enum: name, value });
-        }
-      }
-    }
-  }
-  
-  return changes;
-}
+
 
 /**
  * Detect changes in type definitions.
@@ -217,7 +169,7 @@ function detectFieldPropertyChanges(oldField: Field, newField: Field): string[] 
   const changes: string[] = [];
   
   // Properties that matter for migration
-  const props: (keyof Field)[] = ['enum', 'source', 'required', 'format', 'multiple'];
+  const props: (keyof Field)[] = ['options', 'source', 'required', 'format', 'multiple'];
   
   for (const prop of props) {
     if (JSON.stringify(oldField[prop]) !== JSON.stringify(newField[prop])) {
@@ -267,35 +219,7 @@ function classifyChanges(
       case 'field-changed':
         // Field property changes might need migration
         // For now, treat as informational (no note changes needed)
-        // Future: handle enum→source changes, format changes, etc.
-        break;
-        
-      // Enum operations
-      case 'enum-added':
-        // No migration needed - new enum
-        break;
-        
-      case 'enum-removed':
-        // Fields using this enum might need migration
-        // For now, just flag it
-        break;
-        
-      case 'enum-value-added':
-        // No migration needed - just adds an option
-        deterministic.push({
-          op: 'add-enum-value',
-          enum: change.enum,
-          value: change.value,
-        });
-        break;
-        
-      case 'enum-value-removed':
-        // Notes with this value need remapping
-        nonDeterministic.push({
-          op: 'remove-enum-value',
-          enum: change.enum,
-          value: change.value,
-        });
+        // Future: handle options changes, format changes, etc.
         break;
         
       // Type operations

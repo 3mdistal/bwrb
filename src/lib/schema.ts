@@ -78,14 +78,6 @@ export async function loadSchema(vaultDir: string): Promise<LoadedSchema> {
  */
 export function resolveSchema(schema: Schema): LoadedSchema {
   const types = new Map<string, ResolvedType>();
-  const enums = new Map<string, string[]>();
-  
-  // Copy enums
-  if (schema.enums) {
-    for (const [name, values] of Object.entries(schema.enums)) {
-      enums.set(name, values);
-    }
-  }
   
   // Create implicit meta type if not defined
   if (!schema.types[META_TYPE]) {
@@ -160,7 +152,7 @@ export function resolveSchema(schema: Schema): LoadedSchema {
   // Fifth pass: build ownership map
   const ownership = buildOwnershipMap(types);
   
-  return { raw: schema, types, enums, ownership };
+  return { raw: schema, types, ownership };
 }
 
 /**
@@ -433,10 +425,11 @@ export function getDescendants(schema: LoadedSchema, typeName: string): string[]
 }
 
 /**
- * Get enum values by name.
+ * Get options for a select field.
+ * Options are defined inline on the field.
  */
-export function getEnumValues(schema: LoadedSchema, enumName: string): string[] {
-  return schema.enums.get(enumName) ?? [];
+export function getFieldOptions(field: Field): string[] {
+  return field.options ?? [];
 }
 
 /**
@@ -496,18 +489,18 @@ export function getAllFieldsForType(schema: LoadedSchema, typeName: string): Set
 }
 
 /**
- * Get the enum name for a field in a type.
+ * Get field options for a field in a type (for select prompts).
  */
-export function getEnumForField(
+export function getOptionsForField(
   schema: LoadedSchema,
   typeName: string,
   fieldName: string
-): string | undefined {
+): string[] {
   const type = schema.types.get(typeName);
-  if (!type) return undefined;
+  if (!type) return [];
   
   const field = type.fields[fieldName];
-  return field?.enum;
+  return field?.options ?? [];
 }
 
 /**
@@ -757,18 +750,7 @@ function findCloseMatches(target: string, candidates: string[], maxDistance: num
   return matches.map(m => m.candidate);
 }
 
-/**
- * Check if a value matches any enum value in the schema.
- * Returns the enum name if found, undefined otherwise.
- */
-function findEnumContainingValue(schema: LoadedSchema, value: string): string | undefined {
-  for (const [enumName, values] of schema.enums) {
-    if (values.includes(value)) {
-      return enumName;
-    }
-  }
-  return undefined;
-}
+
 
 /**
  * Resolve a source type name with helpful error messages.
@@ -811,19 +793,6 @@ export function resolveSourceType(
       success: false,
       error: `Source "${source}" uses path format which is not supported.\n` +
         `Available types: ${availableTypes.join(', ')}`,
-    };
-  }
-
-  // Check if the source matches an enum value
-  const enumName = findEnumContainingValue(schema, source);
-  if (enumName) {
-    return {
-      success: false,
-      error: `"${source}" is a value in the "${enumName}" enum, not a type name.\n` +
-        `Dynamic sources must reference types.\n` +
-        `Available types: ${availableTypes.join(', ')}\n\n` +
-        `Hint: If you want to filter by this enum value, set the source to the ` +
-        `parent type and add a filter in the schema.`,
     };
   }
 

@@ -4,22 +4,14 @@
   "title": "Obsidian Vault Template Schema",
   "description": "Schema for defining types, frontmatter, and body sections for Obsidian vault templates",
   "type": "object",
-  "required": ["enums", "types"],
+  "required": ["types"],
   "additionalProperties": false,
   "properties": {
     "$schema": {
       "type": "string",
       "description": "Reference to this JSON Schema for editor support"
     },
-    "enums": {
-      "type": "object",
-      "description": "Shared enum definitions that can be referenced by frontmatter fields",
-      "additionalProperties": {
-        "type": "array",
-        "items": { "type": "string" },
-        "minItems": 1
-      }
-    },
+
     "types": {
       "type": "object",
       "description": "Top-level type families (objective, entity, idea, reflection)",
@@ -129,9 +121,10 @@
           "type": "string",
           "description": "Label shown to user for input prompts"
         },
-        "enum": {
-          "type": "string",
-          "description": "Reference to an enum defined in the enums section"
+        "options": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Allowed values for select fields (inline options)"
         },
         "source": {
           "type": "string",

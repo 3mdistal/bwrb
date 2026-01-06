@@ -35,7 +35,7 @@ describe("snapshot", () => {
         JSON.stringify({
           schemaVersion: "1.0.0",
           snapshotAt: new Date().toISOString(),
-          schema: { version: 2, types: {}, enums: {} },
+          schema: { version: 2, types: {} },
         })
       );
 
@@ -50,7 +50,6 @@ describe("snapshot", () => {
         version: 2,
         schemaVersion: "1.0.0",
         types: { task: { output_dir: "Tasks" } },
-        enums: { status: ["active", "done"] },
       };
 
       await saveSchemaSnapshot(tempDir, schema, "1.0.0");
@@ -65,11 +64,10 @@ describe("snapshot", () => {
     });
 
     it("should overwrite existing snapshot", async () => {
-      const schema1 = { version: 2, types: {}, enums: {} };
+      const schema1 = { version: 2, types: {} };
       const schema2 = {
         version: 2,
         types: { note: { output_dir: "Notes" } },
-        enums: {},
       };
 
       await saveSchemaSnapshot(tempDir, schema1, "1.0.0");
@@ -91,7 +89,6 @@ describe("snapshot", () => {
       const schema = {
         version: 2,
         types: { task: { output_dir: "Tasks" } },
-        enums: {},
       };
       await saveSchemaSnapshot(tempDir, schema, "1.0.0");
 

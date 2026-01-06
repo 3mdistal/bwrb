@@ -9,7 +9,7 @@ Schema-driven note management for markdown vaults.
 `bwrb` is a CLI tool that creates and edits markdown files based on a hierarchical type schema. It supports:
 
 - Interactive type selection with subtype navigation
-- Dynamic frontmatter prompts (enums, text input, vault queries)
+- Dynamic frontmatter prompts (select options, text input, vault queries)
 - Configurable body sections with various content types
 - Edit mode for updating existing files
 - List and filter notes by type and frontmatter fields
@@ -98,18 +98,6 @@ bwrb list --help
 
 The schema file is expected at `<vault>/.bwrb/schema.json`. It defines:
 
-### Enums
-
-Shared value lists for select prompts:
-
-```json
-{
-  "enums": {
-    "status": ["raw", "backlog", "planned", "in-flight", "settled", "ghosted"]
-  }
-}
-```
-
 ### Types
 
 Hierarchical type definitions. Types can have subtypes for nested categorization:
@@ -156,12 +144,12 @@ Fields can be static or prompted:
 
 Special values: `$NOW` (datetime), `$TODAY` (date)
 
-**Select from enum:**
+**Select from options:**
 ```json
 {
   "status": {
     "prompt": "select",
-    "enum": "status",
+    "options": ["raw", "backlog", "planned", "in-flight", "settled"],
     "default": "raw"
   }
 }
@@ -353,29 +341,24 @@ bwrb template delete idea quick
 
 ## Adding a New Type
 
-1. Add enum values if needed:
-   ```json
-   { "enums": { "my-enum": ["option1", "option2"] } }
-   ```
-
-2. Add type definition under `types`:
+1. Add type definition under `types`:
    ```json
    {
      "types": {
        "my-type": {
          "output_dir": "My/Output/Dir",
-         "frontmatter": {
+         "fields": {
            "type": { "value": "my-type" },
-           "status": { "prompt": "select", "enum": "status" }
+           "status": { "prompt": "select", "options": ["raw", "active", "done"] }
          },
-         "frontmatter_order": ["type", "status"],
+         "field_order": ["type", "status"],
          "body_sections": []
        }
      }
    }
    ```
 
-3. Validate schema (optional):
+2. Validate schema (optional):
    ```sh
    ./validate_schema.sh
    ```

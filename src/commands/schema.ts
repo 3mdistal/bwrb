@@ -7,7 +7,6 @@ import {
   hasSubtypes,
   getSubtypeKeys,
   getFieldsForType,
-  getEnumValues,
   getTypeNames,
   computeDefaultOutputDir,
   resolveSourceType,
@@ -30,18 +29,7 @@ import {
   ExitCodes,
 } from '../lib/output.js';
 import { loadRawSchemaJson, writeSchema } from '../lib/schema-writer.js';
-import {
-  getEnumUsage,
-  getEnumNames,
-  enumExists,
-  addEnum,
-  deleteEnum,
-  addEnumValue,
-  removeEnumValue,
-  renameEnumValue,
-  validateEnumName,
-  validateEnumValue,
-} from '../lib/enum-utils.js';
+
 import type { LoadedSchema, Field, BodySection, ResolvedType, Type } from '../types/schema.js';
 
 // ============================================================================
@@ -59,7 +47,7 @@ function warnDeprecated(oldCmd: string, newCmd: string): void {
 // Entity Type Picker (for unified verbs)
 // ============================================================================
 
-type SchemaEntityType = 'type' | 'field' | 'enum';
+type SchemaEntityType = 'type' | 'field';
 
 /**
  * Prompt user to select what kind of schema entity to work with.
@@ -68,7 +56,6 @@ async function promptSchemaEntityType(action: string): Promise<SchemaEntityType 
   const result = await promptSelection(`What do you want to ${action}?`, [
     'type',
     'field',
-    'enum',
   ]);
   if (result === null) return null;
   return result as SchemaEntityType;
@@ -101,16 +88,7 @@ async function promptFieldPicker(
   return promptSelection(message, fieldNames);
 }
 
-/**
- * Prompt for enum selection from available enums.
- */
-async function promptEnumPicker(schema: LoadedSchema, message: string = 'Select enum'): Promise<string | null> {
-  const enumNames = getEnumNames(schema);
-  if (enumNames.length === 0) {
-    throw new Error('No enums defined in schema');
-  }
-  return promptSelection(message, enumNames);
-}
+
 
 interface SchemaShowOptions {
   output?: string;
@@ -246,7 +224,7 @@ async function promptFieldDefinition(
   // Get prompt type
   const promptTypes = [
     'text',
-    'select (enum)',
+    'select (options)',
     'date',
     'list (multi-value)',
     'relation (from other notes)',
@@ -281,16 +259,15 @@ async function promptFieldDefinition(
   } else {
     field.prompt = promptType as Field['prompt'];
     
-    // For select, get enum name
+    // For select, get inline options
     if (promptType === 'select') {
-      const enumNames = Array.from(schema.enums.keys());
-      if (enumNames.length === 0) {
-        printError('No enums defined in schema. Create an enum first with: bwrb schema enum add <name>');
+      const optionsResult = await promptMultiInput('Enter options (one per line)');
+      if (optionsResult === null) return null;
+      if (optionsResult.length === 0) {
+        printError('Select fields require at least one option');
         return promptFieldDefinition(schema);
       }
-      const enumResult = await promptSelection('Enum to use', enumNames);
-      if (enumResult === null) return null;
-      field.enum = enumResult;
+      field.options = optionsResult;
     }
     
     // For dynamic, get source type
@@ -501,7 +478,7 @@ Examples:
 interface AddFieldOptions {
   output?: string;
   type?: string;        // prompt type
-  enum?: string;        // for select
+  options?: string;     // for select (comma-separated)
   source?: string;      // for dynamic
   value?: string;       // for fixed value
   format?: string;      // for dynamic
@@ -550,13 +527,14 @@ function buildFieldFromOptions(
     
     // Handle select type
     if (promptType === 'select') {
-      if (!options.enum) {
-        throw new Error('--enum is required for select type');
+      if (!options.options) {
+        throw new Error('--options is required for select type (comma-separated values)');
       }
-      if (!enumExists(schema, options.enum)) {
-        throw new Error(`Enum "${options.enum}" does not exist`);
+      const optionValues = options.options.split(',').map(o => o.trim()).filter(o => o);
+      if (optionValues.length === 0) {
+        throw new Error('At least one option is required for select type');
       }
-      field.enum = options.enum;
+      field.options = optionValues;
     }
     
     // Handle dynamic type
@@ -627,7 +605,7 @@ async function promptSingleFieldDefinition(
   // Get prompt type
   const promptTypes = [
     'text',
-    'select (enum)',
+    'select (options)',
     'date',
     'list (multi-value)',
     'relation (from other notes)',
@@ -662,15 +640,14 @@ async function promptSingleFieldDefinition(
   } else {
     field.prompt = promptType as Field['prompt'];
     
-    // For select, get enum name
+    // For select, get inline options
     if (promptType === 'select') {
-      const enumNames = Array.from(schema.enums.keys());
-      if (enumNames.length === 0) {
-        throw new Error('No enums defined in schema. Create an enum first with: bwrb schema enum add <name>');
+      const optionsResult = await promptMultiInput('Enter options (one per line)');
+      if (optionsResult === null) return null;
+      if (optionsResult.length === 0) {
+        throw new Error('Select fields require at least one option');
       }
-      const enumResult = await promptSelection('Enum to use', enumNames);
-      if (enumResult === null) return null;
-      field.enum = enumResult;
+      field.options = optionsResult;
     }
     
     // For relation, get source type
@@ -713,19 +690,19 @@ schemaCommand
   .command('add-field <type-name> [field-name]')
   .description('Add a field to an existing type')
   .option('-o, --output <format>', 'Output format: text (default) or json')
-  .option('--type <prompt-type>', 'Prompt type: input, select, date, list, dynamic, fixed')
-  .option('--enum <name>', 'Enum name (for select type)')
-  .option('--source <type>', 'Source type (for dynamic type)')
+  .option('--type <prompt-type>', 'Prompt type: text, select, date, list, relation, boolean, number, fixed')
+  .option('--options <values>', 'Options for select type (comma-separated values)')
+  .option('--source <type>', 'Source type (for relation type)')
   .option('--value <value>', 'Fixed value (for fixed type)')
-  .option('--format <format>', 'Link format: plain, wikilink, quoted-wikilink (for dynamic)')
+  .option('--format <format>', 'Link format: plain, wikilink, quoted-wikilink (for relation)')
   .option('--required', 'Mark field as required')
   .option('--default <value>', 'Default value')
   .addHelpText('after', `
 Examples:
   # Non-interactive field creation (requires --type flag):
-  bwrb schema add-field book title --type input --required -o json
-  bwrb schema add-field book status --type select --enum status -o json
-  bwrb schema add-field book author --type dynamic --source person --format wikilink -o json
+  bwrb schema add-field book title --type text --required -o json
+  bwrb schema add-field book status --type select --options "draft,published,archived" -o json
+  bwrb schema add-field book author --type relation --source person --format wikilink -o json
   bwrb schema add-field book edition --type fixed --value "1st" -o json
   bwrb schema add-field book published --type date -o json
   bwrb schema add-field book tags --type list -o json
@@ -874,8 +851,8 @@ Examples:
           : field.prompt ?? 'auto';
         console.log(`  Type: ${fieldTypeStr}`);
         
-        if (field.enum) {
-          console.log(`  Enum: ${field.enum}`);
+        if (field.options && field.options.length > 0) {
+          console.log(`  Options: ${field.options.join(', ')}`);
         }
         if (field.source) {
           console.log(`  Source: ${field.source}`);
@@ -1318,7 +1295,7 @@ schemaCommand
         // Show current field info
         const fieldInfo: string[] = [];
         if (fieldDef.prompt) fieldInfo.push(`prompt: ${fieldDef.prompt}`);
-        if (fieldDef.enum) fieldInfo.push(`enum: ${fieldDef.enum}`);
+        if (fieldDef.options) fieldInfo.push(`options: ${fieldDef.options.join(', ')}`);
         if (fieldDef.source) fieldInfo.push(`source: ${fieldDef.source}`);
         if (fieldInfo.length > 0) {
           console.log(chalk.gray(fieldInfo.join(', ')));
@@ -1617,7 +1594,6 @@ function outputSchemaJson(schema: LoadedSchema): void {
   const raw = schema.raw;
   const output: Record<string, unknown> = {
     version: raw.version ?? 2,
-    enums: raw.enums ?? {},
     types: Object.fromEntries(
       getTypeFamilies(schema).map(family => {
         const typeDef = getTypeDefByPath(schema, family);
@@ -1654,7 +1630,7 @@ function outputTypeDetailsJson(schema: LoadedSchema, typePath: string): void {
     inheritedFieldsObj[origin] = Object.fromEntries(
       Object.entries(fields).map(([name, field]) => [
         name,
-        formatFieldForJson(schema, field),
+        formatFieldForJson(field),
       ])
     );
   }
@@ -1668,7 +1644,7 @@ function outputTypeDetailsJson(schema: LoadedSchema, typePath: string): void {
     own_fields: Object.fromEntries(
       Object.entries(ownFields).map(([name, field]) => [
         name,
-        formatFieldForJson(schema, field),
+        formatFieldForJson(field),
       ])
     ),
     // Inherited fields grouped by origin type
@@ -1679,7 +1655,7 @@ function outputTypeDetailsJson(schema: LoadedSchema, typePath: string): void {
     fields: Object.fromEntries(
       Object.entries(allFields).map(([name, field]) => [
         name,
-        formatFieldForJson(schema, field),
+        formatFieldForJson(field),
       ])
     ),
     subtypes: hasSubtypes(typeDef) ? getSubtypeKeys(typeDef) : undefined,
@@ -1726,9 +1702,9 @@ function formatTypeForJson(
 }
 
 /**
- * Format a field for JSON output with resolved enum values.
+ * Format a field for JSON output.
  */
-function formatFieldForJson(schema: LoadedSchema, field: Field): Record<string, unknown> {
+function formatFieldForJson(field: Field): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
   // Determine type
@@ -1741,10 +1717,9 @@ function formatFieldForJson(schema: LoadedSchema, field: Field): Record<string, 
     result.type = 'auto';
   }
 
-  // Add enum values if applicable
-  if (field.enum) {
-    result.enum = field.enum;
-    result.values = getEnumValues(schema, field.enum);
+  // Add options if applicable
+  if (field.options && field.options.length > 0) {
+    result.options = field.options;
   }
 
   // Add other properties
@@ -1782,17 +1757,6 @@ function formatBodySectionsForJson(sections: BodySection[]): unknown[] {
  */
 function showSchemaTree(schema: LoadedSchema): void {
   console.log(chalk.bold('\nSchema Types\n'));
-
-  const raw = schema.raw;
-  
-  // Show enums if any
-  if (raw.enums && Object.keys(raw.enums).length > 0) {
-    console.log(chalk.cyan('Enums:'));
-    for (const [name, values] of Object.entries(raw.enums)) {
-      console.log(`  ${chalk.yellow(name)}: ${values.join(', ')}`);
-    }
-    console.log('');
-  }
 
   // Show types
   console.log(chalk.cyan('Types:'));
@@ -1876,7 +1840,7 @@ function showTypeDetails(schema: LoadedSchema, typePath: string): void {
     // Use this type's field order for own fields
     const orderedOwnFields = getFieldOrderForOrigin(schema, typeDef.name, ownFieldNames);
     for (const name of orderedOwnFields) {
-      printFieldDetails(schema, name, ownFields[name]!, '    ');
+      printFieldDetails(name, ownFields[name]!, '    ');
     }
   }
 
@@ -1894,7 +1858,7 @@ function showTypeDetails(schema: LoadedSchema, typePath: string): void {
           Object.keys(ancestorFields)
         );
         for (const name of orderedFields) {
-          printFieldDetails(schema, name, ancestorFields[name]!, '    ');
+          printFieldDetails(name, ancestorFields[name]!, '    ');
         }
       }
     }
@@ -1918,7 +1882,6 @@ function showTypeDetails(schema: LoadedSchema, typePath: string): void {
  * Print details for a single field.
  */
 function printFieldDetails(
-  schema: LoadedSchema,
   name: string,
   field: Field,
   indent: string
@@ -1926,12 +1889,9 @@ function printFieldDetails(
   const type = getFieldType(field);
   let line = `${indent}${chalk.yellow(name)}: ${type}`;
 
-  // Show enum values if applicable
-  if (field.enum) {
-    const values = getEnumValues(schema, field.enum);
-    if (values.length > 0) {
-      line += chalk.gray(` (${values.slice(0, 5).join(', ')}${values.length > 5 ? '...' : ''})`);
-    }
+  // Show options if applicable
+  if (field.options && field.options.length > 0) {
+    line += chalk.gray(` (${field.options.slice(0, 5).join(', ')}${field.options.length > 5 ? '...' : ''})`);
   }
 
   // Show format for dynamic fields
@@ -1973,7 +1933,7 @@ function getFieldType(field: Field): string {
 
   switch (field.prompt) {
     case 'select':
-      return field.enum ? chalk.blue(`enum:${field.enum}`) : chalk.blue('select');
+      return chalk.blue('select');
     case 'list':
       return chalk.blue('list');
     case 'text':
@@ -1991,307 +1951,8 @@ function getFieldType(field: Field): string {
   }
 }
 
-// ============================================================================
-// Enum Subcommands
-// ============================================================================
-
-interface EnumCommandOptions {
-  output?: string;
-  values?: string;
-  add?: string;
-  remove?: string;
-  rename?: string;
-  force?: boolean;
-}
-
-const enumCommand = new Command('enum')
-  .description('Manage enum definitions')
-  .addHelpText('after', `
-Examples:
-  bwrb schema enum list              # Show all enums
-  bwrb schema enum add status        # Create enum (prompts for values)
-  bwrb schema enum add status --values "raw,active,done"
-  bwrb schema enum update status --add archived
-  bwrb schema enum update status --remove raw
-  bwrb schema enum update status --rename active=in-progress
-  bwrb schema enum delete old-status
-  bwrb schema enum delete unused --force  # Delete even if in use`);
-
-// schema enum list
-enumCommand
-  .command('list')
-  .description('Show all enums with their values and usage')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
-  .action(async (options: EnumCommandOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
-    warnDeprecated('schema enum list', 'schema list enums');
-
-    try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
-      const schema = await loadSchema(vaultDir);
-
-      if (jsonMode) {
-        outputEnumListJson(schema);
-      } else {
-        outputEnumListText(schema);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (jsonMode) {
-        printJson(jsonError(message));
-        process.exit(ExitCodes.SCHEMA_ERROR);
-      }
-      printError(message);
-      process.exit(1);
-    }
-  });
-
-// schema enum add <name>
-enumCommand
-  .command('add <name>')
-  .description('Create a new enum')
-  .option('--values <values>', 'Comma-separated values')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
-  .action(async (name: string, options: EnumCommandOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
-    warnDeprecated('schema enum add', 'schema new enum');
-
-    try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
-      
-      // Validate name
-      const nameError = validateEnumName(name);
-      if (nameError) {
-        throw new Error(nameError);
-      }
-      
-      // Check if exists
-      const schema = await loadSchema(vaultDir);
-      if (enumExists(schema, name)) {
-        throw new Error(`Enum "${name}" already exists`);
-      }
-      
-      // Get values from flag or prompt
-      let values: string[];
-      if (options.values) {
-        values = options.values.split(',').map(v => v.trim()).filter(Boolean);
-      } else {
-        if (jsonMode) {
-          throw new Error('--values flag is required in JSON mode');
-        }
-        const prompted = await promptMultiInput(`Enter values for enum "${name}"`);
-        if (prompted === null) {
-          process.exit(0); // User cancelled
-        }
-        values = prompted;
-      }
-      
-      if (values.length === 0) {
-        throw new Error('Enum must have at least one value');
-      }
-      
-      // Validate values
-      for (const value of values) {
-        const valueError = validateEnumValue(value);
-        if (valueError) {
-          throw new Error(`Invalid value "${value}": ${valueError}`);
-        }
-      }
-      
-      // Add enum
-      let rawSchema = await loadRawSchemaJson(vaultDir);
-      rawSchema = addEnum(rawSchema, name, values);
-      await writeSchema(vaultDir, rawSchema);
-      
-      if (jsonMode) {
-        printJson(jsonSuccess({
-          message: `Created enum "${name}"`,
-          data: { name, values },
-        }));
-      } else {
-        printSuccess(`Created enum "${name}" with values: ${values.join(', ')}`);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (jsonMode) {
-        printJson(jsonError(message));
-        process.exit(ExitCodes.VALIDATION_ERROR);
-      }
-      printError(message);
-      process.exit(1);
-    }
-  });
-
-// schema enum update <name>
-enumCommand
-  .command('update <name>')
-  .description('Update an enum (add/remove/rename values)')
-  .option('--add <value>', 'Add a value')
-  .option('--remove <value>', 'Remove a value')
-  .option('--rename <old>=<new>', 'Rename a value')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
-  .action(async (name: string, options: EnumCommandOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
-    warnDeprecated('schema enum update', 'schema edit enum');
-
-    try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
-      
-      // Check if enum exists
-      const schema = await loadSchema(vaultDir);
-      if (!enumExists(schema, name)) {
-        throw new Error(`Enum "${name}" does not exist`);
-      }
-      
-      // Require exactly one operation
-      const ops = [options.add, options.remove, options.rename].filter(Boolean);
-      if (ops.length === 0) {
-        throw new Error('Specify one of: --add, --remove, or --rename');
-      }
-      if (ops.length > 1) {
-        throw new Error('Specify only one of: --add, --remove, or --rename');
-      }
-      
-      let rawSchema = await loadRawSchemaJson(vaultDir);
-      let message: string;
-      
-      if (options.add) {
-        const valueError = validateEnumValue(options.add);
-        if (valueError) {
-          throw new Error(valueError);
-        }
-        rawSchema = addEnumValue(rawSchema, name, options.add);
-        message = `Added "${options.add}" to enum "${name}"`;
-      } else if (options.remove) {
-        rawSchema = removeEnumValue(rawSchema, name, options.remove);
-        message = `Removed "${options.remove}" from enum "${name}"`;
-        
-        // Warn about notes that may have this value
-        if (!jsonMode) {
-          console.log(chalk.yellow(`\nNote: Existing notes with ${name}: ${options.remove} are now invalid.`));
-          console.log(chalk.yellow(`Run \`bwrb audit --fix\` to update affected notes.`));
-        }
-      } else if (options.rename) {
-        // Parse old=new format (split on first = only)
-        const eqIndex = options.rename.indexOf('=');
-        if (eqIndex === -1) {
-          throw new Error('--rename format must be: old=new');
-        }
-        const oldValue = options.rename.slice(0, eqIndex);
-        const newValue = options.rename.slice(eqIndex + 1);
-        
-        if (!oldValue || !newValue) {
-          throw new Error('--rename format must be: old=new');
-        }
-        
-        const valueError = validateEnumValue(newValue);
-        if (valueError) {
-          throw new Error(`Invalid new value: ${valueError}`);
-        }
-        
-        rawSchema = renameEnumValue(rawSchema, name, oldValue, newValue);
-        message = `Renamed "${oldValue}" to "${newValue}" in enum "${name}"`;
-        
-        // Warn about notes that need updating
-        if (!jsonMode) {
-          console.log(chalk.yellow(`\nNote: Existing notes with ${name}: ${oldValue} need to be updated.`));
-          console.log(chalk.yellow(`Run: bwrb bulk --set ${name}=${newValue} --where "${name}=${oldValue}" --execute`));
-        }
-      } else {
-        throw new Error('Unexpected state');
-      }
-      
-      await writeSchema(vaultDir, rawSchema);
-      
-      // Get updated values for output
-      const updatedSchema = await loadRawSchemaJson(vaultDir);
-      const updatedValues = updatedSchema.enums?.[name] ?? [];
-      
-      if (jsonMode) {
-        printJson(jsonSuccess({
-          message,
-          data: { name, values: updatedValues },
-        }));
-      } else {
-        printSuccess(message);
-        console.log(`Values: ${updatedValues.join(', ')}`);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (jsonMode) {
-        printJson(jsonError(message));
-        process.exit(ExitCodes.VALIDATION_ERROR);
-      }
-      printError(message);
-      process.exit(1);
-    }
-  });
-
-// schema enum delete <name>
-enumCommand
-  .command('delete <name>')
-  .description('Delete an enum')
-  .option('--force', 'Delete even if in use (dangerous)')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
-  .action(async (name: string, options: EnumCommandOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
-    warnDeprecated('schema enum delete', 'schema delete enum');
-
-    try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
-      
-      // Check if enum exists
-      const schema = await loadSchema(vaultDir);
-      if (!enumExists(schema, name)) {
-        throw new Error(`Enum "${name}" does not exist`);
-      }
-      
-      // Check if in use
-      const usages = getEnumUsage(schema, name);
-      if (usages.length > 0 && !options.force) {
-        const usageList = usages.map(u => `${u.typeName}.${u.fieldName}`).join(', ');
-        throw new Error(
-          `Cannot delete enum "${name}" - used by: ${usageList}\n` +
-          `To delete anyway: bwrb schema enum delete ${name} --force`
-        );
-      }
-      
-      let rawSchema = await loadRawSchemaJson(vaultDir);
-      rawSchema = deleteEnum(rawSchema, name);
-      await writeSchema(vaultDir, rawSchema);
-      
-      if (jsonMode) {
-        printJson(jsonSuccess({
-          message: `Deleted enum "${name}"`,
-          data: { name, wasInUse: usages.length > 0 },
-        }));
-      } else {
-        printSuccess(`Deleted enum "${name}"`);
-        if (usages.length > 0) {
-          console.log(chalk.yellow(`\nWarning: This enum was in use by:`));
-          for (const usage of usages) {
-            console.log(chalk.yellow(`  • ${usage.typeName}.${usage.fieldName}`));
-          }
-          console.log(chalk.yellow(`\nRun \`bwrb audit\` to find affected notes.`));
-        }
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (jsonMode) {
-        printJson(jsonError(message));
-        process.exit(ExitCodes.VALIDATION_ERROR);
-      }
-      printError(message);
-      process.exit(1);
-    }
-  });
-
-// Add enum command to schema command
-schemaCommand.addCommand(enumCommand);
+// Note: Global enum commands have been removed in favor of inline options on fields.
+// Use field.options instead of field.enum for select fields.
 
 // ============================================================================
 // Unified Verb Subcommands (new, edit, delete, list)
@@ -2321,16 +1982,14 @@ interface ListCommandOptions {
 // -------------------- schema new --------------------
 
 const newCommand = new Command('new')
-  .description('Create a new type, field, or enum')
+  .description('Create a new type or field')
   .addHelpText('after', `
 Examples:
   bwrb schema new                    # Prompts for what to create
   bwrb schema new type               # Create a new type
   bwrb schema new type project       # Create type named "project"
   bwrb schema new field              # Create a field (prompts for type)
-  bwrb schema new field task status  # Add "status" field to "task" type
-  bwrb schema new enum               # Create a new enum
-  bwrb schema new enum priority      # Create enum named "priority"`);
+  bwrb schema new field task status  # Add "status" field to "task" type`);
 
 // schema new (no args - prompt for entity type)
 newCommand
@@ -2339,7 +1998,7 @@ newCommand
 
     try {
       if (jsonMode) {
-        throw new Error('Entity type argument is required in JSON mode. Use: schema new type|field|enum');
+        throw new Error('Entity type argument is required in JSON mode. Use: schema new type|field');
       }
 
       const entityType = await promptSchemaEntityType('create');
@@ -2578,110 +2237,21 @@ newCommand
     }
   });
 
-// schema new enum [name]
-newCommand
-  .command('enum [name]')
-  .description('Create a new enum')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
-  .option('--values <values>', 'Comma-separated values')
-  .action(async (name: string | undefined, options: NewCommandOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
-
-    try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
-
-      // Get name if not provided
-      let enumName = name;
-      if (!enumName) {
-        if (jsonMode) {
-          throw new Error('Enum name is required in JSON mode');
-        }
-        const result = await promptInput('Enum name');
-        if (result === null) {
-          process.exit(0);
-        }
-        enumName = result;
-      }
-
-      // Validate name
-      const nameError = validateEnumName(enumName);
-      if (nameError) {
-        throw new Error(nameError);
-      }
-
-      // Check if exists
-      const schema = await loadSchema(vaultDir);
-      if (enumExists(schema, enumName)) {
-        throw new Error(`Enum "${enumName}" already exists`);
-      }
-
-      // Get values from flag or prompt
-      let values: string[];
-      if (options.values) {
-        values = options.values.split(',').map(v => v.trim()).filter(Boolean);
-      } else {
-        if (jsonMode) {
-          throw new Error('--values flag is required in JSON mode');
-        }
-        const prompted = await promptMultiInput(`Enter values for enum "${enumName}"`);
-        if (prompted === null) {
-          process.exit(0);
-        }
-        values = prompted;
-      }
-
-      // Validate values
-      for (const value of values) {
-        const valueError = validateEnumValue(value);
-        if (valueError) {
-          throw new Error(`Invalid value "${value}": ${valueError}`);
-        }
-      }
-
-      if (values.length === 0) {
-        throw new Error('Enum must have at least one value');
-      }
-
-      // Add to schema
-      const rawSchema = await loadRawSchemaJson(vaultDir);
-      const updatedSchema = addEnum(rawSchema, enumName, values);
-      await writeSchema(vaultDir, updatedSchema);
-
-      if (jsonMode) {
-        printJson(jsonSuccess({
-          message: `Enum "${enumName}" created with ${values.length} values`,
-          data: { name: enumName, values },
-        }));
-      } else {
-        printSuccess(`Enum "${enumName}" created with values: ${values.join(', ')}`);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (jsonMode) {
-        printJson(jsonError(message));
-        process.exit(ExitCodes.SCHEMA_ERROR);
-      }
-      printError(message);
-      process.exit(1);
-    }
-  });
+// Note: schema new enum has been removed - use inline options on fields instead
 
 schemaCommand.addCommand(newCommand);
 
 // -------------------- schema edit --------------------
 
 const editCommand = new Command('edit')
-  .description('Edit an existing type, field, or enum')
+  .description('Edit an existing type or field')
   .addHelpText('after', `
 Examples:
   bwrb schema edit                   # Prompts for what to edit
   bwrb schema edit type              # Edit a type (shows picker)
   bwrb schema edit type task         # Edit the "task" type
   bwrb schema edit field             # Edit a field (shows pickers)
-  bwrb schema edit field task status # Edit "status" field on "task" type
-  bwrb schema edit enum              # Edit an enum (shows picker)
-  bwrb schema edit enum priority     # Edit the "priority" enum`);
+  bwrb schema edit field task status # Edit "status" field on "task" type`);
 
 // schema edit (no args - prompt for entity type)
 editCommand
@@ -2690,7 +2260,7 @@ editCommand
 
     try {
       if (jsonMode) {
-        throw new Error('Entity type argument is required in JSON mode. Use: schema edit type|field|enum');
+        throw new Error('Entity type argument is required in JSON mode. Use: schema edit type|field');
       }
 
       const entityType = await promptSchemaEntityType('edit');
@@ -2915,15 +2485,11 @@ editCommand
           if (newPrompt !== null && fieldEntry) {
             fieldEntry.prompt = newPrompt as Field['prompt'];
             
-            // If select type, prompt for enum name
+            // If select type, prompt for inline options
             if (newPrompt === 'select') {
-              const reloadedSchema = await loadSchema(vaultDir);
-              const enumNames = getEnumNames(reloadedSchema);
-              if (enumNames.length > 0) {
-                const enumChoice = await promptSelection('Select enum (or skip)', ['(none)', ...enumNames]);
-                if (enumChoice !== null && enumChoice !== '(none)') {
-                  fieldEntry.enum = enumChoice;
-                }
+              const optionsResult = await promptMultiInput('Enter options (one per line)');
+              if (optionsResult !== null && optionsResult.length > 0) {
+                fieldEntry.options = optionsResult;
               }
             }
             
@@ -2968,171 +2534,14 @@ editCommand
     }
   });
 
-// schema edit enum [name]
-editCommand
-  .command('enum [name]')
-  .description('Edit an enum definition')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
-  .option('--add <value>', 'Add a value to the enum')
-  .option('--remove <value>', 'Remove a value from the enum')
-  .option('--rename <old=new>', 'Rename a value (format: old=new)')
-  .action(async (name: string | undefined, options: { output?: string; add?: string; remove?: string; rename?: string }, cmd: Command) => {
-    const jsonMode = options.output === 'json';
-
-    try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
-      const schema = await loadSchema(vaultDir);
-
-      // Get enum name if not provided
-      let enumName = name;
-      if (!enumName) {
-        if (jsonMode) {
-          throw new Error('Enum name is required in JSON mode');
-        }
-        const result = await promptEnumPicker(schema, 'Select enum to edit');
-        if (result === null) {
-          process.exit(0);
-        }
-        enumName = result;
-      }
-
-      // Validate enum exists
-      if (!enumExists(schema, enumName)) {
-        throw new Error(`Enum "${enumName}" does not exist`);
-      }
-
-      // Handle flag-based operations
-      if (options.add || options.remove || options.rename) {
-        const rawSchema = await loadRawSchemaJson(vaultDir);
-        
-        if (options.add) {
-          const valueError = validateEnumValue(options.add);
-          if (valueError) {
-            throw new Error(valueError);
-          }
-          const updatedSchema = addEnumValue(rawSchema, enumName, options.add);
-          await writeSchema(vaultDir, updatedSchema);
-          
-          if (jsonMode) {
-            printJson(jsonSuccess({
-              message: `Value "${options.add}" added to enum "${enumName}"`,
-              data: { enum: enumName, added: options.add },
-            }));
-          } else {
-            printSuccess(`Value "${options.add}" added to enum "${enumName}"`);
-          }
-          return;
-        }
-
-        if (options.remove) {
-          const updatedSchema = removeEnumValue(rawSchema, enumName, options.remove);
-          await writeSchema(vaultDir, updatedSchema);
-          
-          if (jsonMode) {
-            printJson(jsonSuccess({
-              message: `Value "${options.remove}" removed from enum "${enumName}"`,
-              data: { enum: enumName, removed: options.remove },
-            }));
-          } else {
-            printSuccess(`Value "${options.remove}" removed from enum "${enumName}"`);
-          }
-          return;
-        }
-
-        if (options.rename) {
-          const [oldValue, newValue] = options.rename.split('=');
-          if (!oldValue || !newValue) {
-            throw new Error('Rename format must be "old=new"');
-          }
-          const updatedSchema = renameEnumValue(rawSchema, enumName, oldValue, newValue);
-          await writeSchema(vaultDir, updatedSchema);
-          
-          if (jsonMode) {
-            printJson(jsonSuccess({
-              message: `Value "${oldValue}" renamed to "${newValue}" in enum "${enumName}"`,
-              data: { enum: enumName, renamed: { from: oldValue, to: newValue } },
-            }));
-          } else {
-            printSuccess(`Value "${oldValue}" renamed to "${newValue}" in enum "${enumName}"`);
-          }
-          return;
-        }
-      }
-
-      // Interactive mode
-      if (jsonMode) {
-        throw new Error('Interactive edit required. Use --add, --remove, or --rename flags in JSON mode.');
-      }
-
-      const currentValues = getEnumValues(schema, enumName);
-      console.log(chalk.bold(`\nEditing enum: ${enumName}\n`));
-      console.log(`Current values: ${currentValues.join(', ')}`);
-
-      const editOptions = ['Add value', 'Remove value', 'Rename value', 'Done'];
-      
-      while (true) {
-        const choice = await promptSelection('What would you like to do?', editOptions);
-        if (choice === null || choice === 'Done') {
-          break;
-        }
-
-        const rawSchema = await loadRawSchemaJson(vaultDir);
-
-        if (choice === 'Add value') {
-          const newValue = await promptInput('New value');
-          if (newValue !== null) {
-            const valueError = validateEnumValue(newValue);
-            if (valueError) {
-              printError(valueError);
-              continue;
-            }
-            addEnumValue(rawSchema, enumName, newValue);
-            await writeSchema(vaultDir, rawSchema);
-            printSuccess(`Value "${newValue}" added`);
-          }
-        } else if (choice === 'Remove value') {
-          const reloadedSchema = await loadSchema(vaultDir);
-          const values = getEnumValues(reloadedSchema, enumName);
-          const toRemove = await promptSelection('Value to remove', values);
-          if (toRemove !== null) {
-            removeEnumValue(rawSchema, enumName, toRemove);
-            await writeSchema(vaultDir, rawSchema);
-            printSuccess(`Value "${toRemove}" removed`);
-          }
-        } else if (choice === 'Rename value') {
-          const reloadedSchema = await loadSchema(vaultDir);
-          const values = getEnumValues(reloadedSchema, enumName);
-          const oldValue = await promptSelection('Value to rename', values);
-          if (oldValue !== null) {
-            const newValue = await promptInput('New name', oldValue);
-            if (newValue !== null && newValue !== oldValue) {
-              renameEnumValue(rawSchema, enumName, oldValue, newValue);
-              await writeSchema(vaultDir, rawSchema);
-              printSuccess(`Value "${oldValue}" renamed to "${newValue}"`);
-            }
-          }
-        }
-      }
-
-      printSuccess(`Finished editing enum "${enumName}"`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (jsonMode) {
-        printJson(jsonError(message));
-        process.exit(ExitCodes.SCHEMA_ERROR);
-      }
-      printError(message);
-      process.exit(1);
-    }
-  });
+// Note: schema edit enum has been removed - use inline options on fields instead
 
 schemaCommand.addCommand(editCommand);
 
 // -------------------- schema delete --------------------
 
 const deleteCommand = new Command('delete')
-  .description('Delete a type, field, or enum (dry-run by default)')
+  .description('Delete a type or field (dry-run by default)')
   .addHelpText('after', `
 Examples:
   bwrb schema delete                      # Prompts for what to delete
@@ -3140,9 +2549,7 @@ Examples:
   bwrb schema delete type project         # Preview deleting "project" type
   bwrb schema delete type project --execute  # Actually delete "project" type
   bwrb schema delete field                # Delete a field (shows pickers)
-  bwrb schema delete field task status    # Preview deleting "status" from "task"
-  bwrb schema delete enum                 # Delete an enum (shows picker)
-  bwrb schema delete enum priority --execute  # Actually delete "priority" enum`);
+  bwrb schema delete field task status    # Preview deleting "status" from "task"`);
 
 // schema delete (no args - prompt for entity type)
 deleteCommand
@@ -3151,7 +2558,7 @@ deleteCommand
 
     try {
       if (jsonMode) {
-        throw new Error('Entity type argument is required in JSON mode. Use: schema delete type|field|enum');
+        throw new Error('Entity type argument is required in JSON mode. Use: schema delete type|field');
       }
 
       const entityType = await promptSchemaEntityType('delete');
@@ -3377,95 +2784,7 @@ deleteCommand
     }
   });
 
-// schema delete enum [name]
-deleteCommand
-  .command('enum [name]')
-  .description('Delete an enum (dry-run by default)')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
-  .option('--execute', 'Actually perform the deletion (default is dry-run)')
-  .action(async (name: string | undefined, options: DeleteCommandOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
-    const dryRun = !options.execute;
-
-    try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
-      const schema = await loadSchema(vaultDir);
-
-      // Get enum name if not provided
-      let enumName = name;
-      if (!enumName) {
-        if (jsonMode) {
-          throw new Error('Enum name is required in JSON mode');
-        }
-        const result = await promptEnumPicker(schema, 'Select enum to delete');
-        if (result === null) {
-          process.exit(0);
-        }
-        enumName = result;
-      }
-
-      // Validate enum exists
-      if (!enumExists(schema, enumName)) {
-        throw new Error(`Enum "${enumName}" does not exist`);
-      }
-
-      // Check usage
-      const usage = getEnumUsage(schema, enumName);
-
-      // Error if enum is in use
-      if (usage.length > 0) {
-        const usageList = usage.map(u => `${u.typeName}.${u.fieldName}`).join(', ');
-        throw new Error(`Enum "${enumName}" is in use by: ${usageList}. Remove field references first.`);
-      }
-
-      // Build impact report
-      const impact = {
-        enum: enumName,
-        usedBy: usage,
-        isInUse: usage.length > 0,
-        dryRun,
-      };
-
-      if (dryRun) {
-        if (jsonMode) {
-          printJson(jsonSuccess({
-            message: `Dry run: would delete enum "${enumName}"`,
-            data: { ...impact, wouldDelete: true },
-          }));
-        } else {
-          console.log(chalk.bold(`\nDry run: would delete enum "${enumName}"\n`));
-          console.log('Run with --execute to perform the deletion.');
-        }
-        return;
-      }
-
-      // Actually delete
-      let rawSchema = await loadRawSchemaJson(vaultDir);
-      rawSchema = deleteEnum(rawSchema, enumName);
-      await writeSchema(vaultDir, rawSchema);
-
-      if (jsonMode) {
-        printJson(jsonSuccess({
-          message: `Enum "${enumName}" deleted`,
-          data: { deleted: enumName, fieldsAffected: usage },
-        }));
-      } else {
-        printSuccess(`Enum "${enumName}" deleted`);
-        if (usage.length > 0) {
-          console.log(chalk.yellow(`Note: ${usage.length} field(s) were referencing this enum.`));
-        }
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (jsonMode) {
-        printJson(jsonError(message));
-        process.exit(ExitCodes.SCHEMA_ERROR);
-      }
-      printError(message);
-      process.exit(1);
-    }
-  });
+// Note: schema delete enum has been removed - use inline options on fields instead
 
 schemaCommand.addCommand(deleteCommand);
 
@@ -3581,9 +2900,10 @@ listCommand
       } else {
         console.log(chalk.bold('\nFields:\n'));
         for (const { type, field, definition } of allFields) {
-          const typeStr = getFieldType(definition) + (definition.enum ? `:${definition.enum}` : '');
+          const typeStr = getFieldType(definition);
+          const optionsSuffix = definition.options?.length ? ` [${definition.options.slice(0, 3).join(', ')}${definition.options.length > 3 ? '...' : ''}]` : '';
           const required = definition.required ? chalk.red('*') : '';
-          console.log(`  ${type}.${field}${required} ${chalk.gray(`(${typeStr})`)}`);
+          console.log(`  ${type}.${field}${required} ${chalk.gray(`(${typeStr}${optionsSuffix})`)}`);
         }
       }
     } catch (err) {
@@ -3597,34 +2917,7 @@ listCommand
     }
   });
 
-// schema list enums
-listCommand
-  .command('enums')
-  .description('List all enums')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
-  .action(async (options: ListCommandOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
-
-    try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
-      const schema = await loadSchema(vaultDir);
-
-      if (jsonMode) {
-        outputEnumListJson(schema);
-      } else {
-        outputEnumListText(schema);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (jsonMode) {
-        printJson(jsonError(message));
-        process.exit(ExitCodes.SCHEMA_ERROR);
-      }
-      printError(message);
-      process.exit(1);
-    }
-  });
+// Note: schema list enums has been removed - use inline options on fields instead
 
 // schema list type <name>
 listCommand
@@ -3655,58 +2948,7 @@ listCommand
     }
   });
 
-// schema list enum <name>
-listCommand
-  .command('enum <name>')
-  .description('Show details for a specific enum')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
-  .action(async (name: string, options: ListCommandOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
-
-    try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
-      const schema = await loadSchema(vaultDir);
-
-      if (!enumExists(schema, name)) {
-        throw new Error(`Enum "${name}" does not exist`);
-      }
-
-      const values = getEnumValues(schema, name);
-      const usage = getEnumUsage(schema, name);
-
-      if (jsonMode) {
-        printJson(jsonSuccess({
-          message: `Enum "${name}"`,
-          data: {
-            name,
-            values,
-            usedBy: usage,
-          },
-        }));
-      } else {
-        console.log(chalk.bold(`\nEnum: ${name}\n`));
-        console.log('Values:');
-        for (const value of values) {
-          console.log(`  - ${value}`);
-        }
-        if (usage.length > 0) {
-          console.log('\nUsed by:');
-          for (const u of usage) {
-            console.log(`  - ${u.typeName}.${u.fieldName}`);
-          }
-        }
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (jsonMode) {
-        printJson(jsonError(message));
-        process.exit(ExitCodes.SCHEMA_ERROR);
-      }
-      printError(message);
-      process.exit(1);
-    }
-  });
+// Note: schema list enum has been removed - use inline options on fields instead
 
 schemaCommand.addCommand(listCommand);
 
@@ -4166,54 +3408,4 @@ function suggestVersionBump(currentVersion: string, diff: MigrationPlan): string
   return `${major}.${minor}.${patch + 1}`;
 }
 
-// ============================================================================
-// Enum Output Helpers
-// ============================================================================
-
-/**
- * Output enum list as JSON.
- */
-function outputEnumListJson(schema: LoadedSchema): void {
-  const enumNames = getEnumNames(schema);
-  const enums = enumNames.map(name => {
-    const values = schema.enums.get(name) ?? [];
-    const usages = getEnumUsage(schema, name);
-    return {
-      name,
-      values,
-      usages: usages.map(u => ({ type: u.typeName, field: u.fieldName })),
-    };
-  });
-  
-  printJson(jsonSuccess({ data: { enums } }));
-}
-
-/**
- * Output enum list as text.
- */
-function outputEnumListText(schema: LoadedSchema): void {
-  const enumNames = getEnumNames(schema);
-  
-  if (enumNames.length === 0) {
-    console.log('No enums defined in schema.');
-    return;
-  }
-  
-  console.log(chalk.bold('\nEnums\n'));
-  
-  for (const name of enumNames) {
-    const values = schema.enums.get(name) ?? [];
-    const usages = getEnumUsage(schema, name);
-    
-    console.log(`${chalk.yellow(name)}: ${values.join(', ')}`);
-    
-    if (usages.length > 0) {
-      const usageStr = usages.map(u => `${u.typeName}.${u.fieldName}`).join(', ');
-      console.log(chalk.gray(`  Used by: ${usageStr}`));
-    } else {
-      console.log(chalk.gray(`  (not in use)`));
-    }
-  }
-  
-  console.log('');
-}
+// Note: Enum output helpers have been removed - use inline options on fields instead

@@ -286,15 +286,12 @@ describe('list command', () => {
       // Schema with a recursive type
       const schemaWithRecursive = {
         version: 2,
-        enums: {
-          status: ['raw', 'backlog', 'in-flight', 'done']
-        },
         types: {
           task: {
             recursive: true,
             output_dir: 'Tasks',
             fields: {
-              status: { prompt: 'select', enum: 'status', default: 'raw' }
+              status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'done'], default: 'raw' }
             }
           }
         }

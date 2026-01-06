@@ -531,7 +531,7 @@ describe('JSON I/O', () => {
       expect(json.fields).toBeDefined();
     });
 
-    it('should include resolved enum values', async () => {
+    it('should include inline options', async () => {
       const result = await runCLI(
         ['schema', 'show', 'idea', '--output', 'json'],
         vaultDir
@@ -539,8 +539,8 @@ describe('JSON I/O', () => {
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
-      expect(json.fields.status.values).toContain('raw');
-      expect(json.fields.status.values).toContain('backlog');
+      expect(json.fields.status.options).toContain('raw');
+      expect(json.fields.status.options).toContain('backlog');
     });
 
     it('should output full schema as JSON', async () => {
@@ -552,7 +552,7 @@ describe('JSON I/O', () => {
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.types).toBeDefined();
-      expect(json.enums).toBeDefined();
+      // Schema no longer has global enums - options are inline on fields
     });
 
     it('should error on unknown type in JSON mode', async () => {

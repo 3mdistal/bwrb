@@ -27,10 +27,6 @@ const describePty = shouldSkipPtyTests()
 // Full schema for testing new command flows
 const FULL_SCHEMA = {
   version: 2,
-  enums: {
-    status: ['raw', 'backlog', 'in-flight', 'settled'],
-    priority: ['low', 'medium', 'high'],
-  },
   types: {
     objective: {
       output_dir: 'Objectives',
@@ -44,7 +40,7 @@ const FULL_SCHEMA = {
       output_dir: 'Tasks',
       fields: {
         type: { value: 'task' },
-        status: { prompt: 'select', enum: 'status', default: 'raw' },
+        status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw' },
         milestone: {
           prompt: 'relation',
           source: 'milestone',
@@ -63,7 +59,7 @@ const FULL_SCHEMA = {
       output_dir: 'Milestones',
       fields: {
         type: { value: 'milestone' },
-        status: { prompt: 'select', enum: 'status', default: 'raw' },
+        status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw' },
       },
       field_order: ['type', 'status'],
     },
@@ -71,8 +67,8 @@ const FULL_SCHEMA = {
       output_dir: 'Ideas',
       fields: {
         type: { value: 'idea' },
-        status: { prompt: 'select', enum: 'status', default: 'raw' },
-        priority: { prompt: 'select', enum: 'priority' },
+        status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw' },
+        priority: { prompt: 'select', options: ['low', 'medium', 'high'] },
       },
       field_order: ['type', 'status', 'priority'],
     },

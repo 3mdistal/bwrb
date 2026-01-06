@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
   loadSchema,
   getTypeFamilies,
-  getEnumValues,
+  getFieldOptions,
+  getOptionsForField,
   parseTypePath,
   getTypeDefByPath,
   hasSubtypes,
@@ -13,7 +14,6 @@ import {
   getOrderedFieldNames,
   resolveTypePathFromFrontmatter,
   getAllFieldsForType,
-  getEnumForField,
   getDiscriminatorFieldsFromTypePath,
   getPluralName,
   computeDefaultOutputDir,
@@ -42,7 +42,6 @@ describe('schema', () => {
     it('should load and validate schema from vault', async () => {
       expect(schema).toBeDefined();
       expect(schema.types).toBeDefined();
-      expect(schema.enums).toBeDefined();
       expect(schema.raw).toBeDefined();
     });
 
@@ -59,14 +58,33 @@ describe('schema', () => {
     });
   });
 
-  describe('getEnumValues', () => {
-    it('should return enum values by name', () => {
-      const values = getEnumValues(schema, 'status');
+  describe('getFieldOptions', () => {
+    it('should return options from field', () => {
+      const field = { prompt: 'select' as const, options: ['a', 'b', 'c'] };
+      const values = getFieldOptions(field);
+      expect(values).toEqual(['a', 'b', 'c']);
+    });
+
+    it('should return empty array when no options', () => {
+      const field = { prompt: 'text' as const };
+      const values = getFieldOptions(field);
+      expect(values).toEqual([]);
+    });
+  });
+
+  describe('getOptionsForField', () => {
+    it('should return options for select field', () => {
+      const values = getOptionsForField(schema, 'idea', 'status');
       expect(values).toEqual(['raw', 'backlog', 'in-flight', 'settled']);
     });
 
-    it('should return empty array for unknown enum', () => {
-      const values = getEnumValues(schema, 'unknown');
+    it('should return empty array for non-select field', () => {
+      const values = getOptionsForField(schema, 'task', 'deadline');
+      expect(values).toEqual([]);
+    });
+
+    it('should return empty array for unknown field', () => {
+      const values = getOptionsForField(schema, 'idea', 'unknown');
       expect(values).toEqual([]);
     });
   });
@@ -230,18 +248,6 @@ describe('schema', () => {
       // In new model, 'type' is not a field
       expect(fields.has('status')).toBe(true);
       expect(fields.has('milestone')).toBe(true);
-    });
-  });
-
-  describe('getEnumForField', () => {
-    it('should return enum name for enum fields', () => {
-      const enumName = getEnumForField(schema, 'idea', 'status');
-      expect(enumName).toBe('status');
-    });
-
-    it('should return undefined for non-enum fields', () => {
-      const enumName = getEnumForField(schema, 'task', 'deadline');
-      expect(enumName).toBeUndefined();
     });
   });
 
@@ -529,13 +535,12 @@ describe('schema', () => {
       }
     });
 
-    it('should detect enum value confusion', () => {
-      // 'raw' is a value in the 'status' enum
+    it('should report unknown type for unrecognized values', () => {
+      // 'raw' is not a type name
       const result = resolveSourceType(schema, 'raw');
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toContain('"raw" is a value in the "status" enum');
-        expect(result.error).toContain('Dynamic sources must reference types');
+        expect(result.error).toContain('does not exist');
       }
     });
 
@@ -581,13 +586,12 @@ describe('schema', () => {
       }
     });
 
-    it('should prioritize enum check over typo suggestions', () => {
-      // If something is an enum value, we should say so even if it's close to a type name
-      // 'priority' enum has 'low', 'medium', 'high' values
+    it('should report unknown for short unrecognized values', () => {
+      // 'low' is not a type name
       const result = resolveSourceType(schema, 'low');
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toContain('is a value in the "priority" enum');
+        expect(result.error).toContain('does not exist');
       }
     });
   });

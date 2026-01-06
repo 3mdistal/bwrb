@@ -6,7 +6,6 @@ import {
   loadSchema,
   getTypeDefByPath,
   getFieldsForType,
-  getEnumValues,
 } from '../lib/schema.js';
 import {
   findAllTemplates,
@@ -725,9 +724,9 @@ async function promptFieldDefault(
 
   switch (field.prompt) {
     case 'select': {
-      if (!field.enum) return undefined;
-      const enumOptions = getEnumValues(schema, field.enum);
-      const options = ['(skip)', ...enumOptions];
+      if (!field.options || field.options.length === 0) return undefined;
+      const selectOptions = field.options;
+      const options = ['(skip)', ...selectOptions];
       
       const selected = await promptSelection(`Default ${label}:`, options);
       if (selected === null) throw new UserCancelledError();
@@ -1180,9 +1179,9 @@ async function promptFieldDefaultEdit(
 
   switch (field.prompt) {
     case 'select': {
-      if (!field.enum) return currentValue;
-      const enumOptions = getEnumValues(schema, field.enum);
-      const options = ['(keep)', '(clear)', ...enumOptions];
+      if (!field.options || field.options.length === 0) return currentValue;
+      const selectOptions = field.options;
+      const options = ['(keep)', '(clear)', ...selectOptions];
       
       const selected = await promptSelection(`New ${label}:`, options);
       if (selected === null) throw new UserCancelledError();

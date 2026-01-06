@@ -25,15 +25,12 @@ const describePty = shouldSkipPtyTests()
 // Schema for testing confirmation prompts (used by edit command)
 const EDIT_TEST_SCHEMA = {
   version: 2,
-  enums: {
-    status: ['raw', 'backlog', 'in-flight', 'settled'],
-  },
   types: {
     idea: {
       output_dir: 'Ideas',
       fields: {
         type: { value: 'idea' },
-        status: { prompt: 'select', enum: 'status', default: 'raw' },
+        status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw' },
       },
       field_order: ['type', 'status'],
       body_sections: [

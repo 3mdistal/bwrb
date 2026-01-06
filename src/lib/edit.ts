@@ -11,7 +11,6 @@ import {
   resolveTypePathFromFrontmatter,
   getFieldsForType,
   getFrontmatterOrder,
-  getEnumValues,
 } from './schema.js';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
 import { queryByType, formatValue } from './vault.js';
@@ -337,12 +336,12 @@ async function promptFieldEdit(
   // Prompt-based value
   switch (field.prompt) {
     case 'select': {
-      if (!field.enum) return currentValue;
-      const enumOptions = getEnumValues(schema, field.enum);
+      if (!field.options || field.options.length === 0) return currentValue;
+      const selectOptions = field.options;
       
       // Add a "keep current" option at the top
       const keepLabel = '(keep current)';
-      const options = [keepLabel, ...enumOptions];
+      const options = [keepLabel, ...selectOptions];
       
       const selected = await promptSelection(`New ${fieldName}:`, options);
       if (selected === null) {

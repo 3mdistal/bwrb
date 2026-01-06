@@ -3,7 +3,7 @@ import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
 import { TemplateFrontmatterSchema, type Template, type LoadedSchema, type Field, type Constraint, type InstanceScaffold } from '../types/schema.js';
-import { getType, getFieldsForType, getEnumValues } from './schema.js';
+import { getType, getFieldsForType, getFieldOptions } from './schema.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
 import { evaluateTemplateDefault, validateDateExpression, isDateExpression } from './date-expression.js';
@@ -489,7 +489,6 @@ function findClosestMatch(target: string, options: string[]): string | undefined
  * Validate field value against its field definition.
  */
 function validateFieldValue(
-  schema: LoadedSchema,
   fieldName: string,
   field: Field,
   value: unknown
@@ -501,35 +500,34 @@ function validateFieldValue(
     return issues;
   }
   
-  // Validate enum values
-  if (field.enum) {
-    const enumValues = getEnumValues(schema, field.enum);
-    
+  // Validate options values
+  const fieldOptions = getFieldOptions(field);
+  if (fieldOptions.length > 0) {
     if (Array.isArray(value)) {
       // Multi-value field
       for (const v of value) {
-        if (typeof v === 'string' && !enumValues.includes(v)) {
-          const suggestion = findClosestMatch(v, enumValues);
+        if (typeof v === 'string' && !fieldOptions.includes(v)) {
+          const suggestion = findClosestMatch(v, fieldOptions);
           issues.push({
             severity: 'error',
             message: `Invalid value '${v}' for field '${fieldName}'`,
             field: fieldName,
             suggestion: suggestion 
               ? `Did you mean '${suggestion}'?`
-              : `Expected one of: ${enumValues.join(', ')}`,
+              : `Expected one of: ${fieldOptions.join(', ')}`,
           });
         }
       }
     } else if (typeof value === 'string') {
-      if (!enumValues.includes(value)) {
-        const suggestion = findClosestMatch(value, enumValues);
+      if (!fieldOptions.includes(value)) {
+        const suggestion = findClosestMatch(value, fieldOptions);
         issues.push({
           severity: 'error',
           message: `Invalid value '${value}' for field '${fieldName}'`,
           field: fieldName,
           suggestion: suggestion 
             ? `Did you mean '${suggestion}'?`
-            : `Expected one of: ${enumValues.join(', ')}`,
+            : `Expected one of: ${fieldOptions.join(', ')}`,
         });
       }
     }
@@ -624,7 +622,7 @@ export async function validateTemplate(
       // Validate value against field definition (skip for date expressions)
       const field = fields[fieldName];
       if (field && !(typeof value === 'string' && isDateExpression(value))) {
-        const valueIssues = validateFieldValue(schema, fieldName, field, value);
+        const valueIssues = validateFieldValue(fieldName, field, value);
         issues.push(...valueIssues);
       }
     }

@@ -22,13 +22,10 @@ const createTestVault = () => {
   // Create a v2 schema with ownership
   const schema = {
     version: 2,
-    enums: {
-      status: ['raw', 'active', 'done'],
-    },
     types: {
       meta: {
         fields: {
-          status: { prompt: 'select', enum: 'status', default: 'raw' },
+          status: { prompt: 'select', options: ['raw', 'active', 'done'], default: 'raw' },
         },
       },
       draft: {

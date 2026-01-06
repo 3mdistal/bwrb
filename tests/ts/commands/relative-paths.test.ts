@@ -238,13 +238,12 @@ describe('edge cases', () => {
         join(spacedVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify({
           version: 2,
-          enums: { status: ['raw', 'done'] },
           types: {
             idea: {
               output_dir: 'Ideas',
               fields: {
                 type: { value: 'idea' },
-                status: { prompt: 'select', enum: 'status' },
+                status: { prompt: 'select', options: ['raw', 'done'] },
               },
               field_order: ['type', 'status'],
             },
