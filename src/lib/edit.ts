@@ -401,6 +401,28 @@ async function promptFieldEdit(
       return result;
     }
 
+    case 'number': {
+      const label = field.label ?? fieldName;
+      const currentNum = typeof currentValue === 'number' ? currentValue : parseFloat(String(currentValue));
+      const displayCurrent = isNaN(currentNum) ? '<empty>' : String(currentNum);
+      // Loop until valid input
+      while (true) {
+        const newValue = await promptInput(`New ${label} (or Enter to keep "${displayCurrent}")`);
+        if (newValue === null) {
+          throw new UserCancelledError();
+        }
+        if (newValue === '') {
+          return currentValue;
+        }
+        const parsed = parseFloat(newValue);
+        if (isNaN(parsed)) {
+          printWarning(`Invalid number: "${newValue}". Please enter a valid number.`);
+          continue;
+        }
+        return parsed;
+      }
+    }
+
     default:
       return currentValue;
   }

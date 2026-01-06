@@ -251,6 +251,7 @@ async function promptFieldDefinition(
     'list (multi-value)',
     'relation (from other notes)',
     'boolean (yes/no)',
+    'number (numeric)',
     'fixed value',
   ];
   const promptTypeResult = await promptSelection('Prompt type', promptTypes);
@@ -264,7 +265,8 @@ async function promptFieldDefinition(
     3: 'list',
     4: 'relation',
     5: 'boolean',
-    6: 'value',
+    6: 'number',
+    7: 'value',
   };
   const promptType = promptTypeMap[promptTypeIndex];
   
@@ -539,9 +541,9 @@ function buildFieldFromOptions(
     field.value = options.value;
   } else if (promptType) {
     // Validate prompt type
-    const validPromptTypes = ['text', 'select', 'date', 'list', 'relation', 'boolean'];
+    const validPromptTypes = ['text', 'select', 'date', 'list', 'relation', 'boolean', 'number'];
     if (!validPromptTypes.includes(promptType)) {
-      throw new Error(`Invalid prompt type "${promptType}". Valid types: text, select, date, list, relation, boolean, fixed`);
+      throw new Error(`Invalid prompt type "${promptType}". Valid types: text, select, date, list, relation, boolean, number, fixed`);
     }
     
     field.prompt = promptType as Field['prompt'];
@@ -630,6 +632,7 @@ async function promptSingleFieldDefinition(
     'list (multi-value)',
     'relation (from other notes)',
     'boolean (yes/no)',
+    'number (numeric)',
     'fixed value',
   ];
   const promptTypeResult = await promptSelection('Prompt type', promptTypes);
@@ -643,7 +646,8 @@ async function promptSingleFieldDefinition(
     3: 'list',
     4: 'relation',
     5: 'boolean',
-    6: 'value',
+    6: 'number',
+    7: 'value',
   };
   const promptType = promptTypeMap[promptTypeIndex];
   
@@ -1980,6 +1984,8 @@ function getFieldType(field: Field): string {
       return field.source ? chalk.blue(`relation:${field.source}`) : chalk.blue('relation');
     case 'boolean':
       return chalk.blue('boolean');
+    case 'number':
+      return chalk.blue('number');
     default:
       return chalk.gray('auto');
   }
@@ -2418,7 +2424,7 @@ newCommand
             throw new Error(`Invalid field definition: "${fieldDef}". Use "name:type" format.`);
           }
           // Map simple type strings to field definitions
-          const promptType = fieldType as 'text' | 'select' | 'date' | 'list' | 'relation' | 'boolean';
+          const promptType = fieldType as 'text' | 'select' | 'date' | 'list' | 'relation' | 'boolean' | 'number';
           fields[fieldName] = { prompt: promptType };
         }
       } else if (!jsonMode) {
@@ -2903,7 +2909,7 @@ editCommand
         }
 
         if (choice === 'Change prompt type') {
-          const promptOptions = ['text', 'select', 'list', 'date', 'relation', 'boolean'];
+          const promptOptions = ['text', 'select', 'list', 'date', 'relation', 'boolean', 'number'];
           const newPrompt = await promptSelection('Prompt type', promptOptions);
           const fieldEntry = rawTypeEntry.fields?.[fieldName];
           if (newPrompt !== null && fieldEntry) {

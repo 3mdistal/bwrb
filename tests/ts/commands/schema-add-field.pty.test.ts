@@ -251,7 +251,7 @@ describePty('bwrb schema add-field PTY tests', () => {
           await proc.typeAndEnter('type');
 
           await proc.waitFor('Prompt type');
-          proc.write('7'); // fixed value
+          proc.write('8'); // fixed value
 
           await proc.waitFor('Fixed value');
           await proc.typeAndEnter('project');
@@ -447,7 +447,7 @@ describePty('bwrb schema add-field PTY tests', () => {
           await proc.typeAndEnter('type');
 
           await proc.waitFor('Prompt type');
-          proc.write('7'); // fixed value
+          proc.write('8'); // fixed value
 
           await proc.waitFor('Fixed value');
           proc.write(Keys.CTRL_C);
