@@ -4,6 +4,16 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Unified opener with config.open_with integration** (#183)
+  - New `system` and `visual` app modes for opening notes
+  - App modes: `system` (OS default), `editor` ($EDITOR), `visual` ($VISUAL), `obsidian`, `print`
+  - Precedence chain: `--app` flag > `BWRB_DEFAULT_APP` env > `config.open_with` > `system`
+  - Default changed from `obsidian` to `system` for broader compatibility
+  - Obsidian vault name resolution: `config.obsidian_vault` > auto-detect from `.obsidian/` > folder basename
+  - Updated help text across all commands (`open`, `search`, `list`, `edit`, `new`)
+
 ### Fixed
 
 - **Date macros now use local timezone** (#184)

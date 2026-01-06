@@ -118,10 +118,11 @@ export const ConfigSchema = z.object({
   // GUI editor command (defaults to $VISUAL)
   visual: z.string().optional(),
   // Default behavior for --open flag
-  // editor: Open in terminal editor
-  // visual: Open in GUI editor (default)
+  // system: Open with OS default handler (default)
+  // editor: Open in terminal editor ($EDITOR)
+  // visual: Open in GUI editor ($VISUAL)
   // obsidian: Open via Obsidian URI
-  open_with: z.enum(['editor', 'visual', 'obsidian']).optional(),
+  open_with: z.enum(['system', 'editor', 'visual', 'obsidian']).optional(),
   // Obsidian vault name for URI scheme (auto-detected from .obsidian if not set)
   obsidian_vault: z.string().optional(),
 });
@@ -225,7 +226,7 @@ export interface ResolvedConfig {
   /** GUI editor command (from config or $VISUAL) */
   visual: string | undefined;
   /** Default behavior for --open flag */
-  openWith: 'editor' | 'visual' | 'obsidian';
+  openWith: 'system' | 'editor' | 'visual' | 'obsidian';
   /** Obsidian vault name (from config or auto-detected) */
   obsidianVault: string | undefined;
 }

@@ -15,7 +15,7 @@ import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError }
 import { buildNoteIndex, type ManagedFile } from '../lib/navigation.js';
 import { parsePickerMode, resolveAndPick, type PickerMode } from '../lib/picker.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
-import { openNote, parseAppMode } from './open.js';
+import { openNote, resolveAppMode } from './open.js';
 import { parseFilters, validateFilters } from '../lib/query.js';
 import { resolveTargets, hasAnyTargeting, type TargetingOptions } from '../lib/targeting.js';
 
@@ -48,7 +48,7 @@ export const editCommand = new Command('edit')
   .option('-b, --body <pattern>', 'Filter by body content')
   .option('--json <patch>', 'Non-interactive patch/merge mode')
   .option('-o, --open', 'Open the note in Obsidian after editing')
-  .option('--app <mode>', 'App mode for --open: obsidian, editor, print, reveal')
+  .option('--app <mode>', 'App mode for --open: system (default), editor, visual, obsidian, print')
   .addHelpText('after', `
 Targeting Options:
   All targeting options compose (AND logic):
@@ -127,15 +127,15 @@ Examples:
               updated: editResult.updatedFields,
             }));
             if (options.open) {
-              const appMode = parseAppMode(options.app || "default");
-              await openNote(vaultDir, query, appMode, true);
+              const appMode = resolveAppMode(options.app, schema.config);
+              await openNote(vaultDir, query, appMode, schema.config, true);
             }
           } else {
             await editNoteInteractive(schema, vaultDir, query, {});
             printSuccess(`Updated ${basename(query, '.md')}`);
             if (options.open) {
-              const appMode = parseAppMode(options.app || "default");
-              await openNote(vaultDir, query, appMode, false);
+              const appMode = resolveAppMode(options.app, schema.config);
+              await openNote(vaultDir, query, appMode, schema.config, false);
             }
           }
           process.exit(0);
@@ -228,8 +228,8 @@ Examples:
 
         // Open after edit if requested
         if (options.open) {
-          const appMode = parseAppMode(options.app || "default");
-          await openNote(vaultDir, targetFile.path, appMode, true);
+          const appMode = resolveAppMode(options.app, schema.config);
+          await openNote(vaultDir, targetFile.path, appMode, schema.config, true);
         }
       } else {
         // Interactive mode
@@ -238,8 +238,8 @@ Examples:
 
         // Open after edit if requested
         if (options.open) {
-          const appMode = parseAppMode(options.app || "default");
-          await openNote(vaultDir, targetFile.path, appMode, false);
+          const appMode = resolveAppMode(options.app, schema.config);
+          await openNote(vaultDir, targetFile.path, appMode, schema.config, false);
         }
       }
     } catch (err) {

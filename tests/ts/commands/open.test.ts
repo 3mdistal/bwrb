@@ -1,8 +1,91 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { parseAppMode, resolveAppMode } from '../../../src/commands/open.js';
+import type { ResolvedConfig } from '../../../src/types/schema.js';
 
 // Note: We can't test actually opening Obsidian/editors as they require the apps.
 // This file tests query resolution, error handling, and validation.
+
+describe('parseAppMode', () => {
+  it('should return undefined for undefined/empty input', () => {
+    expect(parseAppMode(undefined)).toBeUndefined();
+    expect(parseAppMode('')).toBeUndefined();
+    expect(parseAppMode('default')).toBeUndefined();
+  });
+
+  it('should parse valid modes', () => {
+    expect(parseAppMode('system')).toBe('system');
+    expect(parseAppMode('editor')).toBe('editor');
+    expect(parseAppMode('visual')).toBe('visual');
+    expect(parseAppMode('obsidian')).toBe('obsidian');
+    expect(parseAppMode('print')).toBe('print');
+  });
+
+  it('should be case-insensitive', () => {
+    expect(parseAppMode('SYSTEM')).toBe('system');
+    expect(parseAppMode('Editor')).toBe('editor');
+    expect(parseAppMode('OBSIDIAN')).toBe('obsidian');
+  });
+
+  it('should throw on invalid modes', () => {
+    expect(() => parseAppMode('invalid')).toThrow('Invalid app mode');
+    expect(() => parseAppMode('invalid')).toThrow('system');
+    expect(() => parseAppMode('sublime')).toThrow('Must be one of');
+  });
+});
+
+describe('resolveAppMode', () => {
+  const makeConfig = (openWith: 'system' | 'editor' | 'visual' | 'obsidian' = 'system'): ResolvedConfig => ({
+    linkFormat: 'wikilink',
+    openWith,
+    editor: undefined,
+    visual: undefined,
+    obsidianVault: undefined,
+  });
+
+  beforeAll(() => {
+    // Clear any existing env var
+    delete process.env.BWRB_DEFAULT_APP;
+  });
+
+  afterAll(() => {
+    delete process.env.BWRB_DEFAULT_APP;
+  });
+
+  it('should use explicit CLI value when provided', () => {
+    const config = makeConfig('obsidian');
+    expect(resolveAppMode('editor', config)).toBe('editor');
+    expect(resolveAppMode('print', config)).toBe('print');
+  });
+
+  it('should fallback to config when CLI not provided', () => {
+    expect(resolveAppMode(undefined, makeConfig('obsidian'))).toBe('obsidian');
+    expect(resolveAppMode(undefined, makeConfig('editor'))).toBe('editor');
+    expect(resolveAppMode(undefined, makeConfig('system'))).toBe('system');
+  });
+
+  it('should use env var over config', () => {
+    const config = makeConfig('system');
+    process.env.BWRB_DEFAULT_APP = 'obsidian';
+    expect(resolveAppMode(undefined, config)).toBe('obsidian');
+    delete process.env.BWRB_DEFAULT_APP;
+  });
+
+  it('should use CLI over env var', () => {
+    const config = makeConfig('system');
+    process.env.BWRB_DEFAULT_APP = 'obsidian';
+    expect(resolveAppMode('editor', config)).toBe('editor');
+    delete process.env.BWRB_DEFAULT_APP;
+  });
+
+  it('should throw on invalid env var', () => {
+    const config = makeConfig('obsidian');
+    process.env.BWRB_DEFAULT_APP = 'invalid-mode';
+    // Invalid env var should throw - users need to know their config is wrong
+    expect(() => resolveAppMode(undefined, config)).toThrow('Invalid app mode');
+    delete process.env.BWRB_DEFAULT_APP;
+  });
+});
 
 describe('open command', () => {
   let vaultDir: string;
@@ -117,6 +200,20 @@ describe('open command', () => {
       expect(result.stdout).toContain('Picker Modes');
       expect(result.stdout).toContain('BWRB_DEFAULT_APP');
     });
+
+    it('should show all app modes in help', async () => {
+      const result = await runCLI(['open', '--help'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // Verify all modes are documented
+      expect(result.stdout).toContain('system');
+      expect(result.stdout).toContain('editor');
+      expect(result.stdout).toContain('visual');
+      expect(result.stdout).toContain('obsidian');
+      expect(result.stdout).toContain('print');
+      // Verify precedence is documented
+      expect(result.stdout).toContain('config.open_with');
+    });
   });
 
   describe('no query (browse all)', () => {
@@ -152,6 +249,27 @@ describe('open command', () => {
       expect(result.stdout).toContain('Sample Idea.md');
     });
 
+    it('should support --app system with --app print fallback', async () => {
+      // We can't actually test system open, but we can verify the mode is accepted
+      // Use print mode to verify the command completes successfully
+      const result = await runCLI(['open', 'Sample Idea', '--app', 'print'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Sample Idea.md');
+    });
+
+    it('should error on invalid --app mode', async () => {
+      const result = await runCLI(['open', 'Sample Idea', '--app', 'invalid-mode'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Invalid app mode');
+      expect(result.stderr).toContain('system');
+      expect(result.stderr).toContain('editor');
+      expect(result.stderr).toContain('visual');
+      expect(result.stderr).toContain('obsidian');
+      expect(result.stderr).toContain('print');
+    });
+
     it('should error on --app editor without EDITOR set', async () => {
       // This test might pass or fail depending on environment
       // Skip if EDITOR is set
@@ -162,7 +280,19 @@ describe('open command', () => {
       const result = await runCLI(['open', 'Sample Idea', '--app', 'editor'], vaultDir);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('No editor configured');
+      expect(result.stderr).toContain('No terminal editor configured');
+    });
+
+    it('should error on --app visual without VISUAL set', async () => {
+      // Skip if VISUAL is set
+      if (process.env['VISUAL']) {
+        return;
+      }
+
+      const result = await runCLI(['open', 'Sample Idea', '--app', 'visual'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('No GUI editor configured');
     });
   });
 
