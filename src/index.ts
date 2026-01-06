@@ -7,7 +7,7 @@ import { deleteCommand } from './commands/delete.js';
 import { listCommand } from './commands/list.js';
 import { openCommand } from './commands/open.js';
 import { searchCommand } from './commands/search.js';
-import { schemaCommand } from './commands/schema.js';
+import { schemaCommand } from './commands/schema/index.js';
 import { auditCommand } from './commands/audit.js';
 import { bulkCommand } from './commands/bulk.js';
 import { templateCommand } from './commands/template.js';
