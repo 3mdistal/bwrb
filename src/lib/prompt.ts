@@ -61,6 +61,36 @@ export async function promptSelection(
   return numberedSelect(message, options);
 }
 
+/**
+ * Prompt for multi-selection from a list of options (checkboxes).
+ * Returns the array of selected values, or null if user cancels (Ctrl+C/Escape).
+ * An empty selection (no items checked) returns an empty array, not null.
+ * 
+ * Features:
+ * - Space to toggle selection
+ * - Arrow keys for navigation
+ * - Enter to confirm selection
+ * - 'a' to toggle all
+ */
+export async function promptMultiSelect(
+  message: string,
+  options: string[]
+): Promise<PromptResult<string[]>> {
+  const response = await prompts({
+    type: 'multiselect',
+    name: 'value',
+    message,
+    choices: options.map(opt => ({ title: opt, value: opt })),
+    hint: '- Space to select. Enter to submit',
+  });
+
+  // prompts returns {} on Ctrl+C, so response.value is undefined
+  if (response.value === undefined) {
+    return null; // User cancelled
+  }
+  return response.value as string[];
+}
+
 // ============================================================================
 // Text Input Prompts (powered by prompts npm package)
 // ============================================================================

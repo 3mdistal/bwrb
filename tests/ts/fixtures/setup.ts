@@ -86,8 +86,13 @@ export const TEST_SCHEMA = {
           required: true,
         },
         priority: { prompt: 'select', options: ['low', 'medium', 'high'] },
+        labels: {
+          prompt: 'select',
+          options: ['urgent', 'blocked', 'review', 'wip'],
+          multiple: true,
+        },
       },
-      field_order: ['type', 'status', 'priority'],
+      field_order: ['type', 'status', 'priority', 'labels'],
     },
     // Ownership types - project owns research notes
     project: {

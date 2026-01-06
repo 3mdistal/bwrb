@@ -308,12 +308,12 @@ describe('bulk command', () => {
     });
 
     it('should create array for new field', async () => {
-      const result = await runCLI(['bulk', 'idea', '--all', '--append', 'labels=first', '--execute'], tempVaultDir);
+      const result = await runCLI(['bulk', 'idea', '--all', '--append', 'labels=urgent', '--execute'], tempVaultDir);
       
       expect(result.exitCode).toBe(0);
 
       const { frontmatter } = await parseNote(join(tempVaultDir, 'Ideas', 'Sample Idea.md'));
-      expect(frontmatter.labels).toEqual(['first']);
+      expect(frontmatter.labels).toEqual(['urgent']);
     });
 
     it('should convert scalar to array when appending', async () => {

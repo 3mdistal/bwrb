@@ -24,6 +24,7 @@ import {
 } from '../lib/vault.js';
 import {
   promptSelection,
+  promptMultiSelect,
   promptInput,
   promptRequired,
   promptMultiInput,
@@ -971,6 +972,17 @@ async function promptField(
       if (!field.options || field.options.length === 0) return field.default;
       const selectOptions = field.options;
       
+      // Multi-select mode
+      if (field.multiple) {
+        const selected = await promptMultiSelect(`Select ${fieldName}:`, selectOptions);
+        if (selected === null) {
+          throw new UserCancelledError();
+        }
+        // Return array (may be empty if nothing selected)
+        return selected.length > 0 ? selected : (field.default ?? []);
+      }
+      
+      // Single-select mode
       // For optional fields, add a skip option
       let options: string[];
       let skipLabel: string | undefined;

@@ -58,6 +58,42 @@ describe('validation', () => {
       expect(result.errors[0].suggestion).toContain('raw');
     });
 
+    it('should validate multi-select fields with valid array values', () => {
+      const result = validateFrontmatter(schema, 'idea', {
+        type: 'idea',
+        status: 'raw',
+        labels: ['urgent', 'blocked'],
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should fail multi-select fields with invalid array values', () => {
+      const result = validateFrontmatter(schema, 'idea', {
+        type: 'idea',
+        status: 'raw',
+        labels: ['urgent', 'invalid-label'],
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].type).toBe('invalid_enum_value');
+      expect(result.errors[0].field).toBe('labels');
+      expect(result.errors[0].value).toBe('invalid-label');
+    });
+
+    it('should validate empty array for multi-select fields', () => {
+      const result = validateFrontmatter(schema, 'idea', {
+        type: 'idea',
+        status: 'raw',
+        labels: [],
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
     it('should warn on unknown fields in non-strict mode', () => {
       const result = validateFrontmatter(schema, 'idea', {
         type: 'idea',
