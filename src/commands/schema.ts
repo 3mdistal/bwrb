@@ -1982,16 +1982,14 @@ interface ListCommandOptions {
 // -------------------- schema new --------------------
 
 const newCommand = new Command('new')
-  .description('Create a new type, field, or enum')
+  .description('Create a new type or field')
   .addHelpText('after', `
 Examples:
   bwrb schema new                    # Prompts for what to create
   bwrb schema new type               # Create a new type
   bwrb schema new type project       # Create type named "project"
   bwrb schema new field              # Create a field (prompts for type)
-  bwrb schema new field task status  # Add "status" field to "task" type
-  bwrb schema new enum               # Create a new enum
-  bwrb schema new enum priority      # Create enum named "priority"`);
+  bwrb schema new field task status  # Add "status" field to "task" type`);
 
 // schema new (no args - prompt for entity type)
 newCommand
@@ -2000,7 +1998,7 @@ newCommand
 
     try {
       if (jsonMode) {
-        throw new Error('Entity type argument is required in JSON mode. Use: schema new type|field|enum');
+        throw new Error('Entity type argument is required in JSON mode. Use: schema new type|field');
       }
 
       const entityType = await promptSchemaEntityType('create');

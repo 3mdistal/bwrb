@@ -284,7 +284,7 @@ export async function handleCompletionRequest(
   
   // If we have a command and it's schema or template, complete subcommands
   if (ctx.command === 'schema') {
-    return filterByPrefix(['show', 'types', 'enums'], ctx.current);
+    return filterByPrefix(['list', 'new', 'edit', 'delete', 'validate', 'diff', 'migrate', 'history'], ctx.current);
   }
   if (ctx.command === 'template') {
     return filterByPrefix(['list', 'show', 'new', 'edit', 'validate'], ctx.current);
