@@ -10,6 +10,7 @@ import { Command } from 'commander';
 import { readFile } from 'fs/promises';
 import { basename } from 'path';
 import { resolveVaultDir } from '../lib/vault.js';
+import { getGlobalOpts } from '../lib/command.js';
 import { loadSchema, getTypeDefByPath } from '../lib/schema.js';
 import { printError, printSuccess } from '../lib/prompt.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError, warnDeprecated, type SearchOutputFormat } from '../lib/output.js';
@@ -270,8 +271,7 @@ Examples:
     }
 
     try {
-      const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Dispatch to appropriate search mode

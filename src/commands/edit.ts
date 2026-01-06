@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import { basename, isAbsolute, relative } from 'path';
 import fs from 'fs/promises';
 import { resolveVaultDir } from '../lib/vault.js';
+import { getGlobalOpts } from '../lib/command.js';
 import { loadSchema, getTypeDefByPath } from '../lib/schema.js';
 import { printError, printSuccess } from '../lib/prompt.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError } from '../lib/output.js';
@@ -78,8 +79,7 @@ Examples:
     const jsonMode = options.json !== undefined;
 
     try {
-      const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Validate type if provided

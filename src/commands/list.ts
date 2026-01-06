@@ -9,6 +9,7 @@ import {
 import { extractWikilinkTarget } from '../lib/audit/types.js';
 
 import { resolveVaultDir } from '../lib/vault.js';
+import { getGlobalOpts } from '../lib/command.js';
 import { validateFilters, applyFrontmatterFilters } from '../lib/query.js';
 import { printError, printWarning } from '../lib/prompt.js';
 import {
@@ -155,8 +156,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
     const jsonMode = outputFormat === 'json';
 
     try {
-      const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Build targeting options from flags

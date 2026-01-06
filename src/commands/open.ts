@@ -12,6 +12,7 @@ import { basename, join } from "node:path";
 import { spawn } from "node:child_process";
 import { loadSchema, detectObsidianVault } from "../lib/schema.js";
 import { resolveVaultDir } from "../lib/vault.js";
+import { getGlobalOpts } from "../lib/command.js";
 import { buildNoteIndex, type ManagedFile } from "../lib/navigation.js";
 import { resolveAndPick, parsePickerMode } from "../lib/picker.js";
 import {
@@ -291,9 +292,9 @@ Examples:
     const jsonMode = options.output === "json";
 
     try {
-      // Merge parent options (global --vault) with command options
-      const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
-      const effectiveVault = options.vault || parentOpts?.vault;
+      // Merge global options with command options (local --vault takes precedence)
+      const globalOpts = getGlobalOpts(cmd);
+      const effectiveVault = options.vault || globalOpts.vault;
       const vaultDir = resolveVaultDir(effectiveVault ? { vault: effectiveVault } : {});
       const schema = await loadSchema(vaultDir);
 

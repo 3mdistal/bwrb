@@ -22,6 +22,7 @@ import {
   ensureOwnedOutputDir,
   type OwnerNoteRef,
 } from '../lib/vault.js';
+import { getGlobalOpts } from '../lib/command.js';
 import {
   promptSelection,
   promptMultiSelect,
@@ -115,8 +116,7 @@ Template Discovery:
     const typePath = options.type ?? positionalType;
     
     try {
-      const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // JSON mode: non-interactive creation

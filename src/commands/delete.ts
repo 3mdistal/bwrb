@@ -15,6 +15,7 @@ import { basename } from 'path';
 import { unlink } from 'fs/promises';
 import { spawn } from 'child_process';
 import { resolveVaultDir, isFile } from '../lib/vault.js';
+import { getGlobalOpts } from '../lib/command.js';
 import { loadSchema } from '../lib/schema.js';
 import {
   promptConfirm,
@@ -180,8 +181,7 @@ Note: Deletion is permanent. The file is removed from the filesystem.
     const pickerMode = parsePickerMode(options.picker);
 
     try {
-      const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Handle --text deprecation

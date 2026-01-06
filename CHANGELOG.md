@@ -19,6 +19,13 @@ All notable changes to Bowerbird are documented in this file.
   - Obsidian vault name resolution: `config.obsidian_vault` > auto-detect from `.obsidian/` > folder basename
   - Updated help text across all commands (`open`, `search`, `list`, `edit`, `new`)
 
+### Changed
+
+- **Refactored global option handling** (#134)
+  - Replaced brittle `cmd.parent?.parent?.opts()` chains with `getGlobalOpts()` helper
+  - Uses Commander.js `optsWithGlobals()` for reliable option access at any nesting depth
+  - Prevents silent breakage when command nesting changes during refactoring
+
 ### Fixed
 
 - **Date macros now use local timezone** (#184)

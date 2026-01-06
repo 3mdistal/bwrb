@@ -18,6 +18,7 @@ import {
   getOptionsForField,
 } from '../lib/schema.js';
 import { resolveVaultDir } from '../lib/vault.js';
+import { getGlobalOpts } from '../lib/command.js';
 import { validateFilters } from '../lib/query.js';
 import { printError } from '../lib/prompt.js';
 import {
@@ -159,8 +160,7 @@ Examples:
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Handle --text deprecation

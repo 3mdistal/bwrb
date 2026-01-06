@@ -11,6 +11,7 @@ import {
   getTypeDefByPath,
 } from '../lib/schema.js';
 import { resolveVaultDir } from '../lib/vault.js';
+import { getGlobalOpts } from '../lib/command.js';
 import { printError } from '../lib/prompt.js';
 import {
   printJson,
@@ -117,8 +118,7 @@ Examples:
     }
 
     try {
-      const parentOpts = cmd.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Handle --text deprecation

@@ -13,6 +13,7 @@ import {
   getFieldOrderForOrigin,
 } from '../lib/schema.js';
 import { resolveVaultDir } from '../lib/vault.js';
+import { getGlobalOpts } from '../lib/command.js';
 import {
   printError,
   printSuccess,
@@ -112,8 +113,7 @@ schemaCommand
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
 
       // Loading the schema validates it via Zod
       await loadSchema(vaultDir);
@@ -397,8 +397,7 @@ schemaCommand
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
       const rawSchema = await loadRawSchemaJson(vaultDir);
 
@@ -589,8 +588,7 @@ schemaCommand
     warnDeprecated('schema edit-field', 'schema edit field');
 
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Validate type exists
@@ -1222,8 +1220,7 @@ newCommand
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
 
       // Get name if not provided
       let typeName = name;
@@ -1340,8 +1337,7 @@ newCommand
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Get type name if not provided
@@ -1481,8 +1477,7 @@ editCommand
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Get type name if not provided
@@ -1598,8 +1593,7 @@ editCommand
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Get type name if not provided
@@ -1781,8 +1775,7 @@ deleteCommand
     const dryRun = !options.execute;
 
     try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Get type name if not provided
@@ -1882,8 +1875,7 @@ deleteCommand
     const dryRun = !options.execute;
 
     try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Get type name if not provided
@@ -1996,8 +1988,7 @@ listCommand
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       if (jsonMode) {
@@ -2025,8 +2016,7 @@ listCommand
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       const typeNames = getTypeNames(schema).filter(t => t !== 'meta');
@@ -2064,8 +2054,7 @@ listCommand
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       const allFields: Array<{ type: string; field: string; definition: Field }> = [];
@@ -2118,8 +2107,7 @@ listCommand
     const jsonMode = options.output === 'json' || parentListOpts?.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       if (jsonMode) {
@@ -2180,8 +2168,7 @@ Examples:
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       
       // Load current schema
       const currentSchema = await loadSchema(vaultDir);
@@ -2261,8 +2248,7 @@ Examples:
     const backup = options.noBackup !== true;
 
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       
       // Load current schema
       const currentSchema = await loadSchema(vaultDir);
@@ -2500,8 +2486,7 @@ Examples:
     const limit = options.limit ? parseInt(options.limit, 10) : 10;
 
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       
       const history = await loadMigrationHistory(vaultDir);
       

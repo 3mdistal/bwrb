@@ -17,6 +17,7 @@ import chalk from 'chalk';
 import { loadSchema, detectObsidianVault } from '../lib/schema.js';
 import { resolveVaultDir } from '../lib/vault.js';
 import { promptSelection } from '../lib/prompt.js';
+import { getGlobalOpts } from '../lib/command.js';
 import type { Config } from '../types/schema.js';
 
 const SCHEMA_PATH = '.bwrb/schema.json';
@@ -77,8 +78,7 @@ configCommand
     const jsonMode = opts.output === 'json';
     
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
       const rawConfig = schema.raw.config ?? {};
       
@@ -152,8 +152,7 @@ configCommand
     const jsonMode = opts.output === 'json';
     
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schemaPath = join(vaultDir, SCHEMA_PATH);
       
       // Load existing schema

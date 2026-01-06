@@ -17,6 +17,7 @@ import {
   parseTemplate,
 } from '../lib/template.js';
 import { resolveVaultDir, queryByType, formatValue } from '../lib/vault.js';
+import { getGlobalOpts } from '../lib/command.js';
 import { parseNote, writeNote } from '../lib/frontmatter.js';
 import {
   promptSelection,
@@ -129,8 +130,7 @@ templateCommand
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       
       // Load schema to validate type path if provided
       const schema = await loadSchema(vaultDir);
@@ -311,8 +311,7 @@ templateCommand
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Validate type path if provided
@@ -432,8 +431,7 @@ templateCommand
     const jsonMode = options.json !== undefined;
 
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       // Prompt for type if not provided
@@ -803,8 +801,7 @@ templateCommand
     const jsonMode = options.json !== undefined;
 
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       let template: Template | null = null;
@@ -1242,8 +1239,7 @@ templateCommand
     const jsonMode = options.output === 'json';
 
     try {
-      const parentOpts = cmd.parent?.parent?.opts() as { vault?: string } | undefined;
-      const vaultDir = resolveVaultDir(parentOpts ?? {});
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
 
       let template: Template | null = null;

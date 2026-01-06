@@ -1025,4 +1025,92 @@ describe('schema command', () => {
       // and requires PTY testing. See schema-edit-field.pty.test.ts
     });
   });
+
+  // ============================================
+  // GLOBAL OPTIONS REGRESSION TESTS
+  // ============================================
+
+  describe('global --vault option', () => {
+    // These tests verify that --vault works correctly for deeply nested commands.
+    // This is a regression test for issue #134 (brittle cmd.parent chain).
+
+    it('should pass --vault to schema validate (2 levels deep)', async () => {
+      const result = await runCLI(['schema', 'validate'], vaultDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Schema is valid');
+    });
+
+    it('should pass --vault to schema list type (3 levels deep)', async () => {
+      const result = await runCLI(['schema', 'list', 'type', 'idea'], vaultDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Type: idea');
+    });
+
+    it('should pass --vault to schema new type (4 levels deep)', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-vault-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: { meta: {} }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'new', 'type', 'note', '--output', 'json'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const data = JSON.parse(result.stdout);
+        expect(data.success).toBe(true);
+        expect(data.data.type).toBe('note');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should pass --vault to schema delete field (4 levels deep)', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-vault-deep-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            task: {
+              extends: 'meta',
+              fields: { status: { prompt: 'text' } }
+            }
+          }
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'delete', 'field', 'task', 'status', '--output', 'json'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const data = JSON.parse(result.stdout);
+        expect(data.success).toBe(true);
+        expect(data.data.dryRun).toBe(true);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should pass --vault to schema list fields (3 levels deep)', async () => {
+      // Note: --output json has a pre-existing bug in schema list fields (not related to #134)
+      // so we test text output mode instead
+      const result = await runCLI(['schema', 'list', 'fields'], vaultDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Fields:');
+      expect(result.stdout).toContain('status');
+    });
+  });
 });
