@@ -227,6 +227,27 @@ function validateFieldType(
     return null;
   }
 
+  // Number fields
+  if (field.prompt === 'number') {
+    // Accept numbers or numeric strings
+    if (typeof value === 'number') {
+      return null;
+    }
+    if (typeof value === 'string') {
+      const parsed = parseFloat(value);
+      if (!isNaN(parsed)) {
+        return null;
+      }
+    }
+    return {
+      type: 'invalid_type',
+      field: fieldName,
+      value,
+      message: `Invalid type for ${fieldName}: expected number, got ${typeof value}`,
+      expected: 'number',
+    };
+  }
+
   // String fields (most common)
   // Allow strings, numbers, and booleans as they can be serialized
   if (typeof value === 'object' && !Array.isArray(value) && value !== null) {

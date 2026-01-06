@@ -12,6 +12,12 @@ All notable changes to Bowerbird are documented in this file.
   - Stored as YAML boolean literals: `completed: true` or `archived: false`
   - Example: `{ "completed": { "prompt": "boolean", "default": false } }`
 
+- **New `number` field primitive** (#164)
+  - Fields can now use `prompt: "number"` for numeric values
+  - Supports both integers and floating-point numbers
+  - Stored as YAML number literals: `priority: 1` or `rating: 4.5`
+  - Example: `{ "priority": { "prompt": "number", "default": 0 } }`
+
 ### Changed (Breaking)
 
 - **Renamed `input` prompt type to `text`** (#160)

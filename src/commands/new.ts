@@ -1074,6 +1074,27 @@ async function promptField(
       return result;
     }
 
+    case 'number': {
+      const label = field.label ?? fieldName;
+      const defaultVal = field.default !== undefined ? String(field.default) : undefined;
+      // Loop until valid input
+      while (true) {
+        const value = await promptInput(label, defaultVal);
+        if (value === null) {
+          throw new UserCancelledError();
+        }
+        if (value === '') {
+          return field.default;
+        }
+        const parsed = parseFloat(value);
+        if (isNaN(parsed)) {
+          printWarning(`Invalid number: "${value}". Please enter a valid number.`);
+          continue;
+        }
+        return parsed;
+      }
+    }
+
     default:
       return field.default;
   }
