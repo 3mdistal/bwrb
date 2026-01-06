@@ -1065,6 +1065,15 @@ async function promptField(
       return value;
     }
 
+    case 'boolean': {
+      const label = field.label ?? fieldName;
+      const result = await promptConfirm(label);
+      if (result === null) {
+        throw new UserCancelledError();
+      }
+      return result;
+    }
+
     default:
       return field.default;
   }

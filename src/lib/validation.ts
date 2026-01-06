@@ -212,6 +212,21 @@ function validateFieldType(
     return null;
   }
 
+  // Boolean fields
+  if (field.prompt === 'boolean') {
+    // Accept actual booleans, or string representations
+    if (typeof value !== 'boolean' && value !== 'true' && value !== 'false') {
+      return {
+        type: 'invalid_type',
+        field: fieldName,
+        value,
+        message: `Invalid type for ${fieldName}: expected boolean, got ${typeof value}`,
+        expected: 'boolean (true/false)',
+      };
+    }
+    return null;
+  }
+
   // String fields (most common)
   // Allow strings, numbers, and booleans as they can be serialized
   if (typeof value === 'object' && !Array.isArray(value) && value !== null) {

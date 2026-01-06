@@ -122,8 +122,8 @@
         },
         "prompt": {
           "type": "string",
-          "enum": ["text", "select", "relation", "list", "date"],
-          "description": "Type of prompt: text (free text), select (from enum), relation (from vault query), list (comma-separated list), date (date picker)"
+          "enum": ["text", "select", "relation", "list", "date", "boolean"],
+          "description": "Type of prompt: text (free text), select (from enum), relation (from vault query), list (comma-separated list), date (date picker), boolean (yes/no)"
         },
         "label": {
           "type": "string",
