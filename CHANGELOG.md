@@ -58,6 +58,15 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Changed (Breaking)
 
+- **Removed deprecated schema commands** (#143)
+  - `schema show` removed - use `schema list` or `schema list type <name>` instead
+  - `schema add-type` removed - use `schema new type` instead
+  - `schema add-field` removed - use `schema new field` instead
+  - `schema remove-type` removed - use `schema delete type` instead
+  - `schema remove-field` removed - use `schema delete field` instead
+  - These commands were deprecated in v0.2.0 and have now been fully removed
+  - The new unified verb pattern (`schema new/edit/delete/list`) is the canonical API
+
 - **Renamed `input` prompt type to `text`** (#160)
   - The prompt type `input` has been renamed to `text` to describe the value type, not the UX
   - Update your schemas: `{ "prompt": "input" }` → `{ "prompt": "text" }`

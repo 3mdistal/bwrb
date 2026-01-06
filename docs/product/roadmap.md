@@ -40,8 +40,8 @@ After inheritance model is in place:
 | Priority | Issue | Title |
 |----------|-------|-------|
 | P1 | `bwrb-tsh` | Schema Management CLI |
-| P2 | `bwrb-w2a` | `bwrb schema add-type` command |
-| P2 | `bwrb-tev` | `bwrb schema add-field` command |
+| P2 | `bwrb-w2a` | `bwrb schema new type` command |
+| P2 | `bwrb-tev` | `bwrb schema new field` command |
 | P1 | — | Field primitives (text, number, boolean, relation) |
 
 #### Phase 4: Polish
@@ -58,7 +58,7 @@ After inheritance model is in place:
 - [ ] Inheritance model fully implemented
 - [ ] Ownership/colocation working
 - [ ] Context field validation in audit
-- [ ] Schema management CLI (add-type, add-field)
+- [ ] Schema management CLI (schema new/edit/delete/list)
 - [ ] Field primitives: text, number, boolean, date, select, relation, list
 - [ ] All tests passing with new schema format
 - [ ] Documentation updated

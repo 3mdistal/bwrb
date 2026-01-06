@@ -517,10 +517,10 @@ describe('JSON I/O', () => {
     });
   });
 
-  describe('bwrb schema show --output json', () => {
+  describe('bwrb schema list type --output json', () => {
     it('should output type details as JSON', async () => {
       const result = await runCLI(
-        ['schema', 'show', 'idea', '--output', 'json'],
+        ['schema', 'list', 'type', 'idea', '--output', 'json'],
         vaultDir
       );
 
@@ -533,7 +533,7 @@ describe('JSON I/O', () => {
 
     it('should include inline options', async () => {
       const result = await runCLI(
-        ['schema', 'show', 'idea', '--output', 'json'],
+        ['schema', 'list', 'type', 'idea', '--output', 'json'],
         vaultDir
       );
 
@@ -545,7 +545,7 @@ describe('JSON I/O', () => {
 
     it('should output full schema as JSON', async () => {
       const result = await runCLI(
-        ['schema', 'show', '--output', 'json'],
+        ['schema', 'list', '--output', 'json'],
         vaultDir
       );
 
@@ -557,7 +557,7 @@ describe('JSON I/O', () => {
 
     it('should error on unknown type in JSON mode', async () => {
       const result = await runCLI(
-        ['schema', 'show', 'unknown-type', '--output', 'json'],
+        ['schema', 'list', 'type', 'unknown-type', '--output', 'json'],
         vaultDir
       );
 

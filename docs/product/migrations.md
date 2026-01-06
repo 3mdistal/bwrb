@@ -96,8 +96,8 @@ bwrb schema history --json
 ## Workflow Example
 
 ```bash
-# 1. Make schema changes
-bwrb schema add-field task --name assignee --prompt text
+# 1. Make schema changes (interactively add a field)
+bwrb schema new field task
 
 # 2. Check what changed
 bwrb schema diff

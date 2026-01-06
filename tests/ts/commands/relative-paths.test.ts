@@ -97,7 +97,7 @@ describe('relative vault path handling', () => {
 
   describe('schema command', () => {
     it('should load schema with relative vault path', async () => {
-      const result = await runCLI(['--vault', relativeVaultPath, 'schema', 'show']);
+      const result = await runCLI(['--vault', relativeVaultPath, 'schema', 'list']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('idea');
@@ -105,7 +105,7 @@ describe('relative vault path handling', () => {
     });
 
     it('should show type details with relative vault path', async () => {
-      const result = await runCLI(['--vault', relativeVaultPath, 'schema', 'show', 'idea']);
+      const result = await runCLI(['--vault', relativeVaultPath, 'schema', 'list', 'type', 'idea']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('idea');
