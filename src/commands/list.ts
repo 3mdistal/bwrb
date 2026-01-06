@@ -18,7 +18,7 @@ import {
   warnDeprecated,
   type ListOutputFormat,
 } from '../lib/output.js';
-import { openNote, parseAppMode } from './open.js';
+import { openNote, resolveAppMode } from './open.js';
 import { pickFile, parsePickerMode } from '../lib/picker.js';
 import type { LoadedSchema } from '../types/schema.js';
 import {
@@ -115,7 +115,17 @@ Examples:
 
 Open Options:
   --open               Open a note from the results (picker if multiple)
-  --app <mode>         How to open: obsidian (default), editor, system, print
+  --app <mode>         How to open: system (default), editor, visual, obsidian, print
+
+App Modes:
+  system      Open with OS default handler (default)
+  editor      Open in terminal editor ($EDITOR or config.editor)
+  visual      Open in GUI editor ($VISUAL or config.visual)
+  obsidian    Open in Obsidian via URI scheme
+  print       Print the resolved path (for scripting)
+
+Precedence:
+  --app flag > BWRB_DEFAULT_APP env > config.open_with > system
 
 Note: In zsh, use single quotes for expressions with '!' to avoid history expansion:
   bwrb list --type task --where '!isEmpty(deadline)'`)
@@ -131,7 +141,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('-o, --output <format>', 'Output format: text (default), paths, tree, link, json')
   // Open options
   .option('--open', 'Open the first result (or pick from results interactively)')
-  .option('--app <mode>', 'How to open: obsidian (default), editor, system, print')
+  .option('--app <mode>', 'How to open: system (default), editor, visual, obsidian, print')
   // Hierarchy options for recursive types (deprecated in favor of --where functions)
   .option('--roots', 'Only show root notes (deprecated: use --where "isRoot()")')
   .option('--children-of <note>', 'Only show direct children (deprecated: use --where "isChildOf(\'[[Note]]\')")')
@@ -404,7 +414,7 @@ async function listObjects(
       targetPath = filteredFiles[0]!.path;
     }
     
-    await openNote(vaultDir, targetPath, parseAppMode(options.app), jsonMode);
+    await openNote(vaultDir, targetPath, resolveAppMode(options.app, schema.config), schema.config, jsonMode);
     return;
   }
 

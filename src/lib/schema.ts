@@ -394,7 +394,7 @@ function resolveConfig(config: Schema['config']): ResolvedConfig {
     linkFormat: config?.link_format ?? 'wikilink',
     editor: config?.editor ?? process.env.EDITOR,
     visual: config?.visual ?? process.env.VISUAL,
-    openWith: config?.open_with ?? 'visual',
+    openWith: config?.open_with ?? 'system',
     obsidianVault: config?.obsidian_vault,
   };
 }

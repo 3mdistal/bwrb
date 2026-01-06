@@ -54,8 +54,8 @@ const CONFIG_OPTIONS: ConfigOptionMeta[] = [
     key: 'open_with',
     label: 'Open With',
     description: 'Default behavior for --open flag',
-    options: ['editor', 'visual', 'obsidian'],
-    default: 'visual',
+    options: ['system', 'editor', 'visual', 'obsidian'],
+    default: 'system',
   },
   {
     key: 'obsidian_vault',
@@ -278,7 +278,7 @@ function getConfigValue(config: Partial<Config>, key: keyof Config, vaultDir: st
     case 'visual':
       return process.env.VISUAL ?? undefined;
     case 'open_with':
-      return 'visual';
+      return 'system';
     case 'obsidian_vault':
       return detectObsidianVault(vaultDir);
     default:

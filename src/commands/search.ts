@@ -13,7 +13,7 @@ import { resolveVaultDir } from '../lib/vault.js';
 import { loadSchema, getTypeDefByPath } from '../lib/schema.js';
 import { printError, printSuccess } from '../lib/prompt.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError, warnDeprecated, type SearchOutputFormat } from '../lib/output.js';
-import { openNote, parseAppMode } from './open.js';
+import { openNote, resolveAppMode } from './open.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
 import {
   buildNoteIndex,
@@ -135,7 +135,7 @@ export const searchCommand = new Command('search')
   .option('--open', 'Open the selected note after search')
   .option('--edit', 'Edit the selected note\'s frontmatter after search')
   .option('--json <patch>', 'JSON patch data for --edit mode (non-interactive)')
-  .option('--app <mode>', 'How to open: obsidian (default), editor, system, print')
+  .option('--app <mode>', 'How to open: system (default), editor, visual, obsidian, print')
   .option('--preview', 'Show file preview in fzf picker (requires fzf)')
   .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
   // Content search options
@@ -191,20 +191,24 @@ Content Search (--body):
 
 Open Options:
   --open               Open the selected note in an app
-  --app <mode>         How to open: obsidian (default), editor, system, print
+  --app <mode>         How to open: system (default), editor, visual, obsidian, print
 
 Edit Options:
   --edit               Edit the selected note's frontmatter
   --json <patch>       JSON patch data for non-interactive edit (use with --edit)
 
 App Modes:
-  obsidian    Open in Obsidian via URI scheme (default)
-  editor      Open in $VISUAL or $EDITOR
-  system      Open with system default handler
+  system      Open with OS default handler (default)
+  editor      Open in terminal editor ($EDITOR or config.editor)
+  visual      Open in GUI editor ($VISUAL or config.visual)
+  obsidian    Open in Obsidian via URI scheme
   print       Print the resolved path (for scripting)
 
-Environment Variables:
-  BWRB_DEFAULT_APP    Default app mode (obsidian, editor, system, print)
+Precedence (for default app):
+  1. --app flag (explicit)
+  2. BWRB_DEFAULT_APP environment variable
+  3. config.open_with in .bwrb/schema.json
+  4. Fallback: system
 
 Examples:
   # Name search
@@ -427,8 +431,8 @@ async function handleContentSearch(
 
     // Handle --open flag
     if (options.open) {
-      const appMode = parseAppMode(options.app || "default");
-      await openNote(vaultDir, pickerResult.selected.path, appMode, false);
+      const appMode = resolveAppMode(options.app, schema.config);
+      await openNote(vaultDir, pickerResult.selected.path, appMode, schema.config, false);
       return;
     }
 
@@ -453,8 +457,8 @@ async function handleContentSearch(
     // Handle --open flag (open first result)
     if (options.open && filteredResults.length > 0) {
       const firstResult = filteredResults[0]!;
-      const appMode = parseAppMode(options.app || "default");
-      await openNote(vaultDir, firstResult.file.path, appMode, jsonMode);
+      const appMode = resolveAppMode(options.app, schema.config);
+      await openNote(vaultDir, firstResult.file.path, appMode, schema.config, jsonMode);
       return;
     }
 
@@ -586,8 +590,8 @@ async function handleNameSearch(
 
   // Handle --open flag
   if (options.open) {
-    const appMode = parseAppMode(options.app || "default");
-    await openNote(vaultDir, targetFile.path, appMode, jsonMode);
+    const appMode = resolveAppMode(options.app, schema.config);
+    await openNote(vaultDir, targetFile.path, appMode, schema.config, jsonMode);
     return;
   }
 

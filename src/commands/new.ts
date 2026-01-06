@@ -148,10 +148,10 @@ Template Discovery:
         
         printJson(jsonSuccess({ path: relative(vaultDir, filePath) }));
         
-        // Open if requested (respects BWRB_DEFAULT_APP)
+        // Open if requested (uses config.open_with as default)
         if (options.open && filePath) {
-          const { openNote, parseAppMode } = await import('./open.js');
-          await openNote(vaultDir, filePath, parseAppMode(), false);
+          const { openNote, resolveAppMode } = await import('./open.js');
+          await openNote(vaultDir, filePath, resolveAppMode(undefined, schema.config), schema.config, false);
         }
         return;
       }
@@ -209,10 +209,10 @@ Template Discovery:
         standalone: options.standalone,
       });
 
-      // Open if requested (respects BWRB_DEFAULT_APP)
+      // Open if requested (uses config.open_with as default)
       if (options.open && filePath) {
-        const { openNote, parseAppMode } = await import('./open.js');
-        await openNote(vaultDir, filePath, parseAppMode(), false);
+        const { openNote, resolveAppMode } = await import('./open.js');
+        await openNote(vaultDir, filePath, resolveAppMode(undefined, schema.config), schema.config, false);
       }
     } catch (err) {
       // Handle user cancellation cleanly
