@@ -6,6 +6,11 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Added
 
+- **Standardized `-x` shorthand for `--execute`** (#142)
+  - Added `-x` as alias for `--execute` on `bulk`, `schema delete`, and `schema migrate` commands
+  - Consistent with existing `-x` shorthand on `delete` command
+  - Reduces keystrokes for common dry-run → execute workflow
+
 - **Unified opener with config.open_with integration** (#183)
   - New `system` and `visual` app modes for opening notes
   - App modes: `system` (OS default), `editor` ($EDITOR), `visual` ($VISUAL), `obsidian`, `print`

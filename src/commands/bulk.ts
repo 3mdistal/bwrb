@@ -148,7 +148,7 @@ Examples:
   .option('--move <path>', 'Move files to path (auto-updates wikilinks)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
   .option('-a, --all', 'Target all files (requires explicit intent)')
-  .option('--execute', 'Actually apply changes (dry-run by default)')
+  .option('-x, --execute', 'Actually apply changes (dry-run by default)')
   .option('--backup', 'Create backup before changes')
   .option('--limit <n>', 'Limit to n files')
   .option('--verbose', 'Show detailed changes per file')

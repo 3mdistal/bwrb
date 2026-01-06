@@ -1775,7 +1775,7 @@ deleteCommand
   .command('type [name]')
   .description('Delete a type (dry-run by default)')
   .option('-o, --output <format>', 'Output format: text (default) or json')
-  .option('--execute', 'Actually perform the deletion (default is dry-run)')
+  .option('-x, --execute', 'Actually perform the deletion (default is dry-run)')
   .action(async (name: string | undefined, options: DeleteCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
     const dryRun = !options.execute;
@@ -1876,7 +1876,7 @@ deleteCommand
   .command('field [type] [name]')
   .description('Delete a field from a type (dry-run by default)')
   .option('-o, --output <format>', 'Output format: text (default) or json')
-  .option('--execute', 'Actually perform the deletion (default is dry-run)')
+  .option('-x, --execute', 'Actually perform the deletion (default is dry-run)')
   .action(async (typeName: string | undefined, fieldName: string | undefined, options: DeleteCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
     const dryRun = !options.execute;
@@ -2248,7 +2248,7 @@ schemaCommand
   .command('migrate')
   .description('Apply schema changes to existing notes')
   .option('-o, --output <format>', 'Output format: text (default) or json')
-  .option('--execute', 'Actually apply the migration (default is dry-run)')
+  .option('-x, --execute', 'Actually apply the migration (default is dry-run)')
   .option('--no-backup', 'Skip backup creation (not recommended)')
   .addHelpText('after', `
 Examples:
