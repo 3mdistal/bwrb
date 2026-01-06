@@ -38,8 +38,6 @@ export const FieldSchema = z.object({
   list_format: z.enum(['yaml-array', 'comma-separated']).optional(),
   // Prompt label override
   label: z.string().optional(),
-  // Wikilink formatting
-  format: z.enum(['plain', 'wikilink', 'quoted-wikilink']).optional(),
   // Whether this field can hold multiple values (for context fields)
   multiple: z.boolean().optional(),
   // Whether children referenced by this field are owned (colocate with parent)
@@ -103,6 +101,32 @@ export const AuditConfigSchema = z.object({
 });
 
 // ============================================================================
+// Vault Configuration
+// ============================================================================
+
+/**
+ * Vault-wide configuration options.
+ * These settings apply to the entire vault and control CLI behavior.
+ */
+export const ConfigSchema = z.object({
+  // Link format for relation fields in frontmatter
+  // wikilink: "[[Note Name]]" (default, Obsidian-compatible)
+  // markdown: "[Note Name](Note Name.md)"
+  link_format: z.enum(['wikilink', 'markdown']).optional(),
+  // Terminal editor command (defaults to $EDITOR)
+  editor: z.string().optional(),
+  // GUI editor command (defaults to $VISUAL)
+  visual: z.string().optional(),
+  // Default behavior for --open flag
+  // editor: Open in terminal editor
+  // visual: Open in GUI editor (default)
+  // obsidian: Open via Obsidian URI
+  open_with: z.enum(['editor', 'visual', 'obsidian']).optional(),
+  // Obsidian vault name for URI scheme (auto-detected from .obsidian if not set)
+  obsidian_vault: z.string().optional(),
+});
+
+// ============================================================================
 // Root Schema
 // ============================================================================
 
@@ -116,11 +140,15 @@ export const AuditConfigSchema = z.object({
  * - Type-based 'source' on fields (no more dynamic_sources)
  */
 export const BwrbSchema = z.object({
+  // JSON Schema reference for editor support
+  $schema: z.string().optional(),
   // Schema format version (2 = inheritance model)
   version: z.number().optional().default(2),
   // User-controlled schema content version for migrations (semver)
   // This tracks the evolution of your schema over time
   schemaVersion: z.string().optional(),
+  // Vault-wide configuration
+  config: ConfigSchema.optional(),
   // Type definitions (flat with 'extends')
   types: z.record(TypeSchema),
   // Audit configuration
@@ -150,6 +178,7 @@ export type BodySectionInput = {
 };
 export type FilterCondition = z.infer<typeof FilterConditionSchema>;
 export type Type = z.infer<typeof TypeSchema>;
+export type Config = z.infer<typeof ConfigSchema>;
 export type Schema = z.infer<typeof BwrbSchema>;
 
 // ============================================================================
@@ -186,6 +215,22 @@ export interface ResolvedType {
 }
 
 /**
+ * Resolved configuration with defaults applied.
+ */
+export interface ResolvedConfig {
+  /** Link format for relation fields: 'wikilink' or 'markdown' */
+  linkFormat: 'wikilink' | 'markdown';
+  /** Terminal editor command (from config or $EDITOR) */
+  editor: string | undefined;
+  /** GUI editor command (from config or $VISUAL) */
+  visual: string | undefined;
+  /** Default behavior for --open flag */
+  openWith: 'editor' | 'visual' | 'obsidian';
+  /** Obsidian vault name (from config or auto-detected) */
+  obsidianVault: string | undefined;
+}
+
+/**
  * A loaded schema with resolved inheritance tree.
  */
 export interface LoadedSchema {
@@ -195,6 +240,8 @@ export interface LoadedSchema {
   types: Map<string, ResolvedType>;
   /** Ownership relationships: which types can own which child types */
   ownership: OwnershipMap;
+  /** Resolved configuration with defaults */
+  config: ResolvedConfig;
 }
 
 // ============================================================================

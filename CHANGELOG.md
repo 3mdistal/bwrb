@@ -6,6 +6,20 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Added
 
+- **Global vault configuration system** (#184)
+  - New `config` block in `schema.json` for vault-wide settings
+  - `bwrb config list [option]` - View current configuration values
+  - `bwrb config edit [option]` - Edit configuration interactively or with `--json`
+  - Available options: `link_format`, `editor`, `visual`, `open_with`, `obsidian_vault`
+  - Auto-detection of Obsidian vault name from `.obsidian` folder
+
+- **Global link format configuration**
+  - Replaces per-field `format` property with vault-wide `config.link_format`
+  - Supported formats: `wikilink` (default), `markdown`
+  - Wikilinks always quoted for YAML safety: `"[[Note]]"`
+  - Markdown format: `"[Note](Note.md)"`
+  - Audit system validates relation fields against configured format
+
 - **Multi-select support for select fields** (#166)
   - Select fields can now allow multiple selections via `multiple: true`
   - Interactive prompt uses checkboxes (Space to select, Enter to confirm)
@@ -42,6 +56,11 @@ All notable changes to Bowerbird are documented in this file.
   - Update your schemas: `{ "prompt": "multi-input" }` → `{ "prompt": "list" }`
   - Body sections also updated: `{ "prompt": "multi-input" }` → `{ "prompt": "list" }`
   - CLI flag updated: `--type multi-input` → `--type list`
+
+- **Removed per-field `format` property in favor of global config** (#184)
+  - The `format` property on field definitions has been removed
+  - Link format is now configured globally via `config.link_format` in schema.json
+  - Migration: Remove `format` from field definitions, add `config: { link_format: "wikilink" }` to schema root
 
 - **Replaced global `enums` block with inline `options` on fields** (#165)
   - The global `enums` block has been removed from schema.json

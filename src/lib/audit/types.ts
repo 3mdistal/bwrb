@@ -48,7 +48,7 @@ export interface AuditIssue {
   /** For orphan-file issues: the expected type path inferred from directory location */
   inferredType?: string | undefined;
   /** For format-violation: the expected format */
-  expectedFormat?: 'plain' | 'wikilink' | 'quoted-wikilink' | undefined;
+  expectedFormat?: 'wikilink' | 'markdown' | undefined;
   /** For stale-reference: similar file names that exist */
   similarFiles?: string[] | undefined;
   /** For stale-reference: the target that couldn't be found */
@@ -195,8 +195,21 @@ export function isWikilink(value: string): boolean {
 /**
  * Check if a value is formatted as a quoted wikilink.
  */
-export function isQuotedWikilink(value: string): boolean {
+function isQuotedWikilink(value: string): boolean {
   return /^"\[\[.+\]\]"$/.test(value);
+}
+
+/**
+ * Check if a value is formatted as a markdown link.
+ * Matches: [Note Name](Note Name.md) or "[Note Name](Note Name.md)"
+ */
+export function isMarkdownLink(value: string): boolean {
+  // Remove quotes if present
+  let v = value;
+  if (v.startsWith('"') && v.endsWith('"')) {
+    v = v.slice(1, -1);
+  }
+  return /^\[.+\]\(.+\.md\)$/.test(v);
 }
 
 /**
@@ -225,22 +238,23 @@ export function toWikilink(value: string): string {
 }
 
 /**
- * Convert a plain value to quoted wikilink format.
- * 
- * Note: After YAML parsing, both wikilink and quoted-wikilink values
- * are stored as [[Target]]. The "quoted" part is a serialization concern -
- * the YAML library automatically quotes strings containing brackets.
- * So this function just returns a wikilink.
+ * Convert a value to markdown link format.
+ * Extracts the note name from wikilinks if needed.
  */
-export function toQuotedWikilink(value: string): string {
-  // If already a wikilink, return as-is
-  if (isWikilink(value)) {
+export function toMarkdownLink(value: string): string {
+  // If already a markdown link, return as-is
+  if (isMarkdownLink(value)) {
     return value;
   }
-  // If it has embedded quotes (from a previous buggy fix), strip them
-  if (isQuotedWikilink(value)) {
-    return value.slice(1, -1); // Remove outer quotes
+  
+  // Extract name from wikilink if present
+  let name = value;
+  if (isWikilink(value)) {
+    name = extractWikilinkTarget(value) ?? value;
+  } else if (isQuotedWikilink(value)) {
+    name = extractWikilinkTarget(value.slice(1, -1)) ?? value;
   }
-  // Convert plain text to wikilink
-  return `[[${value}]]`;
+  
+  // Convert to markdown link format
+  return `[${name}](${name}.md)`;
 }

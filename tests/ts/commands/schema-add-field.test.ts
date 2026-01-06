@@ -109,9 +109,9 @@ describe('schema add-field command', () => {
       expect(schema.types.project.fields.tags).toEqual({ prompt: 'list' });
     });
 
-    it('should add a dynamic field with source and format', async () => {
+    it('should add a relation field with source', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'task', 'project', '--type', 'relation', '--source', 'project', '--format', 'wikilink', '--output', 'json'],
+        ['schema', 'add-field', 'task', 'project', '--type', 'relation', '--source', 'project', '--output', 'json'],
         tempVaultDir
       );
 
@@ -119,13 +119,11 @@ describe('schema add-field command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.data.definition.prompt).toBe('relation');
       expect(json.data.definition.source).toBe('project');
-      expect(json.data.definition.format).toBe('wikilink');
 
       const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.task.fields.project).toEqual({
         prompt: 'relation',
         source: 'project',
-        format: 'wikilink',
       });
     });
 
@@ -311,18 +309,6 @@ describe('schema add-field command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
       expect(json.error).toContain('--value is required');
-    });
-
-    it('should reject invalid format value', async () => {
-      const result = await runCLI(
-        ['schema', 'add-field', 'project', 'parent', '--type', 'relation', '--source', 'note', '--format', 'invalid', '--output', 'json'],
-        tempVaultDir
-      );
-
-      expect(result.exitCode).toBe(1);
-      const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(false);
-      expect(json.error).toContain('Invalid format');
     });
 
     it('should require field name in JSON mode', async () => {

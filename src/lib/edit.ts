@@ -392,7 +392,7 @@ async function promptFieldEdit(
       if (selected === keepLabel) {
         return currentValue;
       }
-      return formatValue(selected, field.format);
+      return formatValue(selected, schema.config.linkFormat);
     }
 
     case 'text': {

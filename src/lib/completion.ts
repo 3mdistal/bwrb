@@ -182,6 +182,7 @@ const COMMANDS = [
   'template',
   'delete',
   'completion',
+  'config',
 ];
 
 /**
@@ -200,6 +201,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
   template: ['--vault', '--help'],
   delete: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--vault', '--yes', '-y', '--help'],
   completion: ['--help'],
+  config: ['--output', '-o', '--vault', '--json', '--help'],
 };
 
 /**

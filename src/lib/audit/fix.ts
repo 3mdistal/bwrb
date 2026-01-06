@@ -27,7 +27,7 @@ import {
   type FixResult,
   type FixSummary,
   toWikilink,
-  toQuotedWikilink,
+  toMarkdownLink,
 } from './types.js';
 
 // ============================================================================
@@ -80,8 +80,8 @@ async function applyFix(
           if (typeof currentValue === 'string') {
             if (issue.expectedFormat === 'wikilink') {
               frontmatter[issue.field] = toWikilink(currentValue);
-            } else if (issue.expectedFormat === 'quoted-wikilink') {
-              frontmatter[issue.field] = toQuotedWikilink(currentValue);
+            } else if (issue.expectedFormat === 'markdown') {
+              frontmatter[issue.field] = toMarkdownLink(currentValue);
             }
           } else {
             return { file: filePath, issue, action: 'failed', message: 'Cannot fix non-string value' };

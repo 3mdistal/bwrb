@@ -1144,7 +1144,7 @@ milestone: Q1 Release
       expect(formatIssue).toBeDefined();
       expect(formatIssue.field).toBe('milestone');
       expect(formatIssue.autoFixable).toBe(true);
-      expect(formatIssue.expectedFormat).toBe('quoted-wikilink');
+      expect(formatIssue.expectedFormat).toBe('wikilink');
     });
 
     it('should auto-fix format violation to wikilink', async () => {
@@ -1445,12 +1445,10 @@ unknownField: should warn
             milestone: {
               prompt: 'relation',
               source: 'milestone',  // Type-based source
-              format: 'wikilink',
             },
             parent: {
               prompt: 'relation',
               source: 'objective',  // Accepts objective or any descendant
-              format: 'wikilink',
             },
           },
         },
@@ -1638,7 +1636,6 @@ status: raw
               milestones: {
                 prompt: 'relation',
                 source: 'milestone',
-                format: 'wikilink',
                 multiple: true,
               },
             },

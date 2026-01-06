@@ -391,7 +391,7 @@ describePty('bwrb schema add-type PTY tests', () => {
       );
     }, 30000);
 
-    it('should add dynamic field with source and format', async () => {
+    it('should add relation field with source', async () => {
       await withTempVault(
         ['schema', 'add-type', 'task'],
         async (proc, vaultPath) => {
@@ -408,15 +408,13 @@ describePty('bwrb schema add-type PTY tests', () => {
           await proc.typeAndEnter('parent-project');
 
           await proc.waitFor('Prompt type');
-          proc.write('5'); // dynamic (from other notes)
+          proc.write('5'); // relation (from other notes)
 
           // Source type selection - types: note, project (alphabetical)
           await proc.waitFor('Source type');
           proc.write('2'); // project
 
-          // Link format: plain, wikilink, quoted-wikilink
-          await proc.waitFor('Link format');
-          proc.write('2'); // wikilink
+          // Note: Link format is now vault-wide config, not per-field
 
           await proc.waitFor('Required');
           proc.write('n');
@@ -437,7 +435,6 @@ describePty('bwrb schema add-type PTY tests', () => {
           expect(schema.types.task.fields['parent-project']).toMatchObject({
             prompt: 'relation',
             source: 'project',
-            format: 'wikilink',
             required: false,
           });
         },

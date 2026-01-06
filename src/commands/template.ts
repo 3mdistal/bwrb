@@ -743,7 +743,7 @@ async function promptFieldDefault(
       const selected = await promptSelection(`Default ${label}:`, options);
       if (selected === null) throw new UserCancelledError();
       if (selected === '(skip)') return undefined;
-      return formatValue(selected, field.format);
+      return formatValue(selected, schema.config.linkFormat);
     }
 
     case 'list': {
@@ -1200,7 +1200,7 @@ async function promptFieldDefaultEdit(
       if (selected === null) throw new UserCancelledError();
       if (selected === '(keep)') return currentValue;
       if (selected === '(clear)') return 'CLEAR';
-      return formatValue(selected, field.format);
+      return formatValue(selected, schema.config.linkFormat);
     }
 
     case 'list': {

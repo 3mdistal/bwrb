@@ -192,15 +192,13 @@ describePty('bwrb schema add-field PTY tests', () => {
           await proc.typeAndEnter('parent-project');
 
           await proc.waitFor('Prompt type');
-          proc.write('5'); // dynamic (from other notes)
+          proc.write('5'); // relation (from other notes)
 
           // Source type selection - insertion order: note=1, task=2, project=3
           await proc.waitFor('Source type');
           proc.write('3'); // project
 
-          // Link format: plain, wikilink, quoted-wikilink
-          await proc.waitFor('Link format');
-          proc.write('2'); // wikilink
+          // Note: Link format is now vault-wide config, not per-field
 
           await proc.waitFor('Required');
           proc.write('n');
@@ -216,7 +214,6 @@ describePty('bwrb schema add-field PTY tests', () => {
           expect(schema.types.task.fields['parent-project']).toMatchObject({
             prompt: 'relation',
             source: 'project',
-            format: 'wikilink',
             required: false,
           });
         },
@@ -510,14 +507,13 @@ describePty('bwrb schema add-field PTY tests', () => {
           await proc.typeAndEnter('parent');
 
           await proc.waitFor('Prompt type');
-          proc.write('5'); // dynamic
+          proc.write('5'); // relation
 
           // Should show source type selection with 'note' as the only option
           await proc.waitFor('Source type');
           proc.write('1'); // note (only option)
 
-          await proc.waitFor('Link format');
-          proc.write('1'); // plain
+          // Note: Link format is now vault-wide config, not per-field
 
           await proc.waitFor('Required');
           proc.write('n');

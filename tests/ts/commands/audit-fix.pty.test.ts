@@ -417,7 +417,8 @@ some: value
             output_dir: 'Items',
             fields: {
               type: { value: 'item' },
-              link: { prompt: 'text', format: 'wikilink' },
+              // relation fields should use wikilink format (from global config)
+              link: { prompt: 'relation', source: 'item' },
             },
             field_order: ['type', 'link'],
           },
@@ -461,9 +462,9 @@ link: Target
           // Wait for completion
           await proc.waitForStable(500);
 
-          // Verify format was fixed
+          // Verify format was fixed - should now be a wikilink
           const content = await readVaultFile(vaultPath, 'Items/Bad Format.md');
-          expect(content).toContain('link: "[[Target]]"');
+          expect(content).toContain('[[Target]]');
         },
         { files: [refFile, formatIssue], schema: formatSchema }
       );

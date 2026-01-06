@@ -1,10 +1,13 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
+import { existsSync } from 'fs';
+import { basename } from 'path';
 import {
   BwrbSchema,
   type Schema,
   type Field,
   type ResolvedType,
+  type ResolvedConfig,
   type LoadedSchema,
   type OwnershipMap,
   type OwnedFieldInfo,
@@ -139,7 +142,6 @@ export function resolveSchema(schema: Schema): LoadedSchema {
       type.fields['parent'] = {
         prompt: 'relation',
         source,
-        format: 'wikilink',
         required: false,
       };
       // Add parent to field order if not already present
@@ -152,7 +154,10 @@ export function resolveSchema(schema: Schema): LoadedSchema {
   // Fifth pass: build ownership map
   const ownership = buildOwnershipMap(types);
   
-  return { raw: schema, types, ownership };
+  // Sixth pass: resolve configuration with defaults
+  const config = resolveConfig(schema.config);
+  
+  return { raw: schema, types, ownership, config };
 }
 
 /**
@@ -376,7 +381,38 @@ function buildOwnershipMap(types: Map<string, ResolvedType>): OwnershipMap {
   return { canBeOwnedBy, owns };
 }
 
+// ============================================================================
+// Configuration Resolution
+// ============================================================================
 
+/**
+ * Resolve configuration with defaults.
+ * Falls back to environment variables and sensible defaults.
+ */
+function resolveConfig(config: Schema['config']): ResolvedConfig {
+  return {
+    linkFormat: config?.link_format ?? 'wikilink',
+    editor: config?.editor ?? process.env.EDITOR,
+    visual: config?.visual ?? process.env.VISUAL,
+    openWith: config?.open_with ?? 'visual',
+    obsidianVault: config?.obsidian_vault,
+  };
+}
+
+/**
+ * Detect Obsidian vault name from a vault directory.
+ * Looks for .obsidian folder and tries to extract vault name.
+ */
+export function detectObsidianVault(vaultDir: string): string | undefined {
+  const obsidianDir = join(vaultDir, '.obsidian');
+  if (!existsSync(obsidianDir)) {
+    return undefined;
+  }
+  
+  // Use the vault directory name as the vault name
+  // This matches how Obsidian typically names vaults
+  return basename(vaultDir);
+}
 
 // ============================================================================
 // Type Lookup (New API)
