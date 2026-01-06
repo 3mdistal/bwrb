@@ -204,7 +204,7 @@ describe('schema command', () => {
             task: {
               extends: 'objective',
               fields: {
-                deadline: { prompt: 'input' }
+                deadline: { prompt: 'text' }
               }
             }
           }
@@ -401,7 +401,7 @@ describe('schema command', () => {
             task: {
               extends: 'meta',
               output_dir: 'Tasks',
-              fields: { status: { prompt: 'input' } }
+              fields: { status: { prompt: 'text' } }
             }
           }
         })
@@ -437,7 +437,7 @@ describe('schema command', () => {
           version: 2,
           types: {
             meta: { fields: { created: { prompt: 'date' } } },
-            objective: { extends: 'meta', fields: { status: { prompt: 'input' } } },
+            objective: { extends: 'meta', fields: { status: { prompt: 'text' } } },
             task: { extends: 'meta', output_dir: 'Tasks' }
           }
         })
@@ -712,7 +712,7 @@ describe('schema command', () => {
             meta: {},
             task: {
               extends: 'meta',
-              fields: { status: { prompt: 'input' } }
+              fields: { status: { prompt: 'text' } }
             }
           }
         })
@@ -749,7 +749,7 @@ describe('schema command', () => {
             meta: {},
             task: {
               extends: 'meta',
-              fields: { status: { prompt: 'input', required: true } }
+              fields: { status: { prompt: 'text', required: true } }
             }
           }
         })
@@ -786,7 +786,7 @@ describe('schema command', () => {
             meta: {},
             task: {
               extends: 'meta',
-              fields: { priority: { prompt: 'input' } }
+              fields: { priority: { prompt: 'text' } }
             }
           }
         })
@@ -822,7 +822,7 @@ describe('schema command', () => {
             meta: {},
             task: {
               extends: 'meta',
-              fields: { priority: { prompt: 'input', default: 'low' } }
+              fields: { priority: { prompt: 'text', default: 'low' } }
             }
           }
         })
@@ -858,7 +858,7 @@ describe('schema command', () => {
             meta: {},
             task: {
               extends: 'meta',
-              fields: { deadline: { prompt: 'input' } }
+              fields: { deadline: { prompt: 'text' } }
             }
           }
         })
@@ -919,7 +919,7 @@ describe('schema command', () => {
           version: 2,
           types: {
             meta: {},
-            task: { extends: 'meta', fields: { status: { prompt: 'input' } } }
+            task: { extends: 'meta', fields: { status: { prompt: 'text' } } }
           }
         })
       );
@@ -948,7 +948,7 @@ describe('schema command', () => {
             meta: {},
             task: {
               extends: 'meta',
-              fields: { status: { prompt: 'input' } }
+              fields: { status: { prompt: 'text' } }
             }
           }
         })
@@ -983,7 +983,7 @@ describe('schema command', () => {
             task: {
               extends: 'meta',
               output_dir: 'Tasks',
-              fields: { status: { prompt: 'input' }, deadline: { prompt: 'input' } }
+              fields: { status: { prompt: 'text' }, deadline: { prompt: 'text' } }
             }
           }
         })
@@ -1027,7 +1027,7 @@ describe('schema command', () => {
             meta: {},
             task: {
               extends: 'meta',
-              fields: { status: { prompt: 'input' }, deadline: { prompt: 'input' } }
+              fields: { status: { prompt: 'text' }, deadline: { prompt: 'text' } }
             }
           }
         })
@@ -1063,7 +1063,7 @@ describe('schema command', () => {
           version: 2,
           types: {
             meta: { fields: { created: { prompt: 'date' } } },
-            task: { extends: 'meta', fields: { status: { prompt: 'input' } } }
+            task: { extends: 'meta', fields: { status: { prompt: 'text' } } }
           }
         })
       );
@@ -1090,7 +1090,7 @@ describe('schema command', () => {
           version: 2,
           types: {
             meta: {},
-            task: { extends: 'meta', fields: { status: { prompt: 'input' } } }
+            task: { extends: 'meta', fields: { status: { prompt: 'text' } } }
           }
         })
       );
@@ -1121,7 +1121,7 @@ describe('schema command', () => {
             meta: {},
             objective: {
               extends: 'meta',
-              fields: { status: { prompt: 'input' } }
+              fields: { status: { prompt: 'text' } }
             },
             task: { extends: 'objective', output_dir: 'Tasks' },
             milestone: { extends: 'objective', output_dir: 'Milestones' }
@@ -1370,7 +1370,7 @@ describe('schema command', () => {
             meta: {},
             task: {
               extends: 'meta',
-              fields: { status: { prompt: 'input' }, deadline: { prompt: 'date' } }
+              fields: { status: { prompt: 'text' }, deadline: { prompt: 'date' } }
             }
           }
         })

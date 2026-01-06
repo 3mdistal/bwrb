@@ -35,7 +35,7 @@ const EDIT_SCHEMA = {
         type: { value: 'idea' },
         status: { prompt: 'select', enum: 'status', default: 'raw' },
         priority: { prompt: 'select', enum: 'priority' },
-        description: { prompt: 'input', label: 'Description' },
+        description: { prompt: 'text', label: 'Description' },
       },
       field_order: ['type', 'status', 'priority', 'description'],
       body_sections: [

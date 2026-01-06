@@ -97,7 +97,7 @@ bwrb schema history --json
 
 ```bash
 # 1. Make schema changes
-bwrb schema add-field task --name assignee --prompt input
+bwrb schema add-field task --name assignee --prompt text
 
 # 2. Check what changed
 bwrb schema diff

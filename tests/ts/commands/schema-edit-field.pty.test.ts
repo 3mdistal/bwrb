@@ -23,16 +23,16 @@ const TEST_SCHEMA = {
     task: {
       output_dir: 'Tasks',
       fields: {
-        title: { prompt: 'input', required: true },
+        title: { prompt: 'text', required: true },
         status: { enum: 'status' },
         priority: { enum: 'priority', default: 'medium' },
-        notes: { prompt: 'input', label: 'Additional Notes' },
+        notes: { prompt: 'text', label: 'Additional Notes' },
       },
     },
     project: {
       output_dir: 'Projects',
       fields: {
-        name: { prompt: 'input', required: true },
+        name: { prompt: 'text', required: true },
         deadline: { prompt: 'date' },
       },
     },

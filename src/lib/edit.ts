@@ -379,7 +379,7 @@ async function promptFieldEdit(
       return formatValue(selected, field.format);
     }
 
-    case 'input': {
+    case 'text': {
       const label = field.label ?? fieldName;
       const currentDefault = typeof currentValue === 'string' ? currentValue : '';
       const newValue = await promptInput(`New ${label} (or Enter to keep)`, currentDefault);

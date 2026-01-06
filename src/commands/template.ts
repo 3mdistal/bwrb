@@ -755,7 +755,7 @@ async function promptFieldDefault(
       return values;
     }
 
-    case 'input':
+    case 'text':
     case 'date':
     default: {
       const input = await promptInput(`Default ${label} (or Enter to skip)`);
@@ -1213,7 +1213,7 @@ async function promptFieldDefaultEdit(
       return input.split(',').map(s => s.trim()).filter(Boolean);
     }
 
-    case 'input':
+    case 'text':
     case 'date':
     default: {
       const input = await promptInput(`New ${label} (Enter to keep, "clear" to remove)`);

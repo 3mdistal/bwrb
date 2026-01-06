@@ -4,6 +4,13 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Changed (Breaking)
+
+- **Renamed `input` prompt type to `text`** (#160)
+  - The prompt type `input` has been renamed to `text` to describe the value type, not the UX
+  - Update your schemas: `{ "prompt": "input" }` → `{ "prompt": "text" }`
+  - CLI flag updated: `--type input` → `--type text`
+
 ### Fixed
 
 - **Audit similar files suggestions no longer match unrelated files**

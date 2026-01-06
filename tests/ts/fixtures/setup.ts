@@ -52,7 +52,7 @@ export const TEST_SCHEMA = {
           format: 'quoted-wikilink',
         },
         'creation-date': { value: '$NOW' },
-        deadline: { prompt: 'input', label: 'Deadline (YYYY-MM-DD)' },
+        deadline: { prompt: 'text', label: 'Deadline (YYYY-MM-DD)' },
         tags: {
           prompt: 'multi-input',
           list_format: 'yaml-array',

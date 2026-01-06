@@ -125,7 +125,7 @@ describePty('Text Input Prompt PTY tests', () => {
             output_dir: 'Tasks',
             fields: {
               type: { value: 'task' },
-              deadline: { prompt: 'input', label: 'Deadline' },
+              deadline: { prompt: 'text', label: 'Deadline' },
             },
             field_order: ['type', 'deadline'],
           },
@@ -166,7 +166,7 @@ describePty('Text Input Prompt PTY tests', () => {
             output_dir: 'Notes',
             fields: {
               type: { value: 'note' },
-              category: { prompt: 'input', label: 'Category', default: 'general' },
+              category: { prompt: 'text', label: 'Category', default: 'general' },
             },
             field_order: ['type', 'category'],
           },

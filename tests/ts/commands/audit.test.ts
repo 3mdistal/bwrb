@@ -57,7 +57,7 @@ describe('audit command', () => {
             ...TEST_SCHEMA.types.idea,
             fields: {
               ...TEST_SCHEMA.types.idea.fields,
-              requiredNoDefault: { prompt: 'input', required: true },
+              requiredNoDefault: { prompt: 'text', required: true },
             },
           },
         },

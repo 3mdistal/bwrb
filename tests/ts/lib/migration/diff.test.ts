@@ -47,7 +47,7 @@ describe("diffSchemas", () => {
             ...baseSchema.types.task,
             fields: {
               ...baseSchema.types.task.fields,
-              assignee: { prompt: "input" },
+              assignee: { prompt: "text" },
             },
           },
         },
@@ -143,7 +143,7 @@ describe("diffSchemas", () => {
           project: {
             output_dir: "Projects",
             fields: {
-              name: { prompt: "input", required: true },
+              name: { prompt: "text", required: true },
             },
           },
         },

@@ -852,26 +852,26 @@ describe('createScaffoldedInstances', () => {
       draft: {
         output_dir: 'Drafts',
         fields: {
-          Name: { prompt: 'input', required: true },
+          Name: { prompt: 'text', required: true },
           status: { prompt: 'select', enum: 'status', default: 'draft' },
         },
       },
       version: {
         extends: 'draft',
         fields: {
-          version: { prompt: 'input', default: '1' },
+          version: { prompt: 'text', default: '1' },
         },
       },
       research: {
         extends: 'draft',
         fields: {
-          topic: { prompt: 'input' },
+          topic: { prompt: 'text' },
         },
       },
       notes: {
         extends: 'draft',
         fields: {
-          source: { prompt: 'input' },
+          source: { prompt: 'text' },
         },
       },
     },

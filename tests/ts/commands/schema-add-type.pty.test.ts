@@ -211,7 +211,7 @@ describePty('bwrb schema add-type PTY tests', () => {
           const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields.description).toEqual({
-            prompt: 'input',
+            prompt: 'text',
             required: true,
           });
           expect(schema.types.task.fields.priority).toEqual({
@@ -264,7 +264,7 @@ describePty('bwrb schema add-type PTY tests', () => {
           const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields.description).toEqual({
-            prompt: 'input',
+            prompt: 'text',
             required: true,
           });
         },

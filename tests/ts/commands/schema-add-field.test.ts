@@ -50,7 +50,7 @@ describe('schema add-field command', () => {
   describe('basic field creation (JSON mode)', () => {
     it('should add an input field to a type', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'description', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'description', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -59,11 +59,11 @@ describe('schema add-field command', () => {
       expect(json.success).toBe(true);
       expect(json.data.type).toBe('project');
       expect(json.data.field).toBe('description');
-      expect(json.data.definition.prompt).toBe('input');
+      expect(json.data.definition.prompt).toBe('text');
 
       // Verify schema was updated
       const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
-      expect(schema.types.project.fields.description).toEqual({ prompt: 'input' });
+      expect(schema.types.project.fields.description).toEqual({ prompt: 'text' });
     });
 
     it('should add a select field with enum', async () => {
@@ -149,7 +149,7 @@ describe('schema add-field command', () => {
 
     it('should add a required field', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'name', '--type', 'input', '--required', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'name', '--type', 'text', '--required', '--output', 'json'],
         tempVaultDir
       );
 
@@ -159,7 +159,7 @@ describe('schema add-field command', () => {
 
       const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.project.fields.name).toEqual({
-        prompt: 'input',
+        prompt: 'text',
         required: true,
       });
     });
@@ -186,7 +186,7 @@ describe('schema add-field command', () => {
   describe('validation', () => {
     it('should reject non-existent type', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'nonexistent', 'field', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'nonexistent', 'field', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -198,7 +198,7 @@ describe('schema add-field command', () => {
 
     it('should reject duplicate field name on same type', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'note', 'status', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'note', 'status', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -211,7 +211,7 @@ describe('schema add-field command', () => {
     it('should reject overriding inherited field', async () => {
       // task inherits from note, which has status field
       const result = await runCLI(
-        ['schema', 'add-field', 'task', 'status', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'task', 'status', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -223,7 +223,7 @@ describe('schema add-field command', () => {
 
     it('should reject invalid field name starting with number', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', '123field', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'project', '123field', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -235,7 +235,7 @@ describe('schema add-field command', () => {
 
     it('should reject field name with uppercase letters', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'MyField', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'MyField', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -247,7 +247,7 @@ describe('schema add-field command', () => {
 
     it('should reject field name with underscores', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'my_field', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'my_field', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -343,7 +343,7 @@ describe('schema add-field command', () => {
 
     it('should require field name in JSON mode', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'project', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -385,12 +385,12 @@ describe('schema add-field command', () => {
       // First, add field_order to the schema
       const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
       const schema = JSON.parse(await readFile(schemaPath, 'utf-8'));
-      schema.types.project.fields = { existing: { prompt: 'input' } };
+      schema.types.project.fields = { existing: { prompt: 'text' } };
       schema.types.project.field_order = ['existing'];
       await writeFile(schemaPath, JSON.stringify(schema));
 
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'new-field', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'new-field', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -403,13 +403,13 @@ describe('schema add-field command', () => {
     it('should create field_order when adding second field', async () => {
       // Add first field
       await runCLI(
-        ['schema', 'add-field', 'project', 'first', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'first', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
       // Add second field
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'second', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'second', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -422,7 +422,7 @@ describe('schema add-field command', () => {
 
     it('should not create field_order for first field only', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'only-field', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'only-field', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -437,7 +437,7 @@ describe('schema add-field command', () => {
   describe('schema validation after add', () => {
     it('should maintain valid schema after adding field', async () => {
       await runCLI(
-        ['schema', 'add-field', 'project', 'description', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'description', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -453,7 +453,7 @@ describe('schema add-field command', () => {
 
     it('should show new field in schema show', async () => {
       await runCLI(
-        ['schema', 'add-field', 'project', 'description', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'description', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -465,14 +465,14 @@ describe('schema add-field command', () => {
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.fields.description).toBeDefined();
-      expect(json.fields.description.type).toBe('input');
+      expect(json.fields.description.type).toBe('text');
     });
   });
 
   describe('inheritance indication', () => {
     it('should indicate when field affects child types', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'note', 'new-field', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'note', 'new-field', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -483,7 +483,7 @@ describe('schema add-field command', () => {
 
     it('should indicate when field does not affect child types', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'new-field', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'new-field', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
@@ -496,7 +496,7 @@ describe('schema add-field command', () => {
   describe('text mode output', () => {
     it('should show error message in text mode', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'nonexistent', 'field', '--type', 'input'],
+        ['schema', 'add-field', 'nonexistent', 'field', '--type', 'text'],
         tempVaultDir
       );
 
@@ -506,7 +506,7 @@ describe('schema add-field command', () => {
 
     it('should show validation error in text mode', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', '123invalid', '--type', 'input'],
+        ['schema', 'add-field', 'project', '123invalid', '--type', 'text'],
         tempVaultDir
       );
 
@@ -655,7 +655,7 @@ describe('schema add-field command', () => {
       await writeFile(schemaPath, JSON.stringify(schema));
 
       const result = await runCLI(
-        ['schema', 'add-field', 'meta', 'created', '--type', 'input', '--output', 'json'],
+        ['schema', 'add-field', 'meta', 'created', '--type', 'text', '--output', 'json'],
         tempVaultDir
       );
 
