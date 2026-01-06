@@ -414,14 +414,6 @@ export function detectObsidianVault(vaultDir: string): string | undefined {
   return basename(vaultDir);
 }
 
-/**
- * Get the effective Obsidian vault name for a loaded schema.
- * Uses config value if set, otherwise auto-detects from vault path.
- */
-export function getObsidianVault(schema: LoadedSchema, vaultDir: string): string | undefined {
-  return schema.config.obsidianVault ?? detectObsidianVault(vaultDir);
-}
-
 // ============================================================================
 // Type Lookup (New API)
 // ============================================================================

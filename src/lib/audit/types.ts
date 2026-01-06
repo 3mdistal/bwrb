@@ -195,7 +195,7 @@ export function isWikilink(value: string): boolean {
 /**
  * Check if a value is formatted as a quoted wikilink.
  */
-export function isQuotedWikilink(value: string): boolean {
+function isQuotedWikilink(value: string): boolean {
   return /^"\[\[.+\]\]"$/.test(value);
 }
 
@@ -234,27 +234,6 @@ export function toWikilink(value: string): string {
   if (isWikilink(value) || isQuotedWikilink(value)) {
     return value;
   }
-  return `[[${value}]]`;
-}
-
-/**
- * Convert a plain value to quoted wikilink format.
- * 
- * Note: After YAML parsing, both wikilink and quoted-wikilink values
- * are stored as [[Target]]. The "quoted" part is a serialization concern -
- * the YAML library automatically quotes strings containing brackets.
- * So this function just returns a wikilink.
- */
-export function toQuotedWikilink(value: string): string {
-  // If already a wikilink, return as-is
-  if (isWikilink(value)) {
-    return value;
-  }
-  // If it has embedded quotes (from a previous buggy fix), strip them
-  if (isQuotedWikilink(value)) {
-    return value.slice(1, -1); // Remove outer quotes
-  }
-  // Convert plain text to wikilink
   return `[[${value}]]`;
 }
 

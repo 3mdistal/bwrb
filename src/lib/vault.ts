@@ -94,13 +94,6 @@ export function formatValue(value: string, linkFormat: 'wikilink' | 'markdown' =
 }
 
 /**
- * Format a relation value using the schema's configured link format.
- */
-export function formatRelationValue(value: string, schema: LoadedSchema): string {
-  return formatValue(value, schema.config.linkFormat);
-}
-
-/**
  * Check if a filter condition matches a value.
  */
 function matchesCondition(value: unknown, condition: FilterCondition): boolean {
