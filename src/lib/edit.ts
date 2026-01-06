@@ -16,6 +16,7 @@ import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
 import { queryByType, formatValue } from './vault.js';
 import {
   promptSelection,
+  promptMultiSelect,
   promptInput,
   promptConfirm,
   printSuccess,
@@ -339,6 +340,22 @@ async function promptFieldEdit(
       if (!field.options || field.options.length === 0) return currentValue;
       const selectOptions = field.options;
       
+      // Multi-select mode
+      if (field.multiple) {
+        // Convert current value to array for display
+        const currentArr = Array.isArray(currentValue) ? currentValue : 
+          (currentValue ? [String(currentValue)] : []);
+        console.log(`Current ${fieldName}: ${currentArr.length > 0 ? currentArr.join(', ') : '(none)'}`);
+        
+        const selected = await promptMultiSelect(`New ${fieldName}:`, selectOptions);
+        if (selected === null) {
+          throw new UserCancelledError();
+        }
+        // Return current value if nothing selected (keep current)
+        return selected.length > 0 ? selected : currentValue;
+      }
+      
+      // Single-select mode
       // Add a "keep current" option at the top
       const keepLabel = '(keep current)';
       const options = [keepLabel, ...selectOptions];

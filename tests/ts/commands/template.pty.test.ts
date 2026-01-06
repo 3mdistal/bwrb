@@ -134,6 +134,10 @@ describePty('template command PTY tests', () => {
           await proc.waitFor('priority', 5000);
           proc.write('1'); // Select (skip)
 
+          // Wait for labels prompt (multi-select) and skip
+          await proc.waitFor('labels', 5000);
+          proc.write('\r'); // Just press Enter to skip (no selections)
+
           // Force prompt for fields
           await proc.waitFor('Force prompting', 5000);
           proc.write('n');

@@ -81,7 +81,24 @@ export function validateFrontmatter(
     // Validate select fields with options
     if (hasValue && field.options && field.options.length > 0) {
       const validOptions = field.options;
-      if (!validOptions.includes(String(value))) {
+      
+      // Handle multi-select (array values)
+      if (field.multiple && Array.isArray(value)) {
+        for (const item of value) {
+          if (!validOptions.includes(String(item))) {
+            const suggestion = suggestEnumValue(String(item), validOptions);
+            errors.push({
+              type: 'invalid_enum_value',
+              field: fieldName,
+              value: item,
+              message: `Invalid value for ${fieldName}: "${item}"`,
+              expected: validOptions,
+              ...(suggestion && { suggestion: `Did you mean '${suggestion}'?` }),
+            });
+          }
+        }
+      } else if (!Array.isArray(value) && !validOptions.includes(String(value))) {
+        // Single-select validation
         const suggestion = suggestEnumValue(String(value), validOptions);
         errors.push({
           type: 'invalid_enum_value',

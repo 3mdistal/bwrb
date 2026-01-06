@@ -6,6 +6,13 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Added
 
+- **Multi-select support for select fields** (#166)
+  - Select fields can now allow multiple selections via `multiple: true`
+  - Interactive prompt uses checkboxes (Space to select, Enter to confirm)
+  - Values stored as YAML arrays: `tags: [urgent, blocked]`
+  - Validation ensures all selected values are valid options
+  - Example: `{ "tags": { "prompt": "select", "options": ["urgent", "blocked", "review"], "multiple": true } }`
+
 - **New `boolean` field primitive** (#163)
   - Fields can now use `prompt: "boolean"` for yes/no values
   - Uses Y/n confirmation prompt during note creation
