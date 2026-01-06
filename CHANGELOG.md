@@ -11,6 +11,11 @@ All notable changes to Bowerbird are documented in this file.
   - Update your schemas: `{ "prompt": "input" }` → `{ "prompt": "text" }`
   - CLI flag updated: `--type input` → `--type text`
 
+- **Renamed `dynamic` prompt type to `relation`** (#161)
+  - The prompt type `dynamic` has been renamed to `relation` (industry standard term)
+  - Update your schemas: `{ "prompt": "dynamic" }` → `{ "prompt": "relation" }`
+  - CLI flag updated: `--type dynamic` → `--type relation`
+
 ### Fixed
 
 - **Audit similar files suggestions no longer match unrelated files**

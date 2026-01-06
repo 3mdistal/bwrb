@@ -36,14 +36,14 @@ const createTestVault = () => {
         output_dir: 'drafts',
         fields: {
           research: {
-            prompt: 'dynamic',
+            prompt: 'relation',
             source: 'research',
             format: 'wikilink',
             multiple: true,
             owned: true,
           },
           related: {
-            prompt: 'dynamic',
+            prompt: 'relation',
             source: 'research',
             format: 'wikilink',
             multiple: true,
@@ -60,7 +60,7 @@ const createTestVault = () => {
         output_dir: 'projects',
         fields: {
           notes: {
-            prompt: 'dynamic',
+            prompt: 'relation',
             source: 'research',
             format: 'wikilink',
             multiple: true,

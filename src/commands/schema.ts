@@ -261,7 +261,7 @@ async function promptFieldDefinition(
     1: 'select',
     2: 'date',
     3: 'multi-input',
-    4: 'dynamic',
+    4: 'relation',
     5: 'value',
   };
   const promptType = promptTypeMap[promptTypeIndex];
@@ -290,7 +290,7 @@ async function promptFieldDefinition(
     }
     
     // For dynamic, get source type
-    if (promptType === 'dynamic') {
+    if (promptType === 'relation') {
       const typeNames = getTypeNames(schema).filter(t => t !== 'meta');
       if (typeNames.length === 0) {
         printError('No types defined in schema yet.');
@@ -537,9 +537,9 @@ function buildFieldFromOptions(
     field.value = options.value;
   } else if (promptType) {
     // Validate prompt type
-    const validPromptTypes = ['text', 'select', 'date', 'multi-input', 'dynamic'];
+    const validPromptTypes = ['text', 'select', 'date', 'multi-input', 'relation'];
     if (!validPromptTypes.includes(promptType)) {
-      throw new Error(`Invalid prompt type "${promptType}". Valid types: text, select, date, multi-input, dynamic, fixed`);
+      throw new Error(`Invalid prompt type "${promptType}". Valid types: text, select, date, multi-input, relation, fixed`);
     }
     
     field.prompt = promptType as Field['prompt'];
@@ -556,7 +556,7 @@ function buildFieldFromOptions(
     }
     
     // Handle dynamic type
-    if (promptType === 'dynamic') {
+    if (promptType === 'relation') {
       if (!options.source) {
         throw new Error('--source is required for dynamic type');
       }
@@ -638,7 +638,7 @@ async function promptSingleFieldDefinition(
     1: 'select',
     2: 'date',
     3: 'multi-input',
-    4: 'dynamic',
+    4: 'relation',
     5: 'value',
   };
   const promptType = promptTypeMap[promptTypeIndex];
@@ -666,7 +666,7 @@ async function promptSingleFieldDefinition(
     }
     
     // For dynamic, get source type
-    if (promptType === 'dynamic') {
+    if (promptType === 'relation') {
       const typeNames = getTypeNames(schema).filter(t => t !== 'meta');
       if (typeNames.length === 0) {
         throw new Error('No types defined in schema yet.');
@@ -1927,12 +1927,12 @@ function printFieldDetails(
   }
 
   // Show format for dynamic fields
-  if (field.prompt === 'dynamic' && field.format) {
+  if (field.prompt === 'relation' && field.format) {
     line += chalk.gray(` format=${field.format}`);
   }
 
   // Show filter summary for dynamic fields
-  if (field.prompt === 'dynamic' && field.filter) {
+  if (field.prompt === 'relation' && field.filter) {
     const filterKeys = Object.keys(field.filter);
     if (filterKeys.length > 0) {
       line += chalk.gray(` filter=[${filterKeys.join(',')}]`);
@@ -1972,8 +1972,8 @@ function getFieldType(field: Field): string {
       return chalk.blue('text');
     case 'date':
       return chalk.blue('date');
-    case 'dynamic':
-      return field.source ? chalk.blue(`dynamic:${field.source}`) : chalk.blue('dynamic');
+    case 'relation':
+      return field.source ? chalk.blue(`dynamic:${field.source}`) : chalk.blue('relation');
     default:
       return chalk.gray('auto');
   }
@@ -2412,7 +2412,7 @@ newCommand
             throw new Error(`Invalid field definition: "${fieldDef}". Use "name:type" format.`);
           }
           // Map simple type strings to field definitions
-          const promptType = fieldType as 'text' | 'select' | 'date' | 'dynamic';
+          const promptType = fieldType as 'text' | 'select' | 'date' | 'relation';
           fields[fieldName] = { prompt: promptType };
         }
       } else if (!jsonMode) {
@@ -2897,7 +2897,7 @@ editCommand
         }
 
         if (choice === 'Change prompt type') {
-          const promptOptions = ['text', 'select', 'multi-input', 'date', 'dynamic'];
+          const promptOptions = ['text', 'select', 'multi-input', 'date', 'relation'];
           const newPrompt = await promptSelection('Prompt type', promptOptions);
           const fieldEntry = rawTypeEntry.fields?.[fieldName];
           if (newPrompt !== null && fieldEntry) {

@@ -387,7 +387,7 @@ describe('schema', () => {
                 fields: {
                   title: { prompt: 'text' },
                   parent: {
-                    prompt: 'dynamic',
+                    prompt: 'relation',
                     source: 'task',
                     format: 'quoted-wikilink',
                     required: true,

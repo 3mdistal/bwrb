@@ -185,7 +185,7 @@ Query notes of a specific type to populate field options:
 ```json
 {
   "milestone": {
-    "prompt": "dynamic",
+    "prompt": "relation",
     "source": "objective/milestone",
     "filter": "status != 'settled' && status != 'ghosted'",
     "format": "quoted-wikilink"

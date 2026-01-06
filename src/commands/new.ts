@@ -995,7 +995,7 @@ async function promptField(
       return selected;
     }
 
-    case 'dynamic': {
+    case 'relation': {
       if (!field.source) return field.default;
       const dynamicOptions = await queryByType(schema, vaultDir, field.source, field.filter);
       if (dynamicOptions.length === 0) {

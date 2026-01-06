@@ -122,8 +122,8 @@
         },
         "prompt": {
           "type": "string",
-          "enum": ["text", "select", "dynamic", "multi-input"],
-          "description": "Type of prompt: text (free text), select (from enum), dynamic (from vault query), multi-input (comma-separated list)"
+          "enum": ["text", "select", "relation", "multi-input"],
+          "description": "Type of prompt: text (free text), select (from enum), relation (from vault query), multi-input (comma-separated list)"
         },
         "label": {
           "type": "string",

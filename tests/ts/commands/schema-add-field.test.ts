@@ -115,19 +115,19 @@ describe('schema add-field command', () => {
 
     it('should add a dynamic field with source and format', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'task', 'project', '--type', 'dynamic', '--source', 'project', '--format', 'wikilink', '--output', 'json'],
+        ['schema', 'add-field', 'task', 'project', '--type', 'relation', '--source', 'project', '--format', 'wikilink', '--output', 'json'],
         tempVaultDir
       );
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
-      expect(json.data.definition.prompt).toBe('dynamic');
+      expect(json.data.definition.prompt).toBe('relation');
       expect(json.data.definition.source).toBe('project');
       expect(json.data.definition.format).toBe('wikilink');
 
       const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
       expect(schema.types.task.fields.project).toEqual({
-        prompt: 'dynamic',
+        prompt: 'relation',
         source: 'project',
         format: 'wikilink',
       });
@@ -295,7 +295,7 @@ describe('schema add-field command', () => {
 
     it('should reject dynamic without --source', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'parent', '--type', 'dynamic', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'parent', '--type', 'relation', '--output', 'json'],
         tempVaultDir
       );
 
@@ -307,7 +307,7 @@ describe('schema add-field command', () => {
 
     it('should reject dynamic with non-existent source type', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'parent', '--type', 'dynamic', '--source', 'nonexistent', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'parent', '--type', 'relation', '--source', 'nonexistent', '--output', 'json'],
         tempVaultDir
       );
 
@@ -331,7 +331,7 @@ describe('schema add-field command', () => {
 
     it('should reject invalid format value', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'parent', '--type', 'dynamic', '--source', 'note', '--format', 'invalid', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'parent', '--type', 'relation', '--source', 'note', '--format', 'invalid', '--output', 'json'],
         tempVaultDir
       );
 
@@ -519,7 +519,7 @@ describe('schema add-field command', () => {
     it('should detect enum value confusion and provide helpful message', async () => {
       // 'high' is a value in the 'priority' enum, not a type name
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'urgency', '--type', 'dynamic', '--source', 'high', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'urgency', '--type', 'relation', '--source', 'high', '--output', 'json'],
         tempVaultDir
       );
 
@@ -534,7 +534,7 @@ describe('schema add-field command', () => {
     it('should detect path format and suggest using type name directly', async () => {
       // note/task uses path format; task is a valid type
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'related', '--type', 'dynamic', '--source', 'note/task', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'related', '--type', 'relation', '--source', 'note/task', '--output', 'json'],
         tempVaultDir
       );
 
@@ -547,7 +547,7 @@ describe('schema add-field command', () => {
 
     it('should detect path format when neither segment is a valid type', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'related', '--type', 'dynamic', '--source', 'foo/bar', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'related', '--type', 'relation', '--source', 'foo/bar', '--output', 'json'],
         tempVaultDir
       );
 
@@ -561,7 +561,7 @@ describe('schema add-field command', () => {
     it('should suggest similar type names for typos', async () => {
       // 'projec' is close to 'project'
       const result = await runCLI(
-        ['schema', 'add-field', 'note', 'parent-project', '--type', 'dynamic', '--source', 'projec', '--output', 'json'],
+        ['schema', 'add-field', 'note', 'parent-project', '--type', 'relation', '--source', 'projec', '--output', 'json'],
         tempVaultDir
       );
 
@@ -574,7 +574,7 @@ describe('schema add-field command', () => {
 
     it('should list available types when no close match exists', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'related', '--type', 'dynamic', '--source', 'completely-unknown', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'related', '--type', 'relation', '--source', 'completely-unknown', '--output', 'json'],
         tempVaultDir
       );
 
@@ -590,7 +590,7 @@ describe('schema add-field command', () => {
 
     it('should still accept valid source types', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'related-task', '--type', 'dynamic', '--source', 'task', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'related-task', '--type', 'relation', '--source', 'task', '--output', 'json'],
         tempVaultDir
       );
 

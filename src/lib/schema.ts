@@ -145,7 +145,7 @@ export function resolveSchema(schema: Schema): LoadedSchema {
       }
       
       type.fields['parent'] = {
-        prompt: 'dynamic',
+        prompt: 'relation',
         source,
         format: 'wikilink',
         required: false,

@@ -553,7 +553,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
             fields: {
               type: { value: 'item' },
               // Reference a type that doesn't exist - will return no results
-              ref: { prompt: 'dynamic', source: 'nonexistent_type', format: 'wikilink' },
+              ref: { prompt: 'relation', source: 'nonexistent_type', format: 'wikilink' },
             },
             field_order: ['type', 'ref'],
           },

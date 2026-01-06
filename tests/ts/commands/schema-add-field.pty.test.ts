@@ -233,7 +233,7 @@ describePty('bwrb schema add-field PTY tests', () => {
           const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields['parent-project']).toMatchObject({
-            prompt: 'dynamic',
+            prompt: 'relation',
             source: 'project',
             format: 'wikilink',
             required: false,
@@ -539,7 +539,7 @@ describePty('bwrb schema add-field PTY tests', () => {
           const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.note.fields.parent).toMatchObject({
-            prompt: 'dynamic',
+            prompt: 'relation',
             source: 'note',
           });
         },

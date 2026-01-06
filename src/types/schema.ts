@@ -14,16 +14,16 @@ export const FilterConditionSchema = z.object({
 
 /**
  * Field definition for type frontmatter.
- * Fields can be static values, prompted inputs, or dynamic queries.
+ * Fields can be static values, prompted inputs, or relation queries.
  */
 export const FieldSchema = z.object({
   // Prompt type (how the field is collected)
-  prompt: z.enum(['text', 'select', 'multi-input', 'date', 'dynamic']).optional(),
+  prompt: z.enum(['text', 'select', 'multi-input', 'date', 'relation']).optional(),
   // Static value (no prompting)
   value: z.string().optional(),
   // Enum reference for select prompts
   enum: z.string().optional(),
-  // Type name(s) for dynamic prompts (e.g., "milestone", "objective")
+  // Type name(s) for relation prompts (e.g., "milestone", "objective")
   // When specified, queryByType() fetches notes of this type (and descendants)
   // Can be an array to allow multiple valid types (e.g., for recursive types with extends)
   source: z.union([z.string(), z.array(z.string())]).optional(),

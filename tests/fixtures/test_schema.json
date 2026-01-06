@@ -24,7 +24,7 @@
           "default": "raw"
         },
         "milestone": {
-          "prompt": "dynamic",
+          "prompt": "relation",
           "source": "milestone",
           "filter": { "status": { "not_in": ["settled"] } },
           "format": "quoted-wikilink"

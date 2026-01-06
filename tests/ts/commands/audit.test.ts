@@ -1446,12 +1446,12 @@ unknownField: should warn
           extends: 'objective',
           fields: {
             milestone: {
-              prompt: 'dynamic',
+              prompt: 'relation',
               source: 'milestone',  // Type-based source
               format: 'wikilink',
             },
             parent: {
-              prompt: 'dynamic',
+              prompt: 'relation',
               source: 'objective',  // Accepts objective or any descendant
               format: 'wikilink',
             },
@@ -1640,7 +1640,7 @@ status: raw
             fields: {
               ...V2_SCHEMA.types.task.fields,
               milestones: {
-                prompt: 'dynamic',
+                prompt: 'relation',
                 source: 'milestone',
                 format: 'wikilink',
                 multiple: true,

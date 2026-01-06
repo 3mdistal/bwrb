@@ -735,7 +735,7 @@ async function promptFieldDefault(
       return selected;
     }
 
-    case 'dynamic': {
+    case 'relation': {
       if (!field.source) return undefined;
       const dynamicOptions = await queryByType(schema, vaultDir, field.source, field.filter);
       if (dynamicOptions.length === 0) return undefined;
@@ -1191,7 +1191,7 @@ async function promptFieldDefaultEdit(
       return selected;
     }
 
-    case 'dynamic': {
+    case 'relation': {
       if (!field.source) return currentValue;
       const dynamicOptions = await queryByType(schema, vaultDir, field.source, field.filter);
       if (dynamicOptions.length === 0) return currentValue;

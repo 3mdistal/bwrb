@@ -46,7 +46,7 @@ export const TEST_SCHEMA = {
           required: true,
         },
         milestone: {
-          prompt: 'dynamic',
+          prompt: 'relation',
           source: 'milestone',
           filter: { status: { not_in: ['settled'] } },
           format: 'quoted-wikilink',
@@ -105,7 +105,7 @@ export const TEST_SCHEMA = {
           required: true,
         },
         research: {
-          prompt: 'dynamic',
+          prompt: 'relation',
           source: 'research',
           owned: true,
           format: 'quoted-wikilink',

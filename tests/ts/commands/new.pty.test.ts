@@ -46,7 +46,7 @@ const FULL_SCHEMA = {
         type: { value: 'task' },
         status: { prompt: 'select', enum: 'status', default: 'raw' },
         milestone: {
-          prompt: 'dynamic',
+          prompt: 'relation',
           source: 'milestone',
           filter: { status: { not_in: ['settled'] } },
           format: 'quoted-wikilink',

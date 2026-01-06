@@ -72,7 +72,7 @@ Child types inherit all fields from ancestors:
     "extends": "objective",
     "fields": {
       "status": { "default": "inbox" },  // Override default only
-      "assignee": { "prompt": "dynamic", "source": "person" }
+      "assignee": { "prompt": "relation", "source": "person" }
     }
   }
 }
@@ -154,7 +154,7 @@ Any wikilink field can be a context relationship:
     "extends": "objective",
     "fields": {
       "milestone": {
-        "prompt": "dynamic",
+        "prompt": "relation",
         "source": "milestone",
         "format": "wikilink",
         "required": false
@@ -215,14 +215,14 @@ The **parent** declares ownership of its children using `owned: true` on a conte
     "extends": "meta",
     "fields": {
       "research": {
-        "prompt": "dynamic",
+        "prompt": "relation",
         "source": "research",
         "format": "wikilink",
         "multiple": true,
         "owned": true
       },
       "related-research": {
-        "prompt": "dynamic",
+        "prompt": "relation",
         "source": "research", 
         "format": "wikilink",
         "multiple": true,
@@ -349,7 +349,7 @@ The parent field for recursive types. Note that for recursion, the **child** dec
     "recursive": true,
     "fields": {
       "parent": {
-        "prompt": "dynamic",
+        "prompt": "relation",
         "source": "task",      // Same type
         "format": "wikilink",
         "required": false
@@ -508,7 +508,7 @@ goal       Ship v1.0            raw
       "extends": "objective",
       "fields": {
         "goal": {
-          "prompt": "dynamic",
+          "prompt": "relation",
           "source": "goal",
           "format": "wikilink"
         }
@@ -519,7 +519,7 @@ goal       Ship v1.0            raw
       "extends": "objective",
       "fields": {
         "project": {
-          "prompt": "dynamic",
+          "prompt": "relation",
           "source": "project",
           "format": "wikilink"
         }
@@ -532,12 +532,12 @@ goal       Ship v1.0            raw
       "fields": {
         "status": { "default": "inbox" },
         "milestone": {
-          "prompt": "dynamic",
+          "prompt": "relation",
           "source": "milestone",
           "format": "wikilink"
         },
         "subtasks": {
-          "prompt": "dynamic",
+          "prompt": "relation",
           "source": "task",
           "format": "wikilink",
           "multiple": true,
@@ -550,14 +550,14 @@ goal       Ship v1.0            raw
       "fields": {
         "draft-status": { "prompt": "select", "enum": "draft-status", "default": "idea" },
         "chapters": {
-          "prompt": "dynamic",
+          "prompt": "relation",
           "source": "chapter",
           "format": "wikilink",
           "multiple": true,
           "owned": true
         },
         "research": {
-          "prompt": "dynamic",
+          "prompt": "relation",
           "source": "research",
           "format": "wikilink",
           "multiple": true,
@@ -571,14 +571,14 @@ goal       Ship v1.0            raw
       "recursive": true,
       "fields": {
         "scenes": {
-          "prompt": "dynamic",
+          "prompt": "relation",
           "source": "scene",
           "format": "wikilink",
           "multiple": true,
           "owned": true
         },
         "subchapters": {
-          "prompt": "dynamic",
+          "prompt": "relation",
           "source": "chapter",
           "format": "wikilink",
           "multiple": true,
@@ -592,7 +592,7 @@ goal       Ship v1.0            raw
       "recursive": true,
       "fields": {
         "subscenes": {
-          "prompt": "dynamic",
+          "prompt": "relation",
           "source": "scene",
           "format": "wikilink",
           "multiple": true,
