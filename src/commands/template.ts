@@ -747,7 +747,7 @@ async function promptFieldDefault(
       return formatValue(selected, field.format);
     }
 
-    case 'multi-input': {
+    case 'list': {
       console.log(`Default ${label} (comma-separated values, or Enter to skip):`);
       const values = await promptMultiInput('');
       if (values === null) throw new UserCancelledError();
@@ -1204,7 +1204,7 @@ async function promptFieldDefaultEdit(
       return formatValue(selected, field.format);
     }
 
-    case 'multi-input': {
+    case 'list': {
       console.log(`New ${label} (comma-separated, Enter to keep, "clear" to remove):`);
       const input = await promptInput('');
       if (input === null) throw new UserCancelledError();

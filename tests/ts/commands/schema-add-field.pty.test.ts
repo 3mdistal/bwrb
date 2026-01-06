@@ -195,7 +195,7 @@ describePty('bwrb schema add-field PTY tests', () => {
           const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.project.fields.tags).toMatchObject({
-            prompt: 'multi-input',
+            prompt: 'list',
             required: false,
           });
         },

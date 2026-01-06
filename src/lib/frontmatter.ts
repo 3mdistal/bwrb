@@ -133,7 +133,7 @@ export function generateBodySections(sections: BodySection[]): string {
 }
 
 /**
- * Generate body content with prompted values for multi-input sections.
+ * Generate body content with prompted values for list sections.
  */
 export function generateBodyWithContent(
   sections: BodySection[],

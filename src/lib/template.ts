@@ -536,7 +536,7 @@ function validateFieldValue(
   }
   
   // Validate prompt type compatibility
-  if (field.prompt === 'multi-input' && !Array.isArray(value)) {
+  if (field.prompt === 'list' && !Array.isArray(value)) {
     issues.push({
       severity: 'warning',
       message: `Field '${fieldName}' expects an array but got ${typeof value}`,

@@ -101,16 +101,16 @@ describe('schema add-field command', () => {
 
     it('should add a multi-input field', async () => {
       const result = await runCLI(
-        ['schema', 'add-field', 'project', 'tags', '--type', 'multi-input', '--output', 'json'],
+        ['schema', 'add-field', 'project', 'tags', '--type', 'list', '--output', 'json'],
         tempVaultDir
       );
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
-      expect(json.data.definition.prompt).toBe('multi-input');
+      expect(json.data.definition.prompt).toBe('list');
 
       const schema = JSON.parse(await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8'));
-      expect(schema.types.project.fields.tags).toEqual({ prompt: 'multi-input' });
+      expect(schema.types.project.fields.tags).toEqual({ prompt: 'list' });
     });
 
     it('should add a dynamic field with source and format', async () => {

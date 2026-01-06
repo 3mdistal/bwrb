@@ -208,7 +208,7 @@ Define document structure after frontmatter:
       "title": "Steps",
       "level": 2,
       "content_type": "checkboxes",
-      "prompt": "multi-input",
+      "prompt": "list",
       "prompt_label": "Steps (comma-separated)"
     },
     {

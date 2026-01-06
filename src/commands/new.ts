@@ -751,7 +751,7 @@ async function buildNoteContent(
   // If no template, prompt for schema body_sections from scratch
   let body = '';
   const bodySections = typeDef.bodySections;
-  const promptableSections = bodySections?.filter(s => s.prompt === 'multi-input') ?? [];
+  const promptableSections = bodySections?.filter(s => s.prompt === 'list') ?? [];
   
   if (template?.body) {
     // Start with processed template body
@@ -1043,7 +1043,7 @@ async function promptField(
       return value;
     }
 
-    case 'multi-input': {
+    case 'list': {
       const label = field.label ?? fieldName;
       const items = await promptMultiInput(label);
       if (items === null) {
@@ -1098,7 +1098,7 @@ async function promptBodySections(
   const content = new Map<string, string[]>();
 
   for (const section of sections) {
-    if (section.prompt === 'multi-input' && section.prompt_label) {
+    if (section.prompt === 'list' && section.prompt_label) {
       // If we have a template body, extract existing items and show them
       if (templateBody) {
         const existingItems = extractSectionItems(

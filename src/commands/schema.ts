@@ -248,8 +248,8 @@ async function promptFieldDefinition(
     'text',
     'select (enum)',
     'date',
-    'multi-input (list)',
-    'dynamic (from other notes)',
+    'list (multi-value)',
+    'relation (from other notes)',
     'fixed value',
   ];
   const promptTypeResult = await promptSelection('Prompt type', promptTypes);
@@ -260,7 +260,7 @@ async function promptFieldDefinition(
     0: 'text',
     1: 'select',
     2: 'date',
-    3: 'multi-input',
+    3: 'list',
     4: 'relation',
     5: 'value',
   };
@@ -537,9 +537,9 @@ function buildFieldFromOptions(
     field.value = options.value;
   } else if (promptType) {
     // Validate prompt type
-    const validPromptTypes = ['text', 'select', 'date', 'multi-input', 'relation'];
+    const validPromptTypes = ['text', 'select', 'date', 'list', 'relation'];
     if (!validPromptTypes.includes(promptType)) {
-      throw new Error(`Invalid prompt type "${promptType}". Valid types: text, select, date, multi-input, relation, fixed`);
+      throw new Error(`Invalid prompt type "${promptType}". Valid types: text, select, date, list, relation, fixed`);
     }
     
     field.prompt = promptType as Field['prompt'];
@@ -625,8 +625,8 @@ async function promptSingleFieldDefinition(
     'text',
     'select (enum)',
     'date',
-    'multi-input (list)',
-    'dynamic (from other notes)',
+    'list (multi-value)',
+    'relation (from other notes)',
     'fixed value',
   ];
   const promptTypeResult = await promptSelection('Prompt type', promptTypes);
@@ -637,7 +637,7 @@ async function promptSingleFieldDefinition(
     0: 'text',
     1: 'select',
     2: 'date',
-    3: 'multi-input',
+    3: 'list',
     4: 'relation',
     5: 'value',
   };
@@ -665,7 +665,7 @@ async function promptSingleFieldDefinition(
       field.enum = enumResult;
     }
     
-    // For dynamic, get source type
+    // For relation, get source type
     if (promptType === 'relation') {
       const typeNames = getTypeNames(schema).filter(t => t !== 'meta');
       if (typeNames.length === 0) {
@@ -705,7 +705,7 @@ schemaCommand
   .command('add-field <type-name> [field-name]')
   .description('Add a field to an existing type')
   .option('-o, --output <format>', 'Output format: text (default) or json')
-  .option('--type <prompt-type>', 'Prompt type: input, select, date, multi-input, dynamic, fixed')
+  .option('--type <prompt-type>', 'Prompt type: input, select, date, list, dynamic, fixed')
   .option('--enum <name>', 'Enum name (for select type)')
   .option('--source <type>', 'Source type (for dynamic type)')
   .option('--value <value>', 'Fixed value (for fixed type)')
@@ -720,7 +720,7 @@ Examples:
   bwrb schema add-field book author --type dynamic --source person --format wikilink -o json
   bwrb schema add-field book edition --type fixed --value "1st" -o json
   bwrb schema add-field book published --type date -o json
-  bwrb schema add-field book tags --type multi-input -o json
+  bwrb schema add-field book tags --type list -o json
 
   # Interactive mode (prompts for field definition):
   bwrb schema add-field book title`)
@@ -1966,14 +1966,14 @@ function getFieldType(field: Field): string {
   switch (field.prompt) {
     case 'select':
       return field.enum ? chalk.blue(`enum:${field.enum}`) : chalk.blue('select');
-    case 'multi-input':
-      return chalk.blue('multi-input');
+    case 'list':
+      return chalk.blue('list');
     case 'text':
       return chalk.blue('text');
     case 'date':
       return chalk.blue('date');
     case 'relation':
-      return field.source ? chalk.blue(`dynamic:${field.source}`) : chalk.blue('relation');
+      return field.source ? chalk.blue(`relation:${field.source}`) : chalk.blue('relation');
     default:
       return chalk.gray('auto');
   }
@@ -2897,7 +2897,7 @@ editCommand
         }
 
         if (choice === 'Change prompt type') {
-          const promptOptions = ['text', 'select', 'multi-input', 'date', 'relation'];
+          const promptOptions = ['text', 'select', 'list', 'date', 'relation'];
           const newPrompt = await promptSelection('Prompt type', promptOptions);
           const fieldEntry = rawTypeEntry.fields?.[fieldName];
           if (newPrompt !== null && fieldEntry) {

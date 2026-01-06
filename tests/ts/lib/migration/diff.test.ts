@@ -30,7 +30,7 @@ describe("diffSchemas", () => {
       note: {
         output_dir: "Notes",
         fields: {
-          tags: { prompt: "multi-input" },
+          tags: { prompt: "list" },
         },
       },
     },

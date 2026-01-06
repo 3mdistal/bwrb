@@ -402,7 +402,7 @@ describePty('bwrb schema add-type PTY tests', () => {
           const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
           const schema = JSON.parse(schemaContent);
           expect(schema.types.task.fields.tags).toMatchObject({
-            prompt: 'multi-input',
+            prompt: 'list',
             required: false,
           });
         },

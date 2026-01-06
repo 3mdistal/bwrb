@@ -54,14 +54,14 @@ export const TEST_SCHEMA = {
         'creation-date': { value: '$NOW' },
         deadline: { prompt: 'text', label: 'Deadline (YYYY-MM-DD)' },
         tags: {
-          prompt: 'multi-input',
+          prompt: 'list',
           list_format: 'yaml-array',
           default: [],
         },
       },
       field_order: ['type', 'status', 'milestone', 'creation-date', 'deadline', 'tags'],
       body_sections: [
-        { title: 'Steps', level: 2, content_type: 'checkboxes', prompt: 'multi-input', prompt_label: 'Steps' },
+        { title: 'Steps', level: 2, content_type: 'checkboxes', prompt: 'list', prompt_label: 'Steps' },
         { title: 'Notes', level: 2, content_type: 'paragraphs' },
       ],
     },

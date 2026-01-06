@@ -16,6 +16,12 @@ All notable changes to Bowerbird are documented in this file.
   - Update your schemas: `{ "prompt": "dynamic" }` → `{ "prompt": "relation" }`
   - CLI flag updated: `--type dynamic` → `--type relation`
 
+- **Renamed `multi-input` prompt type to `list`** (#162)
+  - The prompt type `multi-input` has been renamed to `list` to describe the value type
+  - Update your schemas: `{ "prompt": "multi-input" }` → `{ "prompt": "list" }`
+  - Body sections also updated: `{ "prompt": "multi-input" }` → `{ "prompt": "list" }`
+  - CLI flag updated: `--type multi-input` → `--type list`
+
 ### Fixed
 
 - **Audit similar files suggestions no longer match unrelated files**

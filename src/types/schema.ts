@@ -18,7 +18,7 @@ export const FilterConditionSchema = z.object({
  */
 export const FieldSchema = z.object({
   // Prompt type (how the field is collected)
-  prompt: z.enum(['text', 'select', 'multi-input', 'date', 'relation']).optional(),
+  prompt: z.enum(['text', 'select', 'list', 'date', 'relation']).optional(),
   // Static value (no prompting)
   value: z.string().optional(),
   // Enum reference for select prompts
@@ -52,7 +52,7 @@ export const BodySectionSchema: z.ZodType<BodySection, z.ZodTypeDef, BodySection
     title: z.string(),
     level: z.number().optional().default(2),
     content_type: z.enum(['none', 'paragraphs', 'bullets', 'checkboxes']).optional(),
-    prompt: z.enum(['none', 'multi-input']).optional(),
+    prompt: z.enum(['none', 'list']).optional(),
     prompt_label: z.string().optional(),
     children: z.array(BodySectionSchema).optional(),
   })
@@ -138,7 +138,7 @@ export type BodySection = {
   title: string;
   level?: number | undefined;
   content_type?: 'none' | 'paragraphs' | 'bullets' | 'checkboxes' | undefined;
-  prompt?: 'none' | 'multi-input' | undefined;
+  prompt?: 'none' | 'list' | undefined;
   prompt_label?: string | undefined;
   children?: BodySection[] | undefined;
 };
@@ -146,7 +146,7 @@ export type BodySectionInput = {
   title: string;
   level?: number | undefined;
   content_type?: 'none' | 'paragraphs' | 'bullets' | 'checkboxes' | undefined;
-  prompt?: 'none' | 'multi-input' | undefined;
+  prompt?: 'none' | 'list' | undefined;
   prompt_label?: string | undefined;
   children?: BodySectionInput[] | undefined;
 };

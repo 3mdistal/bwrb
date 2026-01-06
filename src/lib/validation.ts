@@ -172,8 +172,8 @@ function validateFieldType(
   value: unknown,
   field: Field
 ): ValidationError | null {
-  // Handle array fields (multi-input)
-  if (field.prompt === 'multi-input' || field.list_format) {
+  // Handle list fields (multi-value arrays or comma-separated strings)
+  if (field.prompt === 'list' || field.list_format) {
     // Accept both arrays and strings for list fields
     if (!Array.isArray(value) && typeof value !== 'string') {
       return {

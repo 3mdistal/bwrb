@@ -122,8 +122,8 @@
         },
         "prompt": {
           "type": "string",
-          "enum": ["text", "select", "relation", "multi-input"],
-          "description": "Type of prompt: text (free text), select (from enum), relation (from vault query), multi-input (comma-separated list)"
+          "enum": ["text", "select", "relation", "list", "date"],
+          "description": "Type of prompt: text (free text), select (from enum), relation (from vault query), list (comma-separated list), date (date picker)"
         },
         "label": {
           "type": "string",
@@ -153,7 +153,7 @@
         "list_format": {
           "type": "string",
           "enum": ["yaml-array", "comma-separated"],
-          "description": "For multi-input fields, how to format the list"
+          "description": "For list fields, how to format the list"
         }
       }
     },
@@ -181,7 +181,7 @@
         },
         "prompt": {
           "type": "string",
-          "enum": ["multi-input"],
+          "enum": ["list"],
           "description": "If set, prompts user for initial content during creation"
         },
         "prompt_label": {
