@@ -12,6 +12,7 @@ import { auditCommand } from './commands/audit.js';
 import { bulkCommand } from './commands/bulk.js';
 import { templateCommand } from './commands/template.js';
 import { completionCommand } from './commands/completion.js';
+import { configCommand } from './commands/config.js';
 import { handleCompletionRequest } from './lib/completion.js';
 
 const program = new Command();
@@ -56,6 +57,7 @@ if (completionsIndex !== -1) {
   program.addCommand(bulkCommand);
   program.addCommand(templateCommand);
   program.addCommand(completionCommand);
+  program.addCommand(configCommand);
 
   program.parse();
 }

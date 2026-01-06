@@ -280,12 +280,7 @@ async function promptFieldDefinition(
       const sourceResult = await promptSelection('Source type', typeNames);
       if (sourceResult === null) return null;
       field.source = sourceResult;
-      
-      // Ask for format
-      const formatOptions = ['plain', 'wikilink', 'quoted-wikilink'];
-      const formatResult = await promptSelection('Link format', formatOptions);
-      if (formatResult === null) return null;
-      field.format = formatResult as Field['format'];
+      // Note: Link format is now a vault-wide config option (config.link_format)
     }
     
     // Ask if required
@@ -481,7 +476,6 @@ interface AddFieldOptions {
   options?: string;     // for select (comma-separated)
   source?: string;      // for dynamic
   value?: string;       // for fixed value
-  format?: string;      // for dynamic
   required?: boolean;
   default?: string;
 }
@@ -549,15 +543,7 @@ function buildFieldFromOptions(
         throw new Error(resolution.error);
       }
       field.source = resolution.typeName;
-      
-      // Format is optional, default to plain
-      if (options.format) {
-        const validFormats = ['plain', 'wikilink', 'quoted-wikilink'];
-        if (!validFormats.includes(options.format)) {
-          throw new Error(`Invalid format "${options.format}". Valid formats: plain, wikilink, quoted-wikilink`);
-        }
-        field.format = options.format as Field['format'];
-      }
+      // Note: Link format is now configured vault-wide via config.link_format
     }
     
     // Handle required flag
@@ -659,12 +645,7 @@ async function promptSingleFieldDefinition(
       const sourceResult = await promptSelection('Source type', typeNames);
       if (sourceResult === null) return null;
       field.source = sourceResult;
-      
-      // Ask for format
-      const formatOptions = ['plain', 'wikilink', 'quoted-wikilink'];
-      const formatResult = await promptSelection('Link format', formatOptions);
-      if (formatResult === null) return null;
-      field.format = formatResult as Field['format'];
+      // Note: Link format is now a vault-wide config option (config.link_format)
     }
     
     // Ask if required
@@ -694,7 +675,6 @@ schemaCommand
   .option('--options <values>', 'Options for select type (comma-separated values)')
   .option('--source <type>', 'Source type (for relation type)')
   .option('--value <value>', 'Fixed value (for fixed type)')
-  .option('--format <format>', 'Link format: plain, wikilink, quoted-wikilink (for relation)')
   .option('--required', 'Mark field as required')
   .option('--default <value>', 'Default value')
   .addHelpText('after', `
@@ -702,7 +682,7 @@ Examples:
   # Non-interactive field creation (requires --type flag):
   bwrb schema add-field book title --type text --required -o json
   bwrb schema add-field book status --type select --options "draft,published,archived" -o json
-  bwrb schema add-field book author --type relation --source person --format wikilink -o json
+  bwrb schema add-field book author --type relation --source person -o json
   bwrb schema add-field book edition --type fixed --value "1st" -o json
   bwrb schema add-field book published --type date -o json
   bwrb schema add-field book tags --type list -o json
@@ -856,9 +836,6 @@ Examples:
         }
         if (field.source) {
           console.log(`  Source: ${field.source}`);
-        }
-        if (field.format) {
-          console.log(`  Format: ${field.format}`);
         }
         if (field.required) {
           console.log(`  Required: yes`);
@@ -1727,7 +1704,6 @@ function formatFieldForJson(field: Field): Record<string, unknown> {
   if (field.default !== undefined) result.default = field.default;
   if (field.label) result.label = field.label;
   if (field.source) result.source = field.source;
-  if (field.format) result.format = field.format;
   if (field.list_format) result.list_format = field.list_format;
 
   return result;
@@ -1892,11 +1868,6 @@ function printFieldDetails(
   // Show options if applicable
   if (field.options && field.options.length > 0) {
     line += chalk.gray(` (${field.options.slice(0, 5).join(', ')}${field.options.length > 5 ? '...' : ''})`);
-  }
-
-  // Show format for dynamic fields
-  if (field.prompt === 'relation' && field.format) {
-    line += chalk.gray(` format=${field.format}`);
   }
 
   // Show filter summary for dynamic fields

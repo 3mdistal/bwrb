@@ -48,7 +48,7 @@ export interface AuditIssue {
   /** For orphan-file issues: the expected type path inferred from directory location */
   inferredType?: string | undefined;
   /** For format-violation: the expected format */
-  expectedFormat?: 'plain' | 'wikilink' | 'quoted-wikilink' | undefined;
+  expectedFormat?: 'wikilink' | 'markdown' | undefined;
   /** For stale-reference: similar file names that exist */
   similarFiles?: string[] | undefined;
   /** For stale-reference: the target that couldn't be found */
@@ -200,6 +200,19 @@ export function isQuotedWikilink(value: string): boolean {
 }
 
 /**
+ * Check if a value is formatted as a markdown link.
+ * Matches: [Note Name](Note Name.md) or "[Note Name](Note Name.md)"
+ */
+export function isMarkdownLink(value: string): boolean {
+  // Remove quotes if present
+  let v = value;
+  if (v.startsWith('"') && v.endsWith('"')) {
+    v = v.slice(1, -1);
+  }
+  return /^\[.+\]\(.+\.md\)$/.test(v);
+}
+
+/**
  * Extract the target from a wikilink.
  * Returns the target without brackets, heading, or alias.
  */
@@ -243,4 +256,26 @@ export function toQuotedWikilink(value: string): string {
   }
   // Convert plain text to wikilink
   return `[[${value}]]`;
+}
+
+/**
+ * Convert a value to markdown link format.
+ * Extracts the note name from wikilinks if needed.
+ */
+export function toMarkdownLink(value: string): string {
+  // If already a markdown link, return as-is
+  if (isMarkdownLink(value)) {
+    return value;
+  }
+  
+  // Extract name from wikilink if present
+  let name = value;
+  if (isWikilink(value)) {
+    name = extractWikilinkTarget(value) ?? value;
+  } else if (isQuotedWikilink(value)) {
+    name = extractWikilinkTarget(value.slice(1, -1)) ?? value;
+  }
+  
+  // Convert to markdown link format
+  return `[${name}](${name}.md)`;
 }

@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://teenylilthoughts.local/schema.schema.json",
-  "title": "Obsidian Vault Template Schema",
-  "description": "Schema for defining types, frontmatter, and body sections for Obsidian vault templates",
+  "$id": "https://bwrb.dev/schema.schema.json",
+  "title": "Bowerbird Schema",
+  "description": "Schema for defining types, fields, and configuration for markdown vaults",
   "type": "object",
   "required": ["types"],
   "additionalProperties": false,
@@ -11,23 +11,78 @@
       "type": "string",
       "description": "Reference to this JSON Schema for editor support"
     },
-
+    "version": {
+      "type": "integer",
+      "default": 2,
+      "description": "Schema format version (2 = inheritance model)"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "description": "User-controlled schema content version for migrations (semver)"
+    },
+    "config": {
+      "$ref": "#/definitions/config"
+    },
     "types": {
       "type": "object",
-      "description": "Top-level type families (objective, entity, idea, reflection)",
+      "description": "Type definitions with inheritance support",
       "additionalProperties": {
         "$ref": "#/definitions/typeNode"
       }
     },
-    "dynamic_sources": {
-      "type": "object",
-      "description": "Dynamic data sources that query the vault for options",
-      "additionalProperties": {
-        "$ref": "#/definitions/dynamicSource"
-      }
+    "audit": {
+      "$ref": "#/definitions/auditConfig"
     }
   },
   "definitions": {
+    "config": {
+      "type": "object",
+      "description": "Vault-wide configuration options",
+      "additionalProperties": false,
+      "properties": {
+        "link_format": {
+          "type": "string",
+          "enum": ["wikilink", "markdown"],
+          "default": "wikilink",
+          "description": "Link format for relation fields: wikilink (\"[[Note]]\") or markdown (\"[Note](Note.md)\")"
+        },
+        "editor": {
+          "type": "string",
+          "description": "Terminal editor command (defaults to $EDITOR)"
+        },
+        "visual": {
+          "type": "string",
+          "description": "GUI editor command (defaults to $VISUAL)"
+        },
+        "open_with": {
+          "type": "string",
+          "enum": ["editor", "visual", "obsidian"],
+          "default": "visual",
+          "description": "Default behavior for --open flag"
+        },
+        "obsidian_vault": {
+          "type": "string",
+          "description": "Obsidian vault name for URI scheme (auto-detected if not set)"
+        }
+      }
+    },
+    "auditConfig": {
+      "type": "object",
+      "description": "Configuration for the audit command",
+      "additionalProperties": false,
+      "properties": {
+        "ignored_directories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Directories to skip during audit"
+        },
+        "allowed_extra_fields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Extra frontmatter fields that are allowed without warning"
+        }
+      }
+    },
     "typeDefinition": {
       "type": "object",
       "required": ["output_dir", "frontmatter"],
@@ -128,12 +183,22 @@
         },
         "source": {
           "type": "string",
-          "description": "Reference to a dynamic_source for dynamic prompts"
+          "description": "Type name(s) for relation prompts"
         },
-        "format": {
-          "type": "string",
-          "enum": ["wikilink", "quoted-wikilink", "plain"],
-          "description": "How to format the value in frontmatter"
+        "filter": {
+          "type": "object",
+          "description": "Filter conditions for type-based source queries",
+          "additionalProperties": {
+            "$ref": "#/definitions/filterCondition"
+          }
+        },
+        "multiple": {
+          "type": "boolean",
+          "description": "Whether this field can hold multiple values"
+        },
+        "owned": {
+          "type": "boolean",
+          "description": "Whether children referenced by this field are owned (colocate with parent)"
         },
         "default": {
           "type": "string",
@@ -186,24 +251,6 @@
           "description": "Nested subsections",
           "items": {
             "$ref": "#/definitions/bodySection"
-          }
-        }
-      }
-    },
-    "dynamicSource": {
-      "type": "object",
-      "required": ["dir"],
-      "additionalProperties": false,
-      "properties": {
-        "dir": {
-          "type": "string",
-          "description": "Directory to scan for files"
-        },
-        "filter": {
-          "type": "object",
-          "description": "Filter criteria for files",
-          "additionalProperties": {
-            "$ref": "#/definitions/filterCondition"
           }
         }
       }

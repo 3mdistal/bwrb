@@ -1034,7 +1034,7 @@ async function promptField(
       if (skipLabel && selected === skipLabel) {
         return field.default ?? '';
       }
-      return formatValue(selected, field.format);
+      return formatValue(selected, schema.config.linkFormat);
     }
 
     case 'text': {

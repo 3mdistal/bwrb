@@ -367,7 +367,6 @@ describe('schema', () => {
         expect(taskType!.recursive).toBe(true);
         expect(taskType!.fields['parent']).toBeDefined();
         expect(taskType!.fields['parent'].source).toBe('task');
-        expect(taskType!.fields['parent'].format).toBe('wikilink');
         expect(taskType!.fields['parent'].required).toBe(false);
         expect(taskType!.fieldOrder).toContain('parent');
       } finally {
@@ -395,7 +394,6 @@ describe('schema', () => {
                   parent: {
                     prompt: 'relation',
                     source: 'task',
-                    format: 'quoted-wikilink',
                     required: true,
                     label: 'Parent Task'
                   }
@@ -411,7 +409,6 @@ describe('schema', () => {
         expect(taskType).toBeDefined();
         expect(taskType!.recursive).toBe(true);
         // Should preserve the explicit field definition
-        expect(taskType!.fields['parent'].format).toBe('quoted-wikilink');
         expect(taskType!.fields['parent'].required).toBe(true);
         expect(taskType!.fields['parent'].label).toBe('Parent Task');
       } finally {
@@ -471,7 +468,6 @@ describe('schema', () => {
         expect(Array.isArray(parentSource)).toBe(true);
         expect(parentSource).toContain('chapter');
         expect(parentSource).toContain('scene');
-        expect(sceneType!.fields['parent'].format).toBe('wikilink');
         expect(sceneType!.fields['parent'].required).toBe(false);
       } finally {
         await rm(tempDir, { recursive: true, force: true });

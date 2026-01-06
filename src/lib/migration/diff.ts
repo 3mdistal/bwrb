@@ -169,7 +169,7 @@ function detectFieldPropertyChanges(oldField: Field, newField: Field): string[] 
   const changes: string[] = [];
   
   // Properties that matter for migration
-  const props: (keyof Field)[] = ['options', 'source', 'required', 'format', 'multiple'];
+  const props: (keyof Field)[] = ['options', 'source', 'required', 'multiple'];
   
   for (const prop of props) {
     if (JSON.stringify(oldField[prop]) !== JSON.stringify(newField[prop])) {

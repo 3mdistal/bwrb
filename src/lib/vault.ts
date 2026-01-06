@@ -70,19 +70,34 @@ export async function isFile(path: string): Promise<boolean> {
 }
 
 /**
- * Format a value for frontmatter based on format type.
+ * Format a value for frontmatter based on link format.
+ * 
+ * Link formats:
+ * - wikilink: "[[Note Name]]" (quoted for YAML safety, Obsidian-compatible)
+ * - markdown: "[Note Name](Note Name.md)" (standard markdown)
+ * 
+ * @param value The note name to format
+ * @param linkFormat The link format to use (defaults to 'wikilink')
  */
-export function formatValue(value: string, format?: string): string {
+export function formatValue(value: string, linkFormat: 'wikilink' | 'markdown' = 'wikilink'): string {
   if (!value) return '';
 
-  switch (format) {
+  switch (linkFormat) {
     case 'wikilink':
-      return `[[${value}]]`;
-    case 'quoted-wikilink':
+      // Always quote wikilinks for YAML safety (unquoted [[ is interpreted as array start)
       return `"[[${value}]]"`;
+    case 'markdown':
+      return `"[${value}](${value}.md)"`;
     default:
       return value;
   }
+}
+
+/**
+ * Format a relation value using the schema's configured link format.
+ */
+export function formatRelationValue(value: string, schema: LoadedSchema): string {
+  return formatValue(value, schema.config.linkFormat);
 }
 
 /**

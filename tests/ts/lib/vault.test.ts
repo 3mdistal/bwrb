@@ -125,17 +125,14 @@ describe('vault', () => {
   });
 
   describe('formatValue', () => {
-    it('should return plain value by default', () => {
-      expect(formatValue('test', undefined)).toBe('test');
-      expect(formatValue('test', 'plain')).toBe('test');
+    it('should format as wikilink by default', () => {
+      // Default is now wikilink (quoted for YAML safety)
+      expect(formatValue('test')).toBe('"[[test]]"');
+      expect(formatValue('test', 'wikilink')).toBe('"[[test]]"');
     });
 
-    it('should format as wikilink', () => {
-      expect(formatValue('test', 'wikilink')).toBe('[[test]]');
-    });
-
-    it('should format as quoted wikilink', () => {
-      expect(formatValue('test', 'quoted-wikilink')).toBe('"[[test]]"');
+    it('should format as markdown link', () => {
+      expect(formatValue('test', 'markdown')).toBe('"[test](test.md)"');
     });
 
     it('should return empty string for empty value', () => {

@@ -28,7 +28,7 @@ import {
   ALLOWED_NATIVE_FIELDS,
   WIKILINK_PATTERN,
   isWikilink,
-  isQuotedWikilink,
+  isMarkdownLink,
   extractWikilinkTarget,
 } from './types.js';
 
@@ -321,25 +321,24 @@ export async function auditFile(
       }
     }
 
-    // Check format violations (wikilink, quoted-wikilink)
-    if (field.format && value) {
-      const formatIssue = checkFormatViolation(fieldName, value, field.format);
+    // Check format violations for relation fields (wikilink vs markdown)
+    if (field.prompt === 'relation' && value) {
+      const formatIssue = checkFormatViolation(fieldName, value, schema.config.linkFormat);
       if (formatIssue) {
         issues.push(formatIssue);
       }
     }
 
-    // Check for stale wikilink references in frontmatter fields
-    if (allFiles && field.format && (field.format === 'wikilink' || field.format === 'quoted-wikilink')) {
+    // Check for stale wikilink/markdown references in frontmatter relation fields
+    if (allFiles && field.prompt === 'relation') {
       const staleIssue = checkStaleReference(fieldName, value, allFiles, false);
       if (staleIssue) {
         issues.push(staleIssue);
       }
     }
 
-    // Check context field source types (wikilinks must point to correct type)
-    if (noteTypeMap && field.source && value && 
-        (field.format === 'wikilink' || field.format === 'quoted-wikilink')) {
+    // Check context field source types (links must point to correct type)
+    if (noteTypeMap && field.source && value && field.prompt === 'relation') {
       const sourceIssues = checkContextFieldSource(
         schema, fieldName, value, field.source, noteTypeMap
       );
@@ -401,50 +400,45 @@ export async function auditFile(
 /**
  * Check if a field value violates its expected format.
  * 
- * Note: After YAML parsing, quoted-wikilink values like `milestone: "[[Target]]"`
- * will have the value `[[Target]]` (outer quotes are YAML syntax, not part of value).
- * So both 'wikilink' and 'quoted-wikilink' formats expect a wikilink value after parsing.
+ * For wikilinks: After YAML parsing, the value should be [[Target]]
+ * For markdown: After YAML parsing, the value should be [Target](Target.md)
  */
 function checkFormatViolation(
   fieldName: string,
   value: unknown,
-  expectedFormat: 'plain' | 'wikilink' | 'quoted-wikilink'
+  expectedFormat: 'wikilink' | 'markdown'
 ): AuditIssue | null {
   const strValue = String(value);
   if (!strValue) return null;
 
   switch (expectedFormat) {
     case 'wikilink':
-    case 'quoted-wikilink':
-      // Both wikilink and quoted-wikilink expect a wikilink value after YAML parsing.
-      // The difference is only in serialization (whether to add quotes when writing).
+      // Wikilink values should be [[Target]] after YAML parsing
       if (!isWikilink(strValue)) {
         return {
           severity: 'error',
           code: 'format-violation',
-          message: `Format violation: '${fieldName}' should be ${expectedFormat}, got plain text`,
+          message: `Format violation: '${fieldName}' should be a wikilink, got plain text or markdown`,
           field: fieldName,
           value: strValue,
-          expected: expectedFormat === 'wikilink' 
-            ? 'wikilink (e.g., [[value]])' 
-            : 'quoted-wikilink (e.g., "[[value]]")',
-          expectedFormat,
+          expected: 'wikilink (e.g., [[value]])',
+          expectedFormat: 'wikilink',
           autoFixable: true,
         };
       }
       break;
-    case 'plain':
-      // If format is plain but value contains wikilink brackets, warn
-      if (isWikilink(strValue) || isQuotedWikilink(strValue)) {
+    case 'markdown':
+      // Markdown links should be [Target](Target.md) after YAML parsing
+      if (!isMarkdownLink(strValue)) {
         return {
-          severity: 'warning',
+          severity: 'error',
           code: 'format-violation',
-          message: `Format violation: '${fieldName}' should be plain text, got wikilink`,
+          message: `Format violation: '${fieldName}' should be a markdown link, got plain text or wikilink`,
           field: fieldName,
           value: strValue,
-          expected: 'plain text (without [[brackets]])',
-          expectedFormat: 'plain',
-          autoFixable: false, // Don't auto-strip wikilinks - that could lose data
+          expected: 'markdown link (e.g., [value](value.md))',
+          expectedFormat: 'markdown',
+          autoFixable: true,
         };
       }
       break;
@@ -698,10 +692,10 @@ async function checkOwnershipViolations(
     }
   }
   
-  // Check each wikilink field to see if it references an owned note
+  // Check each relation field to see if it references an owned note
   for (const [fieldName, field] of Object.entries(fields)) {
-    // Skip non-wikilink fields and owned fields (owner is allowed to reference its owned notes)
-    if (!field.format || (field.format !== 'wikilink' && field.format !== 'quoted-wikilink')) {
+    // Skip non-relation fields and owned fields (owner is allowed to reference its owned notes)
+    if (field.prompt !== 'relation') {
       continue;
     }
     
