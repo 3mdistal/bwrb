@@ -9,8 +9,10 @@
     "entry": ["tests/ts/teardown.ts"]
   },
 
-  // Ignore intentional public API exports
+  // Ignore intentional public API exports and separate projects
   "ignore": [
+    // docs-site is a separate Astro project, not part of the main bwrb codebase
+    "docs-site/**",
     // Zod schemas are exported for external validation/type inference
     "src/types/migration.ts",
     "src/types/schema.ts",
