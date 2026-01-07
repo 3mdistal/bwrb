@@ -20,8 +20,6 @@ export interface ExecuteMigrationOptions {
   plan: MigrationPlan;
   execute: boolean;
   backup: boolean;
-  /** Value mappings for non-deterministic changes (e.g., old enum value -> new value) */
-  valueMappings?: Map<string, unknown>;
 }
 
 /**
@@ -30,7 +28,7 @@ export interface ExecuteMigrationOptions {
 export async function executeMigration(
   options: ExecuteMigrationOptions
 ): Promise<MigrationResult> {
-  const { vaultDir, schema, plan, execute, backup, valueMappings } = options;
+  const { vaultDir, schema, plan, execute, backup } = options;
 
   const result: MigrationResult = {
     dryRun: !execute,
@@ -73,8 +71,7 @@ export async function executeMigration(
       const changes = calculateFileChanges(
         frontmatter,
         typeName,
-        opsByType,
-        valueMappings
+        opsByType
       );
 
       if (changes.length > 0) {
@@ -164,11 +161,6 @@ function getOperationTargetType(op: MigrationOp): string | null {
     case 'remove-field':
     case 'rename-field':
       return op.targetType;
-    case 'add-enum-value':
-    case 'remove-enum-value':
-    case 'rename-enum-value':
-      // Enum changes can affect any type that uses the enum
-      return null;
     case 'add-type':
     case 'remove-type':
     case 'rename-type':
@@ -186,20 +178,19 @@ function getOperationTargetType(op: MigrationOp): string | null {
 function calculateFileChanges(
   frontmatter: Record<string, unknown>,
   typeName: string,
-  opsByType: Map<string | null, MigrationOp[]>,
-  valueMappings?: Map<string, unknown>
+  opsByType: Map<string | null, MigrationOp[]>
 ): AppliedChange[] {
   const changes: AppliedChange[] = [];
 
   // Get operations that affect this specific type
   const typeOps = opsByType.get(typeName) || [];
-  // Get global operations (enum changes)
+  // Get global operations (type-level changes)
   const globalOps = opsByType.get(null) || [];
 
   const allOps = [...typeOps, ...globalOps];
 
   for (const op of allOps) {
-    const change = calculateSingleChange(frontmatter, op, valueMappings);
+    const change = calculateSingleChange(frontmatter, op);
     if (change) {
       changes.push(change);
     }
@@ -213,8 +204,7 @@ function calculateFileChanges(
  */
 function calculateSingleChange(
   frontmatter: Record<string, unknown>,
-  op: MigrationOp,
-  valueMappings?: Map<string, unknown>
+  op: MigrationOp
 ): AppliedChange | null {
   switch (op.op) {
     case 'add-field': {
@@ -257,70 +247,7 @@ function calculateSingleChange(
       return null;
     }
 
-    case 'remove-enum-value': {
-      // Check if any field has this enum value
-      // We need value mapping to know what to change it to
-      const mappingKey = `enum:${op.enum}:${op.value}`;
-      const newValue = valueMappings?.get(mappingKey);
-      
-      // Also check if the op has a mapTo field
-      const targetValue = newValue ?? op.mapTo;
-      if (targetValue === undefined) {
-        // No mapping provided, skip
-        return null;
-      }
-
-      // Find fields with this value
-      for (const [field, value] of Object.entries(frontmatter)) {
-        if (value === op.value) {
-          return {
-            kind: 'set',
-            field,
-            oldValue: value,
-            newValue: targetValue,
-          };
-        }
-        // Handle array fields
-        if (Array.isArray(value) && value.includes(op.value)) {
-          const newArray = value.map(v => (v === op.value ? targetValue : v));
-          return {
-            kind: 'set',
-            field,
-            oldValue: value,
-            newValue: newArray,
-          };
-        }
-      }
-      return null;
-    }
-
-    case 'rename-enum-value': {
-      // Find fields with the old enum value and update them
-      for (const [field, value] of Object.entries(frontmatter)) {
-        if (value === op.from) {
-          return {
-            kind: 'set',
-            field,
-            oldValue: value,
-            newValue: op.to,
-          };
-        }
-        // Handle array fields
-        if (Array.isArray(value) && value.includes(op.from)) {
-          const newArray = value.map(v => (v === op.from ? op.to : v));
-          return {
-            kind: 'set',
-            field,
-            oldValue: value,
-            newValue: newArray,
-          };
-        }
-      }
-      return null;
-    }
-
     // These operations don't directly affect frontmatter values
-    case 'add-enum-value':
     case 'add-type':
     case 'remove-type':
     case 'rename-type':

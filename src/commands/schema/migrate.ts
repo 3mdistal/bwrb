@@ -57,8 +57,7 @@ function suggestVersionBump(currentVersion: string, diff: MigrationPlan): string
   // Check for breaking changes (non-deterministic usually means breaking)
   const hasBreakingChanges = diff.nonDeterministic.some(op => 
     op.op === 'remove-field' || 
-    op.op === 'remove-type' || 
-    op.op === 'remove-enum-value'
+    op.op === 'remove-type'
   );
   
   if (hasBreakingChanges) {
@@ -68,8 +67,7 @@ function suggestVersionBump(currentVersion: string, diff: MigrationPlan): string
   // Check for additions (minor bump)
   const hasAdditions = diff.deterministic.some(op =>
     op.op === 'add-field' ||
-    op.op === 'add-type' ||
-    op.op === 'add-enum-value'
+    op.op === 'add-type'
   );
   
   if (hasAdditions) {

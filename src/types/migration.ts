@@ -31,32 +31,6 @@ export const FieldMigrationOpSchema = z.discriminatedUnion('op', [
 ]);
 
 /**
- * Enum-level migration operations.
- */
-export const EnumMigrationOpSchema = z.discriminatedUnion('op', [
-  // Add a value to an enum
-  z.object({
-    op: z.literal('add-enum-value'),
-    enum: z.string(),
-    value: z.string(),
-  }),
-  // Remove a value from an enum
-  z.object({
-    op: z.literal('remove-enum-value'),
-    enum: z.string(),
-    value: z.string(),
-    mapTo: z.string().optional(), // Value to map existing notes to
-  }),
-  // Rename an enum value
-  z.object({
-    op: z.literal('rename-enum-value'),
-    enum: z.string(),
-    from: z.string(),
-    to: z.string(),
-  }),
-]);
-
-/**
  * Type-level migration operations.
  */
 export const TypeMigrationOpSchema = z.discriminatedUnion('op', [
@@ -90,12 +64,10 @@ export const TypeMigrationOpSchema = z.discriminatedUnion('op', [
  */
 export const MigrationOpSchema = z.union([
   FieldMigrationOpSchema,
-  EnumMigrationOpSchema,
   TypeMigrationOpSchema,
 ]);
 
 export type FieldMigrationOp = z.infer<typeof FieldMigrationOpSchema>;
-export type EnumMigrationOp = z.infer<typeof EnumMigrationOpSchema>;
 export type TypeMigrationOp = z.infer<typeof TypeMigrationOpSchema>;
 export type MigrationOp = z.infer<typeof MigrationOpSchema>;
 
@@ -237,10 +209,6 @@ export type DetectedChange =
   | { kind: 'field-added'; type: string; field: string; hasDefault: boolean }
   | { kind: 'field-removed'; type: string; field: string }
   | { kind: 'field-changed'; type: string; field: string; changes: string[] }
-  | { kind: 'enum-value-added'; enum: string; value: string }
-  | { kind: 'enum-value-removed'; enum: string; value: string }
-  | { kind: 'enum-added'; enum: string; values: string[] }
-  | { kind: 'enum-removed'; enum: string }
   | { kind: 'type-added'; type: string }
   | { kind: 'type-removed'; type: string }
   | { kind: 'type-reparented'; type: string; from?: string; to?: string };

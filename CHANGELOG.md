@@ -56,6 +56,15 @@ All notable changes to Bowerbird are documented in this file.
   - Obsidian vault name resolution: `config.obsidian_vault` > auto-detect from `.obsidian/` > folder basename
   - Updated help text across all commands (`open`, `search`, `list`, `edit`, `new`)
 
+### Removed
+
+- **Legacy enum migration operations** (#180)
+  - Removed `EnumMigrationOpSchema` and related types (`add-enum-value`, `remove-enum-value`, `rename-enum-value`)
+  - Removed enum-related `DetectedChange` variants
+  - Removed `valueMappings` parameter from migration execution (was only used for enum value remapping)
+  - Global enums were removed in #165; this cleans up the dead migration code
+  - No user impact: enum migrations were never released
+
 ### Changed
 
 - **Refactored global option handling** (#134)

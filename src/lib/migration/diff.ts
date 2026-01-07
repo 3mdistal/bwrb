@@ -267,14 +267,6 @@ export function describeMigrationOp(op: MigrationOp): string {
       return `Remove field '${op.field}' from type '${op.targetType}'`;
     case 'rename-field':
       return `Rename field '${op.from}' to '${op.to}' on type '${op.targetType}'`;
-    case 'add-enum-value':
-      return `Add value '${op.value}' to enum '${op.enum}'`;
-    case 'remove-enum-value':
-      return op.mapTo
-        ? `Remove value '${op.value}' from enum '${op.enum}' (map to '${op.mapTo}')`
-        : `Remove value '${op.value}' from enum '${op.enum}'`;
-    case 'rename-enum-value':
-      return `Rename enum value '${op.from}' to '${op.to}' in '${op.enum}'`;
     case 'add-type':
       return `Add type '${op.typeName}'`;
     case 'remove-type':
@@ -371,12 +363,6 @@ function formatOpForDisplay(op: MigrationOp): string {
       return `- Remove field "${op.field}" from type "${op.targetType}"`;
     case 'rename-field':
       return `~ Rename field "${op.from}" to "${op.to}" on type "${op.targetType}"`;
-    case 'add-enum-value':
-      return `+ Add value "${op.value}" to enum "${op.enum}"`;
-    case 'remove-enum-value':
-      return `- Remove value "${op.value}" from enum "${op.enum}"${op.mapTo ? ` (map to: ${op.mapTo})` : ''}`;
-    case 'rename-enum-value':
-      return `~ Rename enum value "${op.from}" to "${op.to}" in enum "${op.enum}"`;
     case 'add-type':
       return `+ Add type "${op.typeName}"`;
     case 'remove-type':
