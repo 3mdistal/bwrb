@@ -312,7 +312,7 @@ async function createNoteFromJson(
     // Evaluate date expressions in template defaults (e.g., today() + '7d')
     const evaluatedDefaults: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(template.defaults)) {
-      evaluatedDefaults[key] = evaluateTemplateDefault(value);
+      evaluatedDefaults[key] = evaluateTemplateDefault(value, schema.config.dateFormat);
     }
     // Template defaults are base, JSON input takes precedence
     mergedInput = { ...evaluatedDefaults, ...frontmatterInput };
@@ -460,7 +460,7 @@ async function createPooledNoteFromJson(
   }
 
   // Generate body content
-  const body = generateBodyForJson(typeDef, frontmatter, template, bodyInput);
+  const body = generateBodyForJson(typeDef, frontmatter, template, bodyInput, schema.config.dateFormat);
   
   const fieldOrder = getFrontmatterOrder(typeDef);
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
@@ -473,7 +473,7 @@ async function createPooledNoteFromJson(
  * Create an owned note from JSON input.
  */
 async function createOwnedNoteFromJson(
-  _schema: LoadedSchema,
+  schema: LoadedSchema,
   vaultDir: string,
   _typePath: string,
   typeDef: ResolvedType,
@@ -495,7 +495,7 @@ async function createOwnedNoteFromJson(
   }
 
   // Generate body content
-  const body = generateBodyForJson(typeDef, frontmatter, template, bodyInput);
+  const body = generateBodyForJson(typeDef, frontmatter, template, bodyInput, schema.config.dateFormat);
   
   const fieldOrder = getFrontmatterOrder(typeDef);
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
@@ -516,7 +516,8 @@ function generateBodyForJson(
   typeDef: ResolvedType,
   frontmatter: Record<string, unknown>,
   template?: Template | null,
-  bodyInput?: Record<string, unknown>
+  bodyInput?: Record<string, unknown>,
+  dateFormat?: string
 ): string {
   const sections = typeDef.bodySections ?? [];
   
@@ -531,12 +532,12 @@ function generateBodyForJson(
   // Generate body based on what we have
   if (template?.body && sectionContent && sectionContent.size > 0) {
     // Template + body input: start with template, merge in body content
-    let body = processTemplateBody(template.body, frontmatter);
+    let body = processTemplateBody(template.body, frontmatter, dateFormat);
     body = mergeBodySectionContent(body, sections, sectionContent);
     return body;
   } else if (template?.body) {
     // Template only: use processed template body
-    return processTemplateBody(template.body, frontmatter);
+    return processTemplateBody(template.body, frontmatter, dateFormat);
   } else if (sectionContent && sectionContent.size > 0) {
     // Body input only: generate sections with content
     return generateBodyWithContent(sections, sectionContent);
@@ -725,7 +726,7 @@ async function buildNoteContent(
     if (hasTemplateDefault && !shouldPrompt) {
       // Use template default without prompting
       // Evaluate date expressions like today() + '7d'
-      frontmatter[fieldName] = evaluateTemplateDefault(templateDefault);
+      frontmatter[fieldName] = evaluateTemplateDefault(templateDefault, schema.config.dateFormat);
     } else {
       // Prompt as normal
       const value = await promptField(schema, vaultDir, fieldName, field);
@@ -756,7 +757,7 @@ async function buildNoteContent(
   
   if (template?.body) {
     // Start with processed template body
-    body = processTemplateBody(template.body, frontmatter);
+    body = processTemplateBody(template.body, frontmatter, schema.config.dateFormat);
     
     // If there are promptable body sections, prompt for additional items
     if (promptableSections.length > 0) {
@@ -964,7 +965,7 @@ async function promptField(
 ): Promise<unknown> {
   // Static value
   if (field.value !== undefined) {
-    return expandStaticValue(field.value);
+    return expandStaticValue(field.value, new Date(), schema.config.dateFormat);
   }
 
   // Prompt-based value

@@ -330,7 +330,7 @@ async function promptFieldEdit(
     if (currentValue !== undefined && currentValue !== '') {
       return currentValue;
     }
-    return expandStaticValue(field.value);
+    return expandStaticValue(field.value, new Date(), schema.config.dateFormat);
   }
 
   console.log(`Current ${fieldName}: ${currentStr}`);

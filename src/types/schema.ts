@@ -127,6 +127,13 @@ export const ConfigSchema = z.object({
   obsidian_vault: z.string().optional(),
   // Default dashboard to run when `bwrb dashboard` is called without arguments
   default_dashboard: z.string().optional(),
+  // Date format for date fields in frontmatter
+  // YYYY-MM-DD: ISO 8601 format (default)
+  // MM/DD/YYYY: US format
+  // DD/MM/YYYY: EU format
+  // DD-MM-YYYY: EU format with dashes
+  // Custom patterns using YYYY, MM, DD tokens are also supported
+  date_format: z.string().optional(),
 });
 
 // ============================================================================
@@ -233,6 +240,8 @@ export interface ResolvedConfig {
   obsidianVault: string | undefined;
   /** Default dashboard to run when `bwrb dashboard` is called without arguments */
   defaultDashboard: string | undefined;
+  /** Date format for date fields (defaults to 'YYYY-MM-DD') */
+  dateFormat: string;
 }
 
 /**

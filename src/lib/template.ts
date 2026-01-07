@@ -7,7 +7,7 @@ import { getType, getFieldsForType, getFieldOptions } from './schema.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
 import { evaluateTemplateDefault, validateDateExpression, isDateExpression } from './date-expression.js';
-import { formatLocalDate } from './local-date.js';
+import { formatDateWithPattern, DEFAULT_DATE_FORMAT } from './local-date.js';
 
 /**
  * Template Discovery and Parsing
@@ -272,27 +272,36 @@ export async function findAllTemplates(vaultDir: string): Promise<Template[]> {
  * 
  * Supported variables:
  * - {fieldName} - Replaced with frontmatter[fieldName]
- * - {date} - Replaced with today's date (YYYY-MM-DD)
- * - {date:FORMAT} - Replaced with formatted date
+ * - {date} - Replaced with today's date (uses config.date_format or YYYY-MM-DD)
+ * - {date:FORMAT} - Replaced with formatted date (explicit format overrides config)
+ * 
+ * @param body - The template body string
+ * @param frontmatter - Frontmatter values for substitution
+ * @param dateFormat - Date format to use for {date} substitution (defaults to YYYY-MM-DD)
  * 
  * @example
  * processTemplateBody("# {title}\n\nCreated: {date}", { title: "My Note" })
  * // => "# My Note\n\nCreated: 2025-01-15"
+ * 
+ * processTemplateBody("Created: {date}", {}, "MM/DD/YYYY")
+ * // => "Created: 01/15/2025"
  */
 export function processTemplateBody(
   body: string,
-  frontmatter: Record<string, unknown>
+  frontmatter: Record<string, unknown>,
+  dateFormat: string = DEFAULT_DATE_FORMAT
 ): string {
   let result = body;
   
   // Replace {date:format} patterns first (more specific)
+  // Explicit format in template overrides config
   const now = new Date();
   result = result.replace(/{date:([^}]+)}/g, (_, format: string) => {
     return formatDate(now, format);
   });
   
-  // Replace {date} with today's date (local timezone)
-  result = result.replace(/{date}/g, formatLocalDate(now));
+  // Replace {date} with today's date using config format
+  result = result.replace(/{date}/g, formatDateWithPattern(now, dateFormat));
   
   // Replace {fieldName} with frontmatter values
   for (const [key, value] of Object.entries(frontmatter)) {
@@ -1057,7 +1066,7 @@ export async function createScaffoldedInstances(
       // Apply instance-specific defaults first, evaluating date expressions
       if (instance.defaults) {
         for (const [key, value] of Object.entries(instance.defaults)) {
-          frontmatter[key] = evaluateTemplateDefault(value);
+          frontmatter[key] = evaluateTemplateDefault(value, schema.config.dateFormat);
         }
       }
       
@@ -1065,7 +1074,7 @@ export async function createScaffoldedInstances(
       // Also evaluate date expressions
       if (instanceTemplate?.defaults) {
         for (const [key, value] of Object.entries(instanceTemplate.defaults)) {
-          frontmatter[key] = evaluateTemplateDefault(value);
+          frontmatter[key] = evaluateTemplateDefault(value, schema.config.dateFormat);
         }
       }
       
@@ -1078,7 +1087,7 @@ export async function createScaffoldedInstances(
         body = processTemplateBody(instanceTemplate.body, {
           ...parentFrontmatter,
           ...frontmatter,
-        });
+        }, schema.config.dateFormat);
       } else if (instanceType.bodySections && instanceType.bodySections.length > 0) {
         body = generateBodySections(instanceType.bodySections);
       }

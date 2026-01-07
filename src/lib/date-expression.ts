@@ -19,7 +19,7 @@
  */
 
 import { parseDuration } from './expression.js';
-import { formatLocalDate, formatLocalDateTime } from './local-date.js';
+import { formatLocalDate, formatLocalDateTime, formatDateWithPattern, DEFAULT_DATE_FORMAT } from './local-date.js';
 
 /**
  * Regex pattern to match date expressions.
@@ -47,13 +47,17 @@ export function isDateExpression(value: string): boolean {
  * Returns null if the value is not a date expression.
  * Throws an error if the expression is malformed.
  * 
+ * @param value - The expression string to evaluate
+ * @param dateFormat - Optional date format pattern (defaults to YYYY-MM-DD)
+ * 
  * @example
  * evaluateDateExpression("today()") // "2025-12-31"
  * evaluateDateExpression("today() + '7d'") // "2026-01-07"
  * evaluateDateExpression("now()") // "2025-12-31 14:30"
  * evaluateDateExpression("hello") // null
+ * evaluateDateExpression("today()", "MM/DD/YYYY") // "12/31/2025"
  */
-export function evaluateDateExpression(value: string): string | null {
+export function evaluateDateExpression(value: string, dateFormat: string = DEFAULT_DATE_FORMAT): string | null {
   if (typeof value !== 'string') return null;
   
   const trimmed = value.trim();
@@ -87,7 +91,7 @@ export function evaluateDateExpression(value: string): string | null {
   
   // Format based on function type
   if (func === 'today') {
-    return formatDate(result);
+    return formatDateWithPattern(result, dateFormat);
   } else {
     return formatDateTime(result);
   }
@@ -138,16 +142,20 @@ export function validateDateExpression(value: string): string | null {
  * Evaluate a template default value, processing date expressions.
  * For non-string values or non-expression strings, returns the value unchanged.
  * 
+ * @param value - The value to evaluate
+ * @param dateFormat - Optional date format pattern (defaults to YYYY-MM-DD)
+ * 
  * @example
  * evaluateTemplateDefault("today() + '7d'") // "2026-01-07"
  * evaluateTemplateDefault("inbox") // "inbox"
  * evaluateTemplateDefault(42) // 42
+ * evaluateTemplateDefault("today()", "MM/DD/YYYY") // "01/07/2026"
  */
-export function evaluateTemplateDefault(value: unknown): unknown {
+export function evaluateTemplateDefault(value: unknown, dateFormat: string = DEFAULT_DATE_FORMAT): unknown {
   if (typeof value !== 'string') {
     return value;
   }
   
-  const evaluated = evaluateDateExpression(value);
+  const evaluated = evaluateDateExpression(value, dateFormat);
   return evaluated !== null ? evaluated : value;
 }

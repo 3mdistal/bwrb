@@ -397,6 +397,7 @@ function resolveConfig(config: Schema['config']): ResolvedConfig {
     openWith: config?.open_with ?? 'system',
     obsidianVault: config?.obsidian_vault,
     defaultDashboard: config?.default_dashboard,
+    dateFormat: config?.date_format ?? 'YYYY-MM-DD',
   };
 }
 

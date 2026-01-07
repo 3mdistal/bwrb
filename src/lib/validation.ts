@@ -2,7 +2,7 @@ import type { LoadedSchema, Field } from '../types/schema.js';
 import { getFieldsForType, getDescendants, getType } from './schema.js';
 import { queryByType } from './vault.js';
 import { extractWikilinkTarget } from './audit/types.js';
-import { expandStaticValue } from './local-date.js';
+import { expandStaticValue, parseDate } from './local-date.js';
 
 /**
  * Validation error types.
@@ -175,7 +175,7 @@ export function applyDefaults(
 
     // Handle static values
     if (!hasValue && field.value !== undefined) {
-      result[fieldName] = expandStaticValue(field.value);
+      result[fieldName] = expandStaticValue(field.value, new Date(), schema.config.dateFormat);
     }
   }
 
@@ -216,15 +216,17 @@ function validateFieldType(
         expected: 'date string (YYYY-MM-DD)',
       };
     }
-    // Basic date format validation
-    const dateRegex = /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?$/;
-    if (!dateRegex.test(value)) {
+    // Format-agnostic date validation
+    // Accepts ISO (YYYY-MM-DD), US (MM/DD/YYYY), EU (DD/MM/YYYY) formats
+    // Rejects ambiguous dates where month and day are both <= 12 for non-ISO formats
+    const parsed = parseDate(value);
+    if (!parsed.valid) {
       return {
         type: 'invalid_date',
         field: fieldName,
         value,
-        message: `Invalid date format for ${fieldName}: "${value}"`,
-        expected: 'YYYY-MM-DD or YYYY-MM-DD HH:MM',
+        message: `Invalid date for ${fieldName}: ${parsed.error}`,
+        expected: 'YYYY-MM-DD (recommended), or unambiguous MM/DD/YYYY or DD/MM/YYYY',
       };
     }
     return null;

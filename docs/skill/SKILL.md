@@ -44,6 +44,50 @@ bwrb schema list type task --output json
 bwrb schema list --verbose --output json  # All types with fields as JSON
 ```
 
+## Configuration
+
+bwrb supports vault-wide configuration in `.bwrb/schema.json` under the `config` key:
+
+```json
+{
+  "config": {
+    "link_format": "wikilink",
+    "date_format": "YYYY-MM-DD"
+  }
+}
+```
+
+### Available Options
+
+| Option | Values | Default | Description |
+|--------|--------|---------|-------------|
+| `link_format` | `wikilink`, `markdown` | `wikilink` | Format for relation field links |
+| `date_format` | Pattern string | `YYYY-MM-DD` | Format for date fields |
+| `open_with` | `system`, `editor`, `visual`, `obsidian` | `system` | Default --open behavior |
+| `editor` | Command string | `$EDITOR` | Terminal editor command |
+| `visual` | Command string | `$VISUAL` | GUI editor command |
+
+### Date Format
+
+The `date_format` option controls how dates are written to frontmatter:
+
+- `YYYY-MM-DD` - ISO 8601 (default, recommended)
+- `MM/DD/YYYY` - US format
+- `DD/MM/YYYY` - EU format
+- `DD-MM-YYYY` - EU format with dashes
+
+**Validation is format-agnostic**: bwrb accepts any unambiguous date format during audit/validation.
+Ambiguous dates like `01/02/2026` (where both parts are ≤12) are rejected.
+
+```bash
+# View current config
+bwrb config
+
+# Edit config option
+bwrb config edit date_format  # Interactive
+bwrb config set date_format "MM/DD/YYYY"  # Non-interactive
+```
+
 ## Core Commands for Agents
 
 ### Querying Notes
