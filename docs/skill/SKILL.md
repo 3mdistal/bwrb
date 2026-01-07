@@ -25,6 +25,30 @@ bwrb finds the vault in this order:
 
 Always verify you're targeting the correct vault before operations.
 
+## Initializing a Vault
+
+Create a new bwrb vault with `init`:
+
+```bash
+# Initialize in current directory (non-interactive)
+bwrb init --yes
+
+# Initialize at specific path
+bwrb init /path/to/vault --yes
+
+# Reinitialize existing vault (destructive)
+bwrb init --force --yes
+
+# JSON output for scripting
+bwrb init --yes --output json
+```
+
+The command creates `.bwrb/schema.json` with:
+- Version 2 format
+- Default `wikilink` link format
+- Auto-detected Obsidian vault name (if `.obsidian/` exists)
+- Empty `types: {}` (add types with `bwrb schema type new`)
+
 ## Schema Discovery
 
 Before creating or querying notes, understand the vault's schema:
