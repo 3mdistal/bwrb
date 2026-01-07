@@ -180,12 +180,6 @@ export const ALLOWED_NATIVE_FIELDS = new Set([
 ]);
 
 /**
- * Wikilink regex pattern for extracting link targets.
- * Matches: [[Target]], [[Target|Alias]], [[Target#Heading]], [[Target#Heading|Alias]]
- */
-export const WIKILINK_PATTERN = /\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]+)?\]\]/g;
-
-/**
  * Check if a value is formatted as a wikilink.
  */
 export function isWikilink(value: string): boolean {
