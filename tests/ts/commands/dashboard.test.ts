@@ -287,7 +287,7 @@ describe('dashboard command', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Run a saved dashboard query');
       expect(result.stdout).toContain('--output');
-      expect(result.stdout).toContain('bwrb dashboard list');
+      expect(result.stdout).toContain('bwrb dashboard my-tasks');
     });
   });
 });
