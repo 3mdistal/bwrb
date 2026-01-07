@@ -38,6 +38,7 @@ export default defineConfig({
 					label: 'CLI Reference',
 					items: [
 						{ slug: 'reference/targeting' },
+						{ slug: 'reference/schema' },
 						{
 							label: 'Commands',
 							collapsed: true,
