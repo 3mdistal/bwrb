@@ -17,6 +17,9 @@ import {
 } from './pty-helpers.js';
 import { existsSync } from 'fs';
 
+// Import shared schemas for pagination and broken relation tests
+import { PAGINATION_SCHEMA, withBrokenRelation, MINIMAL_SCHEMA } from '../fixtures/schemas.js';
+
 // Skip PTY tests if running in CI without TTY support or node-pty is incompatible
 const describePty = shouldSkipPtyTests()
   ? describe.skip
@@ -308,24 +311,7 @@ describePty('NumberedSelectPrompt PTY tests', () => {
   });
 
   describe('pagination', () => {
-    // Schema with a large options list to test pagination (>10 items)
-    const PAGINATION_SCHEMA = {
-      version: 2,
-      types: {
-        item: {
-          output_dir: 'Items',
-          fields: {
-            type: { value: 'item' },
-            category: { prompt: 'select', options: [
-              'category-01', 'category-02', 'category-03', 'category-04', 'category-05',
-              'category-06', 'category-07', 'category-08', 'category-09', 'category-10',
-              'category-11', 'category-12', 'category-13', 'category-14', 'category-15',
-            ], required: true },
-          },
-          field_order: ['type', 'category'],
-        },
-      },
-    };
+    // Uses PAGINATION_SCHEMA from shared fixtures (15 category options)
 
     it('should show page indicator for lists > 10 items', async () => {
       await withTempVault(
@@ -541,20 +527,8 @@ describePty('NumberedSelectPrompt PTY tests', () => {
   describe('empty choice handling', () => {
     it('should handle empty choices gracefully', async () => {
       // Schema with type-based source that returns no results (type doesn't exist)
-      const emptySchema = {
-        version: 2,
-        types: {
-          item: {
-            output_dir: 'Items',
-            fields: {
-              type: { value: 'item' },
-              // Reference a type that doesn't exist - will return no results
-              ref: { prompt: 'relation', source: 'nonexistent_type', format: 'wikilink' },
-            },
-            field_order: ['type', 'ref'],
-          },
-        },
-      };
+      // Uses withBrokenRelation helper to create a schema with a nonexistent source type
+      const emptySchema = withBrokenRelation(MINIMAL_SCHEMA, 'item');
 
       await withTempVault(
         ['new', 'item'],

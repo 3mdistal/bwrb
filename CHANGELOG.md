@@ -4,6 +4,18 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Changed (Internal)
+
+- **Consolidated test schemas into shared fixtures** (#65)
+  - Added `tests/ts/fixtures/schemas.ts` as single source of truth for test schemas
+  - `BASELINE_SCHEMA`: Canonical realistic schema for most tests (inheritance, relations, ownership)
+  - `MINIMAL_SCHEMA`: Fast tests needing just one type
+  - `AUDIT_SCHEMA`, `PAGINATION_SCHEMA`: Special-case schemas for specific test scenarios
+  - Composable functions: `withEntityPerson()`, `withBrokenRelation()`, `withTypes()`
+  - Synced static fixture vault schema with `BASELINE_SCHEMA`
+  - Removed duplicate `tests/fixtures/test_schema.json`
+  - Migrated test files to import shared schemas instead of inline definitions
+
 ### Removed (Breaking)
 
 - **Simple filter flags (`--status=active`, `--priority=high`, etc.) have been removed** (#220)

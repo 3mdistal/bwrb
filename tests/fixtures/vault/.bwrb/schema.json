@@ -17,7 +17,8 @@
         "status": {
           "prompt": "select",
           "options": ["raw", "backlog", "in-flight", "settled"],
-          "default": "raw"
+          "default": "backlog",
+          "required": true
         },
         "milestone": {
           "prompt": "relation",
@@ -26,22 +27,21 @@
           "format": "quoted-wikilink"
         },
         "creation-date": { "value": "$NOW" },
-        "deadline": { "prompt": "text", "label": "Deadline (YYYY-MM-DD)" }
+        "deadline": { "prompt": "text", "label": "Deadline (YYYY-MM-DD)" },
+        "tags": {
+          "prompt": "list",
+          "list_format": "yaml-array",
+          "default": []
+        }
       },
-      "field_order": [
-        "type",
-        "status",
-        "milestone",
-        "creation-date",
-        "deadline"
-      ],
+      "field_order": ["type", "status", "milestone", "creation-date", "deadline", "tags"],
       "body_sections": [
         {
           "title": "Steps",
           "level": 2,
           "content_type": "checkboxes",
           "prompt": "list",
-          "prompt_label": "Steps (comma-separated)"
+          "prompt_label": "Steps"
         },
         {
           "title": "Notes",
@@ -58,7 +58,8 @@
         "status": {
           "prompt": "select",
           "options": ["raw", "backlog", "in-flight", "settled"],
-          "default": "raw"
+          "default": "raw",
+          "required": true
         }
       },
       "field_order": ["type", "status"],
@@ -74,11 +75,51 @@
       "output_dir": "Ideas",
       "fields": {
         "type": { "value": "idea" },
-        "status": { "prompt": "select", "options": ["raw", "backlog", "in-flight", "settled"], "default": "raw" },
-        "priority": { "prompt": "select", "options": ["low", "medium", "high"] }
+        "status": {
+          "prompt": "select",
+          "options": ["raw", "backlog", "in-flight", "settled"],
+          "default": "raw",
+          "required": true
+        },
+        "priority": { "prompt": "select", "options": ["low", "medium", "high"] },
+        "labels": {
+          "prompt": "select",
+          "options": ["urgent", "blocked", "review", "wip"],
+          "multiple": true
+        }
       },
-      "field_order": ["type", "status", "priority"],
-      "body_sections": []
+      "field_order": ["type", "status", "priority", "labels"]
+    },
+    "project": {
+      "output_dir": "Projects",
+      "fields": {
+        "type": { "value": "project" },
+        "status": {
+          "prompt": "select",
+          "options": ["raw", "backlog", "in-flight", "settled"],
+          "default": "raw",
+          "required": true
+        },
+        "research": {
+          "prompt": "relation",
+          "source": "research",
+          "owned": true
+        }
+      },
+      "field_order": ["type", "status", "research"]
+    },
+    "research": {
+      "output_dir": "Research",
+      "fields": {
+        "type": { "value": "research" },
+        "status": {
+          "prompt": "select",
+          "options": ["raw", "backlog", "in-flight", "settled"],
+          "default": "raw",
+          "required": true
+        }
+      },
+      "field_order": ["type", "status"]
     },
     "entity": {
       "output_dir": "Entities",
@@ -96,5 +137,8 @@
       "field_order": ["type"],
       "body_sections": []
     }
+  },
+  "audit": {
+    "ignored_directories": ["Templates"]
   }
 }

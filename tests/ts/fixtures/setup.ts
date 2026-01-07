@@ -5,6 +5,9 @@ import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
+// Import canonical schema from shared module
+import { BASELINE_SCHEMA } from './schemas.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 export const PROJECT_ROOT = join(__dirname, '../../..');
@@ -20,116 +23,11 @@ export function getRelativeVaultPath(vaultDir: string): string {
   return relative(PROJECT_ROOT, vaultDir);
 }
 
-export const TEST_SCHEMA = {
-  version: 2,
-  types: {
-    objective: {
-      output_dir: 'Objectives',
-      fields: {
-        type: { value: 'objective' },
-      },
-      field_order: ['type'],
-    },
-    task: {
-      extends: 'objective',
-      output_dir: 'Objectives/Tasks',
-      fields: {
-        type: { value: 'task' },
-        status: {
-          prompt: 'select',
-          options: ['raw', 'backlog', 'in-flight', 'settled'],
-          default: 'backlog',
-          required: true,
-        },
-        milestone: {
-          prompt: 'relation',
-          source: 'milestone',
-          filter: { status: { not_in: ['settled'] } },
-        },
-        'creation-date': { value: '$NOW' },
-        deadline: { prompt: 'text', label: 'Deadline (YYYY-MM-DD)' },
-        tags: {
-          prompt: 'list',
-          list_format: 'yaml-array',
-          default: [],
-        },
-      },
-      field_order: ['type', 'status', 'milestone', 'creation-date', 'deadline', 'tags'],
-      body_sections: [
-        { title: 'Steps', level: 2, content_type: 'checkboxes', prompt: 'list', prompt_label: 'Steps' },
-        { title: 'Notes', level: 2, content_type: 'paragraphs' },
-      ],
-    },
-    milestone: {
-      extends: 'objective',
-      output_dir: 'Objectives/Milestones',
-      fields: {
-        type: { value: 'milestone' },
-        status: {
-          prompt: 'select',
-          options: ['raw', 'backlog', 'in-flight', 'settled'],
-          default: 'raw',
-          required: true,
-        },
-      },
-      field_order: ['type', 'status'],
-    },
-    idea: {
-      output_dir: 'Ideas',
-      fields: {
-        type: { value: 'idea' },
-        status: {
-          prompt: 'select',
-          options: ['raw', 'backlog', 'in-flight', 'settled'],
-          default: 'raw',
-          required: true,
-        },
-        priority: { prompt: 'select', options: ['low', 'medium', 'high'] },
-        labels: {
-          prompt: 'select',
-          options: ['urgent', 'blocked', 'review', 'wip'],
-          multiple: true,
-        },
-      },
-      field_order: ['type', 'status', 'priority', 'labels'],
-    },
-    // Ownership types - project owns research notes
-    project: {
-      output_dir: 'Projects',
-      fields: {
-        type: { value: 'project' },
-        status: {
-          prompt: 'select',
-          options: ['raw', 'backlog', 'in-flight', 'settled'],
-          default: 'raw',
-          required: true,
-        },
-        research: {
-          prompt: 'relation',
-          source: 'research',
-          owned: true,
-        },
-      },
-      field_order: ['type', 'status', 'research'],
-    },
-    research: {
-      output_dir: 'Research',
-      fields: {
-        type: { value: 'research' },
-        status: {
-          prompt: 'select',
-          options: ['raw', 'backlog', 'in-flight', 'settled'],
-          default: 'raw',
-          required: true,
-        },
-      },
-      field_order: ['type', 'status'],
-    },
-  },
-  audit: {
-    ignored_directories: ['Templates'],
-  },
-};
+/**
+ * Test schema - re-exported from schemas.ts for backward compatibility.
+ * Use BASELINE_SCHEMA from './schemas.js' for new tests.
+ */
+export const TEST_SCHEMA = BASELINE_SCHEMA;
 
 export async function createTestVault(): Promise<string> {
   const vaultDir = await mkdtemp(join(tmpdir(), 'bwrb-test-'));

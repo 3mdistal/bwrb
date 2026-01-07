@@ -10,6 +10,9 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 
+// Import shared schema from fixtures
+import { MINIMAL_SCHEMA as SHARED_MINIMAL_SCHEMA } from '../fixtures/schemas.js';
+
 // ============================================================================
 // Global Process Tracking (for cleanup on test timeout)
 // ============================================================================
@@ -412,21 +415,11 @@ export const withOvault = withBowerbird;
 
 /**
  * Schema for a minimal test vault.
+ * Re-exported from shared fixtures for backward compatibility.
  */
 export const MINIMAL_SCHEMA = {
+  ...SHARED_MINIMAL_SCHEMA,
   $schema: '../../../schema.schema.json',
-  version: 2,
-  types: {
-    idea: {
-      output_dir: 'Ideas',
-      fields: {
-        type: { value: 'idea' },
-        status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw' },
-        priority: { prompt: 'select', options: ['low', 'medium', 'high'] },
-      },
-      field_order: ['type', 'status', 'priority'],
-    },
-  },
 };
 
 /**

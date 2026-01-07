@@ -15,41 +15,13 @@ import {
 } from '../lib/pty-helpers.js';
 import { existsSync } from 'fs';
 
+// Import shared schema for audit tests
+import { AUDIT_SCHEMA } from '../fixtures/schemas.js';
+
 // Skip PTY tests if running in CI without TTY support or node-pty is incompatible
 const describePty = shouldSkipPtyTests()
   ? describe.skip
   : describe;
-
-// Schema for audit tests
-const AUDIT_SCHEMA = {
-  version: 2,
-  types: {
-    idea: {
-      output_dir: 'Ideas',
-      fields: {
-        type: { value: 'idea' },
-        status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw', required: true },
-      },
-      field_order: ['type', 'status'],
-    },
-    objective: {
-      output_dir: 'Objectives',
-      fields: {
-        type: { value: 'objective' },
-      },
-      field_order: ['type'],
-    },
-    task: {
-      extends: 'objective',
-      output_dir: 'Tasks',
-      fields: {
-        type: { value: 'task' },
-        status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw', required: true },
-      },
-      field_order: ['type', 'status'],
-    },
-  },
-};
 
 describePty('bwrb audit --fix command PTY tests', () => {
   beforeAll(() => {
