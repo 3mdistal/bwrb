@@ -1,0 +1,49 @@
+---
+title: Bowerbird
+description: Schema-driven note management for markdown vaults
+template: splash
+hero:
+  tagline: The type system for your notes
+  actions:
+    - text: Get Started
+      link: /getting-started/introduction/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/3mdistal/bwrb
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What is Bowerbird?
+
+Bowerbird is a CLI tool that enforces strict schemas on Markdown/YAML files. It brings TypeScript-style type safety to personal knowledge management—your notes can't violate the schema, your queries always return valid data, and migrations are explicit.
+
+<CardGrid stagger>
+	<Card title="Schema Enforcement" icon="approve-check">
+		Define types, fields, and constraints. Bowerbird ensures every note conforms.
+	</Card>
+	<Card title="CLI-First" icon="seti:shell">
+		Works in your terminal. JSON mode for scripting and AI integration.
+	</Card>
+	<Card title="Portable & Offline" icon="laptop">
+		No accounts, no cloud. Just Markdown files and Git.
+	</Card>
+	<Card title="Incrementally Adoptable" icon="puzzle">
+		Start minimal. Add types as patterns emerge. Migrate when ready.
+	</Card>
+</CardGrid>
+
+## Quick Example
+
+```bash
+# Create a new task with schema-driven prompts
+bwrb new task
+
+# List all tasks filtered by status
+bwrb list task --where "status = 'active'"
+
+# Audit your vault for schema violations
+bwrb audit
+```
