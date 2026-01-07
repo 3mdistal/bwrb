@@ -4,12 +4,12 @@
 
 import { relative, dirname, basename } from 'path';
 import { stat } from 'fs/promises';
-import { minimatch } from 'minimatch';
 import { parseNote, writeNote } from '../frontmatter.js';
 import { matchesExpression, type EvalContext } from '../expression.js';
 import { matchesAllFilters } from '../query.js';
 import { discoverManagedFiles } from '../discovery.js';
 import { searchContent } from '../content-search.js';
+import { filterByPath } from '../targeting.js';
 import { applyOperations } from './operations.js';
 import { createBackup } from './backup.js';
 import { executeBulkMove, findAllMarkdownFiles } from './move.js';
@@ -62,9 +62,9 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
   // Discover files for the specified type
   let files = await discoverManagedFiles(schema, vaultDir, typePath);
 
-  // Apply path glob filter
+  // Apply path glob filter (uses unified targeting module for consistent behavior)
   if (pathGlob) {
-    files = files.filter(file => minimatch(file.relativePath, pathGlob, { matchBase: true }));
+    files = filterByPath(files, pathGlob);
   }
 
   // Apply text content filter
@@ -228,9 +228,9 @@ async function executeBulkWithMove(
   // Discover files for the specified type
   let files = await discoverManagedFiles(schema, vaultDir, typePath);
 
-  // Apply path glob filter
+  // Apply path glob filter (uses unified targeting module for consistent behavior)
   if (pathGlob) {
-    files = files.filter(file => minimatch(file.relativePath, pathGlob, { matchBase: true }));
+    files = filterByPath(files, pathGlob);
   }
 
   // Apply text content filter

@@ -408,6 +408,54 @@ tags:
     });
   });
 
+  describe('--path filtering', () => {
+    // Tests for Issue #148: --path with directory paths should match files in that directory
+    // Previously, `--path Ideas/` or `--path Ideas` would fail because minimatch was called
+    // directly without normalizing directory paths to globs.
+    
+    it('should match files with trailing slash (--path Ideas/)', async () => {
+      const result = await runCLI(['bulk', '--path', 'Ideas/', '--set', 'test=value'], vaultDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Sample Idea.md');
+      expect(result.stdout).toContain('Another Idea.md');
+    });
+
+    it('should match files with bare directory name (--path Ideas)', async () => {
+      const result = await runCLI(['bulk', '--path', 'Ideas', '--set', 'test=value'], vaultDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Sample Idea.md');
+      expect(result.stdout).toContain('Another Idea.md');
+    });
+
+    it('should still work with explicit glob (--path Ideas/**)', async () => {
+      const result = await runCLI(['bulk', '--path', 'Ideas/**', '--set', 'test=value'], vaultDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Sample Idea.md');
+      expect(result.stdout).toContain('Another Idea.md');
+    });
+
+    it('should combine --path with --type (AND composition)', async () => {
+      const result = await runCLI(['bulk', '--type', 'idea', '--path', 'Ideas/', '--set', 'test=value'], vaultDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Sample Idea.md');
+      expect(result.stdout).toContain('Another Idea.md');
+    });
+
+    it('should match nested directories with bare path', async () => {
+      const result = await runCLI(['bulk', '--path', 'Objectives', '--set', 'test=value'], vaultDir);
+      expect(result.exitCode).toBe(0);
+      // Should match files in Objectives/Tasks and Objectives/Milestones
+      expect(result.stdout).toContain('Sample Task.md');
+      expect(result.stdout).toContain('Active Milestone.md');
+    });
+
+    it('should return no files for non-existent directory', async () => {
+      const result = await runCLI(['bulk', '--path', 'NonexistentDir/', '--set', 'test=value'], vaultDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('No files match');
+    });
+  });
+
   describe('simple filters (--field=value syntax)', () => {
     // Note: Simple filters are deprecated but still work when combined with --all or --where.
     // They do NOT satisfy the targeting gate on their own.
