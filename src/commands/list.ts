@@ -286,7 +286,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
     }
   });
 
-interface ListOptions {
+export interface ListOptions {
   outputFormat: ListOutputFormat;
   fields?: string[] | undefined;
   filters: { field: string; operator: 'eq' | 'neq'; values: string[] }[];
@@ -303,8 +303,9 @@ interface ListOptions {
 
 /**
  * List objects with pre-resolved files from targeting.
+ * Exported for use by dashboard command.
  */
-async function listObjects(
+export async function listObjects(
   schema: LoadedSchema,
   vaultDir: string,
   typePath: string | undefined,
