@@ -27,6 +27,13 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Added
 
+- **`dashboard edit` command to modify existing dashboards** (#201)
+  - `bwrb dashboard edit <name>` opens interactive editor with current values as defaults
+  - `bwrb dashboard edit` (no args) shows picker to select dashboard
+  - Flag-based editing: `--type`, `--where`, `--path`, `--body`, `--default-output`, `--fields`
+  - JSON mode: `--json '{"type":"task"}'` replaces entire definition
+  - Preserves unchanged fields when using flags
+
 - **Dashboard picker and default dashboard support** (#198)
   - `bwrb dashboard` (no args) shows an interactive picker to select from saved dashboards
   - Picker shows dashboard names with type info (e.g., "my-tasks (task)")

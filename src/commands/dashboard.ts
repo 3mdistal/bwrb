@@ -3,7 +3,9 @@ import chalk from 'chalk';
 import {
   getDashboard,
   createDashboard,
+  updateDashboard,
   loadDashboards,
+  listDashboards,
 } from '../lib/dashboard.js';
 import { resolveTargets, type TargetingOptions } from '../lib/targeting.js';
 import { loadSchema, getTypeDefByPath } from '../lib/schema.js';
@@ -63,7 +65,7 @@ query and displays results using the dashboard's default output format.
 Commands:
   new <name>     Create a new dashboard
   list           List all saved dashboards
-  edit <name>    Edit an existing dashboard (coming soon)
+  edit [name]    Edit an existing dashboard
   delete <name>  Delete a dashboard (coming soon)
 
 Examples:
@@ -600,4 +602,301 @@ function printDashboardSummary(definition: DashboardDefinition): void {
   } else {
     console.log(chalk.gray('  (no filters - matches all notes)'));
   }
+}
+
+// ============================================================================
+// dashboard edit [name]
+// ============================================================================
+
+interface DashboardEditOptions {
+  type?: string;
+  path?: string;
+  where?: string[];
+  body?: string;
+  defaultOutput?: string;
+  fields?: string;
+  json?: string;
+}
+
+dashboardCommand
+  .command('edit [name]')
+  .description('Edit an existing dashboard')
+  .option('-t, --type <type>', 'Filter by type path (e.g., task, objective/milestone)')
+  .option('-p, --path <glob>', 'Filter by file path glob (e.g., Projects/**)')
+  .option('-w, --where <expression...>', 'Filter expressions (replaces existing)')
+  .option('-b, --body <query>', 'Filter by body content search')
+  .option('--default-output <format>', 'Default output format: text, paths, tree, link, json')
+  .option('--fields <fields>', 'Fields to display (comma-separated)')
+  .option('--json <data>', 'Update from JSON (non-interactive, replaces definition)')
+  .addHelpText('after', `
+Edit an existing dashboard's query parameters. In interactive mode, current
+values are shown as defaults.
+
+Examples:
+  bwrb dashboard edit my-tasks                    # Interactive mode with picker
+  bwrb dashboard edit my-tasks --type idea        # Update type via flag
+  bwrb dashboard edit my-tasks --where "status == 'active'"  # Replace where
+  bwrb dashboard edit my-tasks --json '{"type":"task","output":"tree"}'
+`)
+  .action(async (name: string | undefined, options: DashboardEditOptions, cmd: Command) => {
+    const jsonMode = options.json !== undefined;
+
+    try {
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
+      const schema = await loadSchema(vaultDir);
+
+      // If no name provided, show picker to select dashboard
+      let dashboardName: string;
+      if (name) {
+        dashboardName = name;
+      } else {
+        const selected = await selectDashboardForEdit(vaultDir);
+        if (!selected) {
+          // No dashboards or user cancelled
+          return;
+        }
+        dashboardName = selected;
+      }
+
+      // Load existing dashboard
+      const existing = await getDashboard(vaultDir, dashboardName);
+      if (!existing) {
+        const error = `Dashboard "${dashboardName}" does not exist`;
+        if (jsonMode) {
+          printJson(jsonError(error));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        printError(error);
+        process.exit(1);
+      }
+
+      // Validate type if specified
+      if (options.type) {
+        const typeDef = getTypeDefByPath(schema, options.type);
+        if (!typeDef) {
+          const error = `Unknown type: ${options.type}`;
+          if (jsonMode) {
+            printJson(jsonError(error));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(error);
+          process.exit(1);
+        }
+      }
+
+      if (jsonMode) {
+        await editDashboardFromJson(vaultDir, dashboardName, options.json!);
+        return;
+      }
+
+      // Check if any flags were provided
+      const hasFlags = options.type || options.path || options.where || 
+                       options.body || options.defaultOutput || options.fields;
+
+      if (hasFlags) {
+        await editDashboardFromFlags(vaultDir, dashboardName, existing, options);
+      } else {
+        await editDashboardInteractive(schema, vaultDir, dashboardName, existing);
+      }
+    } catch (err) {
+      if (err instanceof UserCancelledError) {
+        console.log('\nCancelled.');
+        process.exit(1);
+      }
+
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+/**
+ * Show picker to select a dashboard for editing.
+ * Returns null if no dashboards exist or user cancels.
+ */
+async function selectDashboardForEdit(vaultDir: string): Promise<string | null> {
+  const names = await listDashboards(vaultDir);
+
+  if (names.length === 0) {
+    console.log('No dashboards to edit.');
+    console.log('\nCreate one with: bwrb dashboard new <name>');
+    return null;
+  }
+
+  // Check for TTY before showing picker
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    printError('No dashboard specified. Provide a dashboard name to edit.');
+    console.log('\nAvailable dashboards:');
+    for (const n of names) {
+      console.log(`  ${n}`);
+    }
+    process.exit(1);
+  }
+
+  // Load full definitions for display
+  const dashboardsFile = await loadDashboards(vaultDir);
+  const displayToName = new Map<string, string>();
+  const pickerOptions = names.map(n => {
+    const def = dashboardsFile.dashboards[n];
+    const displayLabel = def?.type ? `${n} (${def.type})` : n;
+    displayToName.set(displayLabel, n);
+    return displayLabel;
+  });
+
+  const selected = await promptSelection('Select a dashboard to edit:', pickerOptions);
+  if (selected === null) {
+    throw new UserCancelledError();
+  }
+
+  return displayToName.get(selected) ?? selected;
+}
+
+/**
+ * Update a dashboard from JSON input (replaces entire definition).
+ */
+async function editDashboardFromJson(
+  vaultDir: string,
+  name: string,
+  jsonInput: string
+): Promise<void> {
+  let definition: DashboardDefinition;
+  try {
+    definition = JSON.parse(jsonInput) as DashboardDefinition;
+  } catch (e) {
+    const error = `Invalid JSON: ${(e as Error).message}`;
+    printJson(jsonError(error));
+    process.exit(ExitCodes.VALIDATION_ERROR);
+  }
+
+  await updateDashboard(vaultDir, name, definition);
+
+  printJson(jsonSuccess({
+    message: 'Dashboard updated',
+    data: { name, definition },
+  }));
+}
+
+/**
+ * Update a dashboard from command-line flags.
+ * Only updates fields that are explicitly provided; preserves others.
+ */
+async function editDashboardFromFlags(
+  vaultDir: string,
+  name: string,
+  existing: DashboardDefinition,
+  options: DashboardEditOptions
+): Promise<void> {
+  // Start with existing definition
+  const definition: DashboardDefinition = { ...existing };
+
+  // Update only the fields that were provided
+  if (options.type !== undefined) definition.type = options.type || undefined;
+  if (options.path !== undefined) definition.path = options.path || undefined;
+  if (options.where !== undefined) {
+    definition.where = options.where.length > 0 ? options.where : undefined;
+  }
+  if (options.body !== undefined) definition.body = options.body || undefined;
+  if (options.defaultOutput !== undefined) {
+    definition.output = options.defaultOutput 
+      ? (options.defaultOutput as DashboardDefinition['output'])
+      : undefined;
+  }
+  if (options.fields !== undefined) {
+    const fields = options.fields.split(',').map(f => f.trim()).filter(Boolean);
+    definition.fields = fields.length > 0 ? fields : undefined;
+  }
+
+  await updateDashboard(vaultDir, name, definition);
+
+  printSuccess(`Updated dashboard: ${name}`);
+  printDashboardSummary(definition);
+}
+
+/**
+ * Edit a dashboard interactively, showing current values as defaults.
+ */
+async function editDashboardInteractive(
+  schema: LoadedSchema,
+  vaultDir: string,
+  name: string,
+  current: DashboardDefinition
+): Promise<void> {
+  console.log(chalk.bold(`\nEditing dashboard: ${name}\n`));
+  console.log(chalk.gray('Press Enter to keep current value, or enter new value.\n'));
+
+  const definition: DashboardDefinition = {};
+
+  // 1. Type selection
+  const types = Array.from(schema.types.keys())
+    .filter((t) => t !== 'meta')
+    .sort();
+  
+  if (types.length > 0) {
+    const typeOptions = ['(all types)', ...types];
+    console.log(chalk.gray(`Current type: ${current.type ?? '(all types)'}`));
+    const selectedType = await promptSelection('Filter by type:', typeOptions);
+    if (selectedType === null) throw new UserCancelledError();
+    if (selectedType !== '(all types)') {
+      definition.type = selectedType;
+    }
+  }
+
+  // 2. Where expressions
+  console.log(chalk.gray('\nWhere expressions filter by frontmatter values.'));
+  if (current.where && current.where.length > 0) {
+    console.log(chalk.gray(`Current: ${current.where.join(', ')}`));
+  }
+  const whereDefault = current.where?.join(', ') ?? '';
+  const whereInput = await promptMultiInput('Where expressions', whereDefault);
+  if (whereInput === null) throw new UserCancelledError();
+  if (whereInput.length > 0) {
+    definition.where = whereInput;
+  }
+
+  // 3. Body search
+  console.log(chalk.gray(`\nCurrent body search: ${current.body ?? '(none)'}`));
+  const bodyQuery = await promptInput('Body content search (optional)', current.body);
+  if (bodyQuery === null) throw new UserCancelledError();
+  if (bodyQuery.trim()) {
+    definition.body = bodyQuery.trim();
+  }
+
+  // 4. Path filter
+  console.log(chalk.gray(`\nCurrent path filter: ${current.path ?? '(none)'}`));
+  const pathFilter = await promptInput('Path filter (optional)', current.path);
+  if (pathFilter === null) throw new UserCancelledError();
+  if (pathFilter.trim()) {
+    definition.path = pathFilter.trim();
+  }
+
+  // 5. Output format
+  const outputOptions = ['(default)', 'paths', 'tree', 'link', 'json'];
+  console.log(chalk.gray(`\nCurrent output: ${current.output ?? '(default)'}`));
+  const selectedOutput = await promptSelection('Default output format:', outputOptions);
+  if (selectedOutput === null) throw new UserCancelledError();
+  if (selectedOutput !== '(default)') {
+    definition.output = selectedOutput as DashboardDefinition['output'];
+  }
+
+  // 6. Fields
+  console.log(chalk.gray('\nFields to display in table output (when not using paths/tree/link).'));
+  if (current.fields && current.fields.length > 0) {
+    console.log(chalk.gray(`Current: ${current.fields.join(', ')}`));
+  }
+  const fieldsDefault = current.fields?.join(', ') ?? '';
+  const fieldsInput = await promptMultiInput('Display fields', fieldsDefault);
+  if (fieldsInput === null) throw new UserCancelledError();
+  if (fieldsInput.length > 0) {
+    definition.fields = fieldsInput;
+  }
+
+  // Update the dashboard
+  await updateDashboard(vaultDir, name, definition);
+
+  printSuccess(`\nUpdated dashboard: ${name}`);
+  printDashboardSummary(definition);
 }

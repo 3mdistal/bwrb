@@ -903,4 +903,361 @@ describe('dashboard command', () => {
       });
     });
   });
+
+  // ============================================================================
+  // dashboard edit command tests
+  // ============================================================================
+
+  describe('dashboard edit', () => {
+    afterEach(async () => {
+      await removeDashboards();
+    });
+
+    describe('editing with flags', () => {
+      beforeEach(async () => {
+        await createDashboards({
+          dashboards: {
+            'my-tasks': {
+              type: 'task',
+              where: ["status == 'active'"],
+              output: 'tree',
+            },
+          },
+        });
+      });
+
+      it('should update dashboard type with --type flag', async () => {
+        const result = await runCLI(['dashboard', 'edit', 'my-tasks', '--type', 'idea'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Updated dashboard: my-tasks');
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['my-tasks']!.type).toBe('idea');
+        // Should preserve other fields
+        expect(dashboards.dashboards['my-tasks']!.where).toEqual(["status == 'active'"]);
+        expect(dashboards.dashboards['my-tasks']!.output).toBe('tree');
+      });
+
+      it('should update dashboard where with --where flag (replaces existing)', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'my-tasks',
+          '--where', "priority == 'high'"
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['my-tasks']!.where).toEqual(["priority == 'high'"]);
+        // Should preserve other fields
+        expect(dashboards.dashboards['my-tasks']!.type).toBe('task');
+        expect(dashboards.dashboards['my-tasks']!.output).toBe('tree');
+      });
+
+      it('should update with multiple --where flags', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'my-tasks',
+          '--where', "status == 'active'",
+          '--where', "priority < 3"
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['my-tasks']!.where).toEqual([
+          "status == 'active'",
+          "priority < 3"
+        ]);
+      });
+
+      it('should update dashboard body with --body flag', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'my-tasks',
+          '--body', 'TODO'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['my-tasks']!.body).toBe('TODO');
+      });
+
+      it('should update dashboard path with --path flag', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'my-tasks',
+          '--path', 'Projects/**'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['my-tasks']!.path).toBe('Projects/**');
+      });
+
+      it('should update dashboard default-output with --default-output flag', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'my-tasks',
+          '--default-output', 'paths'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['my-tasks']!.output).toBe('paths');
+      });
+
+      it('should update dashboard fields with --fields flag', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'my-tasks',
+          '--fields', 'status,priority,deadline'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['my-tasks']!.fields).toEqual(['status', 'priority', 'deadline']);
+      });
+
+      it('should update multiple fields at once', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'my-tasks',
+          '--type', 'idea',
+          '--where', "status == 'raw'",
+          '--default-output', 'link'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['my-tasks']!.type).toBe('idea');
+        expect(dashboards.dashboards['my-tasks']!.where).toEqual(["status == 'raw'"]);
+        expect(dashboards.dashboards['my-tasks']!.output).toBe('link');
+      });
+
+      it('should use -t, -p, -w, -b shorthand flags', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'my-tasks',
+          '-t', 'idea',
+          '-p', 'Ideas/**',
+          '-w', "status == 'raw'",
+          '-b', 'important'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        const dashboard = dashboards.dashboards['my-tasks'];
+        expect(dashboard!.type).toBe('idea');
+        expect(dashboard!.path).toBe('Ideas/**');
+        expect(dashboard!.where).toEqual(["status == 'raw'"]);
+        expect(dashboard!.body).toBe('important');
+      });
+    });
+
+    describe('editing with --json', () => {
+      beforeEach(async () => {
+        await createDashboards({
+          dashboards: {
+            'my-tasks': {
+              type: 'task',
+              where: ["status == 'active'"],
+            },
+          },
+        });
+      });
+
+      it('should update dashboard from JSON input (replaces entire definition)', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'my-tasks',
+          '--json', '{"type":"idea","output":"tree"}'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const output = JSON.parse(result.stdout);
+        expect(output.success).toBe(true);
+        expect(output.message).toBe('Dashboard updated');
+        expect(output.data.name).toBe('my-tasks');
+
+        const dashboards = await readDashboards();
+        // JSON replaces entire definition
+        expect(dashboards.dashboards['my-tasks']!.type).toBe('idea');
+        expect(dashboards.dashboards['my-tasks']!.output).toBe('tree');
+        expect(dashboards.dashboards['my-tasks']!.where).toBeUndefined();
+      });
+
+      it('should return JSON success response', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'my-tasks',
+          '--json', '{"type":"objective"}'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const output = JSON.parse(result.stdout);
+        expect(output.success).toBe(true);
+        expect(output.message).toBe('Dashboard updated');
+        expect(output.data.name).toBe('my-tasks');
+        expect(output.data.definition.type).toBe('objective');
+      });
+
+      it('should error on invalid JSON', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'my-tasks',
+          '--json', 'not valid json'
+        ], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        const output = JSON.parse(result.stdout);
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('Invalid JSON');
+      });
+    });
+
+    describe('error handling', () => {
+      it('should error when dashboard does not exist', async () => {
+        const result = await runCLI(['dashboard', 'edit', 'nonexistent', '--type', 'task'], vaultDir);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Dashboard "nonexistent" does not exist');
+      });
+
+      it('should error on invalid type', async () => {
+        await createDashboards({
+          dashboards: {
+            'my-tasks': { type: 'task' },
+          },
+        });
+
+        const result = await runCLI([
+          'dashboard', 'edit', 'my-tasks',
+          '--type', 'nonexistent-type'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Unknown type: nonexistent-type');
+      });
+
+      it('should return JSON error when dashboard does not exist in JSON mode', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'nonexistent',
+          '--json', '{}'
+        ], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        const output = JSON.parse(result.stdout);
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('does not exist');
+      });
+
+      it('should return JSON error on invalid type in JSON mode', async () => {
+        await createDashboards({
+          dashboards: {
+            'my-tasks': { type: 'task' },
+          },
+        });
+
+        const result = await runCLI([
+          'dashboard', 'edit', 'my-tasks',
+          '--type', 'bad-type',
+          '--json', '{}'
+        ], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        const output = JSON.parse(result.stdout);
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('Unknown type');
+      });
+
+      it('should error when no name provided in non-TTY mode', async () => {
+        await createDashboards({
+          dashboards: {
+            'my-tasks': { type: 'task' },
+          },
+        });
+
+        // Without a name, should show error and list available dashboards
+        const result = await runCLI(['dashboard', 'edit'], vaultDir);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('No dashboard specified');
+        expect(result.stdout).toContain('Available dashboards');
+        expect(result.stdout).toContain('my-tasks');
+      });
+
+      it('should show helpful message when no dashboards to edit', async () => {
+        const result = await runCLI(['dashboard', 'edit'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('No dashboards to edit');
+        expect(result.stdout).toContain('bwrb dashboard new');
+      });
+    });
+
+    describe('help text', () => {
+      it('should show help for dashboard edit', async () => {
+        const result = await runCLI(['dashboard', 'edit', '--help'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Edit an existing dashboard');
+        expect(result.stdout).toContain('--type');
+        expect(result.stdout).toContain('--where');
+        expect(result.stdout).toContain('--body');
+        expect(result.stdout).toContain('--path');
+        expect(result.stdout).toContain('--default-output');
+        expect(result.stdout).toContain('--fields');
+        expect(result.stdout).toContain('--json');
+      });
+    });
+
+    describe('running edited dashboards', () => {
+      it('should be able to run an edited dashboard', async () => {
+        await createDashboards({
+          dashboards: {
+            'my-ideas': {
+              type: 'idea',
+              where: ["status == 'backlog'"],
+            },
+          },
+        });
+
+        // Edit the dashboard
+        await runCLI([
+          'dashboard', 'edit', 'my-ideas',
+          '--where', "status == 'raw'"
+        ], vaultDir);
+
+        // Run it
+        const result = await runCLI(['dashboard', 'my-ideas'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        // Sample Idea has status: raw, Another Idea has status: backlog
+        expect(result.stdout).toContain('Sample Idea');
+        expect(result.stdout).not.toContain('Another Idea');
+      });
+
+      it('should apply updated type filter', async () => {
+        // Create a simple dashboard without a where filter that would conflict
+        await createDashboards({
+          dashboards: {
+            'my-ideas': {
+              type: 'idea',
+            },
+          },
+        });
+
+        // Edit the dashboard to show tasks instead
+        await runCLI([
+          'dashboard', 'edit', 'my-ideas',
+          '--type', 'task'
+        ], vaultDir);
+
+        // Run it
+        const result = await runCLI(['dashboard', 'my-ideas'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        // Should now show tasks, not ideas
+        expect(result.stdout).toContain('Sample Task');
+        expect(result.stdout).not.toContain('Sample Idea');
+      });
+    });
+  });
 });
