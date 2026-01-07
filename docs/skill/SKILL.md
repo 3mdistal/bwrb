@@ -136,8 +136,9 @@ bwrb dashboard new my-query --json '{"type":"task","where":["priority==high"]}'
 bwrb dashboard my-tasks
 bwrb dashboard my-tasks --output json  # Override default output format
 
-# List available dashboards
-bwrb dashboard
+# List all dashboards
+bwrb dashboard list
+bwrb dashboard list --output json  # JSON output for scripting
 ```
 
 ## Best Practices
