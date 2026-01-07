@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import {
   getDashboard,
   createDashboard,
-  listDashboards,
+  loadDashboards,
 } from '../lib/dashboard.js';
 import { resolveTargets, type TargetingOptions } from '../lib/targeting.js';
 import { loadSchema, getTypeDefByPath } from '../lib/schema.js';
@@ -47,17 +47,22 @@ interface DashboardRunOptions {
   output?: string;
 }
 
+interface DashboardListOptions {
+  output?: string;
+}
+
 export const dashboardCommand = new Command('dashboard')
   .description('Run or manage saved dashboard queries')
   .argument('[name]', 'Dashboard name to run')
   .option('-o, --output <format>', 'Output format: text (default), paths, tree, link, json')
+  .enablePositionalOptions()
   .addHelpText('after', `
 A dashboard is a saved list query. Running a dashboard executes the saved
 query and displays results using the dashboard's default output format.
 
 Commands:
   new <name>     Create a new dashboard
-  list           List all saved dashboards (coming soon)
+  list           List all saved dashboards
   edit <name>    Edit an existing dashboard (coming soon)
   delete <name>  Delete a dashboard (coming soon)
 
@@ -65,31 +70,14 @@ Examples:
   bwrb dashboard my-tasks              Run the "my-tasks" dashboard
   bwrb dashboard inbox --output json   Override output format to JSON
   bwrb dashboard new my-query --type task --where "status=active"
+  bwrb dashboard list                  List all saved dashboards
+  bwrb dashboard list --output json    List dashboards in JSON format
 `)
   .action(async (name: string | undefined, options: DashboardRunOptions, cmd: Command) => {
-    // If no name provided, show available dashboards
+    // If no name provided and no subcommand matched, show help
     if (!name) {
-      try {
-        const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
-        const dashboards = await listDashboards(vaultDir);
-        
-        if (dashboards.length === 0) {
-          console.log('No dashboards saved yet.');
-          console.log('\nCreate one with: bwrb dashboard new <name>');
-          return;
-        }
-
-        console.log(chalk.bold('\nAvailable dashboards:\n'));
-        for (const dashboard of dashboards) {
-          console.log(`  ${dashboard}`);
-        }
-        console.log('\nRun with: bwrb dashboard <name>');
-        return;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        printError(message);
-        process.exit(1);
-      }
+      cmd.help();
+      // cmd.help() exits, so this line is never reached
     }
 
     // Run the named dashboard
@@ -169,6 +157,98 @@ async function runDashboard(
     process.exit(1);
   }
 }
+
+// ============================================================================
+// dashboard list
+// ============================================================================
+
+dashboardCommand
+  .command('list')
+  .description('List all saved dashboards')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .action(async (options: DashboardListOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
+      const dashboardsFile = await loadDashboards(vaultDir);
+      const dashboards = dashboardsFile.dashboards;
+      const names = Object.keys(dashboards).sort((a, b) => a.localeCompare(b));
+
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          data: { dashboards },
+        }));
+        return;
+      }
+
+      // Text output
+      if (names.length === 0) {
+        console.log('No dashboards saved.');
+        console.log('\nCreate one with: bwrb dashboard new <name>');
+        console.log('Or save from list: bwrb list --type task --save-as my-tasks');
+        return;
+      }
+
+      console.log(chalk.bold('\nDashboards\n'));
+
+      // Calculate column widths
+      const nameWidth = Math.max(10, ...names.map(n => n.length));
+      const typeWidth = Math.max(6, ...names.map(n => (dashboards[n]?.type ?? '').length));
+
+      // Header
+      console.log(
+        chalk.gray(
+          'NAME'.padEnd(nameWidth + 2) +
+          'TYPE'.padEnd(typeWidth + 2) +
+          'FILTERS'
+        )
+      );
+
+      // Rows
+      for (const name of names) {
+        const def = dashboards[name];
+        if (!def) continue;
+
+        const nameCol = chalk.cyan(name.padEnd(nameWidth + 2));
+        const typeCol = chalk.green((def.type ?? '').padEnd(typeWidth + 2));
+        
+        // Build filters summary
+        const filters: string[] = [];
+        if (def.where && def.where.length > 0) {
+          filters.push(`where: ${def.where.length}`);
+        }
+        if (def.path) {
+          filters.push(`path: ${def.path}`);
+        }
+        if (def.body) {
+          filters.push(`body: "${def.body}"`);
+        }
+        if (def.output && def.output !== 'default') {
+          filters.push(`output: ${def.output}`);
+        }
+        if (def.fields && def.fields.length > 0) {
+          filters.push(`fields: ${def.fields.length}`);
+        }
+
+        const filtersCol = filters.length > 0 
+          ? chalk.gray(filters.join(', '))
+          : chalk.gray('(no filters)');
+
+        console.log(nameCol + typeCol + filtersCol);
+      }
+
+      console.log(`\n${names.length} dashboard(s) found`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.IO_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
 
 // ============================================================================
 // dashboard new <name>

@@ -294,6 +294,180 @@ describe('dashboard command', () => {
       expect(result.stdout).toContain('Run or manage saved dashboard queries');
       expect(result.stdout).toContain('--output');
       expect(result.stdout).toContain('bwrb dashboard my-tasks');
+      expect(result.stdout).toContain('bwrb dashboard list');
+    });
+  });
+
+  // ============================================================================
+  // dashboard list tests
+  // ============================================================================
+
+  describe('dashboard list', () => {
+    describe('with dashboards', () => {
+      beforeEach(async () => {
+        await createDashboards({
+          dashboards: {
+            'alpha-tasks': {
+              type: 'task',
+              where: ["status == 'active'"],
+              output: 'tree',
+            },
+            'beta-ideas': {
+              type: 'idea',
+              path: 'Projects/**',
+              body: 'urgent',
+            },
+            'gamma-all': {
+              // Empty dashboard - just a name
+            },
+            'delta-complex': {
+              type: 'objective',
+              where: ["status == 'active'", "priority == 'high'"],
+              output: 'json',
+              fields: ['name', 'status', 'deadline'],
+            },
+          },
+        });
+      });
+
+      afterEach(async () => {
+        await removeDashboards();
+      });
+
+      it('should list all dashboards in text format', async () => {
+        const result = await runCLI(['dashboard', 'list'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Dashboards');
+        expect(result.stdout).toContain('alpha-tasks');
+        expect(result.stdout).toContain('beta-ideas');
+        expect(result.stdout).toContain('gamma-all');
+        expect(result.stdout).toContain('delta-complex');
+        expect(result.stdout).toContain('4 dashboard(s) found');
+      });
+
+      it('should show dashboard names sorted alphabetically', async () => {
+        const result = await runCLI(['dashboard', 'list'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const lines = result.stdout.split('\n');
+        const dashboardLines = lines.filter(l => 
+          l.includes('alpha-tasks') || 
+          l.includes('beta-ideas') || 
+          l.includes('delta-complex') || 
+          l.includes('gamma-all')
+        );
+        // Should appear in alphabetical order
+        expect(dashboardLines.length).toBe(4);
+        expect(dashboardLines[0]).toContain('alpha-tasks');
+        expect(dashboardLines[1]).toContain('beta-ideas');
+        expect(dashboardLines[2]).toContain('delta-complex');
+        expect(dashboardLines[3]).toContain('gamma-all');
+      });
+
+      it('should show type column for dashboards with type', async () => {
+        const result = await runCLI(['dashboard', 'list'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('task');
+        expect(result.stdout).toContain('idea');
+        expect(result.stdout).toContain('objective');
+      });
+
+      it('should show filter info for dashboards', async () => {
+        const result = await runCLI(['dashboard', 'list'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        // alpha-tasks has where: 1 expression
+        expect(result.stdout).toContain('where: 1');
+        // beta-ideas has path and body
+        expect(result.stdout).toContain('path:');
+        expect(result.stdout).toContain('body:');
+        // delta-complex has multiple filters
+        expect(result.stdout).toContain('where: 2');
+        expect(result.stdout).toContain('fields: 3');
+      });
+
+      it('should list dashboards in JSON format', async () => {
+        const result = await runCLI(['dashboard', 'list', '--output', 'json'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        expect(json.data.dashboards).toBeDefined();
+        expect(Object.keys(json.data.dashboards)).toHaveLength(4);
+        expect(json.data.dashboards['alpha-tasks']).toEqual({
+          type: 'task',
+          where: ["status == 'active'"],
+          output: 'tree',
+        });
+        expect(json.data.dashboards['beta-ideas']).toEqual({
+          type: 'idea',
+          path: 'Projects/**',
+          body: 'urgent',
+        });
+        expect(json.data.dashboards['gamma-all']).toEqual({});
+      });
+
+      it('should support -o shorthand for --output', async () => {
+        const result = await runCLI(['dashboard', 'list', '-o', 'json'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        expect(json.data.dashboards).toBeDefined();
+      });
+    });
+
+    describe('with no dashboards', () => {
+      beforeEach(async () => {
+        await removeDashboards();
+      });
+
+      it('should show helpful message when no dashboards exist', async () => {
+        const result = await runCLI(['dashboard', 'list'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('No dashboards saved');
+        expect(result.stdout).toContain('bwrb dashboard new');
+        expect(result.stdout).toContain('--save-as');
+      });
+
+      it('should return empty dashboards object in JSON mode', async () => {
+        const result = await runCLI(['dashboard', 'list', '--output', 'json'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        expect(json.data.dashboards).toEqual({});
+      });
+    });
+
+    describe('with empty dashboards file', () => {
+      beforeEach(async () => {
+        await createDashboards({ dashboards: {} });
+      });
+
+      afterEach(async () => {
+        await removeDashboards();
+      });
+
+      it('should show helpful message when dashboards file is empty', async () => {
+        const result = await runCLI(['dashboard', 'list'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('No dashboards saved');
+      });
+    });
+
+    describe('help', () => {
+      it('should show help for dashboard list', async () => {
+        const result = await runCLI(['dashboard', 'list', '--help'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('List all saved dashboards');
+        expect(result.stdout).toContain('--output');
+      });
     });
   });
 
@@ -581,31 +755,13 @@ describe('dashboard command', () => {
   });
 
   describe('dashboard without arguments', () => {
-    it('should list available dashboards when no name provided', async () => {
-      await createDashboards({
-        dashboards: {
-          'dashboard-one': { type: 'task' },
-          'dashboard-two': { type: 'idea' },
-        },
-      });
-
+    it('should show help when no name provided', async () => {
       const result = await runCLI(['dashboard'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('dashboard-one');
-      expect(result.stdout).toContain('dashboard-two');
-    });
-
-    afterEach(async () => {
-      await removeDashboards();
-    });
-
-    it('should show helpful message when no dashboards exist', async () => {
-      const result = await runCLI(['dashboard'], vaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('No dashboards saved yet');
-      expect(result.stdout).toContain('bwrb dashboard new');
+      expect(result.stdout).toContain('Usage:');
+      expect(result.stdout).toContain('dashboard list');
+      expect(result.stdout).toContain('dashboard new');
     });
   });
 });
