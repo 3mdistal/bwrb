@@ -457,6 +457,108 @@ describe('config command', () => {
   });
 
   // ============================================================================
+  // default_dashboard config
+  // ============================================================================
+
+  describe('default_dashboard config', () => {
+    it('should show default_dashboard in config list', async () => {
+      const result = await runCLI(['config', 'list'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('default_dashboard');
+      expect(result.stdout).toContain('Dashboard to run when');
+    });
+
+    it('should show default_dashboard as undefined when not set', async () => {
+      const result = await runCLI(['config', 'list', 'default_dashboard', '-o', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.data.key).toBe('default_dashboard');
+      expect(json.data.value).toBeUndefined();
+    });
+
+    it('should set default_dashboard via --json', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-default-dashboard-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: { meta: {} },
+        })
+      );
+
+      try {
+        const result = await runCLI(
+          ['config', 'edit', 'default_dashboard', '--json', '"my-tasks"'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Set default_dashboard');
+
+        // Verify the change persisted
+        const verifyResult = await runCLI(['config', 'list', 'default_dashboard', '-o', 'json'], tempVaultDir);
+        const json = JSON.parse(verifyResult.stdout);
+        expect(json.data.value).toBe('my-tasks');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should persist default_dashboard to schema.json', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-default-dashboard-persist-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: { meta: {} },
+        })
+      );
+
+      try {
+        await runCLI(['config', 'edit', 'default_dashboard', '--json', '"inbox"'], tempVaultDir);
+
+        // Read the schema file directly
+        const schemaContent = await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8');
+        const schema = JSON.parse(schemaContent);
+
+        expect(schema.config).toBeDefined();
+        expect(schema.config.default_dashboard).toBe('inbox');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should show explicit default_dashboard value', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-default-dashboard-explicit-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: { meta: {} },
+          config: {
+            default_dashboard: 'my-saved-dashboard',
+          },
+        })
+      );
+
+      try {
+        const result = await runCLI(['config', 'list', 'default_dashboard', '-o', 'json'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.data.value).toBe('my-saved-dashboard');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  // ============================================================================
   // Edge cases
   // ============================================================================
 

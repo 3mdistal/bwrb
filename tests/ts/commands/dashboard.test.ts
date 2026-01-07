@@ -1260,4 +1260,203 @@ describe('dashboard command', () => {
       });
     });
   });
+
+  // ============================================================================
+  // --set-default flag tests
+  // ============================================================================
+
+  describe('--set-default flag', () => {
+    // Helper to get default dashboard from config
+    async function getDefaultDashboard(): Promise<string | undefined> {
+      const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+      const schemaContent = await readFile(schemaPath, 'utf-8');
+      const schema = JSON.parse(schemaContent);
+      return schema.config?.default_dashboard;
+    }
+
+    // Helper to clear default dashboard
+    async function clearDefaultDashboard(): Promise<void> {
+      const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+      const schemaContent = await readFile(schemaPath, 'utf-8');
+      const schema = JSON.parse(schemaContent);
+      if (schema.config?.default_dashboard) {
+        delete schema.config.default_dashboard;
+        await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+      }
+    }
+
+    afterEach(async () => {
+      await removeDashboards();
+      await clearDefaultDashboard();
+    });
+
+    describe('dashboard new --set-default', () => {
+      it('should set dashboard as default when created with --set-default', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'my-tasks',
+          '--type', 'task',
+          '--set-default'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Created dashboard: my-tasks');
+        expect(result.stdout).toContain('Set "my-tasks" as default dashboard');
+
+        // Verify the default was set
+        const defaultDashboard = await getDefaultDashboard();
+        expect(defaultDashboard).toBe('my-tasks');
+      });
+
+      it('should work with --set-default and --json', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'json-dashboard',
+          '--json', '{"type":"idea"}',
+          '--set-default'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        expect(json.message).toContain('set as default');
+        expect(json.data.isDefault).toBe(true);
+
+        // Verify the default was set
+        const defaultDashboard = await getDefaultDashboard();
+        expect(defaultDashboard).toBe('json-dashboard');
+      });
+
+      it('should create dashboard without setting default when --set-default is not used', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'regular-dashboard',
+          '--type', 'task'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Created dashboard: regular-dashboard');
+        expect(result.stdout).not.toContain('as default');
+
+        // Verify no default was set
+        const defaultDashboard = await getDefaultDashboard();
+        expect(defaultDashboard).toBeUndefined();
+      });
+
+      it('should run the newly set default dashboard', async () => {
+        // Create and set default
+        await runCLI([
+          'dashboard', 'new', 'idea-dashboard',
+          '--type', 'idea',
+          '--set-default'
+        ], vaultDir);
+
+        // Run dashboard command without arguments
+        const result = await runCLI(['dashboard'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        // Should show ideas (the default dashboard filters by type: idea)
+        expect(result.stdout).toContain('Sample Idea');
+        expect(result.stdout).toContain('Another Idea');
+      });
+    });
+
+    describe('dashboard edit --set-default', () => {
+      beforeEach(async () => {
+        await createDashboards({
+          dashboards: {
+            'existing-dashboard': { type: 'task' },
+            'other-dashboard': { type: 'idea' },
+          },
+        });
+      });
+
+      it('should set dashboard as default when edited with --set-default', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'existing-dashboard',
+          '--set-default'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Set "existing-dashboard" as default dashboard');
+
+        // Verify the default was set
+        const defaultDashboard = await getDefaultDashboard();
+        expect(defaultDashboard).toBe('existing-dashboard');
+      });
+
+      it('should set default along with other edits', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'existing-dashboard',
+          '--type', 'idea',
+          '--set-default'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Updated dashboard: existing-dashboard');
+        expect(result.stdout).toContain('Set "existing-dashboard" as default dashboard');
+
+        // Verify both changes
+        const defaultDashboard = await getDefaultDashboard();
+        expect(defaultDashboard).toBe('existing-dashboard');
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['existing-dashboard']!.type).toBe('idea');
+      });
+
+      it('should work with --set-default and --json', async () => {
+        const result = await runCLI([
+          'dashboard', 'edit', 'existing-dashboard',
+          '--json', '{"type":"objective"}',
+          '--set-default'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        expect(json.message).toContain('set as default');
+        expect(json.data.isDefault).toBe(true);
+
+        // Verify the default was set
+        const defaultDashboard = await getDefaultDashboard();
+        expect(defaultDashboard).toBe('existing-dashboard');
+      });
+
+      it('should replace existing default when using --set-default', async () => {
+        // Set initial default
+        const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+        const schemaContent = await readFile(schemaPath, 'utf-8');
+        const schema = JSON.parse(schemaContent);
+        schema.config = { ...schema.config, default_dashboard: 'other-dashboard' };
+        await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+
+        // Edit different dashboard with --set-default
+        const result = await runCLI([
+          'dashboard', 'edit', 'existing-dashboard',
+          '--set-default'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        // Verify the default was changed
+        const defaultDashboard = await getDefaultDashboard();
+        expect(defaultDashboard).toBe('existing-dashboard');
+      });
+    });
+
+    describe('help text includes --set-default', () => {
+      it('should show --set-default in dashboard new help', async () => {
+        const result = await runCLI(['dashboard', 'new', '--help'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('--set-default');
+        expect(result.stdout).toContain('Set this dashboard as the default');
+      });
+
+      it('should show --set-default in dashboard edit help', async () => {
+        const result = await runCLI(['dashboard', 'edit', '--help'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('--set-default');
+        expect(result.stdout).toContain('Set this dashboard as the default');
+      });
+    });
+  });
 });

@@ -42,4 +42,30 @@ export async function writeSchema(vaultDir: string, schema: Schema): Promise<voi
   await rename(tempPath, schemaPath);
 }
 
-
+/**
+ * Set the default dashboard in vault config.
+ * Updates schema.json with config.default_dashboard.
+ * 
+ * @param vaultDir - Path to the vault directory
+ * @param dashboardName - Name of the dashboard to set as default, or null to clear
+ */
+export async function setDefaultDashboard(
+  vaultDir: string,
+  dashboardName: string | null
+): Promise<void> {
+  const schema = await loadRawSchemaJson(vaultDir);
+  
+  // Ensure config object exists
+  if (!schema.config) {
+    schema.config = {};
+  }
+  
+  if (dashboardName === null) {
+    // Clear the default
+    delete schema.config.default_dashboard;
+  } else {
+    schema.config.default_dashboard = dashboardName;
+  }
+  
+  await writeSchema(vaultDir, schema);
+}

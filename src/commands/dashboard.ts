@@ -9,6 +9,7 @@ import {
 } from '../lib/dashboard.js';
 import { resolveTargets, type TargetingOptions } from '../lib/targeting.js';
 import { loadSchema, getTypeDefByPath } from '../lib/schema.js';
+import { setDefaultDashboard } from '../lib/schema-writer.js';
 import { resolveVaultDir } from '../lib/vault.js';
 import { getGlobalOpts } from '../lib/command.js';
 import {
@@ -364,6 +365,7 @@ interface DashboardNewOptions {
   defaultOutput?: string;
   fields?: string;
   json?: string;
+  setDefault?: boolean;
 }
 
 dashboardCommand
@@ -376,6 +378,7 @@ dashboardCommand
   .option('--default-output <format>', 'Default output format: text, paths, tree, link, json')
   .option('--fields <fields>', 'Fields to display (comma-separated)')
   .option('--json <data>', 'Create from JSON (non-interactive)')
+  .option('--set-default', 'Set this dashboard as the default')
   .addHelpText('after', `
 Create a saved dashboard query. Dashboards can be created interactively
 (when no flags are provided) or via command-line flags.
@@ -384,6 +387,7 @@ Examples:
   bwrb dashboard new my-tasks --type task
   bwrb dashboard new active-tasks --type task --where "status == 'active'"
   bwrb dashboard new inbox --type task --where "status == 'inbox'" --default-output tree
+  bwrb dashboard new my-tasks --type task --set-default  # Set as default dashboard
   bwrb dashboard new my-query                   # Interactive mode
   bwrb dashboard new my-query --json '{"type":"task"}'
 `)
@@ -421,11 +425,11 @@ Examples:
       }
 
       if (jsonMode) {
-        await createDashboardFromJson(vaultDir, name, options.json!);
+        await createDashboardFromJson(vaultDir, name, options.json!, options.setDefault);
         return;
       }
 
-      // Check if any flags were provided
+      // Check if any flags were provided (excluding setDefault which is handled separately)
       const hasFlags = options.type || options.path || options.where || 
                        options.body || options.defaultOutput || options.fields;
 
@@ -433,6 +437,12 @@ Examples:
         await createDashboardFromFlags(vaultDir, name, options);
       } else {
         await createDashboardInteractive(schema, vaultDir, name);
+      }
+
+      // Set as default if requested
+      if (options.setDefault) {
+        await setDefaultDashboard(vaultDir, name);
+        printSuccess(`Set "${name}" as default dashboard`);
       }
     } catch (err) {
       if (err instanceof UserCancelledError) {
@@ -456,7 +466,8 @@ Examples:
 async function createDashboardFromJson(
   vaultDir: string,
   name: string,
-  jsonInput: string
+  jsonInput: string,
+  setAsDefault?: boolean
 ): Promise<void> {
   let definition: DashboardDefinition;
   try {
@@ -469,9 +480,14 @@ async function createDashboardFromJson(
 
   await createDashboard(vaultDir, name, definition);
 
+  // Set as default if requested
+  if (setAsDefault) {
+    await setDefaultDashboard(vaultDir, name);
+  }
+
   printJson(jsonSuccess({
-    message: 'Dashboard created',
-    data: { name, definition },
+    message: setAsDefault ? 'Dashboard created and set as default' : 'Dashboard created',
+    data: { name, definition, isDefault: setAsDefault ?? false },
   }));
 }
 
@@ -616,6 +632,7 @@ interface DashboardEditOptions {
   defaultOutput?: string;
   fields?: string;
   json?: string;
+  setDefault?: boolean;
 }
 
 dashboardCommand
@@ -628,6 +645,7 @@ dashboardCommand
   .option('--default-output <format>', 'Default output format: text, paths, tree, link, json')
   .option('--fields <fields>', 'Fields to display (comma-separated)')
   .option('--json <data>', 'Update from JSON (non-interactive, replaces definition)')
+  .option('--set-default', 'Set this dashboard as the default')
   .addHelpText('after', `
 Edit an existing dashboard's query parameters. In interactive mode, current
 values are shown as defaults.
@@ -636,6 +654,7 @@ Examples:
   bwrb dashboard edit my-tasks                    # Interactive mode with picker
   bwrb dashboard edit my-tasks --type idea        # Update type via flag
   bwrb dashboard edit my-tasks --where "status == 'active'"  # Replace where
+  bwrb dashboard edit my-tasks --set-default      # Set as default dashboard
   bwrb dashboard edit my-tasks --json '{"type":"task","output":"tree"}'
 `)
   .action(async (name: string | undefined, options: DashboardEditOptions, cmd: Command) => {
@@ -685,18 +704,25 @@ Examples:
       }
 
       if (jsonMode) {
-        await editDashboardFromJson(vaultDir, dashboardName, options.json!);
+        await editDashboardFromJson(vaultDir, dashboardName, options.json!, options.setDefault);
         return;
       }
 
-      // Check if any flags were provided
-      const hasFlags = options.type || options.path || options.where || 
-                       options.body || options.defaultOutput || options.fields;
+      // Check if any flags were provided (excluding setDefault which is handled after)
+      const hasEditFlags = options.type || options.path || options.where || 
+                           options.body || options.defaultOutput || options.fields;
 
-      if (hasFlags) {
+      if (hasEditFlags) {
         await editDashboardFromFlags(vaultDir, dashboardName, existing, options);
-      } else {
+      } else if (!options.setDefault) {
+        // Only go interactive if no edit flags AND no --set-default
         await editDashboardInteractive(schema, vaultDir, dashboardName, existing);
+      }
+
+      // Set as default if requested
+      if (options.setDefault) {
+        await setDefaultDashboard(vaultDir, dashboardName);
+        printSuccess(`Set "${dashboardName}" as default dashboard`);
       }
     } catch (err) {
       if (err instanceof UserCancelledError) {
@@ -761,7 +787,8 @@ async function selectDashboardForEdit(vaultDir: string): Promise<string | null> 
 async function editDashboardFromJson(
   vaultDir: string,
   name: string,
-  jsonInput: string
+  jsonInput: string,
+  setAsDefault?: boolean
 ): Promise<void> {
   let definition: DashboardDefinition;
   try {
@@ -774,9 +801,14 @@ async function editDashboardFromJson(
 
   await updateDashboard(vaultDir, name, definition);
 
+  // Set as default if requested
+  if (setAsDefault) {
+    await setDefaultDashboard(vaultDir, name);
+  }
+
   printJson(jsonSuccess({
-    message: 'Dashboard updated',
-    data: { name, definition },
+    message: setAsDefault ? 'Dashboard updated and set as default' : 'Dashboard updated',
+    data: { name, definition, isDefault: setAsDefault ?? false },
   }));
 }
 

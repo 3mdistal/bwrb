@@ -52,6 +52,12 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Added
 
+- **Default dashboard configuration via `--set-default` flag** (#203)
+  - `bwrb dashboard new my-tasks --type task --set-default` creates and sets as default
+  - `bwrb dashboard edit my-tasks --set-default` sets existing dashboard as default
+  - `bwrb config edit default_dashboard` allows setting/clearing default via config
+  - When configured, `bwrb dashboard` (no args) runs the default instead of showing picker
+
 - **`dashboard edit` command to modify existing dashboards** (#201)
   - `bwrb dashboard edit <name>` opens interactive editor with current values as defaults
   - `bwrb dashboard edit` (no args) shows picker to select dashboard

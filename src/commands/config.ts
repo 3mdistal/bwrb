@@ -64,6 +64,12 @@ const CONFIG_OPTIONS: ConfigOptionMeta[] = [
     description: 'Obsidian vault name for URI scheme (auto-detected if not set)',
     default: '(auto-detect)',
   },
+  {
+    key: 'default_dashboard',
+    label: 'Default Dashboard',
+    description: 'Dashboard to run when `bwrb dashboard` is called without arguments',
+    default: '(none)',
+  },
 ];
 
 export const configCommand = new Command('config')
@@ -280,6 +286,8 @@ function getConfigValue(config: Partial<Config>, key: keyof Config, vaultDir: st
       return 'system';
     case 'obsidian_vault':
       return detectObsidianVault(vaultDir);
+    case 'default_dashboard':
+      return undefined; // No auto-detection for default_dashboard
     default:
       return undefined;
   }
