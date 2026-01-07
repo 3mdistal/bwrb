@@ -4,6 +4,19 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Complete command reference for all CLI commands** (#213)
+  - Enhanced targeting reference with full selector documentation, command matrix, and safety gates
+  - Updated all 13 command pages: `new`, `edit`, `list`, `search`, `open`, `delete`, `audit`, `bulk`, `schema`, `template`, `config`, `completion`, `dashboard`
+  - Added subcommand pages for `schema` (list, validate, diff, migrate, history)
+  - Added subcommand pages for `template` (list, new, edit, delete, validate)
+  - Added subcommand pages for `config` (list, edit)
+  - Comprehensive options tables with short flags (-t, -p, -w, -b, -x, -o)
+  - Two-gate safety model documentation for destructive commands
+  - JSON mode examples for scripting and automation
+  - Cross-linked related commands throughout
+
 ### Changed (Internal)
 
 - **Consolidated test schemas into shared fixtures** (#65)

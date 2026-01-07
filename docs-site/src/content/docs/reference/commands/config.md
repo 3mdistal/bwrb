@@ -5,7 +5,7 @@ description: Vault configuration settings
 
 Manage vault-wide configuration options.
 
-## Usage
+## Synopsis
 
 ```bash
 bwrb config <subcommand>
@@ -13,22 +13,25 @@ bwrb config <subcommand>
 
 ## Subcommands
 
-### list
+| Subcommand | Description |
+|------------|-------------|
+| [list](/reference/commands/config/list/) | Show configuration values |
+| [edit](/reference/commands/config/edit/) | Edit configuration values |
 
-View configuration:
-
-```bash
-bwrb config list              # All options
-bwrb config list link_format  # Specific option
-```
-
-### edit
-
-Modify configuration:
+## Quick Examples
 
 ```bash
-bwrb config edit link_format
-bwrb config edit --json '{"link_format": "markdown"}'
+# Show all configuration
+bwrb config list
+
+# Show specific option
+bwrb config list open_with
+
+# Edit configuration
+bwrb config edit open_with
+
+# Set via JSON
+bwrb config edit open_with --json '"editor"'
 ```
 
 ## Available Options
@@ -36,11 +39,15 @@ bwrb config edit --json '{"link_format": "markdown"}'
 | Option | Description | Values |
 |--------|-------------|--------|
 | `link_format` | How relations are formatted | `wikilink`, `markdown` |
-| `editor` | Editor command | Path or command |
-| `visual` | Visual editor | Path or command |
-| `open_with` | Default open app | `system`, `editor`, `obsidian` |
-| `obsidian_vault` | Obsidian vault name | String |
+| `editor` | Terminal editor command | Path or command |
+| `visual` | GUI editor command | Path or command |
+| `open_with` | Default app for opening notes | `system`, `editor`, `visual`, `obsidian` |
+| `obsidian_vault` | Obsidian vault name for URI scheme | String |
+
+## Configuration Location
+
+Configuration is stored in `.bwrb/schema.json` under the `config` key.
 
 ## See Also
 
-- [Schema concepts](/concepts/schema/)
+- [Schema concepts](/concepts/schema/) — Schema structure

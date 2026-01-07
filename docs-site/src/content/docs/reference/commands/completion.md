@@ -5,13 +5,19 @@ description: Shell completion scripts
 
 Generate shell completion scripts for tab completion.
 
-## Usage
+## Synopsis
 
 ```bash
 bwrb completion <shell>
 ```
 
-## Shells
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `shell` | Shell type: `bash`, `zsh`, `fish` |
+
+## Installation
 
 ### Bash
 
@@ -31,7 +37,7 @@ eval "$(bwrb completion zsh)"
 
 ### Fish
 
-Run once:
+Run once to install:
 
 ```fish
 bwrb completion fish > ~/.config/fish/completions/bwrb.fish
@@ -39,11 +45,20 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 
 ## What Gets Completed
 
-- **Commands** — `bwrb <TAB>` shows `new`, `edit`, `list`, etc.
-- **Options** — `bwrb list -<TAB>` shows available flags
-- **Types** — `bwrb new <TAB>` shows types from schema
-- **Paths** — `bwrb list --path <TAB>` shows directories
+| Context | Completions |
+|---------|-------------|
+| `bwrb <TAB>` | Commands: `new`, `edit`, `list`, `open`, etc. |
+| `bwrb list -<TAB>` | Options: `--type`, `--path`, `--where`, etc. |
+| `bwrb new <TAB>` | Types from your schema |
+| `bwrb list --type <TAB>` | Types from your schema |
+| `bwrb list --path <TAB>` | Directories in your vault |
+
+## Notes
+
+- Completions are generated dynamically from your vault's schema
+- Ensure `BWRB_VAULT` is set or run from within a vault directory
+- Restart your shell after adding the completion script
 
 ## See Also
 
-- [Shell completion guide](/automation/shell-completion/)
+- [Shell completion guide](/automation/shell-completion/) — Detailed setup

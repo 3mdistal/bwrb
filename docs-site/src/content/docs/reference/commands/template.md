@@ -1,11 +1,11 @@
 ---
 title: bwrb template
-description: Manage note templates
+description: Template management
 ---
 
 Manage reusable templates for note creation.
 
-## Usage
+## Synopsis
 
 ```bash
 bwrb template <subcommand>
@@ -13,53 +13,34 @@ bwrb template <subcommand>
 
 ## Subcommands
 
-### list
+| Subcommand | Description |
+|------------|-------------|
+| [list](/reference/commands/template/list/) | List templates |
+| [new](/reference/commands/template/new/) | Create a new template |
+| [edit](/reference/commands/template/edit/) | Edit an existing template |
+| [delete](/reference/commands/template/delete/) | Delete a template |
+| [validate](/reference/commands/template/validate/) | Validate templates against schema |
 
-View templates:
-
-```bash
-bwrb template list                    # All templates
-bwrb template list task               # Templates for type
-bwrb template list task bug-report    # Specific template
-```
-
-### new
-
-Create a template:
+## Quick Examples
 
 ```bash
-bwrb template new task
+# List all templates
+bwrb template list
+
+# List templates for a type
+bwrb template list task
+
+# Create a new template
 bwrb template new task --name bug-report
-bwrb template new task --json '{"defaults": {"priority": "high"}}'
-```
 
-### edit
+# Edit a template
+bwrb template edit task bug-report
 
-Modify a template:
-
-```bash
-bwrb template edit task default
-bwrb template edit task bug-report --json '{"defaults": {"status": "backlog"}}'
-```
-
-### delete
-
-Remove a template:
-
-```bash
-bwrb template delete task bug-report
-```
-
-### validate
-
-Check templates against schema:
-
-```bash
-bwrb template validate          # All templates
-bwrb template validate task     # Type's templates
+# Validate all templates
+bwrb template validate
 ```
 
 ## See Also
 
-- [Templates overview](/templates/overview/)
-- [Creating templates](/templates/creating-templates/)
+- [Templates Overview](/templates/overview/) — Template concepts
+- [Creating Templates](/templates/creating-templates/) — Template authoring guide

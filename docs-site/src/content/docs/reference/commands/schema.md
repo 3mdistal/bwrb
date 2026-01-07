@@ -1,11 +1,11 @@
 ---
 title: bwrb schema
-description: Inspect and manage schema
+description: Schema introspection and management
 ---
 
-Manage your vault's schema definition.
+Inspect and manage your vault's schema definition.
 
-## Usage
+## Synopsis
 
 ```bash
 bwrb schema <subcommand>
@@ -13,57 +13,34 @@ bwrb schema <subcommand>
 
 ## Subcommands
 
-### list
+| Subcommand | Description |
+|------------|-------------|
+| [list](/reference/commands/schema/list/) | List schema contents |
+| [validate](/reference/commands/schema/validate/) | Validate schema structure |
+| [diff](/reference/commands/schema/diff/) | Show pending schema changes |
+| [migrate](/reference/commands/schema/migrate/) | Apply schema changes to notes |
+| [history](/reference/commands/schema/history/) | Show migration history |
 
-View schema contents:
-
-```bash
-bwrb schema list              # Overview
-bwrb schema list types        # All types
-bwrb schema list type task    # Specific type
-bwrb schema list enums        # All enums
-bwrb schema list fields       # All fields
-```
-
-### new
-
-Create schema elements:
+## Quick Examples
 
 ```bash
-bwrb schema new type
-bwrb schema new field
-bwrb schema new enum
-```
+# List all types
+bwrb schema list
 
-### edit
+# Show specific type details
+bwrb schema list type task
 
-Modify schema elements:
+# Validate schema structure
+bwrb schema validate
 
-```bash
-bwrb schema edit type task
-bwrb schema edit field status
-bwrb schema edit enum priority
-```
+# Preview migration
+bwrb schema diff
 
-### delete
-
-Remove schema elements:
-
-```bash
-bwrb schema delete type idea
-bwrb schema delete field old-field --execute
-```
-
-### migrate
-
-Apply schema changes to notes:
-
-```bash
-bwrb schema migrate           # Preview
-bwrb schema migrate --execute # Apply
+# Apply migration
+bwrb schema migrate --execute
 ```
 
 ## See Also
 
-- [Schema concepts](/concepts/schema/)
-- [Migrations](/concepts/migrations/)
+- [Schema concepts](/concepts/schema/) — Understanding schema structure
+- [Migrations](/concepts/migrations/) — Migration workflow
