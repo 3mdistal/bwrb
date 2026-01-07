@@ -5,6 +5,22 @@ import starlight from '@astrojs/starlight';
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://bwrb.dev',
+	// Redirects for consolidated CLI reference pages (issue #257)
+	// Old subcommand URLs redirect to anchor sections in parent pages
+	redirects: {
+		'/reference/commands/config/list/': '/reference/commands/config/#list',
+		'/reference/commands/config/edit/': '/reference/commands/config/#edit',
+		'/reference/commands/schema/list/': '/reference/commands/schema/#list',
+		'/reference/commands/schema/validate/': '/reference/commands/schema/#validate',
+		'/reference/commands/schema/diff/': '/reference/commands/schema/#diff',
+		'/reference/commands/schema/migrate/': '/reference/commands/schema/#migrate',
+		'/reference/commands/schema/history/': '/reference/commands/schema/#history',
+		'/reference/commands/template/list/': '/reference/commands/template/#list',
+		'/reference/commands/template/new/': '/reference/commands/template/#new',
+		'/reference/commands/template/edit/': '/reference/commands/template/#edit',
+		'/reference/commands/template/delete/': '/reference/commands/template/#delete',
+		'/reference/commands/template/validate/': '/reference/commands/template/#validate',
+	},
 	integrations: [
 		starlight({
 			title: 'Bowerbird',

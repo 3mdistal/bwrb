@@ -4,6 +4,14 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Consolidated CLI reference documentation** (#257)
+  - Each top-level command (`config`, `schema`, `template`) now has a single comprehensive page
+  - Subcommands are documented as sections with anchor links instead of separate pages
+  - Reduces navigation depth and makes it easier to see all related functionality at a glance
+  - Matches common CLI documentation patterns (e.g., git man pages)
+
 ### Added
 
 - **Vault initialization command** (#188)
