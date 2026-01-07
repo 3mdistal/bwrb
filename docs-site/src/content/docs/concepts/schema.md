@@ -21,16 +21,18 @@ A schema defines:
 
 - **Types** — Categories of notes (e.g., `task`, `idea`, `person`)
 - **Fields** — Properties each type has (e.g., `status`, `priority`, `deadline`)
-- **Enums** — Reusable option sets (e.g., status values)
-- **Config** — Vault-wide settings
+- **Config** — Vault-wide settings (link format, default editor, etc.)
+- **Audit** — Configuration for schema validation
 
 ```json
 {
   "types": { ... },
-  "enums": { ... },
-  "config": { ... }
+  "config": { ... },
+  "audit": { ... }
 }
 ```
+
+See the [Schema Reference](/reference/schema/) for complete property documentation.
 
 ## Schema is King
 
@@ -42,5 +44,6 @@ The schema is the source of truth. Notes must conform.
 
 ## Next Steps
 
+- [Schema Reference](/reference/schema/) — Complete property reference
 - [Types and Inheritance](/concepts/types-and-inheritance/) — How types relate to each other
 - [Validation and Audit](/concepts/validation-and-audit/) — Keeping notes in sync with schema
