@@ -120,6 +120,26 @@ bwrb audit --fix
 bwrb audit --fix --auto  # Auto-apply unambiguous fixes
 ```
 
+### Dashboards (Saved Queries)
+
+Dashboards save common list queries for reuse:
+
+```bash
+# Create a dashboard with flags
+bwrb dashboard new my-tasks --type task --where "status == 'active'"
+bwrb dashboard new inbox --type task --where "status == 'inbox'" --default-output tree
+
+# Create via JSON
+bwrb dashboard new my-query --json '{"type":"task","where":["priority==high"]}'
+
+# Run a saved dashboard
+bwrb dashboard my-tasks
+bwrb dashboard my-tasks --output json  # Override default output format
+
+# List available dashboards
+bwrb dashboard
+```
+
 ## Best Practices
 
 1. **Always use `--output json`** for list/search/audit when parsing output

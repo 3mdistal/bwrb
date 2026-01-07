@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { join } from 'path';
-import { mkdir, writeFile, rm } from 'fs/promises';
+import { writeFile, rm, readFile } from 'fs/promises';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
 import type { DashboardsFile } from '../../../src/types/schema.js';
 
@@ -30,6 +30,12 @@ describe('dashboard command', () => {
     } catch {
       // File may not exist, ignore
     }
+  }
+
+  // Helper to read dashboards from file
+  async function readDashboards(): Promise<DashboardsFile> {
+    const content = await readFile(join(vaultDir, '.bwrb', 'dashboards.json'), 'utf-8');
+    return JSON.parse(content) as DashboardsFile;
   }
 
   describe('running dashboards', () => {
@@ -285,9 +291,321 @@ describe('dashboard command', () => {
       const result = await runCLI(['dashboard', '--help'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Run a saved dashboard query');
+      expect(result.stdout).toContain('Run or manage saved dashboard queries');
       expect(result.stdout).toContain('--output');
       expect(result.stdout).toContain('bwrb dashboard my-tasks');
+    });
+  });
+
+  // ============================================================================
+  // dashboard new command tests
+  // ============================================================================
+
+  describe('dashboard new', () => {
+    afterEach(async () => {
+      await removeDashboards();
+    });
+
+    describe('creating with flags', () => {
+      it('should create dashboard with --type flag', async () => {
+        const result = await runCLI(['dashboard', 'new', 'my-tasks', '--type', 'task'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Created dashboard: my-tasks');
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['my-tasks']).toBeDefined();
+        expect(dashboards.dashboards['my-tasks']!.type).toBe('task');
+      });
+
+      it('should create dashboard with --where flag', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'active-tasks',
+          '--type', 'task',
+          '--where', "status == 'active'"
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['active-tasks']!.where).toEqual(["status == 'active'"]);
+      });
+
+      it('should create dashboard with multiple --where flags', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'filtered-tasks',
+          '--type', 'task',
+          '--where', "status == 'active'",
+          '--where', "priority < 3"
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['filtered-tasks']!.where).toEqual([
+          "status == 'active'",
+          "priority < 3"
+        ]);
+      });
+
+      it('should create dashboard with --body flag', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'search-dashboard',
+          '--body', 'TODO'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['search-dashboard']!.body).toBe('TODO');
+      });
+
+      it('should create dashboard with --path flag', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'projects-dashboard',
+          '--path', 'Projects/**'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['projects-dashboard']!.path).toBe('Projects/**');
+      });
+
+      it('should create dashboard with --default-output flag', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'tree-dashboard',
+          '--type', 'task',
+          '--default-output', 'tree'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['tree-dashboard']!.output).toBe('tree');
+      });
+
+      it('should create dashboard with --fields flag', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'table-dashboard',
+          '--type', 'idea',
+          '--fields', 'status,priority'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['table-dashboard']!.fields).toEqual(['status', 'priority']);
+      });
+
+      it('should create dashboard with all flags combined', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'full-dashboard',
+          '--type', 'task',
+          '--where', "status == 'active'",
+          '--body', 'TODO',
+          '--path', 'Projects/**',
+          '--default-output', 'paths',
+          '--fields', 'status,priority'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        const dashboard = dashboards.dashboards['full-dashboard'];
+        expect(dashboard!.type).toBe('task');
+        expect(dashboard!.where).toEqual(["status == 'active'"]);
+        expect(dashboard!.body).toBe('TODO');
+        expect(dashboard!.path).toBe('Projects/**');
+        expect(dashboard!.output).toBe('paths');
+        expect(dashboard!.fields).toEqual(['status', 'priority']);
+      });
+
+      it('should use -t, -p, -w, -b shorthand flags', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'shorthand-dashboard',
+          '-t', 'idea',
+          '-p', 'Ideas/**',
+          '-w', "status == 'raw'",
+          '-b', 'important',
+          '--default-output', 'link'  // No shorthand for default-output
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+
+        const dashboards = await readDashboards();
+        const dashboard = dashboards.dashboards['shorthand-dashboard'];
+        expect(dashboard!.type).toBe('idea');
+        expect(dashboard!.path).toBe('Ideas/**');
+        expect(dashboard!.where).toEqual(["status == 'raw'"]);
+        expect(dashboard!.body).toBe('important');
+        expect(dashboard!.output).toBe('link');
+      });
+    });
+
+    describe('creating with --json', () => {
+      it('should create dashboard from JSON input', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'json-dashboard',
+          '--json', '{"type":"task","where":["status==active"]}'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const output = JSON.parse(result.stdout);
+        expect(output.success).toBe(true);
+        expect(output.data.name).toBe('json-dashboard');
+
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['json-dashboard']!.type).toBe('task');
+      });
+
+      it('should return JSON success response', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'json-response-test',
+          '--json', '{"type":"idea"}'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const output = JSON.parse(result.stdout);
+        expect(output.success).toBe(true);
+        expect(output.message).toBe('Dashboard created');
+        expect(output.data.name).toBe('json-response-test');
+        expect(output.data.definition.type).toBe('idea');
+      });
+
+      it('should error on invalid JSON', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'invalid-json',
+          '--json', 'not valid json'
+        ], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        const output = JSON.parse(result.stdout);
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('Invalid JSON');
+      });
+    });
+
+    describe('error handling', () => {
+      it('should error when dashboard name already exists', async () => {
+        // Create first dashboard
+        await runCLI(['dashboard', 'new', 'existing', '--type', 'task'], vaultDir);
+
+        // Try to create another with same name
+        const result = await runCLI(['dashboard', 'new', 'existing', '--type', 'idea'], vaultDir);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Dashboard "existing" already exists');
+      });
+
+      it('should error on duplicate name in JSON mode', async () => {
+        await runCLI(['dashboard', 'new', 'existing', '--json', '{}'], vaultDir);
+
+        const result = await runCLI(['dashboard', 'new', 'existing', '--json', '{}'], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        const output = JSON.parse(result.stdout);
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('already exists');
+      });
+
+      it('should error on invalid type', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'bad-type',
+          '--type', 'nonexistent-type'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Unknown type: nonexistent-type');
+      });
+
+      it('should error on invalid type in JSON mode', async () => {
+        const result = await runCLI([
+          'dashboard', 'new', 'bad-type',
+          '--type', 'nonexistent-type',
+          '--json', '{}'
+        ], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        const output = JSON.parse(result.stdout);
+        expect(output.success).toBe(false);
+        expect(output.error).toContain('Unknown type');
+      });
+    });
+
+    describe('help text', () => {
+      it('should show help for dashboard new', async () => {
+        const result = await runCLI(['dashboard', 'new', '--help'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Create a new dashboard');
+        expect(result.stdout).toContain('--type');
+        expect(result.stdout).toContain('--where');
+        expect(result.stdout).toContain('--body');
+        expect(result.stdout).toContain('--path');
+        expect(result.stdout).toContain('--default-output');
+        expect(result.stdout).toContain('--fields');
+        expect(result.stdout).toContain('--json');
+      });
+    });
+
+    describe('running created dashboards', () => {
+      it('should be able to run a created dashboard', async () => {
+        // Create a dashboard
+        await runCLI(['dashboard', 'new', 'my-ideas', '--type', 'idea'], vaultDir);
+
+        // Run it
+        const result = await runCLI(['dashboard', 'my-ideas'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Sample Idea');
+        expect(result.stdout).toContain('Another Idea');
+      });
+
+      it('should apply where filters from created dashboard', async () => {
+        // Create a dashboard with filter
+        await runCLI([
+          'dashboard', 'new', 'raw-ideas',
+          '--type', 'idea',
+          '--where', "status == 'raw'"
+        ], vaultDir);
+
+        // Run it
+        const result = await runCLI(['dashboard', 'raw-ideas'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Sample Idea');
+        expect(result.stdout).not.toContain('Another Idea'); // status: backlog
+      });
+    });
+  });
+
+  describe('dashboard without arguments', () => {
+    it('should list available dashboards when no name provided', async () => {
+      await createDashboards({
+        dashboards: {
+          'dashboard-one': { type: 'task' },
+          'dashboard-two': { type: 'idea' },
+        },
+      });
+
+      const result = await runCLI(['dashboard'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('dashboard-one');
+      expect(result.stdout).toContain('dashboard-two');
+    });
+
+    afterEach(async () => {
+      await removeDashboards();
+    });
+
+    it('should show helpful message when no dashboards exist', async () => {
+      const result = await runCLI(['dashboard'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('No dashboards saved yet');
+      expect(result.stdout).toContain('bwrb dashboard new');
     });
   });
 });
