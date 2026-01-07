@@ -11,8 +11,10 @@ import { printJson, jsonSuccess, jsonError, ExitCodes } from '../../lib/output.j
 import { getGlobalOpts } from '../../lib/command.js';
 import {
   outputSchemaJson,
+  outputSchemaVerboseJson,
   outputTypeDetailsJson,
   showSchemaTree,
+  showSchemaTreeVerbose,
   showTypeDetails,
   getFieldType,
 } from './helpers/output.js';
@@ -20,6 +22,7 @@ import type { Field } from '../../types/schema.js';
 
 interface ListCommandOptions {
   output?: string;
+  verbose?: boolean;
 }
 
 export const listCommand = new Command('list')
@@ -27,6 +30,7 @@ export const listCommand = new Command('list')
   .addHelpText('after', `
 Examples:
   bwrb schema list                # Show full schema overview
+  bwrb schema list --verbose      # Show all types with their fields
   bwrb schema list types          # List type names only
   bwrb schema list fields         # List all fields across types
   bwrb schema list type task      # Show details for "task" type`);
@@ -34,6 +38,7 @@ Examples:
 // schema list (no args - show full schema overview)
 listCommand
   .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--verbose', 'Show all types with their fields inline')
   .action(async (options: ListCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
@@ -42,9 +47,17 @@ listCommand
       const schema = await loadSchema(vaultDir);
 
       if (jsonMode) {
-        outputSchemaJson(schema);
+        if (options.verbose) {
+          outputSchemaVerboseJson(schema);
+        } else {
+          outputSchemaJson(schema);
+        }
       } else {
-        showSchemaTree(schema);
+        if (options.verbose) {
+          showSchemaTreeVerbose(schema);
+        } else {
+          showSchemaTree(schema);
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

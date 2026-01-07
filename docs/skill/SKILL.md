@@ -33,11 +33,15 @@ Before creating or querying notes, understand the vault's schema:
 # List all types and their structure
 bwrb schema list
 
+# Show all types with fields inline (full overview)
+bwrb schema list --verbose
+
 # Show specific type definition with fields
-bwrb schema list task
+bwrb schema list type task
 
 # Get JSON output for parsing
-bwrb schema list task --output json
+bwrb schema list type task --output json
+bwrb schema list --verbose --output json  # All types with fields as JSON
 ```
 
 ## Core Commands for Agents

@@ -577,6 +577,182 @@ describe('schema command', () => {
     });
   });
 
+  describe('schema list --verbose', () => {
+    it('should show all types with their fields inline', async () => {
+      const result = await runCLI(['schema', 'list', '--verbose'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Schema Types');
+      expect(result.stdout).toContain('Types:');
+      // Should show type names
+      expect(result.stdout).toContain('objective');
+      expect(result.stdout).toContain('task');
+      // Should show fields inline with tree characters
+      expect(result.stdout).toMatch(/[├└]─.*status/);
+    });
+
+    it('should show inheritance annotations', async () => {
+      const result = await runCLI(['schema', 'list', '--verbose'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // task extends objective
+      expect(result.stdout).toContain('(extends objective)');
+      // Note: BASELINE_SCHEMA has task redefining all fields, so no (inherited) markers
+      // The 'should work with inheritance chains' test covers actual inheritance
+    });
+
+    it('should show required field markers', async () => {
+      const result = await runCLI(['schema', 'list', '--verbose'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // Required fields should have [required] marker
+      expect(result.stdout).toContain('[required]');
+    });
+
+    it('should show output directories', async () => {
+      const result = await runCLI(['schema', 'list', '--verbose'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // Should show output directories with arrow notation
+      expect(result.stdout).toContain('-> Objectives/Tasks');
+    });
+
+    it('should work with inheritance chains', async () => {
+      // Create a schema with 3-level inheritance
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-verbose-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {
+              fields: {
+                created: { prompt: 'date', required: true }
+              }
+            },
+            objective: {
+              extends: 'meta',
+              fields: {
+                status: { prompt: 'select', options: ['raw', 'done'] }
+              }
+            },
+            task: {
+              extends: 'objective',
+              output_dir: 'Tasks',
+              fields: {
+                deadline: { prompt: 'text' }
+              }
+            }
+          }
+        })
+      );
+
+      try {
+        const result = await runCLI(['schema', 'list', '--verbose'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        // Should show all three types
+        expect(result.stdout).toContain('objective');
+        expect(result.stdout).toContain('task');
+        // Task should show extends
+        expect(result.stdout).toContain('(extends objective)');
+        // Should show own and inherited fields
+        expect(result.stdout).toContain('deadline');
+        expect(result.stdout).toContain('status');
+        expect(result.stdout).toContain('created');
+        // Inherited fields should be marked
+        expect(result.stdout).toContain('(inherited)');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    describe('--output json', () => {
+      it('should return verbose structured data', async () => {
+        const result = await runCLI(['schema', 'list', '--verbose', '--output', 'json'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const data = JSON.parse(result.stdout);
+        expect(data.version).toBe(2);
+        expect(data.types).toBeDefined();
+        expect(Array.isArray(data.types)).toBe(true);
+      });
+
+      it('should include own_fields and inherited_fields', async () => {
+        // Create a schema with inheritance
+        const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-verbose-json-'));
+        await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+        await writeFile(
+          join(tempVaultDir, '.bwrb', 'schema.json'),
+          JSON.stringify({
+            version: 2,
+            types: {
+              meta: {
+                fields: {
+                  created: { prompt: 'date', required: true }
+                }
+              },
+              task: {
+                extends: 'meta',
+                output_dir: 'Tasks',
+                fields: {
+                  status: { prompt: 'select', options: ['raw', 'done'] }
+                }
+              }
+            }
+          })
+        );
+
+        try {
+          const result = await runCLI(
+            ['schema', 'list', '--verbose', '-o', 'json'],
+            tempVaultDir
+          );
+
+          expect(result.exitCode).toBe(0);
+          const data = JSON.parse(result.stdout);
+
+          // Find task type in array
+          const taskType = data.types.find((t: { name: string }) => t.name === 'task');
+          expect(taskType).toBeDefined();
+          
+          // Should have own_fields
+          expect(taskType.own_fields).toBeDefined();
+          expect(taskType.own_fields.status).toBeDefined();
+          expect(taskType.own_fields.status.type).toBe('select');
+          
+          // Should have inherited_fields grouped by origin
+          expect(taskType.inherited_fields).toBeDefined();
+          expect(taskType.inherited_fields.meta).toBeDefined();
+          expect(taskType.inherited_fields.meta.created).toBeDefined();
+          
+          // extends: 'meta' is hidden for cleaner output (meta is implicit parent)
+          expect(taskType.extends).toBeUndefined();
+          
+          // Should have output_dir
+          expect(taskType.output_dir).toBe('Tasks');
+        } finally {
+          await rm(tempVaultDir, { recursive: true, force: true });
+        }
+      });
+
+      it('should include subtypes array for parent types', async () => {
+        const result = await runCLI(['schema', 'list', '--verbose', '--output', 'json'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const data = JSON.parse(result.stdout);
+
+        // Find objective type (which has task and milestone as subtypes)
+        const objectiveType = data.types.find((t: { name: string }) => t.name === 'objective');
+        expect(objectiveType).toBeDefined();
+        expect(objectiveType.subtypes).toBeDefined();
+        expect(objectiveType.subtypes).toContain('task');
+        expect(objectiveType.subtypes).toContain('milestone');
+      });
+    });
+  });
+
   describe('schema edit type (unified verb)', () => {
     // Note: edit type is interactive-only in unified verbs
     it.skip('should change output directory (interactive only)', async () => {

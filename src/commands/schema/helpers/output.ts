@@ -373,3 +373,209 @@ export function getFieldType(field: Field): string {
       return chalk.gray('auto');
   }
 }
+
+// ============================================================================
+// Verbose Output Functions
+// ============================================================================
+
+/**
+ * Show a verbose tree view of all types with their fields inline.
+ */
+export function showSchemaTreeVerbose(schema: LoadedSchema): void {
+  console.log(chalk.bold('\nSchema Types\n'));
+
+  console.log(chalk.cyan('Types:'));
+  for (const family of getTypeFamilies(schema)) {
+    const typeDef = getTypeDefByPath(schema, family);
+    if (!typeDef) continue;
+    printTypeTreeVerbose(schema, family, typeDef, 0);
+  }
+}
+
+/**
+ * Recursively print a type tree with fields inline.
+ */
+function printTypeTreeVerbose(
+  schema: LoadedSchema,
+  typePath: string,
+  typeDef: ResolvedType,
+  depth: number
+): void {
+  const indent = '  '.repeat(depth + 1);
+  const typeName = typePath.split('/').pop() ?? typePath;
+
+  // Build type header line
+  let header = chalk.green(typeName);
+  if (typeDef.parent && typeDef.parent !== 'meta') {
+    header += chalk.gray(` (extends ${typeDef.parent})`);
+  }
+  if (typeDef.outputDir) {
+    header += chalk.gray(` -> ${typeDef.outputDir}`);
+  }
+
+  console.log(`${indent}${header}`);
+
+  // Get fields grouped by origin
+  const { ownFields, inheritedFields } = getFieldsByOrigin(schema, typePath);
+
+  // Collect all fields in order with their origin info
+  const fieldsToShow: Array<{ name: string; field: Field; inherited?: string }> = [];
+
+  // Add inherited fields first (in ancestor order: parent first, then grandparent)
+  for (const ancestorName of typeDef.ancestors) {
+    const ancestorFields = inheritedFields.get(ancestorName);
+    if (ancestorFields) {
+      const orderedFields = getFieldOrderForOrigin(
+        schema,
+        ancestorName,
+        Object.keys(ancestorFields)
+      );
+      for (const name of orderedFields) {
+        fieldsToShow.push({ name, field: ancestorFields[name]!, inherited: ancestorName });
+      }
+    }
+  }
+
+  // Add own fields
+  const ownFieldNames = Object.keys(ownFields);
+  if (ownFieldNames.length > 0) {
+    const orderedOwnFields = getFieldOrderForOrigin(schema, typeDef.name, ownFieldNames);
+    for (const name of orderedOwnFields) {
+      fieldsToShow.push({ name, field: ownFields[name]! });
+    }
+  }
+
+  // Print fields with tree characters
+  const fieldIndent = indent + '  ';
+  for (let i = 0; i < fieldsToShow.length; i++) {
+    const { name, field, inherited } = fieldsToShow[i]!;
+    const isLast = i === fieldsToShow.length - 1;
+    const prefix = isLast ? '└─' : '├─';
+
+    let line = `${fieldIndent}${prefix} ${chalk.yellow(name)}: ${getFieldTypeCompact(field)}`;
+
+    // Add required marker
+    if (field.required) {
+      line += chalk.red(' [required]');
+    }
+
+    // Add inherited marker
+    if (inherited) {
+      line += chalk.gray(` (inherited)`);
+    }
+
+    console.log(line);
+  }
+
+  // Add blank line between types for readability (but not after the last subtype)
+  const subtypes = hasSubtypes(typeDef) ? getSubtypeKeys(typeDef) : [];
+  if (subtypes.length === 0) {
+    console.log('');
+  }
+
+  // Show subtypes (children in new model)
+  if (subtypes.length > 0) {
+    for (const subtype of subtypes) {
+      const subDef = getTypeDefByPath(schema, subtype);
+      if (subDef) {
+        printTypeTreeVerbose(schema, subtype, subDef, depth + 1);
+      }
+    }
+  }
+}
+
+/**
+ * Get a type string for verbose field display, with multiple indicator.
+ * Reuses getFieldType() to avoid drift between formatters.
+ */
+function getFieldTypeCompact(field: Field): string {
+  const baseType = getFieldType(field);
+  // Add multiple indicator for select fields
+  if (field.prompt === 'select' && field.multiple) {
+    return baseType + chalk.blue(' (multiple)');
+  }
+  return baseType;
+}
+
+/**
+ * Output verbose schema as JSON showing all types with their fields.
+ */
+export function outputSchemaVerboseJson(schema: LoadedSchema): void {
+  const types: Array<Record<string, unknown>> = [];
+
+  // Process all types (not just families - include children too)
+  const processedTypes = new Set<string>();
+
+  function processType(typeName: string): void {
+    if (processedTypes.has(typeName)) return;
+    processedTypes.add(typeName);
+
+    const typeDef = getTypeDefByPath(schema, typeName);
+    if (!typeDef) return;
+
+    // Get fields grouped by origin
+    const { ownFields, inheritedFields } = getFieldsByOrigin(schema, typeName);
+
+    // Format inherited fields as object keyed by origin type
+    const inheritedFieldsObj: Record<string, Record<string, unknown>> = {};
+    for (const [origin, fields] of inheritedFields) {
+      inheritedFieldsObj[origin] = Object.fromEntries(
+        Object.entries(fields).map(([name, field]) => [
+          name,
+          formatFieldForJson(field),
+        ])
+      );
+    }
+
+    const typeOutput: Record<string, unknown> = {
+      name: typeName,
+    };
+
+    // Add extends if present (hide implicit 'meta' parent for cleaner output)
+    if (typeDef.parent && typeDef.parent !== 'meta') {
+      typeOutput.extends = typeDef.parent;
+    }
+
+    // Add output_dir
+    if (typeDef.outputDir) {
+      typeOutput.output_dir = typeDef.outputDir;
+    }
+
+    // Add own fields
+    typeOutput.own_fields = Object.fromEntries(
+      Object.entries(ownFields).map(([name, field]) => [
+        name,
+        formatFieldForJson(field),
+      ])
+    );
+
+    // Add inherited fields if any
+    if (Object.keys(inheritedFieldsObj).length > 0) {
+      typeOutput.inherited_fields = inheritedFieldsObj;
+    }
+
+    // Add subtypes if any
+    if (hasSubtypes(typeDef)) {
+      typeOutput.subtypes = getSubtypeKeys(typeDef);
+    }
+
+    types.push(typeOutput);
+
+    // Process children
+    for (const childName of typeDef.children) {
+      processType(childName);
+    }
+  }
+
+  // Start with top-level families
+  for (const family of getTypeFamilies(schema)) {
+    processType(family);
+  }
+
+  const output = {
+    version: schema.raw.version ?? 2,
+    types,
+  };
+
+  console.log(JSON.stringify(output, null, 2));
+}
