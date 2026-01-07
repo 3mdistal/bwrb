@@ -368,437 +368,6 @@ describe('schema command', () => {
     });
   });
 
-  describe('schema edit-type', () => {
-    it('should change output directory', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-type-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: {
-            meta: {},
-            task: {
-              extends: 'meta',
-              output_dir: 'Tasks',
-              fields: { status: { prompt: 'text' } }
-            }
-          }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit-type', 'task', '--output-dir', 'NewTasks'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain('Updated type');
-
-        // Verify the change was applied
-        const verifyResult = await runCLI(
-          ['schema', 'list', 'type', 'task', '--output', 'json'],
-          tempVaultDir
-        );
-        const data = JSON.parse(verifyResult.stdout);
-        expect(data.output_dir).toBe('NewTasks');
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should change extends (reparent type)', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-type-extends-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: {
-            meta: { fields: { created: { prompt: 'date' } } },
-            objective: { extends: 'meta', fields: { status: { prompt: 'text' } } },
-            task: { extends: 'meta', output_dir: 'Tasks' }
-          }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit-type', 'task', '--extends', 'objective'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-
-        // Verify the change was applied
-        const verifyResult = await runCLI(
-          ['schema', 'list', 'type', 'task', '--output', 'json'],
-          tempVaultDir
-        );
-        const data = JSON.parse(verifyResult.stdout);
-        expect(data.extends).toBe('objective');
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should change filename pattern', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-type-filename-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: {
-            meta: {},
-            task: { extends: 'meta', output_dir: 'Tasks' }
-          }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit-type', 'task', '--filename', '{status} - {title}'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-
-        // Verify the change was applied by reading raw schema
-        const { readFile } = await import('fs/promises');
-        const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
-        );
-        expect(schema.types.task.filename).toBe('{status} - {title}');
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should error on unknown type', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-type-unknown-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: { meta: {} }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit-type', 'nonexistent', '--output-dir', 'Foo'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain('Unknown type');
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should output JSON when --output json is specified', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-type-json-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: {
-            meta: {},
-            task: { extends: 'meta', output_dir: 'Tasks' }
-          }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit-type', 'task', '--output-dir', 'NewTasks', '--output', 'json'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-        const data = JSON.parse(result.stdout);
-        expect(data.success).toBe(true);
-        expect(data.message).toContain('Updated');
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-  });
-
-  describe('schema edit-field', () => {
-    it('should change field required status with --required flag', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: {
-            meta: {},
-            task: {
-              extends: 'meta',
-              fields: { status: { prompt: 'text' } }
-            }
-          }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit-field', 'task', 'status', '--required'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain('Updated field');
-
-        // Verify the change
-        const { readFile } = await import('fs/promises');
-        const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
-        );
-        expect(schema.types.task.fields.status.required).toBe(true);
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should change field to not-required with --not-required flag', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-not-req-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: {
-            meta: {},
-            task: {
-              extends: 'meta',
-              fields: { status: { prompt: 'text', required: true } }
-            }
-          }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit-field', 'task', 'status', '--not-required'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain('Updated field');
-
-        // Verify the change
-        const { readFile } = await import('fs/promises');
-        const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
-        );
-        expect(schema.types.task.fields.status.required).toBeUndefined();
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should change field default value', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-default-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: {
-            meta: {},
-            task: {
-              extends: 'meta',
-              fields: { priority: { prompt: 'text' } }
-            }
-          }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit-field', 'task', 'priority', '--default', 'medium'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-
-        // Verify the change
-        const { readFile } = await import('fs/promises');
-        const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
-        );
-        expect(schema.types.task.fields.priority.default).toBe('medium');
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should clear field default with --clear-default', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-clear-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: {
-            meta: {},
-            task: {
-              extends: 'meta',
-              fields: { priority: { prompt: 'text', default: 'low' } }
-            }
-          }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit-field', 'task', 'priority', '--clear-default'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-
-        // Verify the change
-        const { readFile } = await import('fs/promises');
-        const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
-        );
-        expect(schema.types.task.fields.priority.default).toBeUndefined();
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should change field label', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-label-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: {
-            meta: {},
-            task: {
-              extends: 'meta',
-              fields: { deadline: { prompt: 'text' } }
-            }
-          }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit-field', 'task', 'deadline', '--label', 'Due Date'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-
-        // Verify the change
-        const { readFile } = await import('fs/promises');
-        const schema = JSON.parse(
-          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
-        );
-        expect(schema.types.task.fields.deadline.label).toBe('Due Date');
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should error when field is not directly on type (inherited)', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-inherited-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: {
-            meta: { fields: { created: { prompt: 'date' } } },
-            task: { extends: 'meta' }
-          }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit-field', 'task', 'created', '--label', 'Created Date'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain('inherited');
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should error on unknown field', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-unknown-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: {
-            meta: {},
-            task: { extends: 'meta', fields: { status: { prompt: 'text' } } }
-          }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit-field', 'task', 'nonexistent', '--label', 'Test'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain('not found');
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should output JSON when --output json is specified', async () => {
-      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-edit-field-json-'));
-      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: {
-            meta: {},
-            task: {
-              extends: 'meta',
-              fields: { status: { prompt: 'text' } }
-            }
-          }
-        })
-      );
-
-      try {
-        const result = await runCLI(
-          ['schema', 'edit-field', 'task', 'status', '--label', 'Status', '--output', 'json'],
-          tempVaultDir
-        );
-
-        expect(result.exitCode).toBe(0);
-        const data = JSON.parse(result.stdout);
-        expect(data.success).toBe(true);
-      } finally {
-        await rm(tempVaultDir, { recursive: true, force: true });
-      }
-    });
-  });
-
   // ============================================
   // NEW UNIFIED VERB COMMANDS (schema new/edit/delete/list)
   // ============================================
@@ -1010,19 +579,46 @@ describe('schema command', () => {
 
   describe('schema edit type (unified verb)', () => {
     // Note: edit type is interactive-only in unified verbs
-    // Use the old edit-type command with flags for non-interactive editing
     it.skip('should change output directory (interactive only)', async () => {
       // This test is skipped because schema edit type is interactive
-      // and requires PTY testing. See schema-edit-type.pty.test.ts
+      // and requires PTY testing
     });
   });
 
   describe('schema edit field (unified verb)', () => {
-    // Note: edit field is interactive-only in unified verbs
-    // Use the old edit-field command with flags for non-interactive editing
+    // Note: edit field is interactive-only in unified verbs  
     it.skip('should change field properties (interactive only)', async () => {
       // This test is skipped because schema edit field is interactive
-      // and requires PTY testing. See schema-edit-field.pty.test.ts
+      // and requires PTY testing
+    });
+  });
+
+  describe('deprecated commands removed', () => {
+    it('should not show deprecated commands in help output', async () => {
+      const result = await runCLI(['schema', '--help'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // Deprecated commands should not appear
+      expect(result.stdout).not.toContain('edit-type');
+      expect(result.stdout).not.toContain('edit-field');
+      // Modern commands should appear
+      expect(result.stdout).toContain('new');
+      expect(result.stdout).toContain('edit');
+      expect(result.stdout).toContain('delete');
+    });
+
+    it('should error when deprecated edit-type command is called', async () => {
+      const result = await runCLI(['schema', 'edit-type', 'task'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('unknown command');
+    });
+
+    it('should error when deprecated edit-field command is called', async () => {
+      const result = await runCLI(['schema', 'edit-field', 'task', 'status'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('unknown command');
     });
   });
 

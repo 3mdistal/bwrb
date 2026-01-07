@@ -204,8 +204,8 @@ export function registerEditTypeCommand(editCommand: Command): void {
           throw new Error(`Type "${typeName}" does not exist`);
         }
 
-        // Delegate to edit-type implementation
-        // For now, show what can be edited and prompt
+        // Interactive edit flow
+        // Show what can be edited and prompt for changes
         if (jsonMode) {
           throw new Error('Interactive edit required. Use specific flags in JSON mode.');
         }

@@ -15,7 +15,6 @@ import { listCommand } from './list.js';
 import { registerNewTypeCommand, registerEditTypeCommand, registerDeleteTypeCommand } from './type.js';
 import { registerNewFieldCommand, registerEditFieldCommand, registerDeleteFieldCommand } from './field.js';
 import { registerMigrationCommands } from './migrate.js';
-import { registerDeprecatedCommands } from './deprecated.js';
 import { promptSchemaEntityType } from './helpers/pickers.js';
 
 // ============================================================================
@@ -238,6 +237,3 @@ schemaCommand.addCommand(listCommand);
 
 // Migration commands (diff, migrate, history)
 registerMigrationCommands(schemaCommand);
-
-// Deprecated commands (edit-type, edit-field) - for backwards compatibility
-registerDeprecatedCommands(schemaCommand);

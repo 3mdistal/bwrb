@@ -192,7 +192,7 @@ export function registerEditFieldCommand(editCommand: Command): void {
 
         // Interactive edit
         if (jsonMode) {
-          throw new Error('Interactive edit required. Use edit-field with specific flags for JSON mode.');
+          throw new Error('Interactive edit required. JSON mode is not supported for schema edit field.');
         }
 
         const currentDef = typeEntry.fields[fieldName];

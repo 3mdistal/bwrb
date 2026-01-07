@@ -70,12 +70,14 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Changed (Breaking)
 
-- **Removed deprecated schema commands** (#143)
+- **Removed deprecated schema commands** (#143, #145)
   - `schema show` removed - use `schema list` or `schema list type <name>` instead
   - `schema add-type` removed - use `schema new type` instead
   - `schema add-field` removed - use `schema new field` instead
   - `schema remove-type` removed - use `schema delete type` instead
   - `schema remove-field` removed - use `schema delete field` instead
+  - `schema edit-type` removed - use `schema edit type` instead
+  - `schema edit-field` removed - use `schema edit field` instead
   - These commands were deprecated in v0.2.0 and have now been fully removed
   - The new unified verb pattern (`schema new/edit/delete/list`) is the canonical API
 
