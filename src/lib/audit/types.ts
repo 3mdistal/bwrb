@@ -207,6 +207,23 @@ export function isMarkdownLink(value: string): boolean {
 }
 
 /**
+ * Extract the target from a markdown link.
+ * Returns the target without the .md extension.
+ * Example: "[Note Name](Note Name.md)" → "Note Name"
+ */
+export function extractMarkdownLinkTarget(value: string): string | null {
+  // Handle quoted markdown link
+  let v = value;
+  if (v.startsWith('"') && v.endsWith('"')) {
+    v = v.slice(1, -1);
+  }
+  
+  // Match [display](path.md) and extract the path without .md
+  const match = v.match(/^\[.+\]\((.+)\.md\)$/);
+  return match ? match[1]! : null;
+}
+
+/**
  * Extract the target from a wikilink.
  * Returns the target without brackets, heading, or alias.
  */
@@ -222,13 +239,22 @@ export function extractWikilinkTarget(value: string): string | null {
 }
 
 /**
- * Convert a plain value to wikilink format.
+ * Convert a value to wikilink format.
+ * Extracts the note name from markdown links if needed.
  */
 export function toWikilink(value: string): string {
+  // If already a wikilink, return as-is
   if (isWikilink(value) || isQuotedWikilink(value)) {
     return value;
   }
-  return `[[${value}]]`;
+  
+  // Extract name from markdown link if present
+  let name = value;
+  if (isMarkdownLink(value)) {
+    name = extractMarkdownLinkTarget(value) ?? value;
+  }
+  
+  return `[[${name}]]`;
 }
 
 /**
