@@ -21,7 +21,7 @@ import {
 } from '../lib/output.js';
 import { openNote, resolveAppMode } from './open.js';
 import { pickFile, parsePickerMode } from '../lib/picker.js';
-import type { LoadedSchema } from '../types/schema.js';
+import type { LoadedSchema, DashboardDefinition } from '../types/schema.js';
 import {
   resolveTargets,
   parsePositionalArg,
@@ -30,6 +30,7 @@ import {
   formatTargetingSummary,
   type TargetingOptions,
 } from '../lib/targeting.js';
+import { createDashboard, updateDashboard, getDashboard } from '../lib/dashboard.js';
 
 /**
  * Resolve the output format from --output flag and deprecated flags.
@@ -85,6 +86,9 @@ interface ListCommandOptions {
   descendantsOf?: string;
   tree?: boolean; // deprecated (use --output tree)
   depth?: string;
+  // Dashboard save options
+  saveAs?: string;
+  force?: boolean;
 }
 
 export const listCommand = new Command('list')
@@ -128,6 +132,13 @@ App Modes:
 Precedence:
   --app flag > BWRB_DEFAULT_APP env > config.open_with > system
 
+Dashboard Save:
+  --save-as <name>   Save the query as a reusable dashboard
+  --force            Overwrite if dashboard already exists
+
+  bwrb list --type task --where "status='active'" --save-as "active-tasks"
+  bwrb list --type task --output tree --save-as "task-tree" --force
+
 Note: In zsh, use single quotes for expressions with '!' to avoid history expansion:
   bwrb list --type task --where '!isEmpty(deadline)'`)
   .argument('[positional]', 'Smart positional: type, path (contains /), or where expression (contains =<>~)')
@@ -149,6 +160,9 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--descendants-of <note>', 'Only show descendants (deprecated: use --where "isDescendantOf(\'[[Note]]\')")')
   .option('--tree', 'Display as tree (deprecated: use --output tree)')
   .option('-L, --depth <n>', 'Limit tree/descendants depth')
+  // Dashboard save options
+  .option('--save-as <name>', 'Save this query as a dashboard')
+  .option('--force', 'Overwrite existing dashboard when using --save-as')
   .allowUnknownOption(true)
   .action(async (positional: string | undefined, options: ListCommandOptions, cmd: Command) => {
     // Resolve output format from --output flag and deprecated flags
@@ -158,6 +172,20 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
     try {
       const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
+
+      // Pre-flight check: if --save-as is provided without --force, check if dashboard exists
+      if (options.saveAs && !options.force) {
+        const existing = await getDashboard(vaultDir, options.saveAs);
+        if (existing) {
+          const error = `Dashboard "${options.saveAs}" already exists. Use --force to overwrite.`;
+          if (jsonMode) {
+            printJson(jsonError(error));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(error);
+          process.exit(1);
+        }
+      }
 
       // Build targeting options from flags
       const targeting: TargetingOptions = {};
@@ -275,6 +303,45 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         descendantsOf: options.descendantsOf,
         depth,
       });
+
+      // Save as dashboard if --save-as was provided
+      // Note: pre-flight check already errored if dashboard exists without --force
+      if (options.saveAs) {
+        // Build DashboardDefinition from query options
+        const definition: DashboardDefinition = {};
+        if (targeting.type) definition.type = targeting.type;
+        if (targeting.path) definition.path = targeting.path;
+        if (targeting.where?.length) definition.where = targeting.where;
+        if (targeting.body) definition.body = targeting.body;
+        if (outputFormat !== 'default') definition.output = outputFormat;
+        if (fields?.length) definition.fields = fields;
+
+        try {
+          if (options.force) {
+            // --force: update if exists, create if not
+            const existing = await getDashboard(vaultDir, options.saveAs);
+            if (existing) {
+              await updateDashboard(vaultDir, options.saveAs, definition);
+              console.error(`Dashboard "${options.saveAs}" updated.`);
+            } else {
+              await createDashboard(vaultDir, options.saveAs, definition);
+              console.error(`Dashboard "${options.saveAs}" saved.`);
+            }
+          } else {
+            // No --force: pre-flight already confirmed it doesn't exist
+            await createDashboard(vaultDir, options.saveAs, definition);
+            console.error(`Dashboard "${options.saveAs}" saved.`);
+          }
+        } catch (saveErr) {
+          const saveMessage = saveErr instanceof Error ? saveErr.message : String(saveErr);
+          if (jsonMode) {
+            printJson(jsonError(`Failed to save dashboard: ${saveMessage}`));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(`Failed to save dashboard: ${saveMessage}`);
+          process.exit(1);
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (jsonMode) {

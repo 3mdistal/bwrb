@@ -543,4 +543,247 @@ status: raw
       });
     });
   });
+
+  describe('--save-as flag', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      const { mkdtemp, mkdir, writeFile } = await import('fs/promises');
+      const { tmpdir } = await import('os');
+      const { join } = await import('path');
+
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-list-save-as-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      const schema = {
+        version: 2,
+        types: {
+          task: {
+            output_dir: 'Tasks',
+            fields: {
+              status: { prompt: 'select', options: ['raw', 'active', 'done'], default: 'raw' }
+            }
+          }
+        }
+      };
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(schema, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Tasks'), { recursive: true });
+
+      await writeFile(
+        join(tempVaultDir, 'Tasks', 'Task One.md'),
+        `---
+type: task
+status: active
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'Tasks', 'Task Two.md'),
+        `---
+type: task
+status: done
+---
+`
+      );
+    });
+
+    afterEach(async () => {
+      const { rm } = await import('fs/promises');
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should save query as dashboard with --save-as', async () => {
+      const { readFile, existsSync } = await import('fs');
+      const { join } = await import('path');
+
+      const result = await runCLI(['list', '--type', 'task', '--save-as', 'my-tasks'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      // Query results should be shown
+      expect(result.stdout).toContain('Task One');
+      expect(result.stdout).toContain('Task Two');
+      // Confirmation on stderr
+      expect(result.stderr).toContain('Dashboard "my-tasks" saved');
+
+      // Verify file was created
+      const dashboardsPath = join(tempVaultDir, '.bwrb', 'dashboards.json');
+      const content = await import('fs/promises').then(fs => fs.readFile(dashboardsPath, 'utf-8'));
+      const dashboards = JSON.parse(content);
+      expect(dashboards.dashboards['my-tasks']).toEqual({ type: 'task' });
+    });
+
+    it('should save query with where filter', async () => {
+      const { join } = await import('path');
+
+      const result = await runCLI(
+        ['list', '--type', 'task', '--where', "status == 'active'", '--save-as', 'active-tasks'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Task One');
+      expect(result.stdout).not.toContain('Task Two');
+      expect(result.stderr).toContain('Dashboard "active-tasks" saved');
+
+      const dashboardsPath = join(tempVaultDir, '.bwrb', 'dashboards.json');
+      const content = await import('fs/promises').then(fs => fs.readFile(dashboardsPath, 'utf-8'));
+      const dashboards = JSON.parse(content);
+      expect(dashboards.dashboards['active-tasks']).toEqual({
+        type: 'task',
+        where: ["status == 'active'"],
+      });
+    });
+
+    it('should save query with output format', async () => {
+      const { join } = await import('path');
+
+      const result = await runCLI(
+        ['list', '--type', 'task', '--output', 'paths', '--save-as', 'task-paths'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      // Output format should be paths
+      expect(result.stdout).toContain('Tasks/Task One.md');
+      expect(result.stderr).toContain('Dashboard "task-paths" saved');
+
+      const dashboardsPath = join(tempVaultDir, '.bwrb', 'dashboards.json');
+      const content = await import('fs/promises').then(fs => fs.readFile(dashboardsPath, 'utf-8'));
+      const dashboards = JSON.parse(content);
+      expect(dashboards.dashboards['task-paths']).toEqual({
+        type: 'task',
+        output: 'paths',
+      });
+    });
+
+    it('should save query with fields', async () => {
+      const { join } = await import('path');
+
+      const result = await runCLI(
+        ['list', '--type', 'task', '--fields', 'status', '--save-as', 'task-table'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('STATUS');
+      expect(result.stderr).toContain('Dashboard "task-table" saved');
+
+      const dashboardsPath = join(tempVaultDir, '.bwrb', 'dashboards.json');
+      const content = await import('fs/promises').then(fs => fs.readFile(dashboardsPath, 'utf-8'));
+      const dashboards = JSON.parse(content);
+      expect(dashboards.dashboards['task-table']).toEqual({
+        type: 'task',
+        fields: ['status'],
+      });
+    });
+
+    it('should error when dashboard already exists', async () => {
+      const { writeFile } = await import('fs/promises');
+      const { join } = await import('path');
+
+      // Create existing dashboard
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'dashboards.json'),
+        JSON.stringify({ dashboards: { existing: { type: 'task' } } })
+      );
+
+      const result = await runCLI(['list', '--type', 'task', '--save-as', 'existing'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Dashboard "existing" already exists');
+      expect(result.stderr).toContain('--force');
+    });
+
+    it('should overwrite existing dashboard with --force', async () => {
+      const { writeFile, readFile } = await import('fs/promises');
+      const { join } = await import('path');
+
+      // Create existing dashboard
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'dashboards.json'),
+        JSON.stringify({ dashboards: { existing: { type: 'idea' } } })
+      );
+
+      const result = await runCLI(
+        ['list', '--type', 'task', '--where', "status == 'active'", '--save-as', 'existing', '--force'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain('Dashboard "existing" updated');
+
+      const dashboardsPath = join(tempVaultDir, '.bwrb', 'dashboards.json');
+      const content = await readFile(dashboardsPath, 'utf-8');
+      const dashboards = JSON.parse(content);
+      expect(dashboards.dashboards['existing']).toEqual({
+        type: 'task',
+        where: ["status == 'active'"],
+      });
+    });
+
+    it('should work with --output json and --save-as', async () => {
+      const { join } = await import('path');
+
+      const result = await runCLI(
+        ['list', '--type', 'task', '--output', 'json', '--save-as', 'json-tasks'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      // JSON output on stdout
+      const json = JSON.parse(result.stdout);
+      expect(Array.isArray(json)).toBe(true);
+      expect(json.length).toBe(2);
+      // Confirmation on stderr
+      expect(result.stderr).toContain('Dashboard "json-tasks" saved');
+
+      const dashboardsPath = join(tempVaultDir, '.bwrb', 'dashboards.json');
+      const content = await import('fs/promises').then(fs => fs.readFile(dashboardsPath, 'utf-8'));
+      const dashboards = JSON.parse(content);
+      expect(dashboards.dashboards['json-tasks']).toEqual({
+        type: 'task',
+        output: 'json',
+      });
+    });
+
+    it('should save empty query (no filters) as dashboard', async () => {
+      const { join } = await import('path');
+
+      const result = await runCLI(['list', '--save-as', 'all-notes'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain('Dashboard "all-notes" saved');
+
+      const dashboardsPath = join(tempVaultDir, '.bwrb', 'dashboards.json');
+      const content = await import('fs/promises').then(fs => fs.readFile(dashboardsPath, 'utf-8'));
+      const dashboards = JSON.parse(content);
+      // Empty definition since no filters
+      expect(dashboards.dashboards['all-notes']).toEqual({});
+    });
+
+    it('should return JSON error when dashboard exists in JSON mode', async () => {
+      const { writeFile } = await import('fs/promises');
+      const { join } = await import('path');
+
+      // Create existing dashboard
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'dashboards.json'),
+        JSON.stringify({ dashboards: { existing: { type: 'task' } } })
+      );
+
+      const result = await runCLI(
+        ['list', '--type', 'task', '--output', 'json', '--save-as', 'existing'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      // Error should be in stdout as JSON (matches existing json error pattern)
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('already exists');
+    });
+  });
 });

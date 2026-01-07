@@ -6,6 +6,13 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Added
 
+- **`--save-as` flag for list command to save queries as dashboards** (#204)
+  - `bwrb list --type task --where "status='active'" --save-as "active-tasks"` saves query as reusable dashboard
+  - Saves all query parameters: type, path, where, body, output, and fields
+  - Error if dashboard already exists (use `--force` to overwrite)
+  - Confirmation message on stderr to keep stdout clean for piping
+  - Run saved dashboards with `bwrb dashboard <name>`
+
 - **Standardized `-x` shorthand for `--execute`** (#142)
   - Added `-x` as alias for `--execute` on `bulk`, `schema delete`, and `schema migrate` commands
   - Consistent with existing `-x` shorthand on `delete` command
