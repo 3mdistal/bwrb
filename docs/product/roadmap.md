@@ -69,15 +69,15 @@ Dashboards are saved `bwrb list` queries that can be recalled by name. This mini
 
 ### v1.0 Exit Criteria
 
-- [ ] Renamed to Bowerbird (CLI, config, docs, repo)
-- [ ] Inheritance model fully implemented
-- [ ] Ownership/colocation working
-- [ ] Context field validation in audit
-- [ ] Schema management CLI (schema new/edit/delete/list)
-- [ ] Field primitives: text, number, boolean, date, select, relation, list
+- [x] Renamed to Bowerbird (CLI, config, docs, repo)
+- [x] Inheritance model fully implemented
+- [x] Ownership/colocation working
+- [x] Context field validation in audit
+- [x] Schema management CLI (schema new/edit/delete/list)
+- [x] Field primitives: text, number, boolean, date, select, relation, list
 - [ ] Dashboard system (storage, CRUD commands, list --save-as)
-- [ ] All tests passing with new schema format
-- [ ] Documentation updated
+- [x] All tests passing with new schema format
+- [ ] Documentation website (bwrb.dev)
 
 ---
 
