@@ -335,3 +335,290 @@ describePty('dashboard picker PTY tests', () => {
     }, 30000);
   });
 });
+
+// ============================================================================
+// dashboard edit PTY tests
+// ============================================================================
+
+describePty('dashboard edit PTY tests', () => {
+  afterEach(() => {
+    killAllPtyProcesses();
+  });
+
+  describe('interactive mode', () => {
+    it('should show current values and allow editing', async () => {
+      await withTempVault(
+        ['dashboard', 'edit', 'my-tasks'],
+        async (proc, vaultPath) => {
+          // Should show editing header
+          await proc.waitFor('Editing dashboard: my-tasks', 10000);
+          
+          // Should show current type
+          await proc.waitFor('Current type: task', 5000);
+          
+          // Type selection - select 'idea' (option 2)
+          await proc.waitFor('Filter by type:', 5000);
+          proc.write('2');
+          
+          // Where expressions - should show current value
+          await proc.waitFor('Current:', 5000);
+          await proc.waitFor("status == 'active'", 5000);
+          await proc.waitFor('Where expressions', 5000);
+          await proc.typeAndEnter("priority == 'high'");
+          
+          // Body search - press Enter to keep empty
+          await proc.waitFor('Body content search', 5000);
+          await proc.typeAndEnter('');
+          
+          // Path filter - press Enter to keep empty
+          await proc.waitFor('Path filter', 5000);
+          await proc.typeAndEnter('');
+          
+          // Output format - select 'paths' (option 2)
+          await proc.waitFor('Current output: tree', 5000);
+          await proc.waitFor('Default output format:', 5000);
+          proc.write('2');
+          
+          // Fields - press Enter to keep empty
+          await proc.waitFor('Display fields', 5000);
+          await proc.typeAndEnter('');
+          
+          // Wait for update
+          await proc.waitFor('Updated dashboard:', 5000);
+          
+          // Verify dashboard was updated
+          const dashboardsPath = join(vaultPath, '.bwrb', 'dashboards.json');
+          const content = await readFile(dashboardsPath, 'utf-8');
+          const dashboards = JSON.parse(content) as DashboardsFile;
+          
+          expect(dashboards.dashboards['my-tasks']!.type).toBe('idea');
+          expect(dashboards.dashboards['my-tasks']!.where).toEqual(["priority == 'high'"]);
+          expect(dashboards.dashboards['my-tasks']!.output).toBe('paths');
+        },
+        { 
+          schema: TEST_SCHEMA,
+          files: [
+            {
+              path: '.bwrb/dashboards.json',
+              content: JSON.stringify({ 
+                dashboards: { 
+                  'my-tasks': { 
+                    type: 'task',
+                    where: ["status == 'active'"],
+                    output: 'tree',
+                  },
+                }
+              }, null, 2),
+            },
+          ],
+        }
+      );
+    }, 30000);
+
+    it('should preserve text input values when Enter is pressed with default', async () => {
+      await withTempVault(
+        ['dashboard', 'edit', 'my-tasks'],
+        async (proc, vaultPath) => {
+          // Should show editing header
+          await proc.waitFor('Editing dashboard: my-tasks', 10000);
+          
+          // Type selection - select (all types)
+          await proc.waitFor('Filter by type:', 5000);
+          proc.write('1');
+          
+          // Where expressions - press Enter to keep current (shown as default)
+          await proc.waitFor('Where expressions', 5000);
+          await proc.typeAndEnter(''); // Empty clears the value
+          
+          // Body search - press Enter to keep 'TODO' (shown as default)
+          await proc.waitFor('Body content search', 5000);
+          await proc.waitFor('TODO', 5000); // Should show current value
+          await proc.typeAndEnter(''); // Enter without typing keeps the default
+          
+          // Path filter - press Enter to keep 'Projects/**'
+          await proc.waitFor('Path filter', 5000);
+          await proc.waitFor('Projects/**', 5000);
+          await proc.typeAndEnter('');
+          
+          // Output format - select '(default)' (option 1)
+          await proc.waitFor('Default output format:', 5000);
+          proc.write('1');
+          
+          // Fields - press Enter
+          await proc.waitFor('Display fields', 5000);
+          await proc.typeAndEnter('');
+          
+          // Wait for update
+          await proc.waitFor('Updated dashboard:', 5000);
+          
+          // Verify text input values were preserved
+          const dashboardsPath = join(vaultPath, '.bwrb', 'dashboards.json');
+          const content = await readFile(dashboardsPath, 'utf-8');
+          const dashboards = JSON.parse(content) as DashboardsFile;
+          
+          // Body and path should be preserved since we pressed Enter with defaults shown
+          expect(dashboards.dashboards['my-tasks']!.body).toBe('TODO');
+          expect(dashboards.dashboards['my-tasks']!.path).toBe('Projects/**');
+        },
+        { 
+          schema: TEST_SCHEMA,
+          files: [
+            {
+              path: '.bwrb/dashboards.json',
+              content: JSON.stringify({ 
+                dashboards: { 
+                  'my-tasks': { 
+                    type: 'task',
+                    body: 'TODO',
+                    path: 'Projects/**',
+                  },
+                }
+              }, null, 2),
+            },
+          ],
+        }
+      );
+    }, 30000);
+
+    it('should cancel cleanly on Ctrl+C', async () => {
+      await withTempVault(
+        ['dashboard', 'edit', 'my-tasks'],
+        async (proc, vaultPath) => {
+          // Wait for first prompt
+          await proc.waitFor('Filter by type:', 10000);
+          
+          // Cancel with Ctrl+C
+          proc.write('\x03');
+          
+          // Should show cancelled message
+          await proc.waitFor('Cancelled', 5000);
+          
+          // Wait for process to exit
+          const exitCode = await proc.waitForExit();
+          expect(exitCode).toBe(1);
+          
+          // Verify dashboard was NOT modified
+          const dashboardsPath = join(vaultPath, '.bwrb', 'dashboards.json');
+          const content = await readFile(dashboardsPath, 'utf-8');
+          const dashboards = JSON.parse(content) as DashboardsFile;
+          
+          // Original values should be preserved
+          expect(dashboards.dashboards['my-tasks']!.type).toBe('task');
+          expect(dashboards.dashboards['my-tasks']!.output).toBe('tree');
+        },
+        { 
+          schema: TEST_SCHEMA,
+          files: [
+            {
+              path: '.bwrb/dashboards.json',
+              content: JSON.stringify({ 
+                dashboards: { 
+                  'my-tasks': { 
+                    type: 'task',
+                    output: 'tree',
+                  },
+                }
+              }, null, 2),
+            },
+          ],
+        }
+      );
+    }, 30000);
+  });
+
+  describe('picker behavior', () => {
+    it('should show picker when no name provided', async () => {
+      await withTempVault(
+        ['dashboard', 'edit'],
+        async (proc, vaultPath) => {
+          // Should show picker prompt
+          await proc.waitFor('Select a dashboard to edit:', 10000);
+          // Should show dashboard names with type info
+          await proc.waitFor('my-tasks (task)', 5000);
+          await proc.waitFor('my-ideas (idea)', 5000);
+          
+          // Select first dashboard (my-ideas, sorted alphabetically)
+          proc.write('1');
+          
+          // Should start editing that dashboard
+          await proc.waitFor('Editing dashboard: my-ideas', 5000);
+          
+          // Cancel to exit
+          proc.write('\x03');
+          await proc.waitForExit();
+        },
+        { 
+          schema: TEST_SCHEMA,
+          files: [
+            {
+              path: '.bwrb/dashboards.json',
+              content: JSON.stringify({ 
+                dashboards: { 
+                  'my-tasks': { type: 'task' },
+                  'my-ideas': { type: 'idea' },
+                }
+              }, null, 2),
+            },
+          ],
+        }
+      );
+    }, 30000);
+
+    it('should cancel picker cleanly on Ctrl+C', async () => {
+      await withTempVault(
+        ['dashboard', 'edit'],
+        async (proc, vaultPath) => {
+          // Should show picker prompt
+          await proc.waitFor('Select a dashboard to edit:', 10000);
+          
+          // Cancel with Ctrl+C
+          proc.write('\x03');
+          
+          // Should show cancelled message
+          await proc.waitFor('Cancelled', 5000);
+          
+          // Wait for process to exit
+          const exitCode = await proc.waitForExit();
+          expect(exitCode).toBe(1);
+        },
+        { 
+          schema: TEST_SCHEMA,
+          files: [
+            {
+              path: '.bwrb/dashboards.json',
+              content: JSON.stringify({ 
+                dashboards: { 
+                  'my-tasks': { type: 'task' },
+                }
+              }, null, 2),
+            },
+          ],
+        }
+      );
+    }, 30000);
+  });
+
+  describe('error handling', () => {
+    it('should error when dashboard does not exist', async () => {
+      await withTempVault(
+        ['dashboard', 'edit', 'nonexistent'],
+        async (proc, vaultPath) => {
+          // Should show error
+          await proc.waitFor('does not exist', 10000);
+          
+          const exitCode = await proc.waitForExit();
+          expect(exitCode).toBe(1);
+        },
+        { 
+          schema: TEST_SCHEMA,
+          files: [
+            {
+              path: '.bwrb/dashboards.json',
+              content: JSON.stringify({ dashboards: {} }, null, 2),
+            },
+          ],
+        }
+      );
+    }, 30000);
+  });
+});

@@ -148,11 +148,15 @@ export async function promptRequired(message: string): Promise<PromptResult<stri
  * Returns the array of entered values, or null if user cancels (Ctrl+C/Escape).
  * An empty input (just pressing Enter) returns an empty array, not null.
  */
-export async function promptMultiInput(message: string): Promise<PromptResult<string[]>> {
+export async function promptMultiInput(
+  message: string,
+  defaultValue?: string
+): Promise<PromptResult<string[]>> {
   const response = await prompts({
     type: 'text',
     name: 'value',
     message: `${message} (comma-separated)`,
+    initial: defaultValue,
   });
 
   // prompts returns {} on Ctrl+C, so response.value is undefined
