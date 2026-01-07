@@ -18,6 +18,8 @@
     "src/types/schema.ts",
     // Test helpers export public API for test files
     "tests/ts/lib/pty-helpers.ts",
+    // Shared test schemas export public API for test files
+    "tests/ts/fixtures/schemas.ts",
     // Migration utilities are public API for migration commands
     "src/lib/migration/*.ts"
   ],
