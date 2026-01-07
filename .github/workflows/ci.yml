@@ -95,8 +95,25 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Verify PTY filter
+        # Sanity check: ensure filter matches PTY tests and nothing else
+        run: |
+          FILES=$(pnpm vitest list .pty.test.ts 2>&1 | grep -E "^tests/" | cut -d'>' -f1 | sort -u)
+          COUNT=$(echo "$FILES" | wc -l | tr -d ' ')
+          NON_PTY=$(echo "$FILES" | grep -v ".pty.test.ts" | wc -l | tr -d ' ')
+          if [ "$COUNT" -eq 0 ]; then
+            echo "ERROR: PTY filter matched no tests"
+            exit 1
+          fi
+          if [ "$NON_PTY" -gt 0 ]; then
+            echo "ERROR: PTY filter matched non-PTY tests"
+            echo "$FILES" | grep -v ".pty.test.ts"
+            exit 1
+          fi
+          echo "PTY filter OK: $COUNT test files matched"
+
       - name: Run PTY tests
-        run: pnpm test -- --include='**/*.pty.test.ts' --reporter=verbose
+        run: pnpm test:pty
         env:
           # Force color output for better debugging
           FORCE_COLOR: 1
