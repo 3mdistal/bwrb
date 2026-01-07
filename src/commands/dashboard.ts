@@ -4,6 +4,7 @@ import {
   getDashboard,
   createDashboard,
   updateDashboard,
+  deleteDashboard,
   loadDashboards,
   listDashboards,
 } from '../lib/dashboard.js';
@@ -16,6 +17,7 @@ import {
   promptInput,
   promptMultiInput,
   promptSelection,
+  promptConfirm,
   printError,
   printSuccess,
 } from '../lib/prompt.js';
@@ -67,7 +69,7 @@ Commands:
   new <name>     Create a new dashboard
   list           List all saved dashboards
   edit [name]    Edit an existing dashboard
-  delete <name>  Delete a dashboard (coming soon)
+  delete [name]  Delete a dashboard
 
 Examples:
   bwrb dashboard my-tasks              Run the "my-tasks" dashboard
@@ -931,4 +933,174 @@ async function editDashboardInteractive(
 
   printSuccess(`\nUpdated dashboard: ${name}`);
   printDashboardSummary(definition);
+}
+
+// ============================================================================
+// dashboard delete [name]
+// ============================================================================
+
+interface DashboardDeleteOptions {
+  force?: boolean;
+  output?: string;
+}
+
+dashboardCommand
+  .command('delete [name]')
+  .description('Delete a dashboard')
+  .option('-f, --force', 'Skip confirmation prompt')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .addHelpText('after', `
+Delete a saved dashboard. Shows a picker if no name is provided.
+
+Examples:
+  bwrb dashboard delete my-tasks           # Prompts for confirmation
+  bwrb dashboard delete my-tasks --force   # Skip confirmation
+  bwrb dashboard delete                    # Shows picker to select dashboard
+  bwrb dashboard delete my-tasks -o json --force  # JSON mode (requires --force)
+`)
+  .action(async (name: string | undefined, options: DashboardDeleteOptions, cmd: Command) => {
+    const jsonMode = options.output === 'json';
+
+    try {
+      const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
+      const schema = await loadSchema(vaultDir);
+
+      // Determine which dashboard to delete
+      let dashboardName: string;
+      if (name) {
+        dashboardName = name;
+      } else {
+        // Show picker to select dashboard
+        const selected = await selectDashboardForDelete(vaultDir, jsonMode);
+        if (!selected) {
+          // No dashboards or user cancelled (already handled in function)
+          return;
+        }
+        dashboardName = selected;
+      }
+
+      // Verify dashboard exists
+      const existing = await getDashboard(vaultDir, dashboardName);
+      if (!existing) {
+        const error = `Dashboard "${dashboardName}" does not exist`;
+        if (jsonMode) {
+          printJson(jsonError(error));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        printError(error);
+        process.exit(1);
+      }
+
+      // JSON mode requires --force (can't confirm interactively)
+      if (jsonMode && !options.force) {
+        printJson(jsonError('JSON mode requires --force flag'));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+
+      // Confirm deletion unless --force
+      if (!options.force && !jsonMode) {
+        const confirmed = await promptConfirm(
+          `Delete dashboard "${dashboardName}"?`
+        );
+        if (confirmed === null) throw new UserCancelledError();
+        if (!confirmed) {
+          console.log('Cancelled.');
+          process.exit(0);
+        }
+      }
+
+      // Check if this is the default dashboard
+      const wasDefault = schema.config.defaultDashboard === dashboardName;
+
+      // Delete the dashboard
+      await deleteDashboard(vaultDir, dashboardName);
+
+      // Clear default if we just deleted the default dashboard
+      if (wasDefault) {
+        await setDefaultDashboard(vaultDir, null);
+      }
+
+      if (jsonMode) {
+        printJson(jsonSuccess({
+          message: 'Dashboard deleted',
+          data: {
+            name: dashboardName,
+            wasDefault,
+          },
+        }));
+        return;
+      }
+
+      printSuccess(`Deleted dashboard: ${dashboardName}`);
+      if (wasDefault) {
+        console.log(chalk.gray('Note: This was your default dashboard. Default has been cleared.'));
+      }
+    } catch (err) {
+      if (err instanceof UserCancelledError) {
+        console.log('\nCancelled.');
+        process.exit(1);
+      }
+
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+/**
+ * Show picker to select a dashboard for deletion.
+ * Returns null if no dashboards exist or user cancels.
+ */
+async function selectDashboardForDelete(
+  vaultDir: string,
+  jsonMode: boolean
+): Promise<string | null> {
+  const names = await listDashboards(vaultDir);
+
+  if (names.length === 0) {
+    if (jsonMode) {
+      printJson(jsonError('No dashboards to delete'));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    console.log('No dashboards to delete.');
+    console.log('\nCreate one with: bwrb dashboard new <name>');
+    return null;
+  }
+
+  // JSON mode without name: return error (can't show picker)
+  if (jsonMode) {
+    printJson(jsonError('Dashboard name is required in JSON mode'));
+    process.exit(ExitCodes.VALIDATION_ERROR);
+  }
+
+  // Check for TTY before showing picker
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    printError('No dashboard specified. Provide a dashboard name to delete.');
+    console.log('\nAvailable dashboards:');
+    for (const n of names) {
+      console.log(`  ${n}`);
+    }
+    process.exit(1);
+  }
+
+  // Load full definitions for display
+  const dashboardsFile = await loadDashboards(vaultDir);
+  const displayToName = new Map<string, string>();
+  const pickerOptions = names.map(n => {
+    const def = dashboardsFile.dashboards[n];
+    const displayLabel = def?.type ? `${n} (${def.type})` : n;
+    displayToName.set(displayLabel, n);
+    return displayLabel;
+  });
+
+  const selected = await promptSelection('Select a dashboard to delete:', pickerOptions);
+  if (selected === null) {
+    throw new UserCancelledError();
+  }
+
+  return displayToName.get(selected) ?? selected;
 }

@@ -1459,4 +1459,213 @@ describe('dashboard command', () => {
       });
     });
   });
+
+  // ============================================================================
+  // dashboard delete
+  // ============================================================================
+
+  describe('dashboard delete', () => {
+    beforeEach(async () => {
+      // Set up test dashboards
+      await createDashboards({
+        dashboards: {
+          'to-delete': {
+            type: 'idea',
+          },
+          'keep-this': {
+            type: 'task',
+            where: ["status == 'active'"],
+          },
+          'another-one': {
+            type: 'idea',
+            output: 'paths',
+          },
+        },
+      });
+    });
+
+    afterEach(async () => {
+      await removeDashboards();
+      // Clean up default_dashboard in schema if set
+      try {
+        const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+        const schemaContent = await readFile(schemaPath, 'utf-8');
+        const schema = JSON.parse(schemaContent);
+        if (schema.config?.default_dashboard) {
+          delete schema.config.default_dashboard;
+          await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+        }
+      } catch {
+        // Ignore errors
+      }
+    });
+
+    describe('with --force flag', () => {
+      it('should delete dashboard with --force', async () => {
+        const result = await runCLI(['dashboard', 'delete', 'to-delete', '--force'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Deleted');
+        expect(result.stdout).toContain('to-delete');
+
+        // Verify dashboard was removed
+        const dashboards = await readDashboards();
+        expect(dashboards.dashboards['to-delete']).toBeUndefined();
+        expect(dashboards.dashboards['keep-this']).toBeDefined();
+        expect(dashboards.dashboards['another-one']).toBeDefined();
+      });
+
+      it('should preserve other dashboards', async () => {
+        await runCLI(['dashboard', 'delete', 'to-delete', '--force'], vaultDir);
+
+        const dashboards = await readDashboards();
+        expect(Object.keys(dashboards.dashboards)).toHaveLength(2);
+        expect(dashboards.dashboards['keep-this']).toEqual({
+          type: 'task',
+          where: ["status == 'active'"],
+        });
+        expect(dashboards.dashboards['another-one']).toEqual({
+          type: 'idea',
+          output: 'paths',
+        });
+      });
+    });
+
+    describe('error handling', () => {
+      it('should error when dashboard does not exist', async () => {
+        const result = await runCLI(['dashboard', 'delete', 'nonexistent', '--force'], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        expect(result.stderr).toContain('does not exist');
+      });
+
+      it('should require --force in JSON mode', async () => {
+        const result = await runCLI(['dashboard', 'delete', 'to-delete', '-o', 'json'], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain('--force');
+      });
+    });
+
+    describe('JSON mode', () => {
+      it('should return success JSON when deleting', async () => {
+        const result = await runCLI(
+          ['dashboard', 'delete', 'to-delete', '--force', '-o', 'json'],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        expect(json.message).toContain('deleted');
+        expect(json.data.name).toBe('to-delete');
+        expect(json.data.wasDefault).toBe(false);
+      });
+
+      it('should return error JSON when dashboard does not exist', async () => {
+        const result = await runCLI(
+          ['dashboard', 'delete', 'nonexistent', '--force', '-o', 'json'],
+          vaultDir
+        );
+
+        expect(result.exitCode).not.toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain('does not exist');
+      });
+
+      it('should require name in JSON mode', async () => {
+        const result = await runCLI(
+          ['dashboard', 'delete', '--force', '-o', 'json'],
+          vaultDir
+        );
+
+        expect(result.exitCode).not.toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain('required');
+      });
+    });
+
+    describe('default dashboard handling', () => {
+      it('should clear default when deleting default dashboard', async () => {
+        // Set 'to-delete' as the default dashboard
+        const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+        const schemaContent = await readFile(schemaPath, 'utf-8');
+        const schema = JSON.parse(schemaContent);
+        schema.config = { ...schema.config, default_dashboard: 'to-delete' };
+        await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+
+        const result = await runCLI(
+          ['dashboard', 'delete', 'to-delete', '--force'],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Deleted');
+        expect(result.stdout).toContain('default');
+
+        // Verify default was cleared
+        const updatedSchemaContent = await readFile(schemaPath, 'utf-8');
+        const updatedSchema = JSON.parse(updatedSchemaContent);
+        expect(updatedSchema.config.default_dashboard).toBeUndefined();
+      });
+
+      it('should indicate wasDefault in JSON when deleting default', async () => {
+        // Set 'to-delete' as the default dashboard
+        const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+        const schemaContent = await readFile(schemaPath, 'utf-8');
+        const schema = JSON.parse(schemaContent);
+        schema.config = { ...schema.config, default_dashboard: 'to-delete' };
+        await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+
+        const result = await runCLI(
+          ['dashboard', 'delete', 'to-delete', '--force', '-o', 'json'],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        expect(json.data.wasDefault).toBe(true);
+      });
+
+      it('should not affect default when deleting non-default dashboard', async () => {
+        // Set 'keep-this' as the default dashboard
+        const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+        const schemaContent = await readFile(schemaPath, 'utf-8');
+        const schema = JSON.parse(schemaContent);
+        schema.config = { ...schema.config, default_dashboard: 'keep-this' };
+        await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+
+        // Delete a different dashboard
+        await runCLI(['dashboard', 'delete', 'to-delete', '--force'], vaultDir);
+
+        // Verify default is still 'keep-this'
+        const updatedSchemaContent = await readFile(schemaPath, 'utf-8');
+        const updatedSchema = JSON.parse(updatedSchemaContent);
+        expect(updatedSchema.config.default_dashboard).toBe('keep-this');
+      });
+    });
+
+    describe('help text', () => {
+      it('should show delete in dashboard help', async () => {
+        const result = await runCLI(['dashboard', '--help'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('delete');
+        expect(result.stdout).not.toContain('coming soon');
+      });
+
+      it('should show --force in delete help', async () => {
+        const result = await runCLI(['dashboard', 'delete', '--help'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('--force');
+        expect(result.stdout).toContain('Skip confirmation');
+      });
+    });
+  });
 });
