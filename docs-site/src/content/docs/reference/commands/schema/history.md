@@ -15,6 +15,7 @@ bwrb schema history [options]
 
 | Option | Description |
 |--------|-------------|
+| `--limit <n>` | Number of entries to show (default: 10) |
 | `-o, --output <format>` | Output format: `text`, `json` |
 
 ## Description
@@ -30,6 +31,9 @@ Shows a log of all migrations that have been applied:
 ```bash
 # Show migration history
 bwrb schema history
+
+# Show last 5 migrations
+bwrb schema history --limit 5
 
 # JSON output
 bwrb schema history --output json
