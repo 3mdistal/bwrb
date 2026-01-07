@@ -125,6 +125,8 @@ export const ConfigSchema = z.object({
   open_with: z.enum(['system', 'editor', 'visual', 'obsidian']).optional(),
   // Obsidian vault name for URI scheme (auto-detected from .obsidian if not set)
   obsidian_vault: z.string().optional(),
+  // Default dashboard to run when `bwrb dashboard` is called without arguments
+  default_dashboard: z.string().optional(),
 });
 
 // ============================================================================
@@ -229,6 +231,8 @@ export interface ResolvedConfig {
   openWith: 'system' | 'editor' | 'visual' | 'obsidian';
   /** Obsidian vault name (from config or auto-detected) */
   obsidianVault: string | undefined;
+  /** Default dashboard to run when `bwrb dashboard` is called without arguments */
+  defaultDashboard: string | undefined;
 }
 
 /**
@@ -369,4 +373,37 @@ export interface Template {
   body: string;
 }
 
+// ============================================================================
+// Dashboard Types
+// ============================================================================
 
+/**
+ * Dashboard definition - a saved list query.
+ * All fields are optional; a dashboard with no fields will list all notes.
+ */
+export const DashboardDefinitionSchema = z.object({
+  /** Type filter (e.g., "task", "objective/milestone") */
+  type: z.string().optional(),
+  /** Glob pattern for file paths (e.g., "Projects/**") */
+  path: z.string().optional(),
+  /** Filter expressions (same as --where in list command) */
+  where: z.array(z.string()).optional(),
+  /** Body content search query */
+  body: z.string().optional(),
+  /** Default output format */
+  output: z.enum(['default', 'text', 'paths', 'tree', 'link', 'json']).optional(),
+  /** Fields to display in table output */
+  fields: z.array(z.string()).optional(),
+});
+
+export type DashboardDefinition = z.infer<typeof DashboardDefinitionSchema>;
+
+/**
+ * Dashboards file schema (.bwrb/dashboards.json).
+ * Contains all saved dashboards for a vault.
+ */
+export const DashboardsFileSchema = z.object({
+  dashboards: z.record(DashboardDefinitionSchema),
+});
+
+export type DashboardsFile = z.infer<typeof DashboardsFileSchema>;

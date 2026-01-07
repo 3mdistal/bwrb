@@ -6,8 +6,8 @@
 
 ## Version Philosophy
 
-**v1: Schema** — Rock-solid schema enforcement, inheritance model, type safety
-**v2: PKM** — Plugins, ecosystem, dashboards, visibility into your knowledge
+**v1: Schema + Dashboards** — Rock-solid schema enforcement, inheritance model, type safety, and saved queries
+**v2: PKM** — Plugins, ecosystem, visibility into your knowledge
 **v3: AI** — Built-in AI features, ingest, automation
 
 ---
@@ -52,6 +52,21 @@ After inheritance model is in place:
 | P2 | `bwrb-oay` | Template spawning with ownership |
 | P2 | `bwrb-xy1` | Remove name_field, standardize on 'name' |
 
+#### Phase 5: Dashboards
+Dashboards are saved `bwrb list` queries that can be recalled by name. This minimal implementation builds on existing list infrastructure.
+
+| Priority | Issue | Title |
+|----------|-------|-------|
+| P1 | #196 | Storage format and persistence layer |
+| P1 | #197 | `dashboard <name>` - Run saved query |
+| P1 | #199 | `dashboard list` - List saved dashboards |
+| P1 | #200 | `dashboard new` - Create dashboard |
+| P2 | #198 | `dashboard` (no args) - Picker or default |
+| P2 | #201 | `dashboard edit` - Modify dashboard |
+| P2 | #202 | `dashboard delete` - Remove dashboard |
+| P2 | #203 | Default dashboard support |
+| P2 | #204 | List `--save-as` flag |
+
 ### v1.0 Exit Criteria
 
 - [ ] Renamed to Bowerbird (CLI, config, docs, repo)
@@ -60,6 +75,7 @@ After inheritance model is in place:
 - [ ] Context field validation in audit
 - [ ] Schema management CLI (schema new/edit/delete/list)
 - [ ] Field primitives: text, number, boolean, date, select, relation, list
+- [ ] Dashboard system (storage, CRUD commands, list --save-as)
 - [ ] All tests passing with new schema format
 - [ ] Documentation updated
 
@@ -75,7 +91,6 @@ Make the schema useful for knowledge work.
 |---------|-------|-------------|
 | Neovim plugin | `bwrb-tic` | Full CLI parity in Neovim |
 | LSP | `bwrb-0wp` | Real-time schema validation in editors |
-| Dashboards | `bwrb-f9u` | Saved queries, visibility into notes |
 | Link validation | `bwrb-6f0` | Broken link detection in audit |
 | Command consolidation | `bwrb-fkd` | Merge list/search/open |
 
@@ -83,7 +98,6 @@ Make the schema useful for knowledge work.
 
 - [ ] Neovim plugin with core functionality
 - [ ] LSP server for schema validation
-- [ ] Dashboard system for saved queries
 - [ ] Comprehensive link validation
 - [ ] Polished, consistent CLI surface
 
@@ -126,4 +140,4 @@ Optional AI-powered features for automation.
 - **Product Vision:** `docs/product/vision.md`
 - **Type System (overview):** `docs/product/type-system.md`
 - **Type System (technical):** `docs/technical/inheritance.md`
-- **Issue Tracker:** `.beads/` (use `bd list`, `bd show`)
+- **Issue Tracker:** GitHub Issues
