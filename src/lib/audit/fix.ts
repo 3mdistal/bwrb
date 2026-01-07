@@ -15,6 +15,7 @@ import {
 } from '../schema.js';
 import { queryByType } from '../vault.js';
 import { parseNote, writeNote } from '../frontmatter.js';
+import { levenshteinDistance } from '../discovery.js';
 import { promptSelection, promptConfirm, promptInput } from '../prompt.js';
 import type { LoadedSchema } from '../../types/schema.js';
 
@@ -186,41 +187,6 @@ function getDefaultValue(
 // ============================================================================
 // High-Confidence Match Detection
 // ============================================================================
-
-/**
- * Calculate Levenshtein distance between two strings.
- * Used for determining string similarity for auto-fix decisions.
- */
-function levenshteinDistance(a: string, b: string): number {
-  const matrix: number[][] = [];
-
-  // Initialize first column
-  for (let i = 0; i <= a.length; i++) {
-    matrix[i] = [i];
-  }
-
-  // Initialize first row
-  for (let j = 0; j <= b.length; j++) {
-    matrix[0]![j] = j;
-  }
-
-  // Fill in the rest of the matrix
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        matrix[i]![j] = matrix[i - 1]![j - 1]!;
-      } else {
-        matrix[i]![j] = Math.min(
-          matrix[i - 1]![j - 1]! + 1, // substitution
-          matrix[i]![j - 1]! + 1,     // insertion
-          matrix[i - 1]![j]! + 1      // deletion
-        );
-      }
-    }
-  }
-
-  return matrix[a.length]![b.length]!;
-}
 
 /**
  * Check if a similar file is a high-confidence match for auto-fix.
