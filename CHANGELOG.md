@@ -31,6 +31,14 @@ All notable changes to Bowerbird are documented in this file.
   - Audit now only validates frontmatter relation fields, aligning with the documented type system scope
   - Body content links remain "unrestricted" per product vision; comprehensive body validation will be added in v2.0
 
+### Fixed
+
+- **Fixed markdown→wikilink conversion in link format migration** (#182)
+  - `bwrb schema migrate` now correctly converts markdown links `[Note](Note.md)` to wikilinks `[[Note]]`
+  - Previously, the conversion produced invalid output like `[[[Note](Note.md)]]`
+  - Added `extractMarkdownLinkTarget()` utility function for parsing markdown link targets
+  - Added comprehensive tests for link utilities and migration execution
+
 ### Changed (Breaking)
 
 - **Renamed "enum" terminology to "option" for consistency with schema model** (#179)
