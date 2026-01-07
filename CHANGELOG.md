@@ -14,6 +14,14 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Added
 
+- **Parent template instance scaffolding** (#75)
+  - Templates can now define `instances` array to automatically create child notes when a parent note is created
+  - `bwrb new` with instance-enabled templates creates all specified child files in the parent's directory
+  - Added `--no-instances` flag to skip instance scaffolding when desired
+  - CLI output shows created/skipped/failed instances with summary
+  - JSON mode includes `instances` object with `created`, `skipped`, and `errors` arrays
+  - Existing instance files are skipped (not overwritten) with a warning
+
 - **Vault initialization command** (#188)
   - `bwrb init [path]` creates a new vault with `.bwrb/schema.json`
   - Interactive prompts for link format and editor preferences

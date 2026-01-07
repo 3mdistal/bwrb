@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { join, relative } from 'path';
+import { join, relative, dirname } from 'path';
 import { existsSync } from 'fs';
 import {
   loadSchema,
@@ -52,6 +52,8 @@ import {
   resolveTemplate,
   processTemplateBody,
   validateConstraints,
+  createScaffoldedInstances,
+  type ScaffoldResult,
 } from '../lib/template.js';
 import { evaluateTemplateDefault } from '../lib/date-expression.js';
 import { expandStaticValue } from '../lib/local-date.js';
@@ -64,8 +66,23 @@ interface NewCommandOptions {
   type?: string;
   template?: string;
   noTemplate?: boolean;
+  instances?: boolean;  // Set to false when --no-instances is passed
   owner?: string;
   standalone?: boolean;
+}
+
+/**
+ * Result of creating a note in JSON mode (includes instance scaffolding info).
+ */
+interface NoteCreationResult {
+  /** Path to the created parent note */
+  path: string;
+  /** Instance scaffolding results (if any) */
+  instances?: {
+    created: string[];
+    skipped: string[];
+    errors: Array<{ type: string; filename?: string | undefined; message: string }>;
+  };
 }
 
 export const newCommand = new Command('new')
@@ -76,6 +93,7 @@ export const newCommand = new Command('new')
   .option('--json <frontmatter>', 'Create note non-interactively with JSON frontmatter')
   .option('--template <name>', 'Use a specific template (use "default" for default.md)')
   .option('--no-template', 'Skip template selection, use schema only')
+  .option('--no-instances', 'Skip instance scaffolding (when template has instances)')
   .option('--owner <wikilink>', 'Owner note for owned types (e.g., "[[My Novel]]")')
   .option('--standalone', 'Create as standalone (skip owner selection for ownable types)')
   .addHelpText('after', `
@@ -94,6 +112,10 @@ Ownership:
   bwrb new research                        # Prompted: standalone or owned?
   bwrb new research --standalone           # Create in shared location
   bwrb new research --owner "[[My Novel]]" # Create owned by specific note
+
+Instance scaffolding:
+  bwrb new draft --template project        # Creates parent + child instances
+  bwrb new draft --template project --no-instances  # Skip instances
 
 Non-interactive (JSON) mode:
   bwrb new idea --json '{"name": "My Idea", "status": "raw"}'
@@ -137,21 +159,30 @@ Template Discovery:
           }
         }
 
-        const filePath = await createNoteFromJson(
+        const result = await createNoteFromJson(
           schema,
           vaultDir,
           typePath,
           options.json!,
           template,
-          { owner: options.owner, standalone: options.standalone }
+          { owner: options.owner, standalone: options.standalone, noInstances: options.instances === false }
         );
         
-        printJson(jsonSuccess({ path: relative(vaultDir, filePath) }));
+        // Build JSON output with instances info
+        const jsonOutput: Record<string, unknown> = { path: relative(vaultDir, result.path) };
+        if (result.instances) {
+          jsonOutput.instances = {
+            created: result.instances.created.map(p => relative(vaultDir, p)),
+            skipped: result.instances.skipped.map(p => relative(vaultDir, p)),
+            errors: result.instances.errors,
+          };
+        }
+        printJson(jsonSuccess(jsonOutput));
         
         // Open if requested (uses config.open_with as default)
-        if (options.open && filePath) {
+        if (options.open && result.path) {
           const { openNote, resolveAppMode } = await import('./open.js');
-          await openNote(vaultDir, filePath, resolveAppMode(undefined, schema.config), schema.config, false);
+          await openNote(vaultDir, result.path, resolveAppMode(undefined, schema.config), schema.config, false);
         }
         return;
       }
@@ -207,6 +238,7 @@ Template Discovery:
       const filePath = await createNote(schema, vaultDir, resolvedPath, typeDef, template, {
         owner: options.owner,
         standalone: options.standalone,
+        noInstances: options.instances === false,
       });
 
       // Open if requested (uses config.open_with as default)
@@ -240,8 +272,8 @@ async function createNoteFromJson(
   typePath: string,
   jsonInput: string,
   template?: Template | null,
-  ownershipOptions?: { owner?: string | undefined; standalone?: boolean | undefined }
-): Promise<string> {
+  ownershipOptions?: { owner?: string | undefined; standalone?: boolean | undefined; noInstances?: boolean | undefined }
+): Promise<NoteCreationResult> {
   // Parse JSON input
   let inputData: Record<string, unknown>;
   try {
@@ -403,7 +435,7 @@ async function createNoteFromJson(
 
   // Create note (owned or pooled)
   if (owner) {
-    const filePath = await createOwnedNoteFromJson(
+    return await createOwnedNoteFromJson(
       schema,
       vaultDir,
       typePath,
@@ -412,13 +444,13 @@ async function createNoteFromJson(
       itemName,
       owner,
       template,
-      bodyInput
+      bodyInput,
+      ownershipOptions?.noInstances
     );
-    return filePath;
   }
 
   // Create pooled note (default behavior)
-  const filePath = await createPooledNoteFromJson(
+  return await createPooledNoteFromJson(
     schema,
     vaultDir,
     typePath,
@@ -426,10 +458,9 @@ async function createNoteFromJson(
     frontmatter,
     itemName,
     template,
-    bodyInput
+    bodyInput,
+    ownershipOptions?.noInstances
   );
-
-  return filePath;
 }
 
 /**
@@ -443,8 +474,9 @@ async function createPooledNoteFromJson(
   frontmatter: Record<string, unknown>,
   itemName: string,
   template?: Template | null,
-  bodyInput?: Record<string, unknown>
-): Promise<string> {
+  bodyInput?: Record<string, unknown>,
+  noInstances?: boolean
+): Promise<NoteCreationResult> {
   const outputDir = getOutputDirForType(schema, typePath);
   if (!outputDir) {
     printJson(jsonError(`No output_dir defined for type: ${typePath}`));
@@ -466,7 +498,34 @@ async function createPooledNoteFromJson(
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
 
   await writeNote(filePath, frontmatter, body, orderedFields);
-  return filePath;
+  
+  // Handle instance scaffolding
+  const result: NoteCreationResult = { path: filePath };
+  if (template && !noInstances) {
+    const scaffoldResult = await handleInstanceScaffolding(
+      schema,
+      vaultDir,
+      filePath,
+      typeDef.name,
+      template,
+      frontmatter,
+      false, // don't skip instances (already checked noInstances above)
+      true // JSON mode
+    );
+    if (scaffoldResult) {
+      result.instances = {
+        created: scaffoldResult.created,
+        skipped: scaffoldResult.skipped,
+        errors: scaffoldResult.errors.map(e => ({
+          type: e.subtype,
+          filename: e.filename,
+          message: e.message,
+        })),
+      };
+    }
+  }
+  
+  return result;
 }
 
 /**
@@ -481,8 +540,9 @@ async function createOwnedNoteFromJson(
   itemName: string,
   owner: OwnerNoteRef,
   template?: Template | null,
-  bodyInput?: Record<string, unknown>
-): Promise<string> {
+  bodyInput?: Record<string, unknown>,
+  noInstances?: boolean
+): Promise<NoteCreationResult> {
   const typeName = typeDef.name;
   
   // Ensure the owned output directory exists
@@ -501,7 +561,34 @@ async function createOwnedNoteFromJson(
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
 
   await writeNote(filePath, frontmatter, body, orderedFields);
-  return filePath;
+  
+  // Handle instance scaffolding
+  const result: NoteCreationResult = { path: filePath };
+  if (template && !noInstances) {
+    const scaffoldResult = await handleInstanceScaffolding(
+      schema,
+      vaultDir,
+      filePath,
+      typeDef.name,
+      template,
+      frontmatter,
+      false, // don't skip instances (already checked noInstances above)
+      true // JSON mode
+    );
+    if (scaffoldResult) {
+      result.instances = {
+        created: scaffoldResult.created,
+        skipped: scaffoldResult.skipped,
+        errors: scaffoldResult.errors.map(e => ({
+          type: e.subtype,
+          filename: e.filename,
+          message: e.message,
+        })),
+      };
+    }
+  }
+  
+  return result;
 }
 
 /**
@@ -608,7 +695,7 @@ async function createNote(
   typePath: string,
   typeDef: ResolvedType,
   template?: Template | null,
-  options?: { owner?: string | undefined; standalone?: boolean | undefined }
+  options?: { owner?: string | undefined; standalone?: boolean | undefined; noInstances?: boolean | undefined }
 ): Promise<string> {
   const segments = typePath.split('/');
   const displayTypeName = segments[0] ?? typePath;  // For header display
@@ -630,13 +717,13 @@ async function createNote(
     
     if (ownershipDecision.isOwned && ownershipDecision.owner) {
       // Create as owned note
-      return await createOwnedNote(schema, vaultDir, typePath, typeDef, template, ownershipDecision.owner);
+      return await createOwnedNote(schema, vaultDir, typePath, typeDef, template, ownershipDecision.owner, options?.noInstances ? { noInstances: true } : undefined);
     }
     // Fall through to standard creation if standalone
   }
 
   // Standard pooled mode
-  return await createPooledNote(schema, vaultDir, typePath, typeDef, template);
+  return await createPooledNote(schema, vaultDir, typePath, typeDef, template, options?.noInstances ? { noInstances: true } : undefined);
 }
 
 /**
@@ -647,7 +734,8 @@ async function createPooledNote(
   vaultDir: string,
   typePath: string,
   typeDef: ResolvedType,
-  template?: Template | null
+  template?: Template | null,
+  options?: { noInstances?: boolean }
 ): Promise<string> {
   // Get output directory
   const outputDir = getOutputDirForType(schema, typePath);
@@ -683,6 +771,21 @@ async function createPooledNote(
 
   await writeNote(filePath, frontmatter, body, orderedFields);
   printSuccess(`\n✓ Created: ${filePath}`);
+  
+  // Handle instance scaffolding if template has instances
+  if (template) {
+    await handleInstanceScaffolding(
+      schema,
+      vaultDir,
+      filePath,
+      typeDef.name,
+      template,
+      frontmatter,
+      options?.noInstances ?? false,
+      false // not JSON mode
+    );
+  }
+  
   return filePath;
 }
 
@@ -905,7 +1008,8 @@ async function createOwnedNote(
   typePath: string,
   typeDef: ResolvedType,
   template: Template | null | undefined,
-  owner: OwnerNoteRef
+  owner: OwnerNoteRef,
+  options?: { noInstances?: boolean }
 ): Promise<string> {
   const typeName = typeDef.name;
   
@@ -941,6 +1045,21 @@ async function createOwnedNote(
   await writeNote(filePath, frontmatter, body, orderedFields);
   printSuccess(`\n✓ Created: ${relative(vaultDir, filePath)}`);
   printInfo(`  Owned by: ${owner.ownerName}`);
+  
+  // Handle instance scaffolding if template has instances
+  if (template) {
+    await handleInstanceScaffolding(
+      schema,
+      vaultDir,
+      filePath,
+      typeDef.name,
+      template,
+      frontmatter,
+      options?.noInstances ?? false,
+      false // not JSON mode
+    );
+  }
+  
   return filePath;
 }
 
@@ -1110,6 +1229,92 @@ async function promptField(
 
     default:
       return field.default;
+  }
+}
+
+// ============================================================================
+// Instance Scaffolding
+// ============================================================================
+
+/**
+ * Handle instance scaffolding for a parent template.
+ * Creates all specified child instances in the parent's directory.
+ * 
+ * @returns The scaffold result with created/skipped/errors
+ */
+async function handleInstanceScaffolding(
+  schema: LoadedSchema,
+  vaultDir: string,
+  parentFilePath: string,
+  parentTypeName: string,
+  template: Template,
+  frontmatter: Record<string, unknown>,
+  skipInstances: boolean,
+  isJsonMode: boolean
+): Promise<ScaffoldResult | null> {
+  // Skip if --no-instances flag is set
+  if (skipInstances) {
+    return null;
+  }
+  
+  // Skip if no instances defined
+  if (!template.instances || template.instances.length === 0) {
+    return null;
+  }
+  
+  // Determine instance directory (same folder as parent note)
+  const instanceDir = dirname(parentFilePath);
+  
+  // Create scaffolded instances
+  const result = await createScaffoldedInstances(
+    schema,
+    vaultDir,
+    parentTypeName,
+    instanceDir,
+    template.instances,
+    frontmatter
+  );
+  
+  // Print output for interactive mode
+  if (!isJsonMode && (result.created.length > 0 || result.skipped.length > 0 || result.errors.length > 0)) {
+    printInstanceScaffoldOutput(vaultDir, result);
+  }
+  
+  return result;
+}
+
+/**
+ * Print CLI output for instance scaffolding.
+ */
+function printInstanceScaffoldOutput(vaultDir: string, result: ScaffoldResult): void {
+  
+  // Print created files
+  if (result.created.length > 0) {
+    printInfo(`\nInstances created:`);
+    for (const path of result.created) {
+      printSuccess(`  ✓ ${relative(vaultDir, path)}`);
+    }
+  }
+  
+  // Print skipped files
+  if (result.skipped.length > 0) {
+    printInfo(`\nInstances skipped (already exist):`);
+    for (const path of result.skipped) {
+      printWarning(`  - ${relative(vaultDir, path)}`);
+    }
+  }
+  
+  // Print errors
+  if (result.errors.length > 0) {
+    printError(`\nInstance errors:`);
+    for (const err of result.errors) {
+      printError(`  ✗ ${err.subtype}${err.filename ? ` (${err.filename})` : ''}: ${err.message}`);
+    }
+  }
+  
+  // Print summary
+  if (result.created.length > 0) {
+    printInfo(`\n✓ Created ${result.created.length + 1} files (1 parent + ${result.created.length} instances)`);
   }
 }
 

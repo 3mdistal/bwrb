@@ -20,6 +20,7 @@ bwrb new [options] [type]
 | `--json <frontmatter>` | Create note non-interactively with JSON frontmatter |
 | `--template <name>` | Use a specific template (use "default" for default.md) |
 | `--no-template` | Skip template selection, use schema only |
+| `--no-instances` | Skip instance scaffolding (when template has instances) |
 | `--owner <wikilink>` | Owner note for owned types (e.g., `"[[My Novel]]"`) |
 | `--standalone` | Create as standalone (skip owner selection for ownable types) |
 
@@ -67,6 +68,30 @@ bwrb new research --standalone
 bwrb new research --owner "[[My Novel]]"
 ```
 
+### Instance Scaffolding
+
+Some templates define child instances that are automatically created with the parent note:
+
+```bash
+# Create project with scaffolded research notes
+bwrb new project --template with-research
+
+# Skip instance creation
+bwrb new project --template with-research --no-instances
+```
+
+When a template defines instances, the CLI displays what files were created:
+
+```
+✓ Created: Projects/My Project.md
+
+Instances created:
+  ✓ Projects/Background Research.md
+  ✓ Projects/Competitor Analysis.md
+
+✓ Created 3 files (1 parent + 2 instances)
+```
+
 ### Non-interactive (JSON) Mode
 
 For scripting and automation:
@@ -80,9 +105,26 @@ bwrb new task --json '{"name": "Bug"}' --template bug-report
 
 # With body sections
 bwrb new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'
+
+# With instance scaffolding (JSON output includes instances)
+bwrb new project --json '{"name": "My Project"}' --template with-research
 ```
 
 The `_body` field accepts section names as keys, with string or string array values.
+
+JSON output for templates with instances includes an `instances` object:
+
+```json
+{
+  "success": true,
+  "path": "Projects/My Project.md",
+  "instances": {
+    "created": ["Projects/Background Research.md", "Projects/Competitor Analysis.md"],
+    "skipped": [],
+    "errors": []
+  }
+}
+```
 
 ## Behavior
 

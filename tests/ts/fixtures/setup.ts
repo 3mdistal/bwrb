@@ -199,6 +199,35 @@ defaults:
 `
   );
 
+  // Template with instances for parent scaffolding tests
+  await mkdir(join(vaultDir, '.bwrb/templates/project'), { recursive: true });
+  await writeFile(
+    join(vaultDir, '.bwrb/templates/project', 'with-research.md'),
+    `---
+type: template
+template-for: project
+description: Project with pre-scaffolded research notes
+defaults:
+  status: in-flight
+instances:
+  - type: research
+    filename: "Background Research.md"
+    defaults:
+      status: raw
+  - type: research
+    filename: "Competitor Analysis.md"
+    defaults:
+      status: raw
+---
+
+# Project Overview
+
+## Goals
+
+## Timeline
+`
+  );
+
   // Delay to ensure file system sync completes (fixes flaky tests on macOS)
   await new Promise((resolve) => setTimeout(resolve, 50));
 

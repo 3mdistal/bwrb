@@ -191,6 +191,126 @@ describe('new command', () => {
   // Ownership tests are in new-ownership.test.ts with their own isolated vault
 });
 
+describe('new command - instance scaffolding', () => {
+  let vaultDir: string;
+
+  beforeEach(async () => {
+    vaultDir = await createTestVault();
+  });
+
+  afterEach(async () => {
+    await cleanupTestVault(vaultDir);
+  });
+
+  it('should create parent note with instances in JSON mode', async () => {
+    const result = await runCLI(
+      ['new', 'project', '--json', '{"name": "My Project"}', '--template', 'with-research'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(true);
+    expect(output.path).toContain('My Project.md');
+
+    // Verify instances were created
+    expect(output.instances).toBeDefined();
+    expect(output.instances.created).toHaveLength(2);
+    expect(output.instances.created[0]).toContain('Background Research.md');
+    expect(output.instances.created[1]).toContain('Competitor Analysis.md');
+    expect(output.instances.skipped).toHaveLength(0);
+    expect(output.instances.errors).toHaveLength(0);
+
+    // Verify parent note content
+    const parentContent = await readFile(join(vaultDir, output.path), 'utf-8');
+    expect(parentContent).toContain('status: in-flight');
+    expect(parentContent).toContain('# Project Overview');
+
+    // Verify instance files exist and have correct content
+    const instanceDir = join(vaultDir, 'Projects');
+    const bgResearch = await readFile(join(instanceDir, 'Background Research.md'), 'utf-8');
+    expect(bgResearch).toContain('type: research');
+    expect(bgResearch).toContain('status: raw');
+
+    const compAnalysis = await readFile(join(instanceDir, 'Competitor Analysis.md'), 'utf-8');
+    expect(compAnalysis).toContain('type: research');
+    expect(compAnalysis).toContain('status: raw');
+  });
+
+  it('should skip instance creation with --no-instances flag', async () => {
+    const result = await runCLI(
+      ['new', 'project', '--json', '{"name": "No Instances Project"}', '--template', 'with-research', '--no-instances'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(true);
+    expect(output.path).toContain('No Instances Project.md');
+
+    // Verify instances field is NOT present
+    expect(output.instances).toBeUndefined();
+
+    // Verify parent note was created
+    const parentContent = await readFile(join(vaultDir, output.path), 'utf-8');
+    expect(parentContent).toContain('status: in-flight');
+
+    // Verify instance files were NOT created
+    const { existsSync } = await import('fs');
+    const instanceDir = join(vaultDir, 'Projects');
+    expect(existsSync(join(instanceDir, 'Background Research.md'))).toBe(false);
+    expect(existsSync(join(instanceDir, 'Competitor Analysis.md'))).toBe(false);
+  });
+
+  it('should skip existing instance files without error', async () => {
+    // Create one of the instance files first
+    const { mkdir, writeFile } = await import('fs/promises');
+    const projectsDir = join(vaultDir, 'Projects');
+    await mkdir(projectsDir, { recursive: true });
+    await writeFile(
+      join(projectsDir, 'Background Research.md'),
+      '---\ntype: research\nstatus: settled\n---\nExisting content',
+      'utf-8'
+    );
+
+    const result = await runCLI(
+      ['new', 'project', '--json', '{"name": "Partial Project"}', '--template', 'with-research'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(true);
+
+    // One created, one skipped
+    expect(output.instances.created).toHaveLength(1);
+    expect(output.instances.created[0]).toContain('Competitor Analysis.md');
+    expect(output.instances.skipped).toHaveLength(1);
+    expect(output.instances.skipped[0]).toContain('Background Research.md');
+    expect(output.instances.errors).toHaveLength(0);
+
+    // Existing file should not be overwritten
+    const existing = await readFile(join(projectsDir, 'Background Research.md'), 'utf-8');
+    expect(existing).toContain('status: settled'); // Original content preserved
+    expect(existing).toContain('Existing content');
+  });
+
+  it('should not include instances in output when template has no instances', async () => {
+    // Use a template without instances
+    const result = await runCLI(
+      ['new', 'idea', '--json', '{"name": "Simple Idea"}', '--template', 'default'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(true);
+
+    // No instances field when template has no instances
+    expect(output.instances).toBeUndefined();
+  });
+});
+
 describe('new command - date expression evaluation', () => {
   let vaultDir: string;
 

@@ -15,6 +15,7 @@ Templates let you define default values and body structure for note types.
 | `defaults` | No | Default field values (skip prompting) |
 | `prompt-fields` | No | Fields to always prompt for |
 | `filename-pattern` | No | Override filename pattern |
+| `instances` | No | Child notes to create with parent (see [Instance Scaffolding](#instance-scaffolding)) |
 
 ## Creating a Template
 
@@ -226,6 +227,73 @@ This catches:
 - References to removed fields
 - Invalid enum values
 - Mismatched type paths
+
+## Instance Scaffolding
+
+Templates can define `instances` to automatically create related child notes when the parent note is created. This is useful for project templates that need consistent supporting files.
+
+### Defining Instances
+
+```yaml
+---
+type: template
+template-for: project
+description: Project with scaffolded research notes
+defaults:
+  status: in-flight
+instances:
+  - type: research
+    filename: "Background Research.md"
+    defaults:
+      status: raw
+  - type: research
+    filename: "Competitor Analysis.md"
+    defaults:
+      status: raw
+---
+
+# Project Overview
+
+## Goals
+
+## Timeline
+```
+
+### Instance Properties
+
+| Property | Required | Description |
+|----------|----------|-------------|
+| `type` | Yes | Type of note to create |
+| `filename` | No | Override filename (default: `{type}.md`) |
+| `template` | No | Template to use for the instance |
+| `defaults` | No | Instance-specific default values |
+
+### Behavior
+
+When you run `bwrb new project --template with-research`:
+
+1. The parent project note is created
+2. Each instance file is created in the same directory
+3. Existing instance files are **skipped** (not overwritten)
+4. A summary shows what was created
+
+```
+✓ Created: Projects/My Project.md
+
+Instances created:
+  ✓ Projects/Background Research.md
+  ✓ Projects/Competitor Analysis.md
+
+✓ Created 3 files (1 parent + 2 instances)
+```
+
+### Skipping Instance Creation
+
+Use `--no-instances` to create only the parent note:
+
+```bash
+bwrb new project --template with-research --no-instances
+```
 
 ## Complete Example
 
