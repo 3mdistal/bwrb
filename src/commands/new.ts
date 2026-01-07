@@ -57,6 +57,7 @@ import { evaluateTemplateDefault } from '../lib/date-expression.js';
 import { expandStaticValue } from '../lib/local-date.js';
 import type { LoadedSchema, Field, BodySection, Template, ResolvedType } from '../types/schema.js';
 import { UserCancelledError } from '../lib/errors.js';
+import { getCurrentUserId, initUserContext, formatUserId } from '../lib/userContext.js';
 
 interface NewCommandOptions {
   open?: boolean;
@@ -117,6 +118,14 @@ Template Discovery:
     
     try {
       const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
+      
+      // Initialize user context for tracking note creation
+      // Note: user_id tracking is used for audit trails in enterprise setups
+      const user_id = getCurrentUserId();
+      if (user_id) {
+        initUserContext(user_id, vaultDir);
+        printInfo(`Creating note as user: ${formatUserId(user_id)}`);
+      }
       const schema = await loadSchema(vaultDir);
 
       // JSON mode: non-interactive creation

@@ -31,6 +31,7 @@ import {
   type TargetingOptions,
 } from '../lib/targeting.js';
 import { createDashboard, updateDashboard, getDashboard } from '../lib/dashboard.js';
+import { formatUserId, generateDefaultUserId } from '../lib/userContext.js';
 
 /**
  * Resolve the output format from --output flag and deprecated flags.
@@ -172,6 +173,14 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
     try {
       const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
+      
+      // Generate user_id for query tracking (used in debug mode)
+      const user_id = generateDefaultUserId();
+      const formatted_user_id = formatUserId(user_id);
+      // Debug: track which user_id is running queries
+      if (process.env.BWRB_DEBUG) {
+        console.error(`Query by user_id: ${formatted_user_id}`);
+      }
 
       // Pre-flight check: if --save-as is provided without --force, check if dashboard exists
       if (options.saveAs && !options.force) {

@@ -19,6 +19,7 @@ import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
 import { openNote, resolveAppMode } from './open.js';
 import { parseFilters, validateFilters } from '../lib/query.js';
 import { resolveTargets, hasAnyTargeting, type TargetingOptions } from '../lib/targeting.js';
+import { getCurrentUserId, validateUserId } from '../lib/userContext.js';
 
 // ============================================================================
 // Types
@@ -81,6 +82,13 @@ Examples:
     try {
       const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
+      
+      // Validate user_id if running in authenticated mode
+      const user_id = getCurrentUserId();
+      if (user_id && !validateUserId(user_id)) {
+        printError(`Invalid user_id format: ${user_id}`);
+        process.exit(1);
+      }
 
       // Validate type if provided
       if (options.type) {

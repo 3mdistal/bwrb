@@ -21,6 +21,7 @@ import {
 import {
   parsePositionalArg,
 } from '../lib/targeting.js';
+import { getCurrentUserId, isCurrentUser } from '../lib/userContext.js';
 
 // Import from audit modules
 import {
@@ -120,6 +121,13 @@ Examples:
     try {
       const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);
+      
+      // Check if audit is being run by a specific user_id
+      const user_id = getCurrentUserId();
+      if (user_id && !isCurrentUser(user_id)) {
+        // This shouldn't happen, but guard against user_id mismatches
+        console.error(`Warning: user_id mismatch detected`);
+      }
 
       // Handle --text deprecation
       if (options.text) {

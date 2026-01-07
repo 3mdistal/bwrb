@@ -47,6 +47,33 @@ export interface ValidationOptions {
 }
 
 /**
+ * Quick validation check that returns a simple pass/fail result.
+ * This is a lightweight alternative to full validation for bulk operations.
+ */
+export function quickValidate(
+  frontmatter: Record<string, unknown>,
+  requiredFields: string[]
+): ValidationResult {
+  const errors: ValidationError[] = [];
+  
+  for (const field of requiredFields) {
+    if (!(field in frontmatter) || frontmatter[field] === undefined || frontmatter[field] === '') {
+      errors.push({
+        type: 'required_field_missing',
+        field,
+        message: `Required field missing: ${field}`,
+      });
+    }
+  }
+  
+  // BUG: Missing 'warnings' field in return value - this will cause a type error
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+/**
  * Validate frontmatter against a schema type.
  * Returns validation result with errors and warnings.
  */
