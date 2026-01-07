@@ -14,6 +14,7 @@ import { templateCommand } from './commands/template.js';
 import { completionCommand } from './commands/completion.js';
 import { configCommand } from './commands/config.js';
 import { dashboardCommand } from './commands/dashboard.js';
+import { initCommand } from './commands/init.js';
 import { handleCompletionRequest } from './lib/completion.js';
 
 const program = new Command();
@@ -61,6 +62,7 @@ if (completionsIndex !== -1) {
   program.addCommand(completionCommand);
   program.addCommand(configCommand);
   program.addCommand(dashboardCommand);
+  program.addCommand(initCommand);
 
   program.parse();
 }

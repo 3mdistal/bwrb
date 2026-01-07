@@ -1,0 +1,264 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bwrb.dev/schema.json",
+  "title": "Bowerbird Schema",
+  "description": "Schema for defining types, fields, and configuration for markdown vaults",
+  "type": "object",
+  "required": ["types"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to this JSON Schema for editor support"
+    },
+    "version": {
+      "type": "integer",
+      "default": 2,
+      "description": "Schema format version (2 = inheritance model)"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "description": "User-controlled schema content version for migrations (semver)"
+    },
+    "config": {
+      "$ref": "#/definitions/config"
+    },
+    "types": {
+      "type": "object",
+      "description": "Type definitions with inheritance support",
+      "additionalProperties": {
+        "$ref": "#/definitions/typeNode"
+      }
+    },
+    "audit": {
+      "$ref": "#/definitions/auditConfig"
+    }
+  },
+  "definitions": {
+    "config": {
+      "type": "object",
+      "description": "Vault-wide configuration options",
+      "additionalProperties": false,
+      "properties": {
+        "link_format": {
+          "type": "string",
+          "enum": ["wikilink", "markdown"],
+          "default": "wikilink",
+          "description": "Link format for relation fields: wikilink (\"[[Note]]\") or markdown (\"[Note](Note.md)\")"
+        },
+        "editor": {
+          "type": "string",
+          "description": "Terminal editor command (defaults to $EDITOR)"
+        },
+        "visual": {
+          "type": "string",
+          "description": "GUI editor command (defaults to $VISUAL)"
+        },
+        "open_with": {
+          "type": "string",
+          "enum": ["system", "editor", "visual", "obsidian"],
+          "default": "system",
+          "description": "Default behavior for --open flag"
+        },
+        "obsidian_vault": {
+          "type": "string",
+          "description": "Obsidian vault name for URI scheme (auto-detected if not set)"
+        },
+        "default_dashboard": {
+          "type": "string",
+          "description": "Default dashboard to run when `bwrb dashboard` is called without arguments"
+        }
+      }
+    },
+    "auditConfig": {
+      "type": "object",
+      "description": "Configuration for the audit command",
+      "additionalProperties": false,
+      "properties": {
+        "ignored_directories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Directories to skip during audit"
+        },
+        "allowed_extra_fields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Extra frontmatter fields that are allowed without warning"
+        }
+      }
+    },
+    "typeNode": {
+      "type": "object",
+      "description": "Type definition with inheritance support",
+      "additionalProperties": false,
+      "properties": {
+        "extends": {
+          "type": "string",
+          "description": "Parent type name (implicit 'meta' if not specified)"
+        },
+        "fields": {
+          "type": "object",
+          "description": "Field definitions (merged with ancestors at load time)",
+          "additionalProperties": {
+            "$ref": "#/definitions/field"
+          }
+        },
+        "field_order": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Explicit field ordering (optional - defaults to definition order)"
+        },
+        "body_sections": {
+          "type": "array",
+          "description": "Body section definitions",
+          "items": {
+            "$ref": "#/definitions/bodySection"
+          }
+        },
+        "recursive": {
+          "type": "boolean",
+          "description": "Whether this type can contain instances of itself"
+        },
+        "output_dir": {
+          "type": "string",
+          "description": "Output directory (computed from hierarchy if not specified)"
+        },
+        "filename": {
+          "type": "string",
+          "description": "Filename pattern"
+        },
+        "plural": {
+          "type": "string",
+          "description": "Custom plural form for folder naming (e.g., 'research' instead of 'researches')"
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "description": "Field definition for type frontmatter",
+      "additionalProperties": false,
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "enum": ["text", "select", "list", "date", "relation", "boolean", "number"],
+          "description": "Prompt type (how the field is collected)"
+        },
+        "value": {
+          "type": "string",
+          "description": "Static value (no prompting)"
+        },
+        "options": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Inline options for select prompts"
+        },
+        "source": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ],
+          "description": "Type name(s) for relation prompts"
+        },
+        "filter": {
+          "type": "object",
+          "description": "Filter conditions for type-based source queries",
+          "additionalProperties": {
+            "$ref": "#/definitions/filterCondition"
+          }
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the field is required"
+        },
+        "default": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ],
+          "description": "Default value"
+        },
+        "list_format": {
+          "type": "string",
+          "enum": ["yaml-array", "comma-separated"],
+          "description": "How list values are formatted in YAML"
+        },
+        "label": {
+          "type": "string",
+          "description": "Prompt label override"
+        },
+        "multiple": {
+          "type": "boolean",
+          "description": "Whether this field can hold multiple values (for context fields)"
+        },
+        "owned": {
+          "type": "boolean",
+          "description": "Whether children referenced by this field are owned (colocate with parent)"
+        }
+      }
+    },
+    "bodySection": {
+      "type": "object",
+      "required": ["title"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Section heading text"
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 6,
+          "default": 2,
+          "description": "Heading level (2 = ##, 3 = ###, etc.)"
+        },
+        "content_type": {
+          "type": "string",
+          "enum": ["none", "paragraphs", "bullets", "checkboxes"],
+          "default": "none",
+          "description": "Type of content placeholder to add"
+        },
+        "prompt": {
+          "type": "string",
+          "enum": ["none", "list"],
+          "description": "If set, prompts user for initial content during creation"
+        },
+        "prompt_label": {
+          "type": "string",
+          "description": "Label for the content prompt"
+        },
+        "children": {
+          "type": "array",
+          "description": "Nested subsections",
+          "items": {
+            "$ref": "#/definitions/bodySection"
+          }
+        }
+      }
+    },
+    "filterCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "equals": {
+          "type": "string",
+          "description": "Field must equal this value"
+        },
+        "not_equals": {
+          "type": "string",
+          "description": "Field must not equal this value"
+        },
+        "in": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Field must be one of these values"
+        },
+        "not_in": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Field must not be one of these values"
+        }
+      }
+    }
+  }
+}

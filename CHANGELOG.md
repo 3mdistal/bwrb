@@ -6,6 +6,14 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Added
 
+- **Vault initialization command** (#188)
+  - `bwrb init [path]` creates a new vault with `.bwrb/schema.json`
+  - Interactive prompts for link format and editor preferences
+  - Non-interactive mode with `--yes` for scripting
+  - Auto-detects Obsidian vault name from `.obsidian/` directory
+  - `--force` flag to reinitialize existing vaults
+  - JSON Schema hosted at `https://bwrb.dev/schema.json` for editor support
+
 - **Link normalization during schema migration** (#86)
   - When `config.link_format` changes in schema.json, `bwrb schema migrate` automatically normalizes all relation field links to the new format
   - Supports conversion between `wikilink` (`[[Note]]`) and `markdown` (`[Note](Note.md)`) formats
