@@ -6,7 +6,6 @@ import { relative, dirname, basename } from 'path';
 import { stat } from 'fs/promises';
 import { parseNote, writeNote } from '../frontmatter.js';
 import { matchesExpression, type EvalContext } from '../expression.js';
-import { matchesAllFilters } from '../query.js';
 import { discoverManagedFiles } from '../discovery.js';
 import { searchContent } from '../content-search.js';
 import { filterByPath } from '../targeting.js';
@@ -37,7 +36,6 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
     textQuery,
     operations,
     whereExpressions,
-    simpleFilters,
     execute,
     backup,
     limit,
@@ -102,13 +100,6 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
   for (const file of files) {
     try {
       const { frontmatter, body } = await parseNote(file.path);
-
-      // Apply simple filters (--field=value syntax)
-      if (simpleFilters.length > 0) {
-        if (!matchesAllFilters(frontmatter, simpleFilters)) {
-          continue;
-        }
-      }
 
       // Apply where expression filters
       if (whereExpressions.length > 0) {
@@ -201,7 +192,6 @@ async function executeBulkWithMove(
     pathGlob,
     textQuery,
     whereExpressions,
-    simpleFilters,
     execute,
     backup,
     limit,
@@ -263,13 +253,6 @@ async function executeBulkWithMove(
   for (const file of files) {
     try {
       const { frontmatter } = await parseNote(file.path);
-
-      // Apply simple filters (--field=value syntax)
-      if (simpleFilters.length > 0) {
-        if (!matchesAllFilters(frontmatter, simpleFilters)) {
-          continue;
-        }
-      }
 
       // Apply where expression filters
       if (whereExpressions.length > 0) {

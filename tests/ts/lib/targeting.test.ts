@@ -3,7 +3,6 @@ import type { LoadedSchema } from '../../../src/types/schema.js';
 import {
   detectPositionalType,
   parsePositionalArg,
-  checkDeprecatedFilters,
   filterByPath,
   resolveTargets,
   validateDestructiveTargeting,
@@ -104,22 +103,6 @@ describe('targeting', () => {
       expect(result.error).toContain('--path=');
       expect(result.error).toContain('--where=');
       expect(result.error).toContain('Known types:');
-    });
-  });
-
-  describe('checkDeprecatedFilters', () => {
-    it('detects simple filter flags', () => {
-      const result = checkDeprecatedFilters(['--status=active', '--priority=high']);
-      expect(result.filters).toHaveLength(2);
-      expect(result.warnings).toHaveLength(1);
-      expect(result.warnings[0]).toContain('Deprecation warning');
-      expect(result.warnings[0]).toContain('--where');
-    });
-
-    it('returns empty for non-filter args', () => {
-      const result = checkDeprecatedFilters(['--type', 'task', '--path', 'Projects/**']);
-      expect(result.filters).toHaveLength(0);
-      expect(result.warnings).toHaveLength(0);
     });
   });
 

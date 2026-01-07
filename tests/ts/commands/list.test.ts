@@ -47,10 +47,11 @@ describe('list command', () => {
     });
 
     it('should return empty for type with no files', async () => {
-      const result = await runCLI(['list', 'milestone', '--status=raw'], vaultDir);
+      const result = await runCLI(['list', 'milestone', '--where', "status == 'raw'"], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toBe('');
+      // Output should indicate no notes found matching the filter
+      expect(result.stdout).toContain('No notes found matching');
     });
 
     it('should sort results alphabetically', async () => {
@@ -179,17 +180,17 @@ describe('list command', () => {
     });
   });
 
-  describe('simple filters', () => {
+  describe('--where filters', () => {
     it('should filter by equality', async () => {
-      const result = await runCLI(['list', 'idea', '--status=raw'], vaultDir);
+      const result = await runCLI(['list', 'idea', '--where', "status == 'raw'"], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Sample Idea');
       expect(result.stdout).not.toContain('Another Idea');
     });
 
-    it('should filter by OR values', async () => {
-      const result = await runCLI(['list', 'idea', '--status=raw,backlog'], vaultDir);
+    it('should filter by OR values using || operator', async () => {
+      const result = await runCLI(['list', 'idea', '--where', "status == 'raw' || status == 'backlog'"], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Sample Idea');
@@ -197,7 +198,7 @@ describe('list command', () => {
     });
 
     it('should filter by negation', async () => {
-      const result = await runCLI(['list', 'milestone', '--status!=settled'], vaultDir);
+      const result = await runCLI(['list', 'milestone', '--where', "status != 'settled'"], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Active Milestone');
@@ -249,18 +250,12 @@ describe('list command', () => {
       expect(result.stderr).toContain('Ambiguous argument');
     });
 
-    it('should error on invalid filter field', async () => {
-      const result = await runCLI(['list', 'idea', '--nonexistent=value'], vaultDir);
+    it('should handle where expressions that match nothing', async () => {
+      // Where expressions that don't match any notes return empty results, not errors
+      const result = await runCLI(['list', 'idea', '--where', "status == 'nonexistent'"], vaultDir);
 
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('Unknown field');
-    });
-
-    it('should error on invalid enum value', async () => {
-      const result = await runCLI(['list', 'idea', '--status=invalid'], vaultDir);
-
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('Invalid value');
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('No notes found matching');
     });
 
     it('should list all notes when no selectors provided (implicit --all for read-only)', async () => {
@@ -429,7 +424,7 @@ status: raw
     });
 
     it('should combine --roots with other filters', async () => {
-      const result = await runCLI(['list', 'task', '--roots', '--status=raw'], tempVaultDir);
+      const result = await runCLI(['list', 'task', '--roots', '--where', "status == 'raw'"], tempVaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Parent Task');

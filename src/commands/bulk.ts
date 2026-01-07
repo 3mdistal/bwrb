@@ -19,7 +19,6 @@ import {
 } from '../lib/schema.js';
 import { resolveVaultDir } from '../lib/vault.js';
 import { getGlobalOpts } from '../lib/command.js';
-import { validateFilters } from '../lib/query.js';
 import { printError } from '../lib/prompt.js';
 import {
   printJson,
@@ -32,7 +31,6 @@ import { executeBulk } from '../lib/bulk/execute.js';
 import {
   parsePositionalArg,
   hasAnyTargeting,
-  checkDeprecatedFilters,
 } from '../lib/targeting.js';
 import type { BulkOperation, BulkResult } from '../lib/bulk/types.js';
 import type { LoadedSchema } from '../types/schema.js';
@@ -155,7 +153,6 @@ Examples:
   .option('--verbose', 'Show detailed changes per file')
   .option('--quiet', 'Only show summary')
   .option('-o, --output <format>', 'Output format: text (default) or json')
-  .allowUnknownOption(true)
   .action(async (target: string | undefined, options: BulkCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
@@ -191,18 +188,9 @@ Examples:
           typePath = parsed.options.type;
         } else if (parsed.options.path && !pathGlob) {
           pathGlob = parsed.options.path;
-        } else if (parsed.options.where) {
+        } else         if (parsed.options.where) {
           whereExpressions = [...parsed.options.where, ...whereExpressions];
         }
-      }
-
-      // Parse simple filters from remaining arguments (--field=value syntax) - DEPRECATED
-      const filterArgs = target ? cmd.args.slice(1) : cmd.args;
-      const { filters: simpleFilters, warnings: filterWarnings } = checkDeprecatedFilters(filterArgs);
-
-      // Emit deprecation warnings for simple filters
-      for (const warning of filterWarnings) {
-        console.error(warning);
       }
 
       // Validate type exists if specified
@@ -220,23 +208,7 @@ Examples:
         }
       }
 
-      // Validate simple filters if type is specified
-      if (simpleFilters.length > 0 && typePath) {
-        const validation = validateFilters(schema, typePath, simpleFilters);
-        if (!validation.valid) {
-          if (jsonMode) {
-            printJson(jsonError(validation.errors.join('; ')));
-            process.exit(ExitCodes.VALIDATION_ERROR);
-          }
-          for (const error of validation.errors) {
-            printError(error);
-          }
-          process.exit(1);
-        }
-      }
-
       // Targeting gate: require explicit selector(s) OR --all for destructive operations
-      // Simple filters are deprecated and do NOT satisfy the targeting gate
       const hasTargeting = hasAnyTargeting({
         ...(typePath && { type: typePath }),
         ...(pathGlob && { path: pathGlob }),
@@ -394,7 +366,6 @@ Hint: Bulk operations require explicit targeting to prevent accidents.
         ...(bodyQuery !== undefined && { textQuery: bodyQuery }),
         operations,
         whereExpressions,
-        simpleFilters,
         execute: options.execute ?? false,
         backup: options.backup ?? false,
         ...(limit !== undefined && { limit }),

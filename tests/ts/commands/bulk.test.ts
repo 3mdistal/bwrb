@@ -105,11 +105,10 @@ describe('bulk command', () => {
       expect(json.error).toContain('No files selected');
     });
 
-    it('should work with simple filters when type is provided', async () => {
-      // Simple filters work but emit deprecation warning; type provides explicit targeting
+    it('should work with --where filters when type is provided', async () => {
       const result = await runCLI([
         'bulk', '--type', 'idea',
-        '--status=raw',
+        '--where', "status == 'raw'",
         '--set', 'priority=high'
       ], vaultDir);
       expect(result.exitCode).toBe(0);
@@ -456,15 +455,12 @@ tags:
     });
   });
 
-  describe('simple filters (--field=value syntax)', () => {
-    // Note: Simple filters are deprecated but still work when combined with --all or --where.
-    // They do NOT satisfy the targeting gate on their own.
-    
+  describe('--where filtering (additional tests)', () => {
     it('should filter with equality when used with --all', async () => {
       const result = await runCLI([
         'bulk', 'idea',
         '--all',
-        '--status=raw',
+        '--where', "status == 'raw'",
         '--set', 'priority=high'
       ], vaultDir);
       
@@ -478,7 +474,7 @@ tags:
       const result = await runCLI([
         'bulk', 'idea',
         '--all',
-        '--status!=raw',
+        '--where', "status != 'raw'",
         '--set', 'priority=low'
       ], vaultDir);
       
@@ -488,11 +484,11 @@ tags:
       expect(result.stdout).not.toContain('Sample Idea.md');
     });
 
-    it('should filter with multiple values (OR) when used with --all', async () => {
+    it('should filter with OR using || operator', async () => {
       const result = await runCLI([
         'bulk', 'idea',
         '--all',
-        '--status=raw,backlog',
+        '--where', "status == 'raw' || status == 'backlog'",
         '--set', 'test=value'
       ], vaultDir);
       
@@ -502,12 +498,12 @@ tags:
       expect(result.stdout).toContain('Another Idea.md');
     });
 
-    it('should combine simple filters with AND when used with --all', async () => {
+    it('should combine multiple --where with AND', async () => {
       const result = await runCLI([
         'bulk', 'idea',
         '--all',
-        '--status=backlog',
-        '--priority=high',
+        '--where', "status == 'backlog'",
+        '--where', "priority == 'high'",
         '--set', 'test=value'
       ], vaultDir);
       
@@ -515,45 +511,6 @@ tags:
       // Only Another Idea has both status=backlog AND priority=high
       expect(result.stdout).toContain('Another Idea.md');
       expect(result.stdout).not.toContain('Sample Idea.md');
-    });
-
-    it('should combine simple filters with --where expressions', async () => {
-      // --where satisfies the targeting gate, simple filters add additional filtering
-      const result = await runCLI([
-        'bulk', 'idea',
-        '--status=backlog',
-        '--where', "priority == 'high'",
-        '--set', 'test=value'
-      ], vaultDir);
-      
-      expect(result.exitCode).toBe(0);
-      // Only Another Idea matches both conditions
-      expect(result.stdout).toContain('Another Idea.md');
-      expect(result.stdout).not.toContain('Sample Idea.md');
-    });
-
-    it('should validate filter field names', async () => {
-      const result = await runCLI([
-        'bulk', 'idea',
-        '--all',
-        '--nonexistent=value',
-        '--set', 'status=done'
-      ], vaultDir);
-      
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("Unknown field 'nonexistent'");
-    });
-
-    it('should validate filter enum values', async () => {
-      const result = await runCLI([
-        'bulk', 'idea',
-        '--all',
-        '--status=invalid',
-        '--set', 'priority=high'
-      ], vaultDir);
-      
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("Invalid value 'invalid'");
     });
   });
 

@@ -483,7 +483,7 @@ describe('JSON I/O', () => {
 
     it('should return empty array for no matches', async () => {
       const result = await runCLI(
-        ['list', 'idea', '--status=settled', '--output', 'json'],
+        ['list', 'idea', '--where', "status == 'settled'", '--output', 'json'],
         vaultDir
       );
 
@@ -494,7 +494,7 @@ describe('JSON I/O', () => {
 
     it('should apply filters in JSON mode', async () => {
       const result = await runCLI(
-        ['list', 'idea', '--status=raw', '--output', 'json'],
+        ['list', 'idea', '--where', "status == 'raw'", '--output', 'json'],
         vaultDir
       );
 

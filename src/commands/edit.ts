@@ -17,7 +17,6 @@ import { buildNoteIndex, type ManagedFile } from '../lib/navigation.js';
 import { parsePickerMode, resolveAndPick, type PickerMode } from '../lib/picker.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
 import { openNote, resolveAppMode } from './open.js';
-import { parseFilters, validateFilters } from '../lib/query.js';
 import { resolveTargets, hasAnyTargeting, type TargetingOptions } from '../lib/targeting.js';
 
 // ============================================================================
@@ -55,12 +54,8 @@ Targeting Options:
   All targeting options compose (AND logic):
   -t, --type <type>    Filter by note type (e.g., task, idea)
   -p, --path <glob>    Filter by path pattern (e.g., "Projects/**")
-  -w, --where <expr>   Filter by frontmatter (e.g., "status=active")
+  -w, --where <expr>   Filter by frontmatter (e.g., "status == 'active'")
   -b, --body <pattern> Filter by body content
-
-Simple Filters (shorthand for --where):
-  field=value          Match where field equals value
-  field!=value         Exclude where field equals value
 
 Examples:
   # Interactive editing
@@ -70,7 +65,7 @@ Examples:
 
   # Non-interactive JSON mode (scripting)
   bwrb edit "My Task" --json '{"status":"done"}'
-  bwrb edit -t task --where "status=active" "Deploy" --json '{"priority":"high"}'
+  bwrb edit -t task --where "status == 'active'" "Deploy" --json '{"priority":"high"}'
 
   # Edit and open
   bwrb edit "My Note" --open                # Open the note after editing
@@ -92,25 +87,6 @@ Examples:
             process.exit(ExitCodes.VALIDATION_ERROR);
           }
           printError(error);
-          process.exit(1);
-        }
-      }
-
-      // Parse simple filters from remaining arguments
-      const filterArgs = cmd.args.slice(query ? 1 : 0);
-      const simpleFilters = parseFilters(filterArgs);
-
-      // Validate filters if type is specified
-      if (options.type && simpleFilters.length > 0) {
-        const validation = validateFilters(schema, options.type, simpleFilters);
-        if (!validation.valid) {
-          if (jsonMode) {
-            printJson(jsonError(validation.errors.join('; ')));
-            process.exit(ExitCodes.VALIDATION_ERROR);
-          }
-          for (const error of validation.errors) {
-            printError(error);
-          }
           process.exit(1);
         }
       }

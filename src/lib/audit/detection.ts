@@ -93,7 +93,6 @@ export async function runAudit(
     );
     
     const filtered = await applyFrontmatterFilters(filesWithFrontmatter, {
-      filters: [],
       whereExpressions: options.whereExpressions,
       vaultDir,
       silent: true,

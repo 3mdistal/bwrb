@@ -503,10 +503,10 @@ Some content
       }
     });
 
-    it('should filter results with simple --field=value syntax', async () => {
+    it('should filter results with --where expression', async () => {
       const result = await runCLI([
         'search', 'status', '--body', '--type', 'idea',
-        '--status=raw',
+        '--where', "status == 'raw'",
         '--no-context'
       ], vaultDir);
 
@@ -518,10 +518,10 @@ Some content
       }
     });
 
-    it('should filter results with negation --field!=value syntax', async () => {
+    it('should filter results with negation using --where', async () => {
       const result = await runCLI([
         'search', 'status', '--body', '--type', 'idea',
-        '--status!=raw',
+        '--where', "status != 'raw'",
         '--no-context'
       ], vaultDir);
 
@@ -571,69 +571,11 @@ Some content
       expect(result.stdout).toContain('--limit');
     });
 
-    describe('filter validation with --type', () => {
-      it('should error on invalid filter field when --type is specified', async () => {
+    describe('--where validation with --type', () => {
+      it('should accept valid --where with --type', async () => {
         const result = await runCLI([
           'search', 'status', '--body', '--type', 'idea',
-          '--nonexistent=value'
-        ], vaultDir);
-
-        expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain('Unknown field');
-        expect(result.stderr).toContain('nonexistent');
-      });
-
-      it('should error on invalid enum value when --type is specified', async () => {
-        const result = await runCLI([
-          'search', 'status', '--body', '--type', 'idea',
-          '--status=invalid'
-        ], vaultDir);
-
-        expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain('Invalid value');
-        expect(result.stderr).toContain('invalid');
-      });
-
-      it('should output JSON error for invalid field when --type is specified', async () => {
-        const result = await runCLI([
-          'search', 'status', '--body', '--type', 'idea',
-          '--nonexistent=value', '--output', 'json'
-        ], vaultDir);
-
-        expect(result.exitCode).toBe(1);
-        const json = JSON.parse(result.stdout);
-        expect(json.success).toBe(false);
-        expect(json.error).toContain('Unknown field');
-      });
-
-      it('should output JSON error for invalid enum value when --type is specified', async () => {
-        const result = await runCLI([
-          'search', 'status', '--body', '--type', 'idea',
-          '--status=invalid', '--output', 'json'
-        ], vaultDir);
-
-        expect(result.exitCode).toBe(1);
-        const json = JSON.parse(result.stdout);
-        expect(json.success).toBe(false);
-        expect(json.error).toContain('Invalid value');
-      });
-
-      it('should NOT validate filters when --type is NOT specified', async () => {
-        // Without --type, there's no schema context, so filters are not validated
-        // They just silently won't match anything
-        const result = await runCLI([
-          'search', 'status', '--body',
-          '--nonexistent=value'
-        ], vaultDir);
-
-        // Should succeed (no validation error) but return no matches
-        expect(result.exitCode).toBe(0);
-      });
-
-      it('should accept valid filter with --type', async () => {
-        const result = await runCLI([
-          'search', 'status', '--body', '--type', 'idea',
-          '--status=raw', '--no-context'
+          '--where', "status == 'raw'", '--no-context'
         ], vaultDir);
 
         expect(result.exitCode).toBe(0);

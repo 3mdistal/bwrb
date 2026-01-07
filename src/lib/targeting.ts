@@ -23,11 +23,7 @@ import {
   loadGitignore,
 } from './discovery.js';
 import { parseNote } from './frontmatter.js';
-import {
-  applyFrontmatterFilters,
-  parseFilters,
-  type Filter,
-} from './query.js';
+import { applyFrontmatterFilters } from './query.js';
 import { searchContent } from './content-search.js';
 import { getTypeNames } from './schema.js';
 
@@ -186,40 +182,6 @@ export function parsePositionalArg(
 }
 
 // ============================================================================
-// Deprecation Warnings
-// ============================================================================
-
-/**
- * Check for deprecated simple filter flags and return warnings.
- * Simple filters like --status=active should use --where instead.
- */
-export function checkDeprecatedFilters(
-  args: string[]
-): { filters: Filter[]; warnings: string[] } {
-  const filters = parseFilters(args);
-  const warnings: string[] = [];
-
-  if (filters.length > 0) {
-    const filterStrs = filters.map(f => {
-      const op = f.operator === 'eq' ? '=' : '!=';
-      return `--${f.field}${op}${f.values.join(',')}`;
-    });
-
-    warnings.push(
-      `Deprecation warning: Simple filter flags (${filterStrs.join(', ')}) are deprecated.\n` +
-      `Use --where instead:\n` +
-      filters.map(f => {
-        const op = f.operator === 'eq' ? '=' : '!=';
-        const val = f.values.length === 1 ? f.values[0] : `(${f.values.join(',')})`;
-        return `  --where '${f.field}${op}${val}'`;
-      }).join('\n')
-    );
-  }
-
-  return { filters, warnings };
-}
-
-// ============================================================================
 // Path Filtering
 // ============================================================================
 
@@ -362,7 +324,6 @@ export async function resolveTargets(
     // Step 5: Filter by --where expressions
     if (options.where && options.where.length > 0) {
       const filtered = await applyFrontmatterFilters(filesWithFrontmatter, {
-        filters: [], // No simple filters in new model
         whereExpressions: options.where,
         vaultDir,
         silent: true,

@@ -10,8 +10,7 @@ import { extractWikilinkTarget } from '../lib/audit/types.js';
 
 import { resolveVaultDir } from '../lib/vault.js';
 import { getGlobalOpts } from '../lib/command.js';
-import { validateFilters, applyFrontmatterFilters } from '../lib/query.js';
-import { printError, printWarning } from '../lib/prompt.js';
+import { printError } from '../lib/prompt.js';
 import {
   printJson,
   jsonError,
@@ -25,7 +24,6 @@ import type { LoadedSchema, DashboardDefinition } from '../types/schema.js';
 import {
   resolveTargets,
   parsePositionalArg,
-  checkDeprecatedFilters,
   hasAnyTargeting,
   formatTargetingSummary,
   type TargetingOptions,
@@ -163,7 +161,6 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   // Dashboard save options
   .option('--save-as <name>', 'Save this query as a dashboard')
   .option('--force', 'Overwrite existing dashboard when using --save-as')
-  .allowUnknownOption(true)
   .action(async (positional: string | undefined, options: ListCommandOptions, cmd: Command) => {
     // Resolve output format from --output flag and deprecated flags
     const outputFormat = resolveListOutputFormat(options);
@@ -199,15 +196,6 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       const bodyQuery = options.body ?? options.text;
       if (bodyQuery) targeting.body = bodyQuery;
 
-      // Check for deprecated simple filter flags (--field=value)
-      const filterArgs = cmd.args.slice(positional ? 1 : 0);
-      const deprecatedCheck = checkDeprecatedFilters(filterArgs);
-      if (deprecatedCheck.warnings.length > 0 && !jsonMode) {
-        for (const warning of deprecatedCheck.warnings) {
-          printWarning(warning);
-        }
-      }
-
       // Handle smart positional detection
       if (positional) {
         const positionalResult = parsePositionalArg(positional, schema, targeting);
@@ -234,24 +222,6 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
             process.exit(ExitCodes.VALIDATION_ERROR);
           }
           printError(error);
-          process.exit(1);
-        }
-      }
-
-      // Use the deprecated filters directly (already parsed)
-      const filters = deprecatedCheck.filters;
-
-      // Validate filters if type is specified
-      if (filters.length > 0 && targeting.type) {
-        const validation = validateFilters(schema, targeting.type, filters);
-        if (!validation.valid) {
-          if (jsonMode) {
-            printJson(jsonError(validation.errors.join('; ')));
-            process.exit(ExitCodes.VALIDATION_ERROR);
-          }
-          for (const error of validation.errors) {
-            printError(error);
-          }
           process.exit(1);
         }
       }
@@ -292,8 +262,6 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       await listObjects(schema, vaultDir, targeting.type, targetResult.files, {
         outputFormat,
         ...(fields !== undefined && { fields }),
-        filters,
-        whereExpressions: [], // Already applied by resolveTargets
         // Open options
         open: options.open,
         app: options.app,
@@ -356,8 +324,6 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
 export interface ListOptions {
   outputFormat: ListOutputFormat;
   fields?: string[] | undefined;
-  filters: { field: string; operator: 'eq' | 'neq'; values: string[] }[];
-  whereExpressions: string[];
   // Open options
   open?: boolean | undefined;
   app?: string | undefined;
@@ -386,16 +352,6 @@ export async function listObjects(
   }));
 
   const jsonMode = options.outputFormat === 'json';
-
-  // Apply any remaining deprecated filters
-  if (options.filters.length > 0) {
-    filteredFiles = await applyFrontmatterFilters(filteredFiles, {
-      filters: options.filters,
-      whereExpressions: options.whereExpressions,
-      vaultDir,
-      silent: jsonMode,
-    });
-  }
 
   // Check if type is recursive for hierarchy options
   const typeDef = typePath ? getType(schema, typePath) : undefined;

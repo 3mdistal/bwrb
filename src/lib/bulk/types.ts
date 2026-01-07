@@ -84,15 +84,6 @@ export interface WikilinkUpdateInfo {
 }
 
 /**
- * Simple filter (--field=value syntax).
- */
-export interface SimpleFilter {
-  field: string;
-  operator: 'eq' | 'neq';
-  values: string[];
-}
-
-/**
  * Options for bulk execution.
  */
 export interface BulkOptions {
@@ -101,7 +92,6 @@ export interface BulkOptions {
   textQuery?: string;
   operations: BulkOperation[];
   whereExpressions: string[];
-  simpleFilters: SimpleFilter[];
   execute: boolean;
   backup: boolean;
   limit?: number;

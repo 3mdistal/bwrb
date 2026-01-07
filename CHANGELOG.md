@@ -4,6 +4,27 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Removed (Breaking)
+
+- **Simple filter flags (`--status=active`, `--priority=high`, etc.) have been removed** (#220)
+  - These deprecated flags are no longer supported on `list`, `search`, `bulk`, and `edit` commands
+  - Use `--where` expressions instead:
+    ```bash
+    # Before (no longer works):
+    bwrb list task --status=active
+    bwrb bulk idea --priority=high --set reviewed=true
+    
+    # After:
+    bwrb list task --where "status == 'active'"
+    bwrb bulk idea --where "priority == 'high'" --set reviewed=true
+    ```
+  - Migration notes:
+    - Equality: `--status=active` → `--where "status == 'active'"`
+    - Negation: `--status!=active` → `--where "status != 'active'"`
+    - Multiple values (OR): `--status=active,done` → `--where "status == 'active' || status == 'done'"`
+    - Multiple filters (AND): `--status=active --priority=high` → `--where "status == 'active'" --where "priority == 'high'"`
+  - Rationale: `--where` is more powerful (supports operators, functions, boolean logic), reduces flag proliferation, and provides a consistent query interface
+
 ### Added
 
 - **Dashboard picker and default dashboard support** (#198)

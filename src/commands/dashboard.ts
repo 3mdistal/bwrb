@@ -142,8 +142,6 @@ async function runDashboard(
     const listOpts: ListOptions = {
       outputFormat: effectiveFormat,
       fields: dashboard.fields,
-      filters: [],
-      whereExpressions: [],
     };
 
     await listObjects(schema, vaultDir, targeting.type, targetResult.files, listOpts);

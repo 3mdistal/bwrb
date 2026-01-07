@@ -246,24 +246,6 @@ bwrb search "TODO" --output content      # Full file with matches
 
 ---
 
-## Deprecations
-
-### Simple filter flags (e.g., `--status=active`)
-
-**Deprecated.** Use `--where` instead.
-
-```bash
-# Old (deprecated):
-bwrb list task --status=active
-
-# New:
-bwrb list task --where "status == 'active'"
-```
-
-**Rationale:** `--where` is more powerful, consistent, and reduces flag proliferation. Simple filters will emit deprecation warnings and be removed in a future version.
-
----
-
 ## Examples
 
 ### Onboarding/migration workflow

@@ -30,7 +30,7 @@ import {
   type ContentMatch,
 } from '../lib/content-search.js';
 import { parseNote } from '../lib/frontmatter.js';
-import { parseFilters, validateFilters, applyFrontmatterFilters, type Filter } from '../lib/query.js';
+import { applyFrontmatterFilters } from '../lib/query.js';
 import { minimatch } from 'minimatch';
 
 // ============================================================================
@@ -151,7 +151,6 @@ export const searchCommand = new Command('search')
   .option('-S, --case-sensitive', 'Case-sensitive search (default: case-insensitive)')
   .option('-E, --regex', 'Treat pattern as regex (default: literal)')
   .option('-l, --limit <count>', 'Maximum files to return (default: 100)')
-  .allowUnknownOption(true)
   .addHelpText('after', `
 Name Search (default):
   Searches by note name, basename, or path.
@@ -182,13 +181,6 @@ Content Search (--body):
     -S, --case-sensitive Case-sensitive matching
     -E, --regex          Treat pattern as regex
     -l, --limit <n>      Max files to return (default: 100)
-
-  Simple Filters (same as list command):
-    --field=value        Include where field equals value
-    --field=a,b          Include where field equals a OR b
-    --field!=value       Exclude where field equals value
-    --field=             Include where field is empty/missing
-    --field!=            Include where field exists
 
 Open Options:
   --open               Open the selected note in an app
@@ -276,9 +268,9 @@ Examples:
 
       // Dispatch to appropriate search mode
       if (options.body) {
-        await handleContentSearch(query, options, vaultDir, schema, jsonMode, outputFormat, cmd);
+        await handleContentSearch(query, options, vaultDir, schema, jsonMode, outputFormat);
       } else {
-        await handleNameSearch(query, options, vaultDir, schema, jsonMode, outputFormat, cmd);
+        await handleNameSearch(query, options, vaultDir, schema, jsonMode, outputFormat);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -301,8 +293,7 @@ async function handleContentSearch(
   vaultDir: string,
   schema: import('../types/schema.js').LoadedSchema,
   jsonMode: boolean,
-  outputFormat: SearchOutputFormat,
-  cmd: Command
+  outputFormat: SearchOutputFormat
 ): Promise<void> {
   // Validate query is provided for content search
   if (!query) {
@@ -333,25 +324,6 @@ async function handleContentSearch(
   const contextLines = options.noContext ? 0 : parseInt(options.context ?? '2', 10);
   const limit = parseInt(options.limit ?? '100', 10);
 
-  // Parse simple filters from remaining arguments (e.g., --status=done)
-  const filterArgs = cmd.args.slice(1); // Skip the query argument
-  const simpleFilters = parseFilters(filterArgs);
-
-  // Validate filters if type is specified (provides schema context for validation)
-  if (options.type && simpleFilters.length > 0) {
-    const validation = validateFilters(schema, options.type, simpleFilters);
-    if (!validation.valid) {
-      if (jsonMode) {
-        printJson(jsonError(validation.errors.join('; ')));
-        process.exit(ExitCodes.VALIDATION_ERROR);
-      }
-      for (const error of validation.errors) {
-        printError(error);
-      }
-      process.exit(1);
-    }
-  }
-
   // Run content search
   const searchResult = await searchContent({
     pattern: query,
@@ -381,13 +353,11 @@ async function handleContentSearch(
     );
   }
 
-  // Apply frontmatter filters if specified (simple filters and/or --where expressions)
-  const hasFilters = simpleFilters.length > 0 || (options.where && options.where.length > 0);
-  if (hasFilters) {
+  // Apply frontmatter filters if specified (--where expressions)
+  if (options.where && options.where.length > 0) {
     filteredResults = await filterByFrontmatter(
       searchResult.results,
-      options.where ?? [],
-      simpleFilters,
+      options.where,
       vaultDir,
       jsonMode
     );
@@ -499,12 +469,11 @@ async function handleContentSearch(
 }
 
 /**
- * Filter content search results by frontmatter (simple filters and/or expressions).
+ * Filter content search results by frontmatter expressions.
  */
 async function filterByFrontmatter(
   results: ContentMatch[],
   whereExpressions: string[],
-  simpleFilters: Filter[],
   vaultDir: string,
   jsonMode: boolean
 ): Promise<ContentMatch[]> {
@@ -530,7 +499,6 @@ async function filterByFrontmatter(
 
   // Apply filters using shared helper
   const filtered = await applyFrontmatterFilters(resultsWithFrontmatter, {
-    filters: simpleFilters,
     whereExpressions,
     vaultDir,
     silent: jsonMode,
@@ -550,8 +518,7 @@ async function handleNameSearch(
   vaultDir: string,
   schema: import('../types/schema.js').LoadedSchema,
   jsonMode: boolean,
-  outputFormat: SearchOutputFormat,
-  _cmd: Command
+  outputFormat: SearchOutputFormat
 ): Promise<void> {
   const pickerMode = parsePickerMode(options.picker);
 

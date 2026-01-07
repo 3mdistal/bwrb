@@ -50,7 +50,7 @@ describe('relative vault path handling', () => {
     });
 
     it('should filter correctly with relative path', async () => {
-      const result = await runCLI(['--vault', relativeVaultPath, 'list', 'idea', '--status=raw']);
+      const result = await runCLI(['--vault', relativeVaultPath, 'list', 'idea', '--where', "status == 'raw'"]);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Sample Idea');
