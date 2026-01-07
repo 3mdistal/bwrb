@@ -6,6 +6,15 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Added
 
+- **Dashboard picker and default dashboard support** (#198)
+  - `bwrb dashboard` (no args) shows an interactive picker to select from saved dashboards
+  - Picker shows dashboard names with type info (e.g., "my-tasks (task)")
+  - Configure default dashboard in schema: `config.default_dashboard: "dashboard-name"`
+  - Default dashboard runs automatically when configured
+  - Graceful fallback: warns and shows picker if configured default doesn't exist
+  - JSON mode: `--output json` returns list of available dashboards
+  - Helpful message when no dashboards exist
+
 - **`--save-as` flag for list command to save queries as dashboards** (#204)
   - `bwrb list --type task --where "status='active'" --save-as "active-tasks"` saves query as reusable dashboard
   - Saves all query parameters: type, path, where, body, output, and fields

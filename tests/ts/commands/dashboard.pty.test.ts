@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { readFile, rm } from 'fs/promises';
+import { readFile, writeFile, rm } from 'fs/promises';
 import { join } from 'path';
 import {
   withTempVault,
@@ -170,6 +170,166 @@ describePty('dashboard new PTY tests', () => {
             path: '.bwrb/dashboards.json',
             content: JSON.stringify({ dashboards: { existing: { type: 'task' } } }, null, 2),
           }],
+        }
+      );
+    }, 30000);
+  });
+});
+
+describePty('dashboard picker PTY tests', () => {
+  afterEach(() => {
+    killAllPtyProcesses();
+  });
+
+  describe('picker behavior', () => {
+    it('should show picker when no name provided and dashboards exist', async () => {
+      await withTempVault(
+        ['dashboard'],
+        async (proc, vaultPath) => {
+          // Should show picker prompt
+          await proc.waitFor('Select a dashboard:', 10000);
+          // Should show dashboard names with type info
+          await proc.waitFor('my-tasks (task)', 5000);
+          await proc.waitFor('my-ideas (idea)', 5000);
+          
+          // Select first dashboard (my-ideas, sorted alphabetically)
+          proc.write('1');
+          
+          // Should run the dashboard and show results
+          await proc.waitFor('Sample Idea', 10000);
+        },
+        { 
+          schema: TEST_SCHEMA,
+          files: [
+            {
+              path: '.bwrb/dashboards.json',
+              content: JSON.stringify({ 
+                dashboards: { 
+                  'my-tasks': { type: 'task' },
+                  'my-ideas': { type: 'idea' },
+                }
+              }, null, 2),
+            },
+            {
+              path: 'Ideas/Sample Idea.md',
+              content: '---\ntype: idea\nstatus: raw\n---\n',
+            },
+          ],
+        }
+      );
+    }, 30000);
+
+    it('should cancel picker cleanly on Ctrl+C', async () => {
+      await withTempVault(
+        ['dashboard'],
+        async (proc, vaultPath) => {
+          // Should show picker prompt
+          await proc.waitFor('Select a dashboard:', 10000);
+          
+          // Cancel with Ctrl+C
+          proc.write('\x03');
+          
+          // Should show cancelled message
+          await proc.waitFor('Cancelled', 5000);
+          
+          // Wait for process to exit
+          const exitCode = await proc.waitForExit();
+          expect(exitCode).toBe(1);
+        },
+        { 
+          schema: TEST_SCHEMA,
+          files: [
+            {
+              path: '.bwrb/dashboards.json',
+              content: JSON.stringify({ 
+                dashboards: { 
+                  'my-tasks': { type: 'task' },
+                }
+              }, null, 2),
+            },
+          ],
+        }
+      );
+    }, 30000);
+  });
+
+  describe('default dashboard', () => {
+    it('should run default dashboard when configured', async () => {
+      const schemaWithDefault = {
+        ...TEST_SCHEMA,
+        config: { default_dashboard: 'my-ideas' },
+      } as typeof TEST_SCHEMA & { config: { default_dashboard: string } };
+      
+      await withTempVault(
+        ['dashboard'],
+        async (proc, vaultPath) => {
+          // Should run default dashboard immediately without showing picker
+          // Should show idea results
+          await proc.waitFor('Sample Idea', 10000);
+          await proc.waitFor('Another Idea', 5000);
+          
+          // Should NOT show picker prompt
+          const output = proc.getOutput();
+          expect(output).not.toContain('Select a dashboard:');
+        },
+        { 
+          schema: schemaWithDefault,
+          files: [
+            {
+              path: '.bwrb/dashboards.json',
+              content: JSON.stringify({ 
+                dashboards: { 
+                  'my-tasks': { type: 'task' },
+                  'my-ideas': { type: 'idea' },
+                }
+              }, null, 2),
+            },
+            {
+              path: 'Ideas/Sample Idea.md',
+              content: '---\ntype: idea\nstatus: raw\n---\n',
+            },
+            {
+              path: 'Ideas/Another Idea.md',
+              content: '---\ntype: idea\nstatus: backlog\n---\n',
+            },
+          ],
+        }
+      );
+    }, 30000);
+
+    it('should warn and show picker when default dashboard does not exist', async () => {
+      const schemaWithBadDefault = {
+        ...TEST_SCHEMA,
+        config: { default_dashboard: 'nonexistent' },
+      } as typeof TEST_SCHEMA & { config: { default_dashboard: string } };
+      
+      await withTempVault(
+        ['dashboard'],
+        async (proc, vaultPath) => {
+          // Should show warning about missing default
+          await proc.waitFor('Default dashboard "nonexistent" not found', 10000);
+          
+          // Then should show picker
+          await proc.waitFor('Select a dashboard:', 5000);
+          
+          // Select the only available dashboard
+          proc.write('1');
+          
+          // Wait for exit
+          await proc.waitForExit();
+        },
+        { 
+          schema: schemaWithBadDefault,
+          files: [
+            {
+              path: '.bwrb/dashboards.json',
+              content: JSON.stringify({ 
+                dashboards: { 
+                  'my-tasks': { type: 'task' },
+                }
+              }, null, 2),
+            },
+          ],
         }
       );
     }, 30000);

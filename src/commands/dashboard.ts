@@ -74,10 +74,10 @@ Examples:
   bwrb dashboard list --output json    List dashboards in JSON format
 `)
   .action(async (name: string | undefined, options: DashboardRunOptions, cmd: Command) => {
-    // If no name provided and no subcommand matched, show help
+    // If no name provided, show picker or run default dashboard
     if (!name) {
-      cmd.help();
-      // cmd.help() exits, so this line is never reached
+      await runDashboardPickerOrDefault(options, cmd);
+      return;
     }
 
     // Run the named dashboard
@@ -148,6 +148,108 @@ async function runDashboard(
 
     await listObjects(schema, vaultDir, targeting.type, targetResult.files, listOpts);
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (jsonMode) {
+      printJson(jsonError(message));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    printError(message);
+    process.exit(1);
+  }
+}
+
+/**
+ * Run the dashboard picker or default dashboard when no name is provided.
+ * 
+ * Behavior:
+ * 1. JSON mode: return list of dashboards (no picker)
+ * 2. No dashboards: show helpful message
+ * 3. Default configured and exists: run it
+ * 4. Default configured but missing: warn and show picker
+ * 5. No default: show picker
+ */
+async function runDashboardPickerOrDefault(
+  options: DashboardRunOptions,
+  cmd: Command
+): Promise<void> {
+  const jsonMode = options.output === 'json';
+
+  try {
+    const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
+    const schema = await loadSchema(vaultDir);
+    // Load dashboards once and derive names from it (avoid double I/O)
+    const dashboardsFile = await loadDashboards(vaultDir);
+    const dashboardNames = Object.keys(dashboardsFile.dashboards).sort((a, b) => a.localeCompare(b));
+    const defaultDashboard = schema.config.defaultDashboard;
+
+    // JSON mode: return list of dashboards
+    if (jsonMode) {
+      printJson(jsonSuccess({
+        data: {
+          dashboards: dashboardNames,
+          default: defaultDashboard ?? null,
+        },
+      }));
+      return;
+    }
+
+    // Empty state: no dashboards
+    if (dashboardNames.length === 0) {
+      console.log('No dashboards saved.');
+      console.log('\nCreate one with: bwrb dashboard new <name>');
+      console.log('Or save from list: bwrb list --type task --save-as my-tasks');
+      return;
+    }
+
+    // Check for default dashboard
+    if (defaultDashboard) {
+      if (dashboardNames.includes(defaultDashboard)) {
+        // Run default dashboard
+        await runDashboard(defaultDashboard, options, cmd);
+        return;
+      } else {
+        // Default configured but doesn't exist - warn and show picker
+        printError(`Default dashboard "${defaultDashboard}" not found.`);
+        console.log('');
+      }
+    }
+
+    // Check for TTY before showing picker
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      printError('No dashboard specified. Use --output json to list dashboards or specify a name.');
+      console.log('\nAvailable dashboards:');
+      for (const name of dashboardNames) {
+        console.log(`  ${name}`);
+      }
+      process.exit(1);
+    }
+
+    // Build picker options with type info and a map for lookup
+    const displayToName = new Map<string, string>();
+    const pickerOptions = dashboardNames.map(name => {
+      const def = dashboardsFile.dashboards[name];
+      const displayLabel = def?.type ? `${name} (${def.type})` : name;
+      displayToName.set(displayLabel, name);
+      return displayLabel;
+    });
+
+    // Show picker
+    const selected = await promptSelection('Select a dashboard:', pickerOptions);
+    if (selected === null) {
+      throw new UserCancelledError();
+    }
+
+    // Look up the actual dashboard name from the display label
+    const selectedName = displayToName.get(selected) ?? selected;
+
+    // Run selected dashboard
+    await runDashboard(selectedName, options, cmd);
+  } catch (err) {
+    if (err instanceof UserCancelledError) {
+      console.log('\nCancelled.');
+      process.exit(1);
+    }
+
     const message = err instanceof Error ? err.message : String(err);
     if (jsonMode) {
       printJson(jsonError(message));

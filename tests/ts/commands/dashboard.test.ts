@@ -755,13 +755,152 @@ describe('dashboard command', () => {
   });
 
   describe('dashboard without arguments', () => {
-    it('should show help when no name provided', async () => {
-      const result = await runCLI(['dashboard'], vaultDir);
+    describe('empty state (no dashboards)', () => {
+      beforeEach(async () => {
+        await removeDashboards();
+      });
 
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Usage:');
-      expect(result.stdout).toContain('dashboard list');
-      expect(result.stdout).toContain('dashboard new');
+      it('should show helpful message when no dashboards exist', async () => {
+        const result = await runCLI(['dashboard'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('No dashboards saved');
+        expect(result.stdout).toContain('bwrb dashboard new');
+        expect(result.stdout).toContain('--save-as');
+      });
+
+      it('should return empty list in JSON mode when no dashboards exist', async () => {
+        const result = await runCLI(['dashboard', '--output', 'json'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        expect(json.data.dashboards).toEqual([]);
+        expect(json.data.default).toBe(null);
+      });
+    });
+
+    describe('JSON mode', () => {
+      beforeEach(async () => {
+        await createDashboards({
+          dashboards: {
+            'alpha-tasks': { type: 'task' },
+            'beta-ideas': { type: 'idea' },
+          },
+        });
+      });
+
+      afterEach(async () => {
+        await removeDashboards();
+      });
+
+      it('should return list of dashboards in JSON mode', async () => {
+        const result = await runCLI(['dashboard', '--output', 'json'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        expect(json.data.dashboards).toEqual(['alpha-tasks', 'beta-ideas']);
+        expect(json.data.default).toBe(null);
+      });
+
+      it('should include default dashboard in JSON response when configured', async () => {
+        // Set default_dashboard in config
+        const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+        const schemaContent = await readFile(schemaPath, 'utf-8');
+        const schema = JSON.parse(schemaContent);
+        schema.config = { ...schema.config, default_dashboard: 'alpha-tasks' };
+        await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+
+        const result = await runCLI(['dashboard', '--output', 'json'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.data.default).toBe('alpha-tasks');
+
+        // Clean up
+        delete schema.config.default_dashboard;
+        await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+      });
+    });
+
+    describe('default dashboard', () => {
+      beforeEach(async () => {
+        await createDashboards({
+          dashboards: {
+            'my-tasks': { type: 'task' },
+            'my-ideas': { type: 'idea' },
+          },
+        });
+      });
+
+      afterEach(async () => {
+        await removeDashboards();
+        // Clean up config
+        const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+        const schemaContent = await readFile(schemaPath, 'utf-8');
+        const schema = JSON.parse(schemaContent);
+        if (schema.config?.default_dashboard) {
+          delete schema.config.default_dashboard;
+          await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+        }
+      });
+
+      it('should run default dashboard when configured', async () => {
+        // Set default_dashboard in config
+        const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+        const schemaContent = await readFile(schemaPath, 'utf-8');
+        const schema = JSON.parse(schemaContent);
+        schema.config = { ...schema.config, default_dashboard: 'my-ideas' };
+        await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+
+        const result = await runCLI(['dashboard'], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        // Should show ideas, not tasks
+        expect(result.stdout).toContain('Sample Idea');
+        expect(result.stdout).toContain('Another Idea');
+      });
+
+      it('should warn when default dashboard does not exist and list available', async () => {
+        // Set non-existent default_dashboard in config
+        const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+        const schemaContent = await readFile(schemaPath, 'utf-8');
+        const schema = JSON.parse(schemaContent);
+        schema.config = { ...schema.config, default_dashboard: 'nonexistent' };
+        await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+
+        // In non-TTY mode, should show warning and list available dashboards
+        const result = await runCLI(['dashboard'], vaultDir);
+
+        // Should show warning about missing default
+        expect(result.stderr).toContain('Default dashboard "nonexistent" not found');
+        // Should show available dashboards since we're not in a TTY
+        expect(result.stderr).toContain('No dashboard specified');
+        expect(result.stdout).toContain('Available dashboards');
+        expect(result.stdout).toContain('my-tasks');
+        expect(result.stdout).toContain('my-ideas');
+      });
+
+      it('should list available dashboards when no TTY and no default', async () => {
+        // Remove default dashboard to test picker fallback
+        const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+        const schemaContent = await readFile(schemaPath, 'utf-8');
+        const schema = JSON.parse(schemaContent);
+        if (schema.config?.default_dashboard) {
+          delete schema.config.default_dashboard;
+          await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+        }
+
+        // In non-TTY mode, should list available dashboards
+        const result = await runCLI(['dashboard'], vaultDir);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('No dashboard specified');
+        expect(result.stdout).toContain('Available dashboards');
+        expect(result.stdout).toContain('my-tasks');
+        expect(result.stdout).toContain('my-ideas');
+      });
     });
   });
 });
