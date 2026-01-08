@@ -17,8 +17,10 @@ import { formatDateWithPattern, DEFAULT_DATE_FORMAT } from './local-date.js';
  * They provide defaults, body structure, and filename patterns for note creation.
  * 
  * Key design decisions:
- * - Strict matching: Templates ONLY apply to their exact type path (no inheritance)
- * - default.md: If present, used automatically when no --template flag specified
+ * - default.md inherits: Child types inherit default.md from ancestors if they don't have their own
+ * - Named templates: Only apply to their exact type (no inheritance for named templates)
+ * - Defaults cascade: When inheriting, ancestor defaults are merged with child overriding parent
+ * - Visibility: Template source is always shown ("inherited from X") to avoid hidden behavior
  * - Multiple templates: User prompted to select (with "No template" option)
  */
 
@@ -261,6 +263,376 @@ export async function findAllTemplates(vaultDir: string): Promise<Template[]> {
   });
   
   return templates;
+}
+
+// ============================================================================
+// Template Inheritance
+// ============================================================================
+
+/**
+ * A template with information about its inheritance source.
+ * Used to track where a template came from when it's inherited.
+ */
+export interface TemplateWithSource extends Template {
+  /** 
+   * The type that this template was inherited from.
+   * undefined means exact match (template is for this type directly).
+   */
+  inheritedFrom: string | undefined;
+}
+
+/**
+ * Find the default template for a type, walking the ancestor chain if needed.
+ * 
+ * Inheritance rules:
+ * - Only default.md is inherited (named templates are not)
+ * - Child's own default.md takes precedence over ancestors
+ * - Search order: type → parent → grandparent → ... → meta
+ * 
+ * @param vaultDir - The vault directory
+ * @param typePath - The type to find a default template for
+ * @param schema - The loaded schema (needed for ancestor chain)
+ * @returns The default template with source info, or null if none found
+ * 
+ * @example
+ * // For type 'objective/task' with ancestors ['objective', 'meta']:
+ * // 1. Check .bwrb/templates/objective/task/default.md
+ * // 2. Check .bwrb/templates/objective/default.md  
+ * // 3. Check .bwrb/templates/meta/default.md
+ */
+export async function findDefaultTemplateWithInheritance(
+  vaultDir: string,
+  typePath: string,
+  schema: LoadedSchema
+): Promise<TemplateWithSource | null> {
+  // First check if the type itself has a default template
+  const ownDefault = await findDefaultTemplate(vaultDir, typePath);
+  if (ownDefault) {
+    return { ...ownDefault, inheritedFrom: undefined };
+  }
+  
+  // Get ancestors from the schema
+  const typeDef = getType(schema, typePath);
+  if (!typeDef) {
+    return null;
+  }
+  
+  // Walk ancestor chain looking for default.md
+  for (const ancestorName of typeDef.ancestors) {
+    const ancestorDefault = await findDefaultTemplate(vaultDir, ancestorName);
+    if (ancestorDefault) {
+      return { ...ancestorDefault, inheritedFrom: ancestorName };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Get all default templates in the inheritance chain for a type.
+ * Returns templates ordered from root ancestor to the type itself.
+ * Used for merging defaults (ancestor first, child overrides).
+ * 
+ * @param vaultDir - The vault directory
+ * @param typePath - The type to get templates for
+ * @param schema - The loaded schema
+ * @returns Array of templates ordered root-first (for merging)
+ */
+export async function getDefaultTemplateChain(
+  vaultDir: string,
+  typePath: string,
+  schema: LoadedSchema
+): Promise<TemplateWithSource[]> {
+  const templates: TemplateWithSource[] = [];
+  
+  const typeDef = getType(schema, typePath);
+  if (!typeDef) {
+    return templates;
+  }
+  
+  // Build chain from ancestors (reversed to get root-first order)
+  const chain = [...typeDef.ancestors].reverse();
+  chain.push(typePath);
+  
+  for (const typeName of chain) {
+    const defaultTemplate = await findDefaultTemplate(vaultDir, typeName);
+    if (defaultTemplate) {
+      templates.push({
+        ...defaultTemplate,
+        inheritedFrom: typeName === typePath ? undefined : typeName,
+      });
+    }
+  }
+  
+  return templates;
+}
+
+/**
+ * Merge template defaults from an inheritance chain.
+ * Ancestor defaults come first, child defaults override.
+ * 
+ * @param templates - Templates ordered root-first (from getDefaultTemplateChain)
+ * @param dateFormat - Date format for evaluating date expressions
+ * @returns Merged defaults object
+ * 
+ * @example
+ * // meta template: { creation_date: "@today", status: "draft" }
+ * // task template: { status: "not-started", priority: "medium" }
+ * // Result: { creation_date: "@today", status: "not-started", priority: "medium" }
+ */
+export function mergeTemplateDefaults(
+  templates: TemplateWithSource[],
+  dateFormat: string
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+  
+  for (const template of templates) {
+    if (template.defaults) {
+      for (const [key, value] of Object.entries(template.defaults)) {
+        // Evaluate date expressions as we merge
+        merged[key] = evaluateTemplateDefault(value, dateFormat);
+      }
+    }
+  }
+  
+  return merged;
+}
+
+/**
+ * Merge template constraints from an inheritance chain.
+ * Child constraints override ancestor constraints for the same field.
+ * 
+ * @param templates - Templates ordered root-first
+ * @returns Merged constraints object
+ */
+export function mergeTemplateConstraints(
+  templates: TemplateWithSource[]
+): Record<string, Constraint> {
+  const merged: Record<string, Constraint> = {};
+  
+  for (const template of templates) {
+    if (template.constraints) {
+      for (const [key, value] of Object.entries(template.constraints)) {
+        merged[key] = value;
+      }
+    }
+  }
+  
+  return merged;
+}
+
+/**
+ * Merge prompt-fields from an inheritance chain.
+ * All prompt-fields from all templates in the chain are combined.
+ * 
+ * @param templates - Templates ordered root-first
+ * @returns Combined prompt-fields array (deduplicated)
+ */
+export function mergeTemplatePromptFields(
+  templates: TemplateWithSource[]
+): string[] {
+  const fields = new Set<string>();
+  
+  for (const template of templates) {
+    if (template.promptFields) {
+      for (const field of template.promptFields) {
+        fields.add(field);
+      }
+    }
+  }
+  
+  return Array.from(fields);
+}
+
+/**
+ * Result of resolving a template with inheritance support.
+ */
+export interface InheritedTemplateResolution {
+  /** The effective template (may be inherited) */
+  template: TemplateWithSource | null;
+  /** Merged defaults from entire inheritance chain */
+  mergedDefaults: Record<string, unknown>;
+  /** Merged constraints from entire inheritance chain */
+  mergedConstraints: Record<string, Constraint>;
+  /** Combined prompt-fields from entire inheritance chain */
+  mergedPromptFields: string[];
+  /** Whether user should be prompted to select a template */
+  shouldPrompt: boolean;
+  /** Available templates for this exact type (for prompting) */
+  availableTemplates: Template[];
+}
+
+/**
+ * Resolve template with inheritance support.
+ * 
+ * This is the main entry point for template resolution with inheritance.
+ * It handles:
+ * - Explicit template selection (--template flag)
+ * - Skipping templates (--no-template flag)
+ * - Auto-discovery with inheritance fallback
+ * - Merging defaults from ancestor templates
+ * 
+ * @param vaultDir - The vault directory
+ * @param typePath - The type to resolve template for
+ * @param schema - The loaded schema
+ * @param options - Resolution options
+ * @returns Resolution result with template and merged inheritance data
+ */
+export async function resolveTemplateWithInheritance(
+  vaultDir: string,
+  typePath: string,
+  schema: LoadedSchema,
+  options: {
+    noTemplate?: boolean;
+    templateName?: string;
+  }
+): Promise<InheritedTemplateResolution> {
+  // --no-template: Skip template system entirely
+  if (options.noTemplate) {
+    return {
+      template: null,
+      mergedDefaults: {},
+      mergedConstraints: {},
+      mergedPromptFields: [],
+      shouldPrompt: false,
+      availableTemplates: [],
+    };
+  }
+  
+  // --template <name>: Find specific template (no inheritance for named templates)
+  if (options.templateName) {
+    const template = await findTemplateByName(vaultDir, typePath, options.templateName);
+    if (template) {
+      // For explicit template selection, still merge with ancestor defaults
+      const chain = await getDefaultTemplateChain(vaultDir, typePath, schema);
+      // Filter out templates from the same type (we're using the named one instead)
+      const ancestorChain = chain.filter(t => t.inheritedFrom !== undefined);
+      
+      // Merge ancestor defaults, then overlay the selected template's defaults
+      const mergedDefaults = mergeTemplateDefaults(ancestorChain, schema.config.dateFormat);
+      if (template.defaults) {
+        for (const [key, value] of Object.entries(template.defaults)) {
+          mergedDefaults[key] = evaluateTemplateDefault(value, schema.config.dateFormat);
+        }
+      }
+      
+      return {
+        template: { ...template, inheritedFrom: undefined },
+        mergedDefaults,
+        mergedConstraints: template.constraints ?? {},
+        mergedPromptFields: template.promptFields ?? [],
+        shouldPrompt: false,
+        availableTemplates: [],
+      };
+    }
+    // Template not found - caller should handle as error
+    return {
+      template: null,
+      mergedDefaults: {},
+      mergedConstraints: {},
+      mergedPromptFields: [],
+      shouldPrompt: false,
+      availableTemplates: [],
+    };
+  }
+  
+  // No flags: Auto-discover with inheritance
+  const ownTemplates = await findTemplates(vaultDir, typePath);
+  const chain = await getDefaultTemplateChain(vaultDir, typePath, schema);
+  
+  // Check for own default.md first
+  const ownDefault = ownTemplates.find(t => t.name === 'default');
+  if (ownDefault) {
+    // Has own default - merge with ancestor chain
+    const mergedDefaults = mergeTemplateDefaults(chain, schema.config.dateFormat);
+    const mergedConstraints = mergeTemplateConstraints(chain);
+    const mergedPromptFields = mergeTemplatePromptFields(chain);
+    
+    return {
+      template: { ...ownDefault, inheritedFrom: undefined },
+      mergedDefaults,
+      mergedConstraints,
+      mergedPromptFields,
+      shouldPrompt: false,
+      availableTemplates: ownTemplates,
+    };
+  }
+  
+  // No own default - check for inherited default
+  const inheritedDefault = await findDefaultTemplateWithInheritance(vaultDir, typePath, schema);
+  if (inheritedDefault) {
+    // Using inherited template - merge with full chain
+    const mergedDefaults = mergeTemplateDefaults(chain, schema.config.dateFormat);
+    const mergedConstraints = mergeTemplateConstraints(chain);
+    const mergedPromptFields = mergeTemplatePromptFields(chain);
+    
+    return {
+      template: inheritedDefault,
+      mergedDefaults,
+      mergedConstraints,
+      mergedPromptFields,
+      shouldPrompt: false,
+      availableTemplates: ownTemplates,
+    };
+  }
+  
+  // No default templates at all
+  // If there are other templates for this type, prompt
+  if (ownTemplates.length > 0) {
+    return {
+      template: null,
+      mergedDefaults: {},
+      mergedConstraints: {},
+      mergedPromptFields: [],
+      shouldPrompt: true,
+      availableTemplates: ownTemplates,
+    };
+  }
+  
+  // No templates available
+  return {
+    template: null,
+    mergedDefaults: {},
+    mergedConstraints: {},
+    mergedPromptFields: [],
+    shouldPrompt: false,
+    availableTemplates: [],
+  };
+}
+
+/**
+ * Get inherited templates for display in `bwrb template list`.
+ * Returns default.md templates from ancestors that would be inherited.
+ * 
+ * @param vaultDir - The vault directory
+ * @param typePath - The type to get inherited templates for
+ * @param schema - The loaded schema
+ * @returns Array of inherited templates with source info
+ */
+export async function getInheritedTemplates(
+  vaultDir: string,
+  typePath: string,
+  schema: LoadedSchema
+): Promise<TemplateWithSource[]> {
+  const inherited: TemplateWithSource[] = [];
+  
+  const typeDef = getType(schema, typePath);
+  if (!typeDef) {
+    return inherited;
+  }
+  
+  // Only include ancestors (not the type itself)
+  for (const ancestorName of typeDef.ancestors) {
+    const defaultTemplate = await findDefaultTemplate(vaultDir, ancestorName);
+    if (defaultTemplate) {
+      inherited.push({
+        ...defaultTemplate,
+        inheritedFrom: ancestorName,
+      });
+    }
+  }
+  
+  return inherited;
 }
 
 // ============================================================================
