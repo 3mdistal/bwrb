@@ -405,7 +405,7 @@ export function mergeTemplateDefaults(
  * @param templates - Templates ordered root-first
  * @returns Merged constraints object
  */
-export function mergeTemplateConstraints(
+function mergeTemplateConstraints(
   templates: TemplateWithSource[]
 ): Record<string, Constraint> {
   const merged: Record<string, Constraint> = {};
@@ -428,7 +428,7 @@ export function mergeTemplateConstraints(
  * @param templates - Templates ordered root-first
  * @returns Combined prompt-fields array (deduplicated)
  */
-export function mergeTemplatePromptFields(
+function mergeTemplatePromptFields(
   templates: TemplateWithSource[]
 ): string[] {
   const fields = new Set<string>();
