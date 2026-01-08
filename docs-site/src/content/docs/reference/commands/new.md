@@ -16,7 +16,7 @@ bwrb new [options] [type]
 | Option | Description |
 |--------|-------------|
 | `-t, --type <type>` | Type of note to create (alternative to positional argument) |
-| `--open` | Open the note after creation |
+| `-o, --open` | Open the note after creation |
 | `--json <frontmatter>` | Create note non-interactively with JSON frontmatter |
 | `--template <name>` | Use a specific template (use "default" for default.md) |
 | `--no-template` | Skip template selection, use schema only |
