@@ -31,7 +31,14 @@ export type IssueCode =
   | 'invalid-source-type'
   | 'owned-note-referenced'
   | 'owned-wrong-location'
-  | 'parent-cycle';
+  | 'parent-cycle'
+  // Phase 2: Low-risk hygiene auto-fixes
+  | 'trailing-whitespace' // NOTE: Not currently detectable (YAML parser strips whitespace)
+  | 'frontmatter-key-casing'
+  | 'unknown-enum-casing'
+  | 'duplicate-list-values'
+  | 'invalid-boolean-coercion'
+  | 'singular-plural-mismatch';
 
 /**
  * A single audit issue.
@@ -73,6 +80,14 @@ export interface AuditIssue {
   expectedDirectory?: string | undefined;
   /** For wrong-directory/owned-wrong-location: number of wikilinks that reference this file */
   wikilinkCount?: number | undefined;
+  /** For key-casing/singular-plural: the canonical key name from schema */
+  canonicalKey?: string | undefined;
+  /** For enum-casing: the canonical enum value from schema */
+  canonicalValue?: string | undefined;
+  /** For singular-plural-mismatch: whether this key conflicts with existing key */
+  hasConflict?: boolean | undefined;
+  /** For singular-plural-mismatch with conflict: the value of the existing key */
+  conflictValue?: unknown;
 }
 
 /**

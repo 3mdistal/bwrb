@@ -83,6 +83,11 @@ export function outputJsonResults(results: FileAuditResult[], summary: AuditSumm
         ...(i.currentDirectory && { currentDirectory: i.currentDirectory }),
         ...(i.expectedDirectory && { expectedDirectory: i.expectedDirectory }),
         ...(i.wikilinkCount !== undefined && { wikilinkCount: i.wikilinkCount }),
+        // Phase 2: Hygiene fields
+        ...(i.canonicalKey && { canonicalKey: i.canonicalKey }),
+        ...(i.canonicalValue && { canonicalValue: i.canonicalValue }),
+        ...(i.hasConflict !== undefined && { hasConflict: i.hasConflict }),
+        ...(i.conflictValue !== undefined && { conflictValue: i.conflictValue }),
       })),
     })),
     summary,
