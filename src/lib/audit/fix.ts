@@ -40,6 +40,20 @@ import {
 } from './types.js';
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Check if a value is empty (null, undefined, empty string, or empty array).
+ */
+function isEmpty(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (value === '') return true;
+  if (Array.isArray(value) && value.length === 0) return true;
+  return false;
+}
+
+// ============================================================================
 // Fix Application
 // ============================================================================
 
@@ -110,6 +124,75 @@ async function applyFix(
           frontmatter[issue.field] = newValue;
         } else {
           return { file: filePath, issue, action: 'failed', message: 'No value provided' };
+        }
+        break;
+      }
+      // Phase 2: Low-risk hygiene fixes
+      case 'trailing-whitespace': {
+        if (issue.field && typeof frontmatter[issue.field] === 'string') {
+          frontmatter[issue.field] = (frontmatter[issue.field] as string).trim();
+        } else {
+          return { file: filePath, issue, action: 'failed', message: 'Cannot trim non-string value' };
+        }
+        break;
+      }
+      case 'invalid-boolean-coercion': {
+        if (issue.field && typeof frontmatter[issue.field] === 'string') {
+          const strValue = (frontmatter[issue.field] as string).toLowerCase();
+          frontmatter[issue.field] = strValue === 'true';
+        } else {
+          return { file: filePath, issue, action: 'failed', message: 'Cannot coerce non-string value' };
+        }
+        break;
+      }
+      case 'unknown-enum-casing': {
+        if (issue.field && issue.canonicalValue) {
+          frontmatter[issue.field] = issue.canonicalValue;
+        } else {
+          return { file: filePath, issue, action: 'failed', message: 'No canonical value provided' };
+        }
+        break;
+      }
+      case 'duplicate-list-values': {
+        if (issue.field && Array.isArray(frontmatter[issue.field])) {
+          // Case-insensitive deduplication preserving first occurrence
+          const seen = new Set<string>();
+          const deduped: unknown[] = [];
+          for (const item of frontmatter[issue.field] as unknown[]) {
+            const key = String(item).toLowerCase();
+            if (!seen.has(key)) {
+              seen.add(key);
+              deduped.push(item);
+            }
+          }
+          frontmatter[issue.field] = deduped;
+        } else {
+          return { file: filePath, issue, action: 'failed', message: 'Cannot dedupe non-array value' };
+        }
+        break;
+      }
+      case 'frontmatter-key-casing':
+      case 'singular-plural-mismatch': {
+        if (!issue.field || !issue.canonicalKey) {
+          return { file: filePath, issue, action: 'failed', message: 'No field or canonical key provided' };
+        }
+        const oldKey = issue.field;
+        const newKey = issue.canonicalKey;
+        const oldValue = frontmatter[oldKey];
+        const existingValue = frontmatter[newKey];
+        
+        // Handle merge logic
+        if (existingValue !== undefined && !isEmpty(existingValue)) {
+          // Both have values - cannot auto-fix unless old is empty
+          if (!isEmpty(oldValue)) {
+            return { file: filePath, issue, action: 'failed', message: 'Both keys have values, manual merge required' };
+          }
+          // Old is empty, just delete it
+          delete frontmatter[oldKey];
+        } else {
+          // Move value from old key to new key
+          frontmatter[newKey] = oldValue;
+          delete frontmatter[oldKey];
         }
         break;
       }
@@ -433,6 +516,70 @@ export async function runAutoFix(
           console.log(chalk.red(`    ✗ Failed to fix ${issue.field}: ${fixResult.message}`));
           failed++;
         }
+      } else if (issue.code === 'trailing-whitespace' && issue.field) {
+        // Auto-fix trailing whitespace
+        const fixResult = await applyFix(schema, result.path, issue);
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Trimmed whitespace from ${issue.field}`));
+          fixed++;
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to trim ${issue.field}: ${fixResult.message}`));
+          failed++;
+        }
+      } else if (issue.code === 'invalid-boolean-coercion' && issue.field) {
+        // Auto-fix boolean coercion
+        const fixResult = await applyFix(schema, result.path, issue);
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Coerced ${issue.field} to boolean`));
+          fixed++;
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
+          failed++;
+        }
+      } else if (issue.code === 'unknown-enum-casing' && issue.field && issue.canonicalValue) {
+        // Auto-fix enum casing
+        const fixResult = await applyFix(schema, result.path, issue);
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Fixed ${issue.field} casing: ${issue.value} → ${issue.canonicalValue}`));
+          fixed++;
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to fix ${issue.field}: ${fixResult.message}`));
+          failed++;
+        }
+      } else if (issue.code === 'duplicate-list-values' && issue.field) {
+        // Auto-fix duplicate list values
+        const fixResult = await applyFix(schema, result.path, issue);
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Deduplicated ${issue.field}`));
+          fixed++;
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to dedupe ${issue.field}: ${fixResult.message}`));
+          failed++;
+        }
+      } else if ((issue.code === 'frontmatter-key-casing' || issue.code === 'singular-plural-mismatch') && issue.field && issue.canonicalKey) {
+        // Auto-fix key casing/singular-plural mismatch
+        const fixResult = await applyFix(schema, result.path, issue);
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Renamed ${issue.field} → ${issue.canonicalKey}`));
+          fixed++;
+        } else if (fixResult.action === 'failed' && fixResult.message?.includes('manual merge')) {
+          // Conflict case - requires interactive resolution
+          skipped++;
+          manualReviewNeeded.push({ file: result.relativePath, issue });
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to rename ${issue.field}: ${fixResult.message}`));
+          failed++;
+        }
       } else {
         skipped++;
       }
@@ -565,6 +712,18 @@ async function handleInteractiveFix(
       return handleInvalidSourceTypeFix(schema, result, issue);
     case 'parent-cycle':
       return handleParentCycleFix(schema, result, issue);
+    // Phase 2: Hygiene issues
+    case 'trailing-whitespace':
+      return handleTrailingWhitespaceFix(schema, result, issue);
+    case 'invalid-boolean-coercion':
+      return handleBooleanCoercionFix(schema, result, issue);
+    case 'unknown-enum-casing':
+      return handleEnumCasingFix(schema, result, issue);
+    case 'duplicate-list-values':
+      return handleDuplicateListFix(schema, result, issue);
+    case 'frontmatter-key-casing':
+    case 'singular-plural-mismatch':
+      return handleKeyCasingFix(schema, result, issue);
     default:
       // Truly non-fixable issues
       if (issue.suggestion) {
@@ -1282,5 +1441,206 @@ async function handleParentCycleFix(
       console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
       return 'failed';
     }
+  }
+}
+
+// ============================================================================
+// Phase 2: Hygiene Issue Handlers
+// ============================================================================
+
+/**
+ * Handle trailing whitespace fix.
+ */
+async function handleTrailingWhitespaceFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field) return 'skipped';
+
+  const confirm = await promptConfirm(
+    `    → Trim whitespace from '${issue.field}'?`
+  );
+  if (confirm === null) return 'quit';
+  if (!confirm) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  const fixResult = await applyFix(schema, result.path, issue);
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Trimmed whitespace from ${issue.field}`));
+    return 'fixed';
+  } else {
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+}
+
+/**
+ * Handle boolean coercion fix.
+ */
+async function handleBooleanCoercionFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field) return 'skipped';
+
+  const confirm = await promptConfirm(
+    `    → Convert '${issue.value}' to boolean in '${issue.field}'?`
+  );
+  if (confirm === null) return 'quit';
+  if (!confirm) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  const fixResult = await applyFix(schema, result.path, issue);
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Converted ${issue.field} to boolean`));
+    return 'fixed';
+  } else {
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+}
+
+/**
+ * Handle enum casing fix.
+ */
+async function handleEnumCasingFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field || !issue.canonicalValue) return 'skipped';
+
+  const confirm = await promptConfirm(
+    `    → Change '${issue.value}' to '${issue.canonicalValue}'?`
+  );
+  if (confirm === null) return 'quit';
+  if (!confirm) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  const fixResult = await applyFix(schema, result.path, issue);
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Fixed casing: ${issue.value} → ${issue.canonicalValue}`));
+    return 'fixed';
+  } else {
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+}
+
+/**
+ * Handle duplicate list values fix.
+ */
+async function handleDuplicateListFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field) return 'skipped';
+
+  const confirm = await promptConfirm(
+    `    → Remove duplicate values from '${issue.field}'?`
+  );
+  if (confirm === null) return 'quit';
+  if (!confirm) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  const fixResult = await applyFix(schema, result.path, issue);
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Deduplicated ${issue.field}`));
+    return 'fixed';
+  } else {
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+}
+
+/**
+ * Handle key casing and singular/plural mismatch fix.
+ */
+async function handleKeyCasingFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field || !issue.canonicalKey) return 'skipped';
+
+  // Check if there's a conflict
+  if (issue.hasConflict && issue.conflictValue !== undefined && !isEmpty(issue.conflictValue)) {
+    // Both keys have values - need user decision
+    console.log(chalk.dim(`    Current '${issue.field}': ${JSON.stringify(issue.value)}`));
+    console.log(chalk.dim(`    Existing '${issue.canonicalKey}': ${JSON.stringify(issue.conflictValue)}`));
+    
+    const options = [
+      `[keep '${issue.canonicalKey}' value, delete '${issue.field}']`,
+      `[use '${issue.field}' value, overwrite '${issue.canonicalKey}']`,
+      '[skip]',
+      '[quit]'
+    ];
+    
+    const selected = await promptSelection(
+      `    Both '${issue.field}' and '${issue.canonicalKey}' exist. How to merge?`,
+      options
+    );
+    
+    if (selected === null || selected === '[quit]') return 'quit';
+    if (selected === '[skip]') {
+      console.log(chalk.dim('    → Skipped'));
+      return 'skipped';
+    }
+    
+    // Manual merge handling
+    try {
+      const parsed = await parseNote(result.path);
+      const frontmatter = { ...parsed.frontmatter };
+      
+      if (selected.includes('keep')) {
+        // Delete the non-canonical key, keep existing value
+        delete frontmatter[issue.field];
+      } else {
+        // Use the non-canonical value, delete old key
+        frontmatter[issue.canonicalKey] = frontmatter[issue.field];
+        delete frontmatter[issue.field];
+      }
+      
+      const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
+      const typeDef = typePath ? getType(schema, typePath) : undefined;
+      const order = typeDef?.fieldOrder;
+      
+      await writeNote(result.path, frontmatter, parsed.body, order);
+      console.log(chalk.green(`    ✓ Merged ${issue.field} → ${issue.canonicalKey}`));
+      return 'fixed';
+    } catch (err) {
+      console.log(chalk.red(`    ✗ Failed: ${err instanceof Error ? err.message : String(err)}`));
+      return 'failed';
+    }
+  }
+
+  // Simple case - no conflict or one value is empty
+  const confirm = await promptConfirm(
+    `    → Rename '${issue.field}' to '${issue.canonicalKey}'?`
+  );
+  if (confirm === null) return 'quit';
+  if (!confirm) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  const fixResult = await applyFix(schema, result.path, issue);
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Renamed ${issue.field} → ${issue.canonicalKey}`));
+    return 'fixed';
+  } else {
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
   }
 }

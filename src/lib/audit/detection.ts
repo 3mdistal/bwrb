@@ -279,11 +279,26 @@ export async function auditFile(
   ]);
 
   // Check required fields
+  // Build a case-insensitive lookup of existing frontmatter keys
+  const frontmatterKeysLower = new Set(
+    Object.keys(frontmatter).map(k => k.toLowerCase())
+  );
+  
   for (const [fieldName, field] of Object.entries(fields)) {
     const value = frontmatter[fieldName];
     const hasValue = value !== undefined && value !== null && value !== '';
 
     if (field.required && !hasValue) {
+      // Check if a case-variant of this field exists in frontmatter
+      // If so, it will be caught by frontmatter-key-casing, not missing-required
+      const hasCaseVariant = frontmatterKeysLower.has(fieldName.toLowerCase()) &&
+        !Object.prototype.hasOwnProperty.call(frontmatter, fieldName);
+      
+      if (hasCaseVariant) {
+        // Skip - this will be handled by frontmatter-key-casing detection
+        continue;
+      }
+      
       const hasDefault = field.default !== undefined;
       issues.push({
         severity: 'error',
@@ -388,6 +403,14 @@ export async function auditFile(
       issues.push(cycleIssue);
     }
   }
+
+  // ============================================================================
+  // Phase 2: Low-risk hygiene issue detection
+  // ============================================================================
+
+  // Check for hygiene issues in all frontmatter values
+  const hygieneIssues = checkHygieneIssues(frontmatter, fields, fieldNames);
+  issues.push(...hygieneIssues);
 
   return issues;
 }
@@ -774,6 +797,305 @@ function checkParentCycle(
   }
   
   return null;
+}
+
+// ============================================================================
+// Phase 2: Hygiene Issue Detection
+// ============================================================================
+
+/**
+ * Check for low-risk hygiene issues that can be auto-fixed.
+ * 
+ * Detects:
+ * - trailing-whitespace: String values with trailing whitespace
+ * - frontmatter-key-casing: Keys that don't match schema casing
+ * - unknown-enum-casing: Select field values with wrong case
+ * - duplicate-list-values: Arrays with duplicate values (case-insensitive)
+ * - invalid-boolean-coercion: "true"/"false" strings for boolean fields
+ * - singular-plural-mismatch: Keys like 'tag' when schema has 'tags'
+ */
+function checkHygieneIssues(
+  frontmatter: Record<string, unknown>,
+  fields: Record<string, Field>,
+  schemaFieldNames: Set<string>
+): AuditIssue[] {
+  const issues: AuditIssue[] = [];
+  
+  // Build case-insensitive map of schema field names for key casing checks
+  const schemaKeyMap = new Map<string, string>();
+  for (const key of schemaFieldNames) {
+    schemaKeyMap.set(key.toLowerCase(), key);
+  }
+  
+  for (const [fieldName, value] of Object.entries(frontmatter)) {
+    // Skip type discriminators
+    if (fieldName === 'type' || fieldName.endsWith('-type')) continue;
+    
+    const field = fields[fieldName];
+    
+    // NOTE: trailing-whitespace detection is not possible because YAML parsers
+    // (gray-matter) strip trailing whitespace during parsing. The issue type
+    // is kept for future use if we implement raw string detection.
+    
+    // Check for invalid boolean coercion ("true"/"false" strings)
+    if (field?.prompt === 'boolean') {
+      const boolIssue = checkInvalidBooleanCoercion(fieldName, value);
+      if (boolIssue) {
+        issues.push(boolIssue);
+      }
+    }
+    
+    // Check enum casing for select fields
+    if (field?.options && field.options.length > 0) {
+      const enumIssue = checkUnknownEnumCasing(fieldName, value, field.options);
+      if (enumIssue) {
+        issues.push(enumIssue);
+      }
+    }
+    
+    // Check for duplicate list values (case-insensitive)
+    if (Array.isArray(value)) {
+      const dupIssue = checkDuplicateListValues(fieldName, value);
+      if (dupIssue) {
+        issues.push(dupIssue);
+      }
+    }
+    
+    // Check for key casing mismatch (only for known fields with wrong case)
+    const keyCasingIssue = checkFrontmatterKeyCasing(
+      fieldName, value, frontmatter, schemaKeyMap
+    );
+    if (keyCasingIssue) {
+      issues.push(keyCasingIssue);
+    }
+    
+    // Check for singular/plural mismatch
+    const pluralIssue = checkSingularPluralMismatch(
+      fieldName, value, frontmatter, schemaFieldNames
+    );
+    if (pluralIssue) {
+      issues.push(pluralIssue);
+    }
+  }
+  
+  return issues;
+}
+
+// NOTE: checkTrailingWhitespace is not used because YAML parsers strip
+// trailing whitespace during parsing. Keeping for future raw string detection.
+// function checkTrailingWhitespace(
+//   fieldName: string,
+//   value: unknown
+// ): AuditIssue | null {
+//   if (typeof value !== 'string') return null;
+//   if (value !== value.trimEnd()) {
+//     return {
+//       severity: 'warning',
+//       code: 'trailing-whitespace',
+//       message: `Trailing whitespace in '${fieldName}'`,
+//       field: fieldName,
+//       value: value,
+//       autoFixable: true,
+//     };
+//   }
+//   return null;
+// }
+
+/**
+ * Check for "true"/"false" strings that should be boolean.
+ */
+function checkInvalidBooleanCoercion(
+  fieldName: string,
+  value: unknown
+): AuditIssue | null {
+  if (typeof value !== 'string') return null;
+  
+  const lower = value.toLowerCase();
+  if (lower === 'true' || lower === 'false') {
+    return {
+      severity: 'warning',
+      code: 'invalid-boolean-coercion',
+      message: `String '${value}' should be boolean in '${fieldName}'`,
+      field: fieldName,
+      value: value,
+      expected: lower === 'true' ? 'true (boolean)' : 'false (boolean)',
+      autoFixable: true,
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * Check for enum values with wrong casing.
+ * Only applies to select fields (fields with options).
+ */
+function checkUnknownEnumCasing(
+  fieldName: string,
+  value: unknown,
+  options: string[]
+): AuditIssue | null {
+  const strValue = String(value);
+  
+  // If exact match exists, no issue
+  if (options.includes(strValue)) return null;
+  
+  // Check for case-insensitive match
+  const lowerValue = strValue.toLowerCase();
+  const matchingOption = options.find(opt => opt.toLowerCase() === lowerValue);
+  
+  if (matchingOption) {
+    return {
+      severity: 'warning',
+      code: 'unknown-enum-casing',
+      message: `Wrong case for '${fieldName}': '${strValue}' should be '${matchingOption}'`,
+      field: fieldName,
+      value: strValue,
+      expected: matchingOption,
+      canonicalValue: matchingOption,
+      autoFixable: true,
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * Check for duplicate values in arrays (case-insensitive).
+ */
+function checkDuplicateListValues(
+  fieldName: string,
+  value: unknown[]
+): AuditIssue | null {
+  // Convert all values to lowercase strings for comparison
+  const seen = new Set<string>();
+  const duplicates: string[] = [];
+  
+  for (const item of value) {
+    const strItem = String(item).toLowerCase();
+    if (seen.has(strItem)) {
+      duplicates.push(String(item));
+    } else {
+      seen.add(strItem);
+    }
+  }
+  
+  if (duplicates.length > 0) {
+    return {
+      severity: 'warning',
+      code: 'duplicate-list-values',
+      message: `Duplicate values in '${fieldName}': ${duplicates.join(', ')}`,
+      field: fieldName,
+      value: value,
+      autoFixable: true,
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * Check for frontmatter keys with wrong casing.
+ * Only flags if the key doesn't exist in schema but a case-variant does.
+ */
+function checkFrontmatterKeyCasing(
+  fieldName: string,
+  value: unknown,
+  frontmatter: Record<string, unknown>,
+  schemaKeyMap: Map<string, string>
+): AuditIssue | null {
+  const lowerFieldName = fieldName.toLowerCase();
+  const canonicalKey = schemaKeyMap.get(lowerFieldName);
+  
+  // Only flag if:
+  // 1. Current key doesn't match schema exactly
+  // 2. But a case-insensitive match exists
+  if (canonicalKey && canonicalKey !== fieldName) {
+    // Check if canonical key already exists in frontmatter
+    const hasConflict = canonicalKey in frontmatter;
+    
+    return {
+      severity: 'warning',
+      code: 'frontmatter-key-casing',
+      message: hasConflict
+        ? `Key '${fieldName}' should be '${canonicalKey}' (both exist, needs merge)`
+        : `Key '${fieldName}' should be '${canonicalKey}'`,
+      field: fieldName,
+      value: value,
+      canonicalKey: canonicalKey,
+      autoFixable: !hasConflict || isEmpty(frontmatter[canonicalKey]),
+      hasConflict: hasConflict,
+      ...(hasConflict && { conflictValue: frontmatter[canonicalKey] }),
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * Check for singular/plural key mismatches.
+ * E.g., 'tag' when schema has 'tags', or 'categories' when schema has 'category'.
+ */
+function checkSingularPluralMismatch(
+  fieldName: string,
+  value: unknown,
+  frontmatter: Record<string, unknown>,
+  schemaFieldNames: Set<string>
+): AuditIssue | null {
+  // Skip if field already exists in schema
+  if (schemaFieldNames.has(fieldName)) return null;
+  
+  // Check singular → plural (add 's')
+  const pluralForm = fieldName + 's';
+  if (schemaFieldNames.has(pluralForm)) {
+    const hasConflict = pluralForm in frontmatter;
+    return {
+      severity: 'warning',
+      code: 'singular-plural-mismatch',
+      message: hasConflict
+        ? `Key '${fieldName}' should be '${pluralForm}' (both exist, needs merge)`
+        : `Key '${fieldName}' should be '${pluralForm}'`,
+      field: fieldName,
+      value: value,
+      canonicalKey: pluralForm,
+      autoFixable: !hasConflict || isEmpty(frontmatter[pluralForm]),
+      hasConflict: hasConflict,
+      ...(hasConflict && { conflictValue: frontmatter[pluralForm] }),
+    };
+  }
+  
+  // Check plural → singular (remove 's')
+  if (fieldName.endsWith('s') && fieldName.length > 1) {
+    const singularForm = fieldName.slice(0, -1);
+    if (schemaFieldNames.has(singularForm)) {
+      const hasConflict = singularForm in frontmatter;
+      return {
+        severity: 'warning',
+        code: 'singular-plural-mismatch',
+        message: hasConflict
+          ? `Key '${fieldName}' should be '${singularForm}' (both exist, needs merge)`
+          : `Key '${fieldName}' should be '${singularForm}'`,
+        field: fieldName,
+        value: value,
+        canonicalKey: singularForm,
+        autoFixable: !hasConflict || isEmpty(frontmatter[singularForm]),
+        hasConflict: hasConflict,
+        ...(hasConflict && { conflictValue: frontmatter[singularForm] }),
+      };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Check if a value is empty (null, undefined, empty string, or empty array).
+ */
+function isEmpty(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (value === '') return true;
+  if (Array.isArray(value) && value.length === 0) return true;
+  return false;
 }
 
 // ============================================================================

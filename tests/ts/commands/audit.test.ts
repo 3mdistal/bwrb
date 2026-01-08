@@ -2449,4 +2449,460 @@ status: raw
       expect(typeIssue.suggestion).toContain('idea');
     });
   });
+
+  // ============================================================================
+  // Phase 2: Low-risk hygiene auto-fixes
+  // ============================================================================
+
+  // NOTE: trailing-whitespace detection is NOT possible because YAML parsers
+  // (gray-matter) strip trailing whitespace during parsing. These tests are
+  // skipped until we implement raw string detection before YAML parsing.
+  describe.skip('trailing-whitespace detection and fix', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-whitespace-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect trailing whitespace in field value', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Trailing Space.md'),
+        `---
+type: idea
+status: raw  
+priority: medium
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Trailing Space.md'));
+      expect(file).toBeDefined();
+      const wsIssue = file.issues.find((i: { code: string }) => i.code === 'trailing-whitespace');
+      expect(wsIssue).toBeDefined();
+      expect(wsIssue.field).toBe('status');
+      expect(wsIssue.autoFixable).toBe(true);
+    });
+
+    it('should auto-fix trailing whitespace', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Fix Whitespace.md'),
+        `---
+type: idea
+status: raw  
+priority: medium
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.stdout).toContain('Trimmed whitespace');
+      expect(result.stdout).toContain('Fixed: 1');
+
+      // Verify the file was fixed
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Whitespace.md'), 'utf-8');
+      expect(content).toContain('status: raw\n');
+      expect(content).not.toContain('status: raw  ');
+    });
+  });
+
+  describe('invalid-boolean-coercion detection and fix', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-boolean-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      // Schema with a boolean field
+      const schemaWithBoolean = {
+        ...TEST_SCHEMA,
+        types: {
+          ...TEST_SCHEMA.types,
+          idea: {
+            ...TEST_SCHEMA.types.idea,
+            fields: {
+              ...TEST_SCHEMA.types.idea.fields,
+              archived: { prompt: 'boolean', required: false },
+            },
+          },
+        },
+      };
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(schemaWithBoolean, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect string "true" in boolean field', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'String Boolean.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+archived: "true"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('String Boolean.md'));
+      expect(file).toBeDefined();
+      const boolIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-boolean-coercion');
+      expect(boolIssue).toBeDefined();
+      expect(boolIssue.field).toBe('archived');
+      expect(boolIssue.autoFixable).toBe(true);
+    });
+
+    it('should auto-fix string "true" to boolean', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Fix Boolean.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+archived: "true"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.stdout).toContain('Coerced');
+      expect(result.stdout).toContain('boolean');
+
+      // Verify the file was fixed
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Boolean.md'), 'utf-8');
+      expect(content).toContain('archived: true');
+      expect(content).not.toContain('archived: "true"');
+    });
+  });
+
+  describe('unknown-enum-casing detection and fix', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-enum-casing-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect wrong casing in enum value', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Wrong Case.md'),
+        `---
+type: idea
+status: Raw
+priority: medium
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Wrong Case.md'));
+      expect(file).toBeDefined();
+      const casingIssue = file.issues.find((i: { code: string }) => i.code === 'unknown-enum-casing');
+      expect(casingIssue).toBeDefined();
+      expect(casingIssue.field).toBe('status');
+      expect(casingIssue.canonicalValue).toBe('raw');
+      expect(casingIssue.autoFixable).toBe(true);
+    });
+
+    it('should auto-fix enum casing', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Fix Case.md'),
+        `---
+type: idea
+status: Raw
+priority: Medium
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.stdout).toContain('Fixed');
+      expect(result.stdout).toContain('casing');
+
+      // Verify the file was fixed
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Case.md'), 'utf-8');
+      expect(content).toContain('status: raw');
+      expect(content).toContain('priority: medium');
+    });
+  });
+
+  describe('duplicate-list-values detection and fix', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-duplicate-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect duplicate values in list (case-insensitive)', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Duplicates.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+tags:
+  - urgent
+  - Urgent
+  - important
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Duplicates.md'));
+      expect(file).toBeDefined();
+      const dupIssue = file.issues.find((i: { code: string }) => i.code === 'duplicate-list-values');
+      expect(dupIssue).toBeDefined();
+      expect(dupIssue.field).toBe('tags');
+      expect(dupIssue.autoFixable).toBe(true);
+    });
+
+    it('should auto-fix duplicate list values', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Fix Dups.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+tags:
+  - urgent
+  - Urgent
+  - important
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.stdout).toContain('Deduplicated');
+
+      // Verify the file was fixed - should keep first occurrence
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Dups.md'), 'utf-8');
+      expect(content).toContain('urgent');
+      expect(content).toContain('important');
+      // Should only have one of the duplicate values
+      const matches = content.match(/urgent/gi);
+      expect(matches?.length).toBe(1);
+    });
+  });
+
+  describe('frontmatter-key-casing detection and fix', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-key-casing-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect wrong key casing', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Wrong Key.md'),
+        `---
+type: idea
+Status: raw
+priority: medium
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Wrong Key.md'));
+      expect(file).toBeDefined();
+      const keyIssue = file.issues.find((i: { code: string }) => i.code === 'frontmatter-key-casing');
+      expect(keyIssue).toBeDefined();
+      expect(keyIssue.field).toBe('Status');
+      expect(keyIssue.canonicalKey).toBe('status');
+      expect(keyIssue.autoFixable).toBe(true);
+    });
+
+    it('should auto-fix key casing', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Fix Key.md'),
+        `---
+type: idea
+Status: raw
+Priority: medium
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.stdout).toContain('Renamed');
+
+      // Verify the file was fixed
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Key.md'), 'utf-8');
+      expect(content).toContain('status: raw');
+      expect(content).toContain('priority: medium');
+      expect(content).not.toContain('Status:');
+      expect(content).not.toContain('Priority:');
+    });
+
+    it('should handle conflict when both casings exist', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Conflict.md'),
+        `---
+type: idea
+status: raw
+Status: backlog
+priority: medium
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Conflict.md'));
+      expect(file).toBeDefined();
+      const keyIssue = file.issues.find((i: { code: string }) => i.code === 'frontmatter-key-casing');
+      expect(keyIssue).toBeDefined();
+      expect(keyIssue.hasConflict).toBe(true);
+      // Should not be auto-fixable when both have values
+      expect(keyIssue.autoFixable).toBe(false);
+    });
+  });
+
+  describe('singular-plural-mismatch detection and fix', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-plural-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      // Schema with plural 'tags' field
+      const schemaWithTags = {
+        ...TEST_SCHEMA,
+        types: {
+          ...TEST_SCHEMA.types,
+          idea: {
+            ...TEST_SCHEMA.types.idea,
+            fields: {
+              ...TEST_SCHEMA.types.idea.fields,
+              tags: { prompt: 'list', required: false },
+            },
+          },
+        },
+      };
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(schemaWithTags, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect singular when plural expected', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Singular.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+tag: urgent
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Singular.md'));
+      expect(file).toBeDefined();
+      const pluralIssue = file.issues.find((i: { code: string }) => i.code === 'singular-plural-mismatch');
+      expect(pluralIssue).toBeDefined();
+      expect(pluralIssue.field).toBe('tag');
+      expect(pluralIssue.canonicalKey).toBe('tags');
+      expect(pluralIssue.autoFixable).toBe(true);
+    });
+
+    it('should auto-fix singular to plural', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Fix Plural.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+tag: urgent
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.stdout).toContain('Renamed');
+      expect(result.stdout).toContain('tag');
+      expect(result.stdout).toContain('tags');
+
+      // Verify the file was fixed
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Plural.md'), 'utf-8');
+      expect(content).toContain('tags: urgent');
+      expect(content).not.toContain('tag:');
+    });
+  });
 });
