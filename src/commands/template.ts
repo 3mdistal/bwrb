@@ -15,6 +15,8 @@ import {
   validateTemplate,
   getTemplateDir,
   parseTemplate,
+  getInheritedTemplates,
+  type TemplateWithSource,
 } from '../lib/template.js';
 import { resolveVaultDir, queryByType, formatValue } from '../lib/vault.js';
 import { getGlobalOpts } from '../lib/command.js';
@@ -155,15 +157,21 @@ templateCommand
         return;
       }
 
-      // Find templates
-      const templates = typePath
+      // Find templates for this type
+      const ownTemplates = typePath
         ? await findTemplates(vaultDir, typePath)
         : await findAllTemplates(vaultDir);
+      
+      // Get inherited templates if listing for a specific type
+      let inheritedTemplates: TemplateWithSource[] = [];
+      if (typePath) {
+        inheritedTemplates = await getInheritedTemplates(vaultDir, typePath, schema);
+      }
 
       if (jsonMode) {
         printJson(jsonSuccess({
           data: {
-            templates: templates.map(t => ({
+            templates: ownTemplates.map(t => ({
               type: t.templateFor,
               name: t.name,
               description: t.description,
@@ -171,6 +179,18 @@ templateCommand
               hasDefaults: Boolean(t.defaults && Object.keys(t.defaults).length > 0),
               promptFields: t.promptFields,
               filenamePattern: t.filenamePattern,
+              inherited: false,
+            })),
+            inherited: inheritedTemplates.map(t => ({
+              type: t.templateFor,
+              name: t.name,
+              description: t.description,
+              path: relative(vaultDir, t.path),
+              hasDefaults: Boolean(t.defaults && Object.keys(t.defaults).length > 0),
+              promptFields: t.promptFields,
+              filenamePattern: t.filenamePattern,
+              inherited: true,
+              inheritedFrom: t.inheritedFrom,
             })),
           },
         }));
@@ -178,7 +198,7 @@ templateCommand
       }
 
       // Text output
-      if (templates.length === 0) {
+      if (ownTemplates.length === 0 && inheritedTemplates.length === 0) {
         if (typePath) {
           console.log(`No templates found for type: ${typePath}`);
         } else {
@@ -188,30 +208,68 @@ templateCommand
         return;
       }
 
-      console.log(chalk.bold('\nTemplates\n'));
+      // Show own templates for this type
+      if (typePath) {
+        console.log(chalk.bold(`\nTemplates for ${typePath}\n`));
+        
+        if (ownTemplates.length === 0) {
+          console.log(chalk.gray('  (none defined - inheriting from ancestors)\n'));
+        } else {
+          // Calculate column widths for own templates
+          const nameWidth = Math.max(10, ...ownTemplates.map(t => t.name.length));
+          
+          for (const template of ownTemplates) {
+            const nameCol = chalk.green(template.name.padEnd(nameWidth + 2));
+            const descCol = template.description ?? chalk.gray('(no description)');
+            console.log(`  ${nameCol}${descCol}`);
+          }
+          console.log('');
+        }
+        
+        // Show inherited templates
+        if (inheritedTemplates.length > 0) {
+          console.log(chalk.bold('Inherited templates\n'));
+          
+          const nameWidth = Math.max(10, ...inheritedTemplates.map(t => t.name.length));
+          
+          for (const template of inheritedTemplates) {
+            const nameCol = chalk.green(template.name.padEnd(nameWidth + 2));
+            const sourceCol = chalk.yellow(`(from ${template.inheritedFrom})`);
+            const descCol = template.description ? ` - ${template.description}` : '';
+            console.log(`  ${nameCol}${sourceCol}${chalk.gray(descCol)}`);
+          }
+          console.log('');
+        }
+        
+        const totalCount = ownTemplates.length + inheritedTemplates.length;
+        console.log(`${totalCount} template(s) available (${ownTemplates.length} own, ${inheritedTemplates.length} inherited)`);
+      } else {
+        // Listing all templates (no type specified)
+        console.log(chalk.bold('\nTemplates\n'));
 
-      // Calculate column widths
-      const typeWidth = Math.max(12, ...templates.map(t => t.templateFor.length));
-      const nameWidth = Math.max(10, ...templates.map(t => t.name.length));
+        // Calculate column widths
+        const typeWidth = Math.max(12, ...ownTemplates.map(t => t.templateFor.length));
+        const nameWidth = Math.max(10, ...ownTemplates.map(t => t.name.length));
 
-      // Header
-      console.log(
-        chalk.gray(
-          'TYPE'.padEnd(typeWidth + 2) +
-          'NAME'.padEnd(nameWidth + 2) +
-          'DESCRIPTION'
-        )
-      );
+        // Header
+        console.log(
+          chalk.gray(
+            'TYPE'.padEnd(typeWidth + 2) +
+            'NAME'.padEnd(nameWidth + 2) +
+            'DESCRIPTION'
+          )
+        );
 
-      // Rows
-      for (const template of templates) {
-        const typeCol = chalk.cyan(template.templateFor.padEnd(typeWidth + 2));
-        const nameCol = chalk.green(template.name.padEnd(nameWidth + 2));
-        const descCol = template.description ?? chalk.gray('(no description)');
-        console.log(typeCol + nameCol + descCol);
+        // Rows
+        for (const template of ownTemplates) {
+          const typeCol = chalk.cyan(template.templateFor.padEnd(typeWidth + 2));
+          const nameCol = chalk.green(template.name.padEnd(nameWidth + 2));
+          const descCol = template.description ?? chalk.gray('(no description)');
+          console.log(typeCol + nameCol + descCol);
+        }
+
+        console.log(`\n${ownTemplates.length} template(s) found`);
       }
-
-      console.log(`\n${templates.length} template(s) found`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (jsonMode) {
