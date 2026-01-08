@@ -55,7 +55,7 @@ export const initCommand = new Command('init')
   .argument('[path]', 'Path to initialize (defaults to current directory)')
   .option('-y, --yes', 'Skip prompts, use defaults')
   .option('-f, --force', 'Overwrite existing .bwrb/ directory')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .addHelpText(
     'after',
     `

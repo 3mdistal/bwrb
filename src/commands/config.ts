@@ -79,7 +79,7 @@ export const configCommand = new Command('config')
 configCommand
   .command('list [option]')
   .description('Show configuration values')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .action(async (option: string | undefined, opts: { output?: string }, cmd: Command) => {
     const jsonMode = opts.output === 'json';
     
@@ -152,7 +152,7 @@ configCommand
 configCommand
   .command('edit [option]')
   .description('Edit configuration values')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .option('--json <value>', 'Set value directly (JSON mode)')
   .action(async (option: string | undefined, opts: { output?: string; json?: string }, cmd: Command) => {
     const jsonMode = opts.output === 'json';

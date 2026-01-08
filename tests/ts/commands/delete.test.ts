@@ -89,7 +89,7 @@ describe('delete command', () => {
 
   describe('JSON mode', () => {
     it('should require --force flag in JSON mode', async () => {
-      const result = await runCLI(['delete', 'Sample Idea', '-o', 'json'], vaultDir);
+      const result = await runCLI(['delete', 'Sample Idea', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
@@ -101,7 +101,7 @@ describe('delete command', () => {
       const filePath = join(vaultDir, 'Ideas', 'Sample Idea.md');
       expect(existsSync(filePath)).toBe(true);
 
-      const result = await runCLI(['delete', 'Sample Idea', '--force', '-o', 'json'], vaultDir);
+      const result = await runCLI(['delete', 'Sample Idea', '--force', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -112,7 +112,7 @@ describe('delete command', () => {
     });
 
     it('should output JSON error on no match', async () => {
-      const result = await runCLI(['delete', 'nonexistent-xyz', '--force', '-o', 'json'], vaultDir);
+      const result = await runCLI(['delete', 'nonexistent-xyz', '--force', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
@@ -121,7 +121,7 @@ describe('delete command', () => {
     });
 
     it('should output JSON with candidates on ambiguity', async () => {
-      const result = await runCLI(['delete', 'Idea', '--force', '-o', 'json'], vaultDir);
+      const result = await runCLI(['delete', 'Idea', '--force', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
@@ -196,7 +196,7 @@ This links to [[Sample Idea]].
       );
 
       // Delete Sample Idea in JSON mode (backlinks still counted for output)
-      const result = await runCLI(['delete', 'Sample Idea', '--force', '-o', 'json'], vaultDir);
+      const result = await runCLI(['delete', 'Sample Idea', '--force', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);

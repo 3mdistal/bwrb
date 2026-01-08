@@ -59,7 +59,7 @@ interface DashboardListOptions {
 export const dashboardCommand = new Command('dashboard')
   .description('Run or manage saved dashboard queries')
   .argument('[name]', 'Dashboard name to run')
-  .option('-o, --output <format>', 'Output format: text (default), paths, tree, link, json')
+  .option('--output <format>', 'Output format: text (default), paths, tree, link, json')
   .enablePositionalOptions()
   .addHelpText('after', `
 A dashboard is a saved list query. Running a dashboard executes the saved
@@ -270,7 +270,7 @@ async function runDashboardPickerOrDefault(
 dashboardCommand
   .command('list')
   .description('List all saved dashboards')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .action(async (options: DashboardListOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
@@ -948,7 +948,7 @@ dashboardCommand
   .command('delete [name]')
   .description('Delete a dashboard')
   .option('-f, --force', 'Skip confirmation prompt')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .addHelpText('after', `
 Delete a saved dashboard. Shows a picker if no name is provided.
 

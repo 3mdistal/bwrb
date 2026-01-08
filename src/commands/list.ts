@@ -148,9 +148,9 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--json', 'Output as JSON (deprecated: use --output json)')
   .option('--fields <fields>', 'Show frontmatter fields in a table (comma-separated)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
-  .option('-o, --output <format>', 'Output format: text (default), paths, tree, link, json')
+  .option('--output <format>', 'Output format: text (default), paths, tree, link, json')
   // Open options
-  .option('--open', 'Open the first result (or pick from results interactively)')
+  .option('-o, --open', 'Open the first result (or pick from results interactively)')
   .option('--app <mode>', 'How to open: system (default), editor, visual, obsidian, print')
   // Hierarchy options for recursive types (deprecated in favor of --where functions)
   .option('--roots', 'Only show root notes (deprecated: use --where "isRoot()")')
