@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync } from 'fs';
-import { readFile } from 'fs/promises';
+import { readFile, mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
 
@@ -565,6 +565,153 @@ describe('JSON I/O', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
       expect(json.error).toContain('Unknown type');
+    });
+  });
+
+  describe('bwrb new --json with filename-pattern', () => {
+    it('should use filename from pattern with {date}', async () => {
+      // Create template with filename pattern
+      await mkdir(join(vaultDir, '.bwrb/templates/idea'), { recursive: true });
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/idea', 'daily.md'),
+        `---
+type: template
+template-for: idea
+filename-pattern: "{date}"
+defaults:
+  status: raw
+---
+`
+      );
+
+      const result = await runCLI(
+        ['new', 'idea', '--json', '{}', '--template', 'daily'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      // Filename should be the date (YYYY-MM-DD format)
+      expect(json.path).toMatch(/Ideas\/\d{4}-\d{2}-\d{2}\.md$/);
+    });
+
+    it('should use filename from pattern with frontmatter field', async () => {
+      // Create template with filename pattern referencing a field
+      await mkdir(join(vaultDir, '.bwrb/templates/idea'), { recursive: true });
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/idea', 'titled.md'),
+        `---
+type: template
+template-for: idea
+filename-pattern: "{title}"
+defaults:
+  status: raw
+---
+`
+      );
+
+      const result = await runCLI(
+        ['new', 'idea', '--json', '{"title": "My Great Idea"}', '--template', 'titled'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.path).toBe('Ideas/My Great Idea.md');
+    });
+
+    it('should use filename from combined pattern', async () => {
+      // Create template with combined filename pattern
+      await mkdir(join(vaultDir, '.bwrb/templates/idea'), { recursive: true });
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/idea', 'dated-title.md'),
+        `---
+type: template
+template-for: idea
+filename-pattern: "{date} - {title}"
+defaults:
+  status: raw
+---
+`
+      );
+
+      const result = await runCLI(
+        ['new', 'idea', '--json', '{"title": "Daily Log"}', '--template', 'dated-title'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      // Filename should be date + title
+      expect(json.path).toMatch(/Ideas\/\d{4}-\d{2}-\d{2} - Daily Log\.md$/);
+    });
+
+    it('should fall back to name field when pattern field is missing', async () => {
+      // Create template with filename pattern referencing a field we won't provide
+      await mkdir(join(vaultDir, '.bwrb/templates/idea'), { recursive: true });
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/idea', 'missing.md'),
+        `---
+type: template
+template-for: idea
+filename-pattern: "{missing_field}"
+defaults:
+  status: raw
+---
+`
+      );
+
+      const result = await runCLI(
+        ['new', 'idea', '--json', '{"name": "Fallback Name"}', '--template', 'missing'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      // Should fall back to name field
+      expect(json.path).toBe('Ideas/Fallback Name.md');
+    });
+
+    it('should error when pattern cannot resolve and no name provided', async () => {
+      // Create template with filename pattern referencing a field we won't provide
+      await mkdir(join(vaultDir, '.bwrb/templates/idea'), { recursive: true });
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/idea', 'broken.md'),
+        `---
+type: template
+template-for: idea
+filename-pattern: "{missing_field}"
+defaults:
+  status: raw
+---
+`
+      );
+
+      const result = await runCLI(
+        ['new', 'idea', '--json', '{}', '--template', 'broken'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Filename pattern could not be resolved');
+    });
+
+    it('should still require name when no pattern is defined', async () => {
+      const result = await runCLI(
+        ['new', 'idea', '--json', '{"status": "raw"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('name');
     });
   });
 

@@ -568,6 +568,93 @@ Template body content
     }, 30000);
   });
 
+  describe('filename-pattern handling', () => {
+    it('should skip Name prompt when template has filename-pattern with {date}', async () => {
+      // Template with filename pattern using {date}
+      const dateTemplate: TempVaultFile = {
+        path: '.bwrb/templates/idea/daily.md',
+        content: `---
+type: template
+template-for: idea
+description: Daily note template
+filename-pattern: "{date}"
+defaults:
+  status: raw
+  priority: medium
+---
+
+# Daily Note
+
+## Today's Ideas
+`,
+      };
+
+      await withTempVault(
+        ['new', 'idea', '--template', 'daily'],
+        async (proc, vaultPath) => {
+          // Should NOT prompt for Name - go directly to creation
+          // Since template has defaults for all fields, creation should happen immediately
+          await proc.waitForStable(500);
+          await proc.waitFor('Created:', 10000);
+
+          // File should be named with today's date
+          const output = proc.getOutput();
+          const dateMatch = output.match(/Created:.*?(\d{4}-\d{2}-\d{2})\.md/);
+          expect(dateMatch).not.toBeNull();
+
+          // Verify the file exists and has correct content
+          if (dateMatch) {
+            const filename = `Ideas/${dateMatch[1]}.md`;
+            const content = await readVaultFile(vaultPath, filename);
+            expect(content).toContain('type: idea');
+            expect(content).toContain('status: raw');
+            expect(content).toContain('## Today\'s Ideas');
+          }
+        },
+        { schema: FULL_SCHEMA, files: [dateTemplate] }
+      );
+    }, 30000);
+
+    it('should fall back to Name prompt when pattern field is missing', async () => {
+      // Template with filename pattern referencing a field that won't be provided
+      const missingFieldTemplate: TempVaultFile = {
+        path: '.bwrb/templates/idea/titled.md',
+        content: `---
+type: template
+template-for: idea
+description: Titled template
+filename-pattern: "{missing_field}"
+defaults:
+  status: raw
+  priority: medium
+---
+
+# Note
+`,
+      };
+
+      await withTempVault(
+        ['new', 'idea', '--template', 'titled'],
+        async (proc, vaultPath) => {
+          // Should show warning about missing field
+          await proc.waitFor('missing', 10000);
+
+          // Should then prompt for Name as fallback
+          await proc.waitFor('Name', 10000);
+          await proc.typeAndEnter('Fallback Name Test');
+
+          // Should create file with fallback name
+          await proc.waitForStable(200);
+          await proc.waitFor('Created:', 5000);
+
+          const exists = await vaultFileExists(vaultPath, 'Ideas/Fallback Name Test.md');
+          expect(exists).toBe(true);
+        },
+        { schema: FULL_SCHEMA, files: [missingFieldTemplate] }
+      );
+    }, 30000);
+  });
+
   describe('error handling', () => {
     it('should show error for unknown type', async () => {
       await withTempVault(

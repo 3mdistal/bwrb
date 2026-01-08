@@ -2,7 +2,7 @@ import { readdir } from 'fs/promises';
 import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
-import { TemplateFrontmatterSchema, type Template, type LoadedSchema, type Field, type Constraint, type InstanceScaffold } from '../types/schema.js';
+import { TemplateFrontmatterSchema, type Template, type LoadedSchema, type Field, type Constraint, type InstanceScaffold, type ResolvedType } from '../types/schema.js';
 import { getType, getFieldsForType, getFieldOptions } from './schema.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
@@ -341,6 +341,148 @@ function formatDate(date: Date, format: string): string {
     .replace('DD', pad(date.getDate()))
     .replace('HH', pad(date.getHours()))
     .replace('mm', pad(date.getMinutes()));
+}
+
+// ============================================================================
+// Filename Pattern Resolution
+// ============================================================================
+
+/**
+ * Characters that are invalid in filenames across common filesystems.
+ * Includes: / \ : * ? " < > | and control characters (0x00-0x1F)
+ */
+const INVALID_FILENAME_CHARS = /[/\\:*?"<>|\x00-\x1F]/g;
+
+/**
+ * Sanitize a string for use as a filename.
+ * Removes invalid characters and trims whitespace.
+ */
+function sanitizeFilename(name: string): string {
+  return name
+    .replace(INVALID_FILENAME_CHARS, '')
+    .trim();
+}
+
+/**
+ * Result of attempting to resolve a filename pattern.
+ */
+export interface FilenamePatternResult {
+  /** Whether the pattern was fully resolved (all placeholders substituted) */
+  resolved: boolean;
+  /** The resolved filename (without .md extension), or null if unresolved */
+  filename: string | null;
+  /** Fields that were referenced but had no value */
+  missingFields: string[];
+}
+
+/**
+ * Get the filename pattern to use for a note, with proper precedence.
+ * 
+ * Precedence (highest to lowest):
+ * 1. Template's filename-pattern
+ * 2. Type-level filename pattern from schema
+ * 3. null (no pattern defined)
+ * 
+ * @param template The template being used (if any)
+ * @param typeDef The resolved type definition
+ * @returns The filename pattern string, or null if none defined
+ */
+export function getFilenamePattern(
+  template: Template | null | undefined,
+  typeDef: ResolvedType
+): string | null {
+  // Template pattern takes precedence
+  if (template?.filenamePattern) {
+    return template.filenamePattern;
+  }
+  
+  // Fall back to type-level pattern
+  if (typeDef.filename) {
+    return typeDef.filename;
+  }
+  
+  return null;
+}
+
+/**
+ * Resolve a filename pattern by substituting placeholders with values.
+ * 
+ * Supports the same placeholder syntax as template body:
+ * - {date} - Today's date in configured format
+ * - {date:FORMAT} - Today's date in specified format (e.g., {date:YYYY-MM-DD})
+ * - {fieldName} - Value from frontmatter
+ * 
+ * @param pattern The filename pattern (e.g., "{date} - {title}")
+ * @param frontmatter The frontmatter values to substitute
+ * @param dateFormat The date format to use for {date} placeholder
+ * @returns Result indicating whether resolution succeeded and the filename
+ * 
+ * @example
+ * resolveFilenamePattern("{date} - {title}", { title: "My Note" }, "YYYY-MM-DD")
+ * // => { resolved: true, filename: "2025-01-07 - My Note", missingFields: [] }
+ * 
+ * resolveFilenamePattern("{title}", {}, "YYYY-MM-DD")
+ * // => { resolved: false, filename: null, missingFields: ["title"] }
+ */
+export function resolveFilenamePattern(
+  pattern: string,
+  frontmatter: Record<string, unknown>,
+  dateFormat: string = DEFAULT_DATE_FORMAT
+): FilenamePatternResult {
+  let result = pattern;
+  const missingFields: string[] = [];
+  
+  // Replace {date:format} patterns first (more specific)
+  const now = new Date();
+  result = result.replace(/{date:([^}]+)}/g, (_, format: string) => {
+    return formatDate(now, format);
+  });
+  
+  // Replace {date} with today's date
+  result = result.replace(/{date}/g, formatDateWithPattern(now, dateFormat));
+  
+  // Find all remaining placeholders to check for missing fields
+  const remainingPlaceholders = result.match(/\{([^}:]+)\}/g) || [];
+  
+  // Replace {fieldName} with frontmatter values
+  for (const placeholder of remainingPlaceholders) {
+    const fieldName = placeholder.slice(1, -1); // Remove { and }
+    const value = frontmatter[fieldName];
+    
+    if (value === undefined || value === null || value === '') {
+      missingFields.push(fieldName);
+    } else {
+      const stringValue = formatValueForBody(value);
+      result = result.split(placeholder).join(stringValue);
+    }
+  }
+  
+  // If any fields are missing, we can't resolve the pattern
+  if (missingFields.length > 0) {
+    return {
+      resolved: false,
+      filename: null,
+      missingFields,
+    };
+  }
+  
+  // Sanitize the result for use as a filename
+  const sanitized = sanitizeFilename(result);
+  
+  // If sanitization resulted in empty string, treat as unresolved
+  if (!sanitized) {
+    return {
+      resolved: false,
+      filename: null,
+      missingFields: [],
+    };
+  }
+  
+  return {
+    resolved: true,
+    filename: sanitized,
+    missingFields: [],
+  };
 }
 
 // ============================================================================

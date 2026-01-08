@@ -15,6 +15,8 @@ import {
   validateConstraints,
   validateConstraintSyntax,
   createScaffoldedInstances,
+  getFilenamePattern,
+  resolveFilenamePattern,
 } from '../../../src/lib/template.js';
 import { resolveSchema } from '../../../src/lib/schema.js';
 import type { Schema, LoadedSchema } from '../../../src/types/schema.js';
@@ -1087,5 +1089,167 @@ Template body here.
     } finally {
       global.Date = originalDate;
     }
+  });
+
+  describe('getFilenamePattern', () => {
+    it('returns template pattern when template has filenamePattern', () => {
+      const template = { 
+        name: 'test',
+        filenamePattern: '{date} - {title}',
+        defaults: {},
+        body: '',
+      };
+      const typeDef = { 
+        name: 'idea',
+        frontmatter: {},
+        filename: '{name}',
+      };
+      
+      expect(getFilenamePattern(template as any, typeDef as any)).toBe('{date} - {title}');
+    });
+
+    it('returns type-level pattern when template has no pattern', () => {
+      const template = { 
+        name: 'test',
+        defaults: {},
+        body: '',
+      };
+      const typeDef = { 
+        name: 'idea',
+        frontmatter: {},
+        filename: '{name}',
+      };
+      
+      expect(getFilenamePattern(template as any, typeDef as any)).toBe('{name}');
+    });
+
+    it('returns null when neither template nor type has pattern', () => {
+      const template = { 
+        name: 'test',
+        defaults: {},
+        body: '',
+      };
+      const typeDef = { 
+        name: 'idea',
+        frontmatter: {},
+      };
+      
+      expect(getFilenamePattern(template as any, typeDef as any)).toBeNull();
+    });
+
+    it('returns null when template is null', () => {
+      const typeDef = { 
+        name: 'idea',
+        frontmatter: {},
+      };
+      
+      expect(getFilenamePattern(null, typeDef as any)).toBeNull();
+    });
+
+    it('template pattern takes precedence over type-level pattern', () => {
+      const template = { 
+        name: 'test',
+        filenamePattern: '{date}',
+        defaults: {},
+        body: '',
+      };
+      const typeDef = { 
+        name: 'idea',
+        frontmatter: {},
+        filename: '{name}',
+      };
+      
+      expect(getFilenamePattern(template as any, typeDef as any)).toBe('{date}');
+    });
+  });
+
+  describe('resolveFilenamePattern', () => {
+    it('resolves {date} placeholder with default format', () => {
+      const result = resolveFilenamePattern('{date}', {}, 'YYYY-MM-DD');
+      
+      expect(result.resolved).toBe(true);
+      expect(result.filename).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(result.missingFields).toEqual([]);
+    });
+
+    it('resolves {date:FORMAT} with custom format', () => {
+      const result = resolveFilenamePattern('{date:YYYY-MM}', {}, 'YYYY-MM-DD');
+      
+      expect(result.resolved).toBe(true);
+      expect(result.filename).toMatch(/^\d{4}-\d{2}$/);
+      expect(result.missingFields).toEqual([]);
+    });
+
+    it('resolves frontmatter field placeholders', () => {
+      const result = resolveFilenamePattern('{title}', { title: 'My Note' }, 'YYYY-MM-DD');
+      
+      expect(result.resolved).toBe(true);
+      expect(result.filename).toBe('My Note');
+      expect(result.missingFields).toEqual([]);
+    });
+
+    it('resolves combined date and field placeholders', () => {
+      const result = resolveFilenamePattern('{date} - {title}', { title: 'Daily Log' }, 'YYYY-MM-DD');
+      
+      expect(result.resolved).toBe(true);
+      expect(result.filename).toMatch(/^\d{4}-\d{2}-\d{2} - Daily Log$/);
+      expect(result.missingFields).toEqual([]);
+    });
+
+    it('returns unresolved when field is missing', () => {
+      const result = resolveFilenamePattern('{title}', {}, 'YYYY-MM-DD');
+      
+      expect(result.resolved).toBe(false);
+      expect(result.filename).toBeNull();
+      expect(result.missingFields).toEqual(['title']);
+    });
+
+    it('returns unresolved when field is null', () => {
+      const result = resolveFilenamePattern('{title}', { title: null }, 'YYYY-MM-DD');
+      
+      expect(result.resolved).toBe(false);
+      expect(result.filename).toBeNull();
+      expect(result.missingFields).toEqual(['title']);
+    });
+
+    it('returns unresolved when field is empty string', () => {
+      const result = resolveFilenamePattern('{title}', { title: '' }, 'YYYY-MM-DD');
+      
+      expect(result.resolved).toBe(false);
+      expect(result.filename).toBeNull();
+      expect(result.missingFields).toEqual(['title']);
+    });
+
+    it('reports multiple missing fields', () => {
+      const result = resolveFilenamePattern('{title} - {status}', {}, 'YYYY-MM-DD');
+      
+      expect(result.resolved).toBe(false);
+      expect(result.filename).toBeNull();
+      expect(result.missingFields).toEqual(['title', 'status']);
+    });
+
+    it('sanitizes invalid filename characters', () => {
+      const result = resolveFilenamePattern('{title}', { title: 'Note: A/B Test?' }, 'YYYY-MM-DD');
+      
+      expect(result.resolved).toBe(true);
+      expect(result.filename).toBe('Note AB Test');
+      expect(result.missingFields).toEqual([]);
+    });
+
+    it('returns unresolved when sanitization results in empty string', () => {
+      const result = resolveFilenamePattern('{title}', { title: '::/' }, 'YYYY-MM-DD');
+      
+      expect(result.resolved).toBe(false);
+      expect(result.filename).toBeNull();
+      expect(result.missingFields).toEqual([]);
+    });
+
+    it('handles array values by joining with commas', () => {
+      const result = resolveFilenamePattern('{tags}', { tags: ['a', 'b', 'c'] }, 'YYYY-MM-DD');
+      
+      expect(result.resolved).toBe(true);
+      expect(result.filename).toBe('a, b, c');
+      expect(result.missingFields).toEqual([]);
+    });
   });
 });

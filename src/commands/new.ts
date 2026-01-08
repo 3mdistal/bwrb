@@ -53,6 +53,8 @@ import {
   processTemplateBody,
   validateConstraints,
   createScaffoldedInstances,
+  getFilenamePattern,
+  resolveFilenamePattern,
   type ScaffoldResult,
 } from '../lib/template.js';
 import { evaluateTemplateDefault } from '../lib/date-expression.js';
@@ -424,11 +426,36 @@ async function createNoteFromJson(
     }
   }
 
-  // Get the name from the frontmatter (always 'name')
-  const itemName = frontmatter['name'];
-  if (!itemName || typeof itemName !== 'string') {
-    printJson(jsonError(`Missing or invalid 'name' field`));
-    process.exit(ExitCodes.VALIDATION_ERROR);
+  // Determine filename: use pattern if available, otherwise require 'name' field
+  const filenamePattern = getFilenamePattern(template ?? null, typeDef);
+  let itemName: string;
+  
+  if (filenamePattern) {
+    // Try to resolve filename from pattern
+    const patternResult = resolveFilenamePattern(filenamePattern, frontmatter, schema.config.dateFormat);
+    
+    if (patternResult.resolved && patternResult.filename) {
+      itemName = patternResult.filename;
+    } else {
+      // Pattern couldn't resolve - fall back to 'name' field
+      const nameField = frontmatter['name'];
+      if (!nameField || typeof nameField !== 'string') {
+        const missingInfo = patternResult.missingFields.length > 0
+          ? ` Pattern references missing fields: ${patternResult.missingFields.join(', ')}.`
+          : '';
+        printJson(jsonError(`Filename pattern could not be resolved.${missingInfo} Provide a 'name' field as fallback.`));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      itemName = nameField;
+    }
+  } else {
+    // No pattern - require 'name' field
+    const nameField = frontmatter['name'];
+    if (!nameField || typeof nameField !== 'string') {
+      printJson(jsonError(`Missing or invalid 'name' field`));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    itemName = nameField;
   }
 
   // Create note (owned or pooled)
@@ -743,14 +770,52 @@ async function createPooledNote(
   }
   const fullOutputDir = join(vaultDir, outputDir);
 
-  // Prompt for name
-  const itemName = await promptRequired('Name');
-  if (itemName === null) {
-    throw new UserCancelledError();
+  // Check if we have a filename pattern
+  const filenamePattern = getFilenamePattern(template ?? null, typeDef);
+  
+  let itemName: string;
+  let frontmatter: Record<string, unknown>;
+  let body: string;
+  let orderedFields: string[];
+  
+  if (filenamePattern) {
+    // Filename pattern exists: collect frontmatter first, then derive filename
+    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, template);
+    frontmatter = content.frontmatter;
+    body = content.body;
+    orderedFields = content.orderedFields;
+    
+    // Try to resolve the filename pattern
+    const patternResult = resolveFilenamePattern(filenamePattern, frontmatter, schema.config.dateFormat);
+    
+    if (patternResult.resolved && patternResult.filename) {
+      // Pattern resolved successfully - use it as the filename
+      itemName = patternResult.filename;
+    } else {
+      // Pattern couldn't be resolved (missing fields) - fall back to prompting
+      if (patternResult.missingFields.length > 0) {
+        printWarning(`Filename pattern references missing fields: ${patternResult.missingFields.join(', ')}`);
+      }
+      const prompted = await promptRequired('Name');
+      if (prompted === null) {
+        throw new UserCancelledError();
+      }
+      itemName = prompted;
+    }
+  } else {
+    // No filename pattern: prompt for name first (original behavior)
+    const prompted = await promptRequired('Name');
+    if (prompted === null) {
+      throw new UserCancelledError();
+    }
+    itemName = prompted;
+    
+    // Build frontmatter and body (may throw UserCancelledError)
+    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, template);
+    frontmatter = content.frontmatter;
+    body = content.body;
+    orderedFields = content.orderedFields;
   }
-
-  // Build frontmatter and body (may throw UserCancelledError)
-  const { frontmatter, body, orderedFields } = await buildNoteContent(schema, vaultDir, typePath, typeDef, template);
 
   // Create file
   const filePath = join(fullOutputDir, `${itemName}.md`);
@@ -1013,14 +1078,52 @@ async function createOwnedNote(
   
   printInfo(`Creating ${typeName} owned by ${owner.ownerName}`);
   
-  // Prompt for name
-  const itemName = await promptRequired('Name');
-  if (itemName === null) {
-    throw new UserCancelledError();
-  }
+  // Check if we have a filename pattern
+  const filenamePattern = getFilenamePattern(template ?? null, typeDef);
   
-  // Build frontmatter and body (may throw UserCancelledError)
-  const { frontmatter, body, orderedFields } = await buildNoteContent(schema, vaultDir, typePath, typeDef, template);
+  let itemName: string;
+  let frontmatter: Record<string, unknown>;
+  let body: string;
+  let orderedFields: string[];
+  
+  if (filenamePattern) {
+    // Filename pattern exists: collect frontmatter first, then derive filename
+    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, template);
+    frontmatter = content.frontmatter;
+    body = content.body;
+    orderedFields = content.orderedFields;
+    
+    // Try to resolve the filename pattern
+    const patternResult = resolveFilenamePattern(filenamePattern, frontmatter, schema.config.dateFormat);
+    
+    if (patternResult.resolved && patternResult.filename) {
+      // Pattern resolved successfully - use it as the filename
+      itemName = patternResult.filename;
+    } else {
+      // Pattern couldn't be resolved (missing fields) - fall back to prompting
+      if (patternResult.missingFields.length > 0) {
+        printWarning(`Filename pattern references missing fields: ${patternResult.missingFields.join(', ')}`);
+      }
+      const prompted = await promptRequired('Name');
+      if (prompted === null) {
+        throw new UserCancelledError();
+      }
+      itemName = prompted;
+    }
+  } else {
+    // No filename pattern: prompt for name first (original behavior)
+    const prompted = await promptRequired('Name');
+    if (prompted === null) {
+      throw new UserCancelledError();
+    }
+    itemName = prompted;
+    
+    // Build frontmatter and body (may throw UserCancelledError)
+    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, template);
+    frontmatter = content.frontmatter;
+    body = content.body;
+    orderedFields = content.orderedFields;
+  }
   
   // Ensure the owned output directory exists
   const outputDir = await ensureOwnedOutputDir(owner.ownerPath, typeName);
