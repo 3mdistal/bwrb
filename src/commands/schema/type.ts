@@ -94,13 +94,39 @@ export function registerNewTypeCommand(newCommand: Command): void {
         // Build the type definition
         const rawSchema = await loadRawSchemaJson(vaultDir);
         
-        // Parse inheritance
+        // Parse inheritance - from option or interactive prompt
         let inherits: string | undefined;
         if (options.inherits) {
           inherits = options.inherits;
           // Validate parent exists
           if (!schema.raw.types[inherits]) {
             throw new Error(`Parent type "${inherits}" does not exist`);
+          }
+        } else if (!jsonMode) {
+          // Interactive: prompt for parent type selection
+          const availableTypes = getTypeNames(schema)
+            .filter(t => t !== 'meta' && t !== typeName)
+            .sort((a, b) => a.localeCompare(b));
+          
+          // Always show the prompt - even if no types exist, user should see "Root" option
+          const inheritOptions = ['Root (extends meta)', ...availableTypes];
+          const parentResult = await promptSelection('Extend from type', inheritOptions);
+          
+          if (parentResult === null) {
+            process.exit(0); // User cancelled
+          }
+          
+          if (parentResult !== 'Root (extends meta)') {
+            inherits = parentResult;
+          }
+          
+          // Show inherited fields if a parent was selected
+          if (inherits) {
+            const parentType = schema.types.get(inherits);
+            if (parentType && Object.keys(parentType.fields).length > 0) {
+              const fieldNames = Object.keys(parentType.fields);
+              console.log(chalk.dim(`\nInherited fields from ${inherits}: ${fieldNames.join(', ')}`));
+            }
           }
         }
 

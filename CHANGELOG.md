@@ -16,6 +16,12 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Added
 
+- **Interactive parent type selection in `schema new type`** (#240)
+  - When creating a new type interactively, now prompts "Extend from type" with list of existing types
+  - Shows "Root (extends meta)" option for creating standalone types
+  - Displays inherited fields after parent selection to help users understand what they're inheriting
+  - `--inherits` CLI flag still works for non-interactive/scripted usage
+
 - **Audit --fix Phase 1: Core directory and type fixes** (#152, #268)
   - `wrong-directory` issues are now auto-fixable with `--execute` flag
     - Files in wrong directories are automatically moved to correct location based on type
