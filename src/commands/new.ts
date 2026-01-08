@@ -87,7 +87,7 @@ interface NoteCreationResult {
 
 export const newCommand = new Command('new')
   .description('Create a new note (interactive type navigation if type omitted)')
-  .argument('[type]', 'Type of note to create (e.g., idea, objective/task)')
+  .argument('[type]', 'Type of note to create (e.g., idea, task)')
   .option('-t, --type <type>', 'Type of note to create (alternative to positional argument)')
   .option('--open', 'Open the note after creation (uses BWRB_DEFAULT_APP or Obsidian)')
   .option('--json <frontmatter>', 'Create note non-interactively with JSON frontmatter')
@@ -100,7 +100,7 @@ export const newCommand = new Command('new')
 Examples:
   bwrb new                    # Interactive type selection
   bwrb new idea               # Create an idea
-  bwrb new objective/task     # Create a task
+  bwrb new task               # Create a task
   bwrb new draft --open       # Create and open (respects BWRB_DEFAULT_APP)
 
 Templates:
@@ -119,17 +119,15 @@ Instance scaffolding:
 
 Non-interactive (JSON) mode:
   bwrb new idea --json '{"name": "My Idea", "status": "raw"}'
-  bwrb new objective/task --json '{"name": "Fix bug", "status": "in-progress"}'
+  bwrb new task --json '{"name": "Fix bug", "status": "in-progress"}'
   bwrb new task --json '{"name": "Bug"}' --template bug-report
 
 Body sections (JSON mode):
   bwrb new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'
   The _body field accepts section names as keys, with string or string[] values.
 
-Template Discovery:
-  Templates are stored in Templates/{type}/{subtype}/*.md
-  If default.md exists, it's used automatically (unless --no-template).
-  If multiple templates exist without default.md, you'll be prompted to select.
+Template management:
+  Templates are managed with 'bwrb template' - see 'bwrb template --help'.
 
 `)
   .action(async (positionalType: string | undefined, options: NewCommandOptions, cmd: Command) => {
