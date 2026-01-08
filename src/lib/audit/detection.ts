@@ -260,7 +260,9 @@ export async function auditFile(
         code: 'wrong-directory',
         message: `Wrong directory: type is '${resolvedTypePath}', expected in ${expectedOutputDir}`,
         expected: expectedOutputDir,
-        autoFixable: false,
+        currentDirectory: actualDir,
+        expectedDirectory: expectedOutputDir,
+        autoFixable: true, // Can be auto-fixed with --execute
       });
     }
   }
@@ -635,7 +637,9 @@ async function checkOwnershipViolations(
         code: 'owned-wrong-location',
         message: `Owned note in wrong location: expected in ${expectedDir}`,
         expected: expectedDir,
-        autoFixable: false,
+        currentDirectory: actualDir,
+        expectedDirectory: expectedDir,
+        autoFixable: true, // Can be auto-fixed with --execute
         ownerPath: ownedInfo.ownerPath,
         ownedNotePath: file.relativePath,
       });

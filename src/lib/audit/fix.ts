@@ -5,6 +5,7 @@
  */
 
 import chalk from 'chalk';
+import { join, dirname, basename } from 'path';
 import {
   getType,
   getFieldsForType,
@@ -12,12 +13,18 @@ import {
   getDiscriminatorFieldsFromTypePath,
   getOptionsForField,
   getConcreteTypeNames,
+  getTypeFamilies,
 } from '../schema.js';
 import { queryByType } from '../vault.js';
 import { parseNote, writeNote } from '../frontmatter.js';
 import { levenshteinDistance } from '../discovery.js';
 import { promptSelection, promptConfirm, promptInput } from '../prompt.js';
 import type { LoadedSchema } from '../../types/schema.js';
+import {
+  findAllMarkdownFiles,
+  findWikilinksToFile,
+  executeBulkMove,
+} from '../bulk/move.js';
 
 // Alias for backward compatibility
 const resolveTypePathFromFrontmatter = resolveTypeFromFrontmatter;
@@ -27,6 +34,7 @@ import {
   type FileAuditResult,
   type FixResult,
   type FixSummary,
+  type FixContext,
   toWikilink,
   toMarkdownLink,
 } from './types.js';
@@ -232,8 +240,11 @@ function isHighConfidenceMatch(target: string, similar: string): boolean {
 export async function runAutoFix(
   results: FileAuditResult[],
   schema: LoadedSchema,
-  _vaultDir: string
+  vaultDir: string,
+  options?: { execute?: boolean }
 ): Promise<FixSummary> {
+  const execute = options?.execute ?? false;
+  
   console.log(chalk.bold('Auditing vault...\n'));
   console.log(chalk.bold('Auto-fixing unambiguous issues...\n'));
 
@@ -246,6 +257,107 @@ export async function runAutoFix(
     const fixableIssues = result.issues.filter(i => i.autoFixable);
     const nonFixableIssues = result.issues.filter(i => !i.autoFixable);
 
+    // Handle wrong-directory issues (require --execute)
+    for (const issue of [...fixableIssues]) {
+      if (issue.code === 'wrong-directory' && issue.expectedDirectory) {
+        if (!execute) {
+          // Show what would be done
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ Would move to ${issue.expectedDirectory}/ (use --execute to apply)`));
+          skipped++;
+          // Remove from fixableIssues so we don't process it again
+          const idx = fixableIssues.indexOf(issue);
+          if (idx > -1) fixableIssues.splice(idx, 1);
+          continue;
+        }
+        
+        // Get wikilink count for warning
+        const allFiles = await findAllMarkdownFiles(vaultDir);
+        const refs = await findWikilinksToFile(vaultDir, result.path, allFiles);
+        
+        if (refs.length > 0) {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ ${refs.length} wikilink(s) will be updated`));
+        }
+        
+        // Execute the move
+        const targetDir = join(vaultDir, issue.expectedDirectory);
+        const moveResult = await executeBulkMove({
+          vaultDir,
+          targetDir,
+          filesToMove: [result.path],
+          execute: true,
+          allVaultFiles: allFiles,
+        });
+        
+        if (moveResult.errors.length === 0) {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Moved to ${issue.expectedDirectory}/`));
+          if (moveResult.totalLinksUpdated > 0) {
+            console.log(chalk.green(`    ✓ Updated ${moveResult.totalLinksUpdated} wikilink(s)`));
+          }
+          fixed++;
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to move: ${moveResult.errors[0]}`));
+          failed++;
+        }
+        
+        // Remove from fixableIssues so we don't process it again
+        const idx = fixableIssues.indexOf(issue);
+        if (idx > -1) fixableIssues.splice(idx, 1);
+        continue;
+      }
+      
+      // Handle owned-wrong-location issues (require --execute)
+      if (issue.code === 'owned-wrong-location' && issue.expectedDirectory) {
+        if (!execute) {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ Would move to ${issue.expectedDirectory}/ (use --execute to apply)`));
+          skipped++;
+          const idx = fixableIssues.indexOf(issue);
+          if (idx > -1) fixableIssues.splice(idx, 1);
+          continue;
+        }
+        
+        // Get wikilink count for warning
+        const allFiles = await findAllMarkdownFiles(vaultDir);
+        const refs = await findWikilinksToFile(vaultDir, result.path, allFiles);
+        
+        if (refs.length > 0) {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ ${refs.length} wikilink(s) will be updated`));
+        }
+        
+        // Execute the move
+        const targetDir = join(vaultDir, issue.expectedDirectory);
+        const moveResult = await executeBulkMove({
+          vaultDir,
+          targetDir,
+          filesToMove: [result.path],
+          execute: true,
+          allVaultFiles: allFiles,
+        });
+        
+        if (moveResult.errors.length === 0) {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Moved to ${issue.expectedDirectory}/`));
+          if (moveResult.totalLinksUpdated > 0) {
+            console.log(chalk.green(`    ✓ Updated ${moveResult.totalLinksUpdated} wikilink(s)`));
+          }
+          fixed++;
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to move: ${moveResult.errors[0]}`));
+          failed++;
+        }
+        
+        const idx = fixableIssues.indexOf(issue);
+        if (idx > -1) fixableIssues.splice(idx, 1);
+        continue;
+      }
+    }
+    
     // Handle stale-reference issues with high-confidence matches
     for (const issue of nonFixableIssues) {
       if (issue.code === 'stale-reference' && !issue.inBody && issue.field) {
@@ -360,8 +472,12 @@ export async function runAutoFix(
 export async function runInteractiveFix(
   results: FileAuditResult[],
   schema: LoadedSchema,
-  _vaultDir: string
+  vaultDir: string,
+  options?: { execute?: boolean }
 ): Promise<FixSummary> {
+  const execute = options?.execute ?? false;
+  const context: FixContext = { schema, vaultDir, execute };
+  
   console.log(chalk.bold('Auditing vault...\n'));
 
   if (results.length === 0) {
@@ -386,7 +502,7 @@ export async function runInteractiveFix(
       console.log(`  ${symbol} ${issue.message}`);
 
       // Handle based on issue type
-      const fixOutcome = await handleInteractiveFix(schema, result, issue);
+      const fixOutcome = await handleInteractiveFix(context, result, issue);
       
       if (fixOutcome === 'quit') {
         quit = true;
@@ -418,10 +534,12 @@ export async function runInteractiveFix(
  * Returns the outcome: 'fixed', 'skipped', 'failed', or 'quit'.
  */
 async function handleInteractiveFix(
-  schema: LoadedSchema,
+  context: FixContext,
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  const { schema } = context;
+  
   switch (issue.code) {
     case 'orphan-file':
       return handleOrphanFileFix(schema, result, issue);
@@ -429,6 +547,8 @@ async function handleInteractiveFix(
       return handleMissingRequiredFix(schema, result, issue);
     case 'invalid-option':
       return handleInvalidOptionFix(schema, result, issue);
+    case 'invalid-type':
+      return handleInvalidTypeFix(schema, result, issue);
     case 'unknown-field':
       return handleUnknownFieldFix(schema, result, issue);
     case 'format-violation':
@@ -437,10 +557,14 @@ async function handleInteractiveFix(
       return handleStaleReferenceFix(schema, result, issue);
     case 'owned-note-referenced':
       return handleOwnedNoteReferencedFix(schema, result, issue);
+    case 'wrong-directory':
+      return handleWrongDirectoryFix(context, result, issue);
     case 'owned-wrong-location':
-      return handleOwnedWrongLocationFix(schema, result, issue);
+      return handleOwnedWrongLocationFix(context, result, issue);
     case 'invalid-source-type':
       return handleInvalidSourceTypeFix(schema, result, issue);
+    case 'parent-cycle':
+      return handleParentCycleFix(schema, result, issue);
     default:
       // Truly non-fixable issues
       if (issue.suggestion) {
@@ -897,23 +1021,33 @@ async function handleInvalidSourceTypeFix(
  * This occurs when an owned note is not in the expected location
  * (e.g., should be in owner's folder but isn't).
  * 
- * Automatic fix would require:
- * 1. Moving the file to correct location
- * 2. Updating all wikilinks that reference the moved file
- * 
- * This is complex and risky, so we just provide guidance.
+ * Options:
+ * 1. Move file to correct location (requires --execute)
+ * 2. Skip (leave for manual fix)
  */
 async function handleOwnedWrongLocationFix(
-  _schema: LoadedSchema,
-  _result: FileAuditResult,
+  context: FixContext,
+  result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  const { vaultDir, execute } = context;
+  
   // Show context
-  console.log(chalk.dim(`    Expected location: ${issue.expected}`));
+  console.log(chalk.dim(`    Expected location: ${issue.expectedDirectory}/`));
   console.log(chalk.dim(`    Owner: ${issue.ownerPath}`));
-  console.log(chalk.dim('    To fix: Move the file manually and update any wikilinks'));
+  
+  // Check for wikilinks that will be affected
+  const allFiles = await findAllMarkdownFiles(vaultDir);
+  const refs = await findWikilinksToFile(vaultDir, result.path, allFiles);
+  
+  if (refs.length > 0) {
+    console.log(chalk.yellow(`    ⚠ ${refs.length} wikilink(s) will be updated`));
+  }
 
-  const options = ['[skip]', '[quit]'];
+  const options = execute 
+    ? ['[move file]', '[skip]', '[quit]']
+    : ['[skip] (use --execute to enable move)', '[quit]'];
+  
   const selected = await promptSelection(
     `    Action for misplaced owned note:`,
     options
@@ -921,8 +1055,232 @@ async function handleOwnedWrongLocationFix(
 
   if (selected === null || selected === '[quit]') {
     return 'quit';
+  } else if (selected === '[move file]' && issue.expectedDirectory) {
+    // Execute the move
+    const targetDir = join(vaultDir, issue.expectedDirectory);
+    const moveResult = await executeBulkMove({
+      vaultDir,
+      targetDir,
+      filesToMove: [result.path],
+      execute: true,
+      allVaultFiles: allFiles,
+    });
+    
+    if (moveResult.errors.length === 0) {
+      console.log(chalk.green(`    ✓ Moved to ${issue.expectedDirectory}/`));
+      if (moveResult.totalLinksUpdated > 0) {
+        console.log(chalk.green(`    ✓ Updated ${moveResult.totalLinksUpdated} wikilink(s)`));
+      }
+      return 'fixed';
+    } else {
+      console.log(chalk.red(`    ✗ Failed to move: ${moveResult.errors[0]}`));
+      return 'failed';
+    }
   }
 
-  console.log(chalk.dim('    → Skipped (manual fix required)'));
+  console.log(chalk.dim('    → Skipped'));
   return 'skipped';
+}
+
+/**
+ * Handle wrong-directory fix.
+ * 
+ * This occurs when a file is in the wrong directory for its type.
+ * 
+ * Options:
+ * 1. Move file to correct directory (requires --execute)
+ * 2. Skip (leave for manual fix)
+ */
+async function handleWrongDirectoryFix(
+  context: FixContext,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  const { vaultDir, execute } = context;
+  
+  // Show context
+  console.log(chalk.dim(`    Current location: ${dirname(result.relativePath)}/`));
+  console.log(chalk.dim(`    Expected location: ${issue.expectedDirectory}/`));
+  
+  // Check for wikilinks that will be affected
+  const allFiles = await findAllMarkdownFiles(vaultDir);
+  const refs = await findWikilinksToFile(vaultDir, result.path, allFiles);
+  
+  if (refs.length > 0) {
+    console.log(chalk.yellow(`    ⚠ ${refs.length} wikilink(s) will be updated`));
+  }
+
+  const options = execute 
+    ? ['[move file]', '[skip]', '[quit]']
+    : ['[skip] (use --execute to enable move)', '[quit]'];
+  
+  const selected = await promptSelection(
+    `    Action for wrong directory:`,
+    options
+  );
+
+  if (selected === null || selected === '[quit]') {
+    return 'quit';
+  } else if (selected === '[move file]' && issue.expectedDirectory) {
+    // Execute the move
+    const targetDir = join(vaultDir, issue.expectedDirectory);
+    const moveResult = await executeBulkMove({
+      vaultDir,
+      targetDir,
+      filesToMove: [result.path],
+      execute: true,
+      allVaultFiles: allFiles,
+    });
+    
+    if (moveResult.errors.length === 0) {
+      console.log(chalk.green(`    ✓ Moved to ${issue.expectedDirectory}/`));
+      if (moveResult.totalLinksUpdated > 0) {
+        console.log(chalk.green(`    ✓ Updated ${moveResult.totalLinksUpdated} wikilink(s)`));
+      }
+      return 'fixed';
+    } else {
+      console.log(chalk.red(`    ✗ Failed to move: ${moveResult.errors[0]}`));
+      return 'failed';
+    }
+  }
+
+  console.log(chalk.dim('    → Skipped'));
+  return 'skipped';
+}
+
+/**
+ * Handle invalid-type fix.
+ * 
+ * This occurs when the type field value is not recognized.
+ * 
+ * Options:
+ * 1. Select a valid type from the schema
+ * 2. Skip (leave for manual fix)
+ */
+async function handleInvalidTypeFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  // Get available types
+  const availableTypes = getTypeFamilies(schema);
+  
+  if (availableTypes.length === 0) {
+    console.log(chalk.dim('    (No types defined in schema - skipping)'));
+    return 'skipped';
+  }
+  
+  // Show current invalid value
+  console.log(chalk.dim(`    Current value: ${issue.value}`));
+  if (issue.suggestion) {
+    console.log(chalk.dim(`    ${issue.suggestion}`));
+  }
+  
+  const options = [...availableTypes, '[skip]', '[quit]'];
+  const selected = await promptSelection(
+    '    Select valid type:',
+    options
+  );
+
+  if (selected === null || selected === '[quit]') {
+    return 'quit';
+  } else if (selected === '[skip]') {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  // Apply the fix - update the type field
+  const fixResult = await applyFix(schema, result.path, { ...issue, code: 'orphan-file' }, selected);
+  if (fixResult.action === 'fixed') {
+    const fields = getDiscriminatorFieldsFromTypePath(selected);
+    const fieldStr = Object.entries(fields)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(', ');
+    console.log(chalk.green(`    ✓ Updated ${fieldStr}`));
+    return 'fixed';
+  } else {
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+}
+
+/**
+ * Handle parent-cycle fix.
+ * 
+ * This occurs when a recursive type has a cycle in its parent references.
+ * E.g., A -> B -> A creates a cycle.
+ * 
+ * Options:
+ * 1. Clear the parent field
+ * 2. Select a different parent
+ * 3. Skip (leave for manual fix)
+ */
+async function handleParentCycleFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  // Show the cycle path
+  if (issue.cyclePath && issue.cyclePath.length > 0) {
+    console.log(chalk.dim(`    Cycle: ${issue.cyclePath.join(' → ')}`));
+  }
+  
+  // Get the current note's name to exclude from parent options
+  const noteName = basename(result.path, '.md');
+  
+  // Get notes of the same type to offer as alternative parents
+  const parsed = await parseNote(result.path);
+  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  let validParents: string[] = [];
+  
+  if (typePath) {
+    const vaultDir = result.path.substring(0, result.path.indexOf(result.relativePath));
+    const sameTypeNotes = await queryByType(schema, vaultDir, typePath);
+    // Filter out the current note and notes in the cycle
+    const cycleSet = new Set(issue.cyclePath ?? []);
+    validParents = sameTypeNotes.filter(n => n !== noteName && !cycleSet.has(n));
+  }
+  
+  // Build options
+  const options: string[] = ['[clear parent]'];
+  if (validParents.length > 0) {
+    // Add up to 10 valid parent options as wikilinks
+    options.push(...validParents.slice(0, 10).map(n => `[[${n}]]`));
+    if (validParents.length > 10) {
+      options.push(`... (${validParents.length - 10} more options)`);
+    }
+  }
+  options.push('[skip]', '[quit]');
+  
+  const selected = await promptSelection(
+    '    Action for parent cycle:',
+    options
+  );
+
+  if (selected === null || selected === '[quit]') {
+    return 'quit';
+  } else if (selected === '[skip]' || selected.startsWith('... (')) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  } else if (selected === '[clear parent]') {
+    // Clear the parent field
+    const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option', field: 'parent' }, '');
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green('    ✓ Cleared parent field'));
+      return 'fixed';
+    } else {
+      console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+      return 'failed';
+    }
+  } else {
+    // User selected a new parent
+    const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option', field: 'parent' }, selected);
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Updated parent: ${selected}`));
+      return 'fixed';
+    } else {
+      console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+      return 'failed';
+    }
+  }
 }

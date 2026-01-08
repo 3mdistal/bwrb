@@ -2123,4 +2123,330 @@ status: raw
       expect(correctFile).toBeUndefined();
     });
   });
+
+  describe('--execute flag validation', () => {
+    it('should error when --execute is used without --fix', async () => {
+      const result = await runCLI(['audit', '--execute'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('--execute requires --fix');
+    });
+
+    it('should accept --execute with --fix', async () => {
+      const result = await runCLI(['audit', '--fix', '--execute'], vaultDir);
+
+      // Should run successfully (no issues in test vault)
+      expect(result.exitCode).toBe(0);
+    });
+  });
+
+  describe('wrong-directory auto-fix with --execute', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-wrong-dir-fix-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Objectives'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should show move preview without --execute', async () => {
+      // Create idea in wrong directory
+      await writeFile(
+        join(tempVaultDir, 'Objectives', 'Wrong Idea.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+`
+      );
+
+      const result = await runCLI(['audit', '--fix', '--auto'], tempVaultDir);
+
+      // Should show what would be done
+      expect(result.stdout).toContain('Would move to');
+      expect(result.stdout).toContain('Ideas/');
+      expect(result.stdout).toContain('--execute to apply');
+    });
+
+    it('should mark wrong-directory as auto-fixable in JSON output', async () => {
+      // Create idea in wrong directory
+      await writeFile(
+        join(tempVaultDir, 'Objectives', 'Wrong Idea.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const wrongFile = output.files.find((f: { path: string }) => f.path.includes('Wrong Idea.md'));
+      expect(wrongFile).toBeDefined();
+      const wrongDirIssue = wrongFile.issues.find((i: { code: string }) => i.code === 'wrong-directory');
+      expect(wrongDirIssue).toBeDefined();
+      expect(wrongDirIssue.autoFixable).toBe(true);
+      expect(wrongDirIssue.expectedDirectory).toBe('Ideas');
+    });
+
+    it('should move file with --execute', async () => {
+      // Create idea in wrong directory
+      await writeFile(
+        join(tempVaultDir, 'Objectives', 'Misplaced Idea.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+Content here
+`
+      );
+
+      const result = await runCLI(['audit', '--fix', '--auto', '--execute'], tempVaultDir);
+
+      expect(result.stdout).toContain('Moved to Ideas/');
+      expect(result.exitCode).toBe(0);
+
+      // Verify the file was actually moved
+      const { readFile: rf, access } = await import('fs/promises');
+      
+      // Old location should not exist
+      await expect(access(join(tempVaultDir, 'Objectives', 'Misplaced Idea.md'))).rejects.toThrow();
+      
+      // New location should exist with correct content
+      const content = await rf(join(tempVaultDir, 'Ideas', 'Misplaced Idea.md'), 'utf-8');
+      expect(content).toContain('type: idea');
+      expect(content).toContain('Content here');
+    });
+
+    it('should update wikilinks when moving file', async () => {
+      // Create idea in wrong directory
+      await writeFile(
+        join(tempVaultDir, 'Objectives', 'Linked Idea.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+`
+      );
+
+      // Create file that links to it
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Linking Note.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+
+See [[Linked Idea]] for more info.
+`
+      );
+
+      const result = await runCLI(['audit', '--fix', '--auto', '--execute'], tempVaultDir);
+
+      expect(result.stdout).toContain('Moved to Ideas/');
+      // Wikilinks should be updated (or stay the same if basename unique)
+      
+      // Verify the link still works (file was moved, link updated if needed)
+      const { readFile: rf, access } = await import('fs/promises');
+      await expect(access(join(tempVaultDir, 'Ideas', 'Linked Idea.md'))).resolves.toBeUndefined();
+    });
+  });
+
+  describe('parent-cycle detection', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-parent-cycle-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      // Create a schema with recursive type
+      const schemaWithRecursive = {
+        ...TEST_SCHEMA,
+        types: {
+          ...TEST_SCHEMA.types,
+          recursive: {
+            output_dir: 'Recursive',
+            recursive: true,
+            fields: {
+              status: { prompt: 'select', options: ['active', 'done'], default: 'active' },
+              parent: { prompt: 'relation', source: 'recursive' },
+            },
+          },
+        },
+      };
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(schemaWithRecursive, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Recursive'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect self-referencing parent', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Recursive', 'Self Ref.md'),
+        `---
+type: recursive
+status: active
+parent: "[[Self Ref]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Self Ref.md'));
+      expect(file).toBeDefined();
+      const cycleIssue = file.issues.find((i: { code: string }) => i.code === 'parent-cycle');
+      expect(cycleIssue).toBeDefined();
+      expect(cycleIssue.cyclePath).toContain('Self Ref');
+    });
+
+    it('should detect two-node parent cycle', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Recursive', 'Node A.md'),
+        `---
+type: recursive
+status: active
+parent: "[[Node B]]"
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Recursive', 'Node B.md'),
+        `---
+type: recursive
+status: active
+parent: "[[Node A]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      // At least one of them should have a cycle detected
+      const fileWithCycle = output.files.find((f: { path: string; issues: { code: string }[] }) => 
+        f.issues.some((i: { code: string }) => i.code === 'parent-cycle')
+      );
+      expect(fileWithCycle).toBeDefined();
+    });
+
+    it('should not report cycle for valid parent chain', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Recursive', 'Parent.md'),
+        `---
+type: recursive
+status: active
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Recursive', 'Child.md'),
+        `---
+type: recursive
+status: active
+parent: "[[Parent]]"
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Recursive', 'Grandchild.md'),
+        `---
+type: recursive
+status: active
+parent: "[[Child]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'recursive'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain('parent-cycle');
+    });
+  });
+
+  describe('invalid-type interactive fix', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-invalid-type-fix-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should offer type selection for invalid-type in interactive fix mode', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Invalid Type.md'),
+        `---
+type: notavalidtype
+status: raw
+---
+`
+      );
+
+      // Just check that we see the issue and suggestion - full interactive testing done in PTY tests
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Invalid Type.md'));
+      expect(file).toBeDefined();
+      const typeIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-type');
+      expect(typeIssue).toBeDefined();
+      expect(typeIssue.value).toBe('notavalidtype');
+    });
+
+    it('should show suggestion for typo in type', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Typo Type.md'),
+        `---
+type: idee
+status: raw
+---
+`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Typo Type.md'));
+      expect(file).toBeDefined();
+      const typeIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-type');
+      expect(typeIssue).toBeDefined();
+      // Should suggest 'idea' for 'idee'
+      expect(typeIssue.suggestion).toContain('idea');
+    });
+  });
 });

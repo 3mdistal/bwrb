@@ -56,14 +56,16 @@ export const auditCommand = new Command('audit')
   .description('Validate vault files against schema and report issues')
   .addHelpText('after', `
 Issue Types:
-  orphan-file       File in managed directory but no 'type' field
-  invalid-type      Type field value not recognized
-  missing-required  Required field is missing
-  invalid-option    Field value not in allowed option values
-  unknown-field     Field not defined in schema (warning by default)
-  wrong-directory   File location doesn't match its type
-  format-violation  Field value doesn't match expected format (wikilink, etc.)
-  stale-reference   Wikilink points to non-existent file
+  orphan-file           File in managed directory but no 'type' field
+  invalid-type          Type field value not recognized
+  missing-required      Required field is missing
+  invalid-option        Field value not in allowed option values
+  unknown-field         Field not defined in schema (warning by default)
+  wrong-directory       File location doesn't match its type (fix with --execute)
+  owned-wrong-location  Owned note not in expected location (fix with --execute)
+  parent-cycle          Cycle detected in parent references
+  format-violation      Field value doesn't match expected format (wikilink, etc.)
+  stale-reference       Wikilink points to non-existent file
 
 Type Resolution:
   Audit resolves each file's type from its frontmatter 'type' field.
@@ -87,7 +89,11 @@ Examples:
   bwrb audit --only missing-required
   bwrb audit --ignore unknown-field
   bwrb audit --output json        # JSON output for CI
-  bwrb audit --allow-field custom # Allow specific extra field`)
+  bwrb audit --allow-field custom # Allow specific extra field
+  bwrb audit --fix                # Interactive repair mode
+  bwrb audit --fix --auto         # Auto-fix unambiguous issues
+  bwrb audit --fix --execute      # Enable file moves for wrong-directory issues
+  bwrb audit --fix --auto --execute  # Auto-fix including file moves`)
   .argument('[target]', 'Type, path, or where expression (auto-detected)')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path pattern')
@@ -100,6 +106,7 @@ Examples:
   .option('-o, --output <format>', 'Output format: text (default) or json')
   .option('--fix', 'Interactive repair mode')
   .option('--auto', 'With --fix: automatically apply unambiguous fixes')
+  .option('--execute', 'With --fix: execute destructive operations (file moves)')
   .option('--allow-field <fields...>', 'Allow additional fields beyond schema (repeatable)')
   .action(async (target: string | undefined, options: AuditOptions & {
     type?: string;
@@ -110,10 +117,17 @@ Examples:
     const jsonMode = options.output === 'json';
     const fixMode = options.fix ?? false;
     const autoMode = options.auto ?? false;
+    const executeMode = options.execute ?? false;
 
     // --auto requires --fix
     if (autoMode && !fixMode) {
       printError('--auto requires --fix');
+      process.exit(1);
+    }
+
+    // --execute requires --fix
+    if (executeMode && !fixMode) {
+      printError('--execute requires --fix');
       process.exit(1);
     }
 
@@ -203,8 +217,8 @@ Examples:
       // Handle fix mode
       if (fixMode) {
         const fixSummary = autoMode
-          ? await runAutoFix(results, schema, vaultDir)
-          : await runInteractiveFix(results, schema, vaultDir);
+          ? await runAutoFix(results, schema, vaultDir, { execute: executeMode })
+          : await runInteractiveFix(results, schema, vaultDir, { execute: executeMode });
 
         outputFixResults(fixSummary, autoMode);
 

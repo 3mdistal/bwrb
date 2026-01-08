@@ -67,6 +67,12 @@ export interface AuditIssue {
   actualType?: string | undefined;
   /** For parent-cycle: the cycle path showing the loop */
   cyclePath?: string[] | undefined;
+  /** For wrong-directory: the current directory */
+  currentDirectory?: string | undefined;
+  /** For wrong-directory: the expected directory based on type */
+  expectedDirectory?: string | undefined;
+  /** For wrong-directory/owned-wrong-location: number of wikilinks that reference this file */
+  wikilinkCount?: number | undefined;
 }
 
 /**
@@ -133,6 +139,7 @@ export interface AuditOptions {
   output?: string;
   fix?: boolean;
   auto?: boolean;
+  execute?: boolean;
   allowField?: string[];
 }
 
@@ -162,6 +169,8 @@ export interface AuditRunOptions {
 export interface FixContext {
   schema: LoadedSchema;
   vaultDir: string;
+  /** Whether destructive operations (file moves) should be executed */
+  execute?: boolean;
 }
 
 // ============================================================================

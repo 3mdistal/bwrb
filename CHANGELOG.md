@@ -4,6 +4,25 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Audit --fix Phase 1: Core directory and type fixes** (#152, #268)
+  - `wrong-directory` issues are now auto-fixable with `--execute` flag
+    - Files in wrong directories are automatically moved to correct location based on type
+    - Wikilinks pointing to moved files are automatically updated
+    - Shows warning with wikilink count before executing moves
+  - `owned-wrong-location` issues are now auto-fixable with `--execute` flag
+    - Owned notes in wrong locations are moved to correct owner's directory
+    - Wikilinks are updated automatically
+  - `invalid-type` issues now have interactive fix support
+    - Prompts for type selection from available types
+    - Shows suggestions for similar type names (typos)
+  - `parent-cycle` issues now have interactive fix support
+    - Detects cycles in recursive type parent references
+    - Offers to clear parent field or select different parent
+  - New `--execute` flag for audit command enables destructive operations (file moves)
+  - JSON output now includes additional issue metadata: `expectedDirectory`, `currentDirectory`, `cyclePath`, `ownerPath`, `ownedNotePath`
+
 ### Changed
 
 - **Consolidated CLI reference documentation** (#257)
