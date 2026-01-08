@@ -138,6 +138,95 @@ describe('targeting', () => {
     });
   });
 
+  describe('filterByPath normalization', () => {
+    // Focused tests for path pattern normalization edge cases
+    // See: https://github.com/3mdistal/bwrb/issues/208
+
+    const mockFiles: ManagedFile[] = [
+      { path: '/vault/Ideas/Sample.md', relativePath: 'Ideas/Sample.md' },
+      { path: '/vault/Ideas/nested/Deep.md', relativePath: 'Ideas/nested/Deep.md' },
+      { path: '/vault/daily.notes/2024-01-01.md', relativePath: 'daily.notes/2024-01-01.md' },
+      { path: '/vault/daily.notes/nested/note.md', relativePath: 'daily.notes/nested/note.md' },
+      { path: '/vault/root.md', relativePath: 'root.md' },
+    ];
+
+    it('normalizes trailing slash to recursive glob (Ideas/)', () => {
+      // 'Ideas/' should normalize to 'Ideas/**/*.md'
+      const result = filterByPath(mockFiles, 'Ideas/');
+      expect(result).toHaveLength(2);
+      expect(result.map(f => f.relativePath)).toContain('Ideas/Sample.md');
+      expect(result.map(f => f.relativePath)).toContain('Ideas/nested/Deep.md');
+    });
+
+    it('normalizes bare directory name to recursive glob (Ideas)', () => {
+      // 'Ideas' should normalize to 'Ideas/**/*.md'
+      const result = filterByPath(mockFiles, 'Ideas');
+      expect(result).toHaveLength(2);
+      expect(result.map(f => f.relativePath)).toContain('Ideas/Sample.md');
+      expect(result.map(f => f.relativePath)).toContain('Ideas/nested/Deep.md');
+    });
+
+    it('normalizes double-star glob to add extension (Ideas/**)', () => {
+      // 'Ideas/**' should normalize to 'Ideas/**/*.md'
+      const result = filterByPath(mockFiles, 'Ideas/**');
+      expect(result).toHaveLength(2);
+      expect(result.every(f => f.relativePath.startsWith('Ideas/'))).toBe(true);
+    });
+
+    it('uses glob with extension as-is (Ideas/*.md)', () => {
+      // 'Ideas/*.md' should NOT be normalized - only matches direct children
+      const result = filterByPath(mockFiles, 'Ideas/*.md');
+      expect(result).toHaveLength(1);
+      expect(result[0].relativePath).toBe('Ideas/Sample.md');
+      // Should NOT match nested files
+      expect(result.map(f => f.relativePath)).not.toContain('Ideas/nested/Deep.md');
+    });
+
+    it('handles directories with dots correctly (daily.notes/)', () => {
+      // 'daily.notes/' should normalize to 'daily.notes/**/*.md'
+      // The trailing slash indicates it's a directory, not a file extension
+      const result = filterByPath(mockFiles, 'daily.notes/');
+      expect(result).toHaveLength(2);
+      expect(result.map(f => f.relativePath)).toContain('daily.notes/2024-01-01.md');
+      expect(result.map(f => f.relativePath)).toContain('daily.notes/nested/note.md');
+    });
+
+    it('uses top-level glob pattern as-is (*.md)', () => {
+      // '*.md' should NOT be normalized - it already has an extension
+      // Note: Due to matchBase: true in minimatch, this matches any .md file anywhere
+      // This is existing behavior - the test verifies normalization doesn't add /**
+      const result = filterByPath(mockFiles, '*.md');
+      expect(result).toHaveLength(5); // All .md files (matchBase behavior)
+    });
+
+    it('uses recursive glob with extension as-is (**/*.md)', () => {
+      // '**/*.md' should NOT be normalized - already complete
+      const result = filterByPath(mockFiles, '**/*.md');
+      expect(result).toHaveLength(5); // All files
+    });
+
+    it('uses glob pattern without extension as-is (Ideas/*)', () => {
+      // 'Ideas/*' should NOT be normalized - it's a glob pattern
+      // This matches direct children only (files at Ideas/ level)
+      const result = filterByPath(mockFiles, 'Ideas/*');
+      expect(result).toHaveLength(1);
+      expect(result[0].relativePath).toBe('Ideas/Sample.md');
+      // Should NOT match nested files (nested/ is a directory, not a file)
+      expect(result.map(f => f.relativePath)).not.toContain('Ideas/nested/Deep.md');
+    });
+
+    // Document known limitation: bare directory names with dots are ambiguous
+    it('treats bare directory with dot as file pattern (daily.notes without slash)', () => {
+      // 'daily.notes' (no trailing slash) is ambiguous - could be directory or file
+      // It's treated as a file pattern because the last segment has what looks like an extension
+      // Users should use 'daily.notes/' to explicitly target directories with dots
+      const result = filterByPath(mockFiles, 'daily.notes');
+      // With current implementation, this won't match because 'daily.notes' doesn't
+      // normalize (looks like it has an extension), and there's no file named exactly 'daily.notes'
+      expect(result).toHaveLength(0);
+    });
+  });
+
   describe('validateDestructiveTargeting', () => {
     it('fails without any targeting', () => {
       const result = validateDestructiveTargeting({});

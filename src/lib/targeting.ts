@@ -186,24 +186,58 @@ export function parsePositionalArg(
 // ============================================================================
 
 /**
+ * Check if a pattern's last segment looks like it has a file extension.
+ * e.g., '*.md', 'file.md', 'path/to/*.md' → true
+ * e.g., 'Ideas', 'daily.notes/', 'Projects/**' → false
+ */
+function hasFileExtension(pattern: string): boolean {
+  const lastSegment = pattern.split('/').pop() || pattern;
+  // Match: dot followed by word characters at end (e.g., .md, .txt)
+  // This correctly handles: *.md, file.md, but not: daily.notes (no extension at end)
+  return /\.\w+$/.test(lastSegment);
+}
+
+/**
+ * Check if a pattern contains glob metacharacters (*, ?, [).
+ * Used to distinguish directory paths from glob patterns.
+ */
+function hasGlobMetacharacters(pattern: string): boolean {
+  return /[*?[]/.test(pattern);
+}
+
+/**
  * Filter files by path glob pattern.
+ *
+ * Normalizes directory-like patterns to match .md files:
+ * - 'Ideas/' -> 'Ideas/**\/*.md' (trailing slash = directory)
+ * - 'Ideas' -> 'Ideas/**\/*.md' (no extension, no globs = directory)
+ * - 'Ideas/**' -> 'Ideas/**\/*.md' (glob without extension)
+ * - 'Ideas/*.md' -> 'Ideas/*.md' (already has extension)
+ * - 'Ideas/*' -> 'Ideas/*' (glob pattern, used as-is)
+ * - 'daily.notes/' -> 'daily.notes/**\/*.md' (trailing slash = directory, even with dots)
+ *
+ * Note: 'daily.notes' (no trailing slash, dot in name) is ambiguous and treated
+ * as a file pattern. Use 'daily.notes/' to explicitly target a directory with
+ * dots in its name.
  */
 export function filterByPath(
   files: ManagedFile[],
   pathPattern: string
 ): ManagedFile[] {
-  // Normalize the pattern - if it doesn't have an extension, match .md files
   let pattern = pathPattern;
-  if (!pattern.includes('.') && !pattern.endsWith('*')) {
+
+  // Normalize directory-like patterns to match .md files
+  if (pattern.endsWith('/')) {
+    // Trailing slash explicitly indicates directory
+    pattern = pattern + '**/*.md';
+  } else if (pattern.endsWith('**')) {
     // Pattern like 'Projects/**' should match 'Projects/**/*.md'
-    if (pattern.endsWith('/')) {
-      pattern = pattern + '**/*.md';
-    } else if (pattern.endsWith('**')) {
-      pattern = pattern + '/*.md';
-    } else {
-      // Pattern like 'Projects' should match 'Projects/**/*.md'
-      pattern = pattern + '/**/*.md';
-    }
+    pattern = pattern + '/*.md';
+  } else if (!hasFileExtension(pattern) && !hasGlobMetacharacters(pattern)) {
+    // No file extension and no glob characters - treat as directory
+    // Pattern like 'Projects' should match 'Projects/**/*.md'
+    // But 'Ideas/*' stays as-is (it has a glob character)
+    pattern = pattern + '/**/*.md';
   }
 
   return files.filter(file => {
