@@ -49,7 +49,7 @@ export function registerNewFieldCommand(newCommand: Command): void {
   newCommand
     .command('field [type] [name]')
     .description('Add a field to a type')
-    .option('-o, --output <format>', 'Output format: text (default) or json')
+    .option('--output <format>', 'Output format: text (default) or json')
     .action(async (typeName: string | undefined, fieldName: string | undefined, options: NewFieldOptions, cmd: Command) => {
       const jsonMode = options.output === 'json';
 
@@ -146,7 +146,7 @@ export function registerEditFieldCommand(editCommand: Command): void {
   editCommand
     .command('field [type] [name]')
     .description('Edit a field definition')
-    .option('-o, --output <format>', 'Output format: text (default) or json')
+    .option('--output <format>', 'Output format: text (default) or json')
     .action(async (typeName: string | undefined, fieldName: string | undefined, options: EditFieldOptions, cmd: Command) => {
       const jsonMode = options.output === 'json';
 
@@ -282,7 +282,7 @@ export function registerDeleteFieldCommand(deleteCommand: Command): void {
   deleteCommand
     .command('field [type] [name]')
     .description('Delete a field from a type (dry-run by default)')
-    .option('-o, --output <format>', 'Output format: text (default) or json')
+    .option('--output <format>', 'Output format: text (default) or json')
     .option('-x, --execute', 'Actually perform the deletion (default is dry-run)')
     .action(async (typeName: string | undefined, fieldName: string | undefined, options: DeleteFieldOptions, cmd: Command) => {
       const jsonMode = options.output === 'json';

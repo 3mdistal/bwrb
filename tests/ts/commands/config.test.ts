@@ -44,7 +44,7 @@ describe('config command', () => {
     });
 
     it('should output JSON when --output json is specified', async () => {
-      const result = await runCLI(['config', 'list', '-o', 'json'], vaultDir);
+      const result = await runCLI(['config', 'list', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -73,7 +73,7 @@ describe('config command', () => {
       );
 
       try {
-        const result = await runCLI(['config', 'list', '-o', 'json'], tempVaultDir);
+        const result = await runCLI(['config', 'list', '--output', 'json'], tempVaultDir);
 
         expect(result.exitCode).toBe(0);
         const json = JSON.parse(result.stdout);
@@ -98,7 +98,7 @@ describe('config command', () => {
     });
 
     it('should output JSON for specific option', async () => {
-      const result = await runCLI(['config', 'list', 'link_format', '-o', 'json'], vaultDir);
+      const result = await runCLI(['config', 'list', 'link_format', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -125,7 +125,7 @@ describe('config command', () => {
     });
 
     it('should output JSON error for unknown option', async () => {
-      const result = await runCLI(['config', 'list', 'nonexistent', '-o', 'json'], vaultDir);
+      const result = await runCLI(['config', 'list', 'nonexistent', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
@@ -167,7 +167,7 @@ describe('config command', () => {
       expect(result.stdout).toContain('Set link_format');
 
       // Verify the change persisted
-      const verifyResult = await runCLI(['config', 'list', 'link_format', '-o', 'json'], tempVaultDir);
+      const verifyResult = await runCLI(['config', 'list', 'link_format', '--output', 'json'], tempVaultDir);
       const json = JSON.parse(verifyResult.stdout);
       expect(json.data.value).toBe('markdown');
     });
@@ -182,7 +182,7 @@ describe('config command', () => {
       expect(result.stdout).toContain('Set editor');
 
       // Verify the change persisted
-      const verifyResult = await runCLI(['config', 'list', 'editor', '-o', 'json'], tempVaultDir);
+      const verifyResult = await runCLI(['config', 'list', 'editor', '--output', 'json'], tempVaultDir);
       const json = JSON.parse(verifyResult.stdout);
       expect(json.data.value).toBe('nvim');
     });
@@ -220,7 +220,7 @@ describe('config command', () => {
 
     it('should output JSON on success when -o json is specified', async () => {
       const result = await runCLI(
-        ['config', 'edit', 'link_format', '--json', '"markdown"', '-o', 'json'],
+        ['config', 'edit', 'link_format', '--json', '"markdown"', '--output', 'json'],
         tempVaultDir
       );
 
@@ -233,7 +233,7 @@ describe('config command', () => {
 
     it('should output JSON on error when -o json is specified', async () => {
       const result = await runCLI(
-        ['config', 'edit', 'link_format', '--json', '"invalid"', '-o', 'json'],
+        ['config', 'edit', 'link_format', '--json', '"invalid"', '--output', 'json'],
         tempVaultDir
       );
 
@@ -280,7 +280,7 @@ describe('config command', () => {
 
     it('should reflect changes in subsequent list commands', async () => {
       // Initial state
-      const before = await runCLI(['config', 'list', '-o', 'json'], tempVaultDir);
+      const before = await runCLI(['config', 'list', '--output', 'json'], tempVaultDir);
       const beforeJson = JSON.parse(before.stdout);
       expect(beforeJson.data.link_format).toBe('wikilink'); // default
 
@@ -288,7 +288,7 @@ describe('config command', () => {
       await runCLI(['config', 'edit', 'link_format', '--json', '"markdown"'], tempVaultDir);
 
       // Verify change
-      const after = await runCLI(['config', 'list', '-o', 'json'], tempVaultDir);
+      const after = await runCLI(['config', 'list', '--output', 'json'], tempVaultDir);
       const afterJson = JSON.parse(after.stdout);
       expect(afterJson.data.link_format).toBe('markdown');
     });
@@ -320,7 +320,7 @@ describe('config command', () => {
     it('should show $EDITOR value when editor is not set', async () => {
       // The test vault doesn't have editor set explicitly
       // It should show whatever $EDITOR is set to in the environment
-      const result = await runCLI(['config', 'list', 'editor', '-o', 'json'], vaultDir);
+      const result = await runCLI(['config', 'list', 'editor', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -344,7 +344,7 @@ describe('config command', () => {
       );
 
       try {
-        const result = await runCLI(['config', 'list', 'editor', '-o', 'json'], tempVaultDir);
+        const result = await runCLI(['config', 'list', 'editor', '--output', 'json'], tempVaultDir);
 
         expect(result.exitCode).toBe(0);
         const json = JSON.parse(result.stdout);
@@ -382,7 +382,7 @@ describe('config command', () => {
       );
 
       try {
-        const result = await runCLI(['config', 'list', 'obsidian_vault', '-o', 'json'], tempVaultDir);
+        const result = await runCLI(['config', 'list', 'obsidian_vault', '--output', 'json'], tempVaultDir);
 
         expect(result.exitCode).toBe(0);
         const json = JSON.parse(result.stdout);
@@ -408,7 +408,7 @@ describe('config command', () => {
       );
 
       try {
-        const result = await runCLI(['config', 'list', 'obsidian_vault', '-o', 'json'], tempVaultDir);
+        const result = await runCLI(['config', 'list', 'obsidian_vault', '--output', 'json'], tempVaultDir);
 
         expect(result.exitCode).toBe(0);
         const json = JSON.parse(result.stdout);
@@ -444,7 +444,7 @@ describe('config command', () => {
       );
 
       try {
-        const result = await runCLI(['config', 'list', 'obsidian_vault', '-o', 'json'], tempVaultDir);
+        const result = await runCLI(['config', 'list', 'obsidian_vault', '--output', 'json'], tempVaultDir);
 
         expect(result.exitCode).toBe(0);
         const json = JSON.parse(result.stdout);
@@ -470,7 +470,7 @@ describe('config command', () => {
     });
 
     it('should show default_dashboard as undefined when not set', async () => {
-      const result = await runCLI(['config', 'list', 'default_dashboard', '-o', 'json'], vaultDir);
+      const result = await runCLI(['config', 'list', 'default_dashboard', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -499,7 +499,7 @@ describe('config command', () => {
         expect(result.stdout).toContain('Set default_dashboard');
 
         // Verify the change persisted
-        const verifyResult = await runCLI(['config', 'list', 'default_dashboard', '-o', 'json'], tempVaultDir);
+        const verifyResult = await runCLI(['config', 'list', 'default_dashboard', '--output', 'json'], tempVaultDir);
         const json = JSON.parse(verifyResult.stdout);
         expect(json.data.value).toBe('my-tasks');
       } finally {
@@ -547,7 +547,7 @@ describe('config command', () => {
       );
 
       try {
-        const result = await runCLI(['config', 'list', 'default_dashboard', '-o', 'json'], tempVaultDir);
+        const result = await runCLI(['config', 'list', 'default_dashboard', '--output', 'json'], tempVaultDir);
 
         expect(result.exitCode).toBe(0);
         const json = JSON.parse(result.stdout);
@@ -576,7 +576,7 @@ describe('config command', () => {
       );
 
       try {
-        const result = await runCLI(['config', 'list', '-o', 'json'], tempVaultDir);
+        const result = await runCLI(['config', 'list', '--output', 'json'], tempVaultDir);
 
         expect(result.exitCode).toBe(0);
         const json = JSON.parse(result.stdout);

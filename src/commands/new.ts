@@ -49,13 +49,14 @@ import {
 } from '../lib/output.js';
 import {
   findTemplateByName,
-  resolveTemplate,
+  resolveTemplateWithInheritance,
   processTemplateBody,
   validateConstraints,
   createScaffoldedInstances,
   getFilenamePattern,
   resolveFilenamePattern,
   type ScaffoldResult,
+  type InheritedTemplateResolution,
 } from '../lib/template.js';
 import { evaluateTemplateDefault } from '../lib/date-expression.js';
 import { expandStaticValue } from '../lib/local-date.js';
@@ -91,7 +92,7 @@ export const newCommand = new Command('new')
   .description('Create a new note (interactive type navigation if type omitted)')
   .argument('[type]', 'Type of note to create (e.g., idea, task)')
   .option('-t, --type <type>', 'Type of note to create (alternative to positional argument)')
-  .option('--open', 'Open the note after creation (uses BWRB_DEFAULT_APP or Obsidian)')
+  .option('-o, --open', 'Open the note after creation (uses BWRB_DEFAULT_APP or Obsidian)')
   .option('--json <frontmatter>', 'Create note non-interactively with JSON frontmatter')
   .option('--template <name>', 'Use a specific template (use "default" for default.md)')
   .option('--no-template', 'Skip template selection, use schema only')
@@ -200,25 +201,34 @@ Template management:
         process.exit(1);
       }
 
-      // Resolve template for interactive mode
-      let template: Template | null = null;
+      // Resolve template for interactive mode (with inheritance support)
+      let templateResolution: InheritedTemplateResolution = {
+        template: null,
+        mergedDefaults: {},
+        mergedConstraints: {},
+        mergedPromptFields: [],
+        shouldPrompt: false,
+        availableTemplates: [],
+      };
+      
       if (!options.noTemplate) {
         if (options.template) {
-          // --template <name>: Find specific template (use "default" for default.md)
-          template = await findTemplateByName(vaultDir, resolvedPath, options.template);
-          if (!template) {
+          // --template <name>: Find specific template
+          templateResolution = await resolveTemplateWithInheritance(vaultDir, resolvedPath, schema, {
+            templateName: options.template,
+          });
+          if (!templateResolution.template) {
             printError(`Template not found: ${options.template}`);
             process.exit(1);
           }
         } else {
-          // No flags: Auto-discover templates
-          const resolution = await resolveTemplate(vaultDir, resolvedPath, {});
-          template = resolution.template;
+          // No flags: Auto-discover templates with inheritance
+          templateResolution = await resolveTemplateWithInheritance(vaultDir, resolvedPath, schema, {});
           
-          if (resolution.shouldPrompt && resolution.availableTemplates.length > 0) {
-            // Multiple templates, no default - prompt user
+          if (templateResolution.shouldPrompt && templateResolution.availableTemplates.length > 0) {
+            // Multiple templates for this exact type, no default - prompt user
             const templateOptions = [
-              ...resolution.availableTemplates.map(t => 
+              ...templateResolution.availableTemplates.map((t: Template) => 
                 t.description ? `${t.name} - ${t.description}` : t.name
               ),
               '[No template]'
@@ -228,14 +238,30 @@ Template management:
               throw new UserCancelledError();
             }
             if (!selected.startsWith('[No template]')) {
-              const selectedName = selected.split(' - ')[0];
-              template = resolution.availableTemplates.find(t => t.name === selectedName) ?? null;
+              const selectedName = selected.split(' - ')[0]!;
+              const selectedTemplate = templateResolution.availableTemplates.find((t: Template) => t.name === selectedName);
+              if (selectedTemplate) {
+                // Re-resolve with the selected template to get proper inheritance merging
+                templateResolution = await resolveTemplateWithInheritance(vaultDir, resolvedPath, schema, {
+                  templateName: selectedName,
+                });
+              }
+            } else {
+              // User chose no template - reset to empty resolution
+              templateResolution = {
+                template: null,
+                mergedDefaults: {},
+                mergedConstraints: {},
+                mergedPromptFields: [],
+                shouldPrompt: false,
+                availableTemplates: [],
+              };
             }
           }
         }
       }
 
-      const filePath = await createNote(schema, vaultDir, resolvedPath, typeDef, template, {
+      const filePath = await createNote(schema, vaultDir, resolvedPath, typeDef, templateResolution, {
         owner: options.owner,
         standalone: options.standalone,
         noInstances: options.instances === false,
@@ -719,7 +745,7 @@ async function createNote(
   vaultDir: string,
   typePath: string,
   typeDef: ResolvedType,
-  template?: Template | null,
+  templateResolution: InheritedTemplateResolution,
   options?: { owner?: string | undefined; standalone?: boolean | undefined; noInstances?: boolean | undefined }
 ): Promise<string> {
   const segments = typePath.split('/');
@@ -728,9 +754,13 @@ async function createNote(
 
   printInfo(`\n=== New ${displayTypeName} ===`);
   
-  // Show template info if using one
+  // Show template info if using one (with inheritance source)
+  const template = templateResolution.template;
   if (template) {
-    printInfo(`Using template: ${template.name}${template.description ? ` - ${template.description}` : ''}`);
+    const inheritedSuffix = template.inheritedFrom 
+      ? ` (inherited from ${template.inheritedFrom})`
+      : '';
+    printInfo(`Using template: ${template.name}${template.description ? ` - ${template.description}` : ''}${inheritedSuffix}`);
   }
 
   // Check if this type can be owned
@@ -742,13 +772,13 @@ async function createNote(
     
     if (ownershipDecision.isOwned && ownershipDecision.owner) {
       // Create as owned note
-      return await createOwnedNote(schema, vaultDir, typePath, typeDef, template, ownershipDecision.owner, options?.noInstances ? { noInstances: true } : undefined);
+      return await createOwnedNote(schema, vaultDir, typePath, typeDef, templateResolution, ownershipDecision.owner, options?.noInstances ? { noInstances: true } : undefined);
     }
     // Fall through to standard creation if standalone
   }
 
   // Standard pooled mode
-  return await createPooledNote(schema, vaultDir, typePath, typeDef, template, options?.noInstances ? { noInstances: true } : undefined);
+  return await createPooledNote(schema, vaultDir, typePath, typeDef, templateResolution, options?.noInstances ? { noInstances: true } : undefined);
 }
 
 /**
@@ -759,7 +789,7 @@ async function createPooledNote(
   vaultDir: string,
   typePath: string,
   typeDef: ResolvedType,
-  template?: Template | null,
+  templateResolution: InheritedTemplateResolution,
   options?: { noInstances?: boolean }
 ): Promise<string> {
   // Get output directory
@@ -771,6 +801,7 @@ async function createPooledNote(
   const fullOutputDir = join(vaultDir, outputDir);
 
   // Check if we have a filename pattern
+  const template = templateResolution.template;
   const filenamePattern = getFilenamePattern(template ?? null, typeDef);
   
   let itemName: string;
@@ -780,7 +811,7 @@ async function createPooledNote(
   
   if (filenamePattern) {
     // Filename pattern exists: collect frontmatter first, then derive filename
-    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, template);
+    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, templateResolution);
     frontmatter = content.frontmatter;
     body = content.body;
     orderedFields = content.orderedFields;
@@ -811,7 +842,7 @@ async function createPooledNote(
     itemName = prompted;
     
     // Build frontmatter and body (may throw UserCancelledError)
-    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, template);
+    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, templateResolution);
     frontmatter = content.frontmatter;
     body = content.body;
     orderedFields = content.orderedFields;
@@ -855,9 +886,9 @@ async function createPooledNote(
 /**
  * Build frontmatter and body content for a note.
  * 
- * When a template is provided:
- * - Template defaults are used for fields (skip prompting)
- * - Fields in template.promptFields are still prompted
+ * When a template resolution is provided:
+ * - Merged defaults from inheritance chain are used (skip prompting)
+ * - Fields in merged promptFields are still prompted
  * - Template body is used instead of schema body_sections
  */
 async function buildNoteContent(
@@ -865,7 +896,7 @@ async function buildNoteContent(
   vaultDir: string,
   typePath: string,
   typeDef: ResolvedType,
-  template?: Template | null
+  templateResolution: InheritedTemplateResolution
 ): Promise<{ frontmatter: Record<string, unknown>; body: string; orderedFields: string[] }> {
   const frontmatter: Record<string, unknown> = {};
   const fields = getFieldsForType(schema, typePath);
@@ -876,23 +907,24 @@ async function buildNoteContent(
   // In the new inheritance model, type is auto-injected, not a field definition
   frontmatter['type'] = typeDef.name;
 
-  // Get template defaults and prompt-fields
-  const templateDefaults = template?.defaults ?? {};
-  const promptFields = new Set(template?.promptFields ?? []);
+  // Get merged defaults and prompt-fields from template inheritance chain
+  const template = templateResolution.template;
+  const mergedDefaults = templateResolution.mergedDefaults;
+  const promptFields = new Set(templateResolution.mergedPromptFields);
 
   for (const fieldName of orderedFields) {
     const field = fields[fieldName];
     if (!field) continue;
 
-    // Check if template provides a default for this field
-    const templateDefault = templateDefaults[fieldName];
-    const hasTemplateDefault = templateDefault !== undefined;
-    const shouldPrompt = !hasTemplateDefault || promptFields.has(fieldName);
+    // Check if merged defaults provide a value for this field
+    // (already evaluated during resolution)
+    const mergedDefault = mergedDefaults[fieldName];
+    const hasDefault = mergedDefault !== undefined;
+    const shouldPrompt = !hasDefault || promptFields.has(fieldName);
 
-    if (hasTemplateDefault && !shouldPrompt) {
-      // Use template default without prompting
-      // Evaluate date expressions like today() + '7d'
-      frontmatter[fieldName] = evaluateTemplateDefault(templateDefault, schema.config.dateFormat);
+    if (hasDefault && !shouldPrompt) {
+      // Use merged default without prompting (already evaluated)
+      frontmatter[fieldName] = mergedDefault;
     } else {
       // Prompt as normal
       const value = await promptField(schema, vaultDir, fieldName, field);
@@ -902,9 +934,10 @@ async function buildNoteContent(
     }
   }
 
-  // Validate template constraints (after all prompts, before creating note)
-  if (template?.constraints) {
-    const constraintResult = validateConstraints(frontmatter, template.constraints);
+  // Validate merged template constraints (after all prompts, before creating note)
+  const mergedConstraints = templateResolution.mergedConstraints;
+  if (Object.keys(mergedConstraints).length > 0) {
+    const constraintResult = validateConstraints(frontmatter, mergedConstraints);
     if (!constraintResult.valid) {
       printError('\nTemplate constraint validation failed:');
       for (const error of constraintResult.errors) {
@@ -1070,7 +1103,7 @@ async function createOwnedNote(
   vaultDir: string,
   typePath: string,
   typeDef: ResolvedType,
-  template: Template | null | undefined,
+  templateResolution: InheritedTemplateResolution,
   owner: OwnerNoteRef,
   options?: { noInstances?: boolean }
 ): Promise<string> {
@@ -1079,6 +1112,7 @@ async function createOwnedNote(
   printInfo(`Creating ${typeName} owned by ${owner.ownerName}`);
   
   // Check if we have a filename pattern
+  const template = templateResolution.template;
   const filenamePattern = getFilenamePattern(template ?? null, typeDef);
   
   let itemName: string;
@@ -1088,7 +1122,7 @@ async function createOwnedNote(
   
   if (filenamePattern) {
     // Filename pattern exists: collect frontmatter first, then derive filename
-    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, template);
+    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, templateResolution);
     frontmatter = content.frontmatter;
     body = content.body;
     orderedFields = content.orderedFields;
@@ -1119,7 +1153,7 @@ async function createOwnedNote(
     itemName = prompted;
     
     // Build frontmatter and body (may throw UserCancelledError)
-    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, template);
+    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, templateResolution);
     frontmatter = content.frontmatter;
     body = content.body;
     orderedFields = content.orderedFields;

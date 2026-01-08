@@ -1,49 +1,67 @@
-# Starlight Starter Kit: Basics
+# Bowerbird Documentation Site
 
-[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
+Documentation for [bwrb](https://github.com/3mdistal/bwrb), built with [Starlight](https://starlight.astro.build).
+
+**Live site**: https://bwrb.dev
+
+## Development
+
+```bash
+cd docs-site
+pnpm install
+pnpm dev        # Start dev server at localhost:4321
+pnpm build      # Build production site
+pnpm preview    # Preview production build
+```
+
+## Deployment
+
+The docs are hosted on Vercel and connected to GitHub.
+
+### Automatic Deployments
+
+Vercel is configured with an **Ignored Build Step** to only build when `docs-site/` changes:
+
+```bash
+git diff HEAD^ HEAD --quiet -- ./docs-site
+```
+
+This means:
+- PRs that only touch source code (`src/`, `tests/`) → **no Vercel build**
+- PRs that touch `docs-site/` → **Vercel builds automatically**
+
+### Manual Deployments
+
+If you need to trigger a manual deployment (e.g., after rate limiting):
+
+```bash
+cd docs-site
+vercel          # Deploy preview
+vercel --prod   # Deploy to production
+```
+
+> **Note**: You need to be authenticated with the Vercel CLI (`vercel login`) and have access to the project.
+
+### Rate Limiting
+
+Vercel's free plan has build limits. The Ignored Build Step helps conserve builds by skipping deployments for non-docs changes. If you hit the rate limit:
+
+1. Wait for the cooldown period (shown in Vercel dashboard)
+2. Use manual deployment when ready
+3. Consider batching docs changes to reduce build frequency
+
+## Project Structure
 
 ```
-npm create astro@latest -- --template starlight
-```
-
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
-
-## 🚀 Project Structure
-
-Inside of your Astro + Starlight project, you'll see the following folders and files:
-
-```
-.
-├── public/
+docs-site/
 ├── src/
-│   ├── assets/
 │   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
+│   │   └── docs/          # Markdown documentation pages
+│   └── assets/            # Images and static assets
+├── public/                # Favicons, robots.txt
+├── astro.config.mjs       # Astro + Starlight config
+├── vercel.json            # Vercel deployment config
+└── package.json
 ```
 
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
-
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
-
-Static assets, like favicons, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+Documentation pages in `src/content/docs/` are exposed as routes based on their file path.

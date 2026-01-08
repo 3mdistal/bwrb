@@ -17,6 +17,11 @@ import {
   createScaffoldedInstances,
   getFilenamePattern,
   resolveFilenamePattern,
+  findDefaultTemplateWithInheritance,
+  getDefaultTemplateChain,
+  mergeTemplateDefaults,
+  resolveTemplateWithInheritance,
+  getInheritedTemplates,
 } from '../../../src/lib/template.js';
 import { resolveSchema } from '../../../src/lib/schema.js';
 import type { Schema, LoadedSchema } from '../../../src/types/schema.js';
@@ -1250,6 +1255,481 @@ Template body here.
       expect(result.resolved).toBe(true);
       expect(result.filename).toBe('a, b, c');
       expect(result.missingFields).toEqual([]);
+    });
+  });
+});
+
+// ============================================================================
+// Template Inheritance Tests
+// ============================================================================
+
+describe('template inheritance', () => {
+  let tempDir: string;
+  let schema: LoadedSchema;
+
+  // Schema with type hierarchy for inheritance testing:
+  // meta -> objective -> task
+  const testSchemaRaw: Schema = {
+    version: 2,
+    types: {
+      meta: {
+        fields: {
+          creation_date: { prompt: 'date' },
+        },
+      },
+      objective: {
+        extends: 'meta',
+        output_dir: 'Objectives',
+        fields: {
+          status: { prompt: 'select', options: ['not-started', 'in-progress', 'done'], default: 'not-started' },
+        },
+      },
+      task: {
+        extends: 'objective',
+        output_dir: 'Objectives/Tasks',
+        fields: {
+          priority: { prompt: 'select', options: ['low', 'medium', 'high'], default: 'medium' },
+        },
+      },
+      idea: {
+        extends: 'meta',
+        output_dir: 'Ideas',
+        fields: {
+          category: { prompt: 'text' },
+        },
+      },
+    },
+  };
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'template-inherit-test-'));
+    schema = resolveSchema(testSchemaRaw);
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  describe('findDefaultTemplateWithInheritance', () => {
+    it('returns own default template when it exists', async () => {
+      await mkdir(join(tempDir, '.bwrb/templates/task'), { recursive: true });
+      await writeFile(
+        join(tempDir, '.bwrb/templates/task', 'default.md'),
+        `---
+type: template
+template-for: task
+defaults:
+  priority: high
+---
+Task template.
+`
+      );
+
+      const result = await findDefaultTemplateWithInheritance(tempDir, 'task', schema);
+
+      expect(result).not.toBeNull();
+      expect(result?.name).toBe('default');
+      expect(result?.inheritedFrom).toBeUndefined();
+      expect(result?.defaults?.priority).toBe('high');
+    });
+
+    it('inherits default template from parent when child has none', async () => {
+      await mkdir(join(tempDir, '.bwrb/templates/objective'), { recursive: true });
+      await writeFile(
+        join(tempDir, '.bwrb/templates/objective', 'default.md'),
+        `---
+type: template
+template-for: objective
+defaults:
+  status: in-progress
+---
+Objective template.
+`
+      );
+
+      const result = await findDefaultTemplateWithInheritance(tempDir, 'task', schema);
+
+      expect(result).not.toBeNull();
+      expect(result?.name).toBe('default');
+      expect(result?.inheritedFrom).toBe('objective');
+      expect(result?.defaults?.status).toBe('in-progress');
+    });
+
+    it('inherits default template from grandparent when parent has none', async () => {
+      await mkdir(join(tempDir, '.bwrb/templates/meta'), { recursive: true });
+      await writeFile(
+        join(tempDir, '.bwrb/templates/meta', 'default.md'),
+        `---
+type: template
+template-for: meta
+defaults:
+  creation_date: "@today"
+---
+Meta template.
+`
+      );
+
+      const result = await findDefaultTemplateWithInheritance(tempDir, 'task', schema);
+
+      expect(result).not.toBeNull();
+      expect(result?.name).toBe('default');
+      expect(result?.inheritedFrom).toBe('meta');
+    });
+
+    it('returns null when no default template exists in chain', async () => {
+      const result = await findDefaultTemplateWithInheritance(tempDir, 'task', schema);
+      expect(result).toBeNull();
+    });
+
+    it('prefers own default over inherited', async () => {
+      // Create templates at multiple levels
+      await mkdir(join(tempDir, '.bwrb/templates/meta'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/task'), { recursive: true });
+      
+      await writeFile(
+        join(tempDir, '.bwrb/templates/meta', 'default.md'),
+        `---
+type: template
+template-for: meta
+defaults:
+  creation_date: "@today"
+---
+`
+      );
+      await writeFile(
+        join(tempDir, '.bwrb/templates/task', 'default.md'),
+        `---
+type: template
+template-for: task
+defaults:
+  priority: high
+---
+`
+      );
+
+      const result = await findDefaultTemplateWithInheritance(tempDir, 'task', schema);
+
+      expect(result?.inheritedFrom).toBeUndefined();
+      expect(result?.defaults?.priority).toBe('high');
+    });
+  });
+
+  describe('getDefaultTemplateChain', () => {
+    it('returns empty array when no templates exist', async () => {
+      const chain = await getDefaultTemplateChain(tempDir, 'task', schema);
+      expect(chain).toEqual([]);
+    });
+
+    it('returns templates from all levels in chain (root-first)', async () => {
+      // Create templates at multiple levels
+      await mkdir(join(tempDir, '.bwrb/templates/meta'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/objective'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/task'), { recursive: true });
+      
+      await writeFile(
+        join(tempDir, '.bwrb/templates/meta', 'default.md'),
+        `---
+type: template
+template-for: meta
+defaults:
+  creation_date: "@today"
+---
+`
+      );
+      await writeFile(
+        join(tempDir, '.bwrb/templates/objective', 'default.md'),
+        `---
+type: template
+template-for: objective
+defaults:
+  status: in-progress
+---
+`
+      );
+      await writeFile(
+        join(tempDir, '.bwrb/templates/task', 'default.md'),
+        `---
+type: template
+template-for: task
+defaults:
+  priority: high
+---
+`
+      );
+
+      const chain = await getDefaultTemplateChain(tempDir, 'task', schema);
+
+      expect(chain).toHaveLength(3);
+      // Should be root-first order
+      expect(chain[0]?.templateFor).toBe('meta');
+      expect(chain[0]?.inheritedFrom).toBe('meta');
+      expect(chain[1]?.templateFor).toBe('objective');
+      expect(chain[1]?.inheritedFrom).toBe('objective');
+      expect(chain[2]?.templateFor).toBe('task');
+      expect(chain[2]?.inheritedFrom).toBeUndefined(); // Own template
+    });
+
+    it('skips levels without templates', async () => {
+      // Only create meta and task templates, not objective
+      await mkdir(join(tempDir, '.bwrb/templates/meta'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/task'), { recursive: true });
+      
+      await writeFile(
+        join(tempDir, '.bwrb/templates/meta', 'default.md'),
+        `---
+type: template
+template-for: meta
+defaults:
+  creation_date: "@today"
+---
+`
+      );
+      await writeFile(
+        join(tempDir, '.bwrb/templates/task', 'default.md'),
+        `---
+type: template
+template-for: task
+defaults:
+  priority: high
+---
+`
+      );
+
+      const chain = await getDefaultTemplateChain(tempDir, 'task', schema);
+
+      expect(chain).toHaveLength(2);
+      expect(chain[0]?.templateFor).toBe('meta');
+      expect(chain[1]?.templateFor).toBe('task');
+    });
+  });
+
+  describe('mergeTemplateDefaults', () => {
+    it('merges defaults from chain with child overriding parent', () => {
+      const templates = [
+        { 
+          name: 'default', 
+          templateFor: 'meta', 
+          path: '/path/meta/default.md', 
+          body: '', 
+          defaults: { creation_date: '2025-01-01', status: 'draft' },
+          inheritedFrom: 'meta',
+        },
+        { 
+          name: 'default', 
+          templateFor: 'task', 
+          path: '/path/task/default.md', 
+          body: '', 
+          defaults: { status: 'not-started', priority: 'high' },
+          inheritedFrom: undefined,
+        },
+      ];
+
+      const merged = mergeTemplateDefaults(templates, 'YYYY-MM-DD');
+
+      expect(merged.creation_date).toBe('2025-01-01');
+      expect(merged.status).toBe('not-started'); // Child overrides parent
+      expect(merged.priority).toBe('high');
+    });
+
+    it('returns empty object for empty chain', () => {
+      const merged = mergeTemplateDefaults([], 'YYYY-MM-DD');
+      expect(merged).toEqual({});
+    });
+  });
+
+  describe('resolveTemplateWithInheritance', () => {
+    it('returns merged defaults from inheritance chain', async () => {
+      await mkdir(join(tempDir, '.bwrb/templates/meta'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/task'), { recursive: true });
+      
+      await writeFile(
+        join(tempDir, '.bwrb/templates/meta', 'default.md'),
+        `---
+type: template
+template-for: meta
+defaults:
+  creation_date: "2025-01-01"
+  status: draft
+---
+`
+      );
+      await writeFile(
+        join(tempDir, '.bwrb/templates/task', 'default.md'),
+        `---
+type: template
+template-for: task
+defaults:
+  status: not-started
+  priority: high
+---
+`
+      );
+
+      const result = await resolveTemplateWithInheritance(tempDir, 'task', schema, {});
+
+      expect(result.template).not.toBeNull();
+      expect(result.template?.inheritedFrom).toBeUndefined(); // Using own template
+      expect(result.mergedDefaults.creation_date).toBe('2025-01-01');
+      expect(result.mergedDefaults.status).toBe('not-started'); // Child overrides
+      expect(result.mergedDefaults.priority).toBe('high');
+    });
+
+    it('uses inherited template when child has none', async () => {
+      await mkdir(join(tempDir, '.bwrb/templates/meta'), { recursive: true });
+      
+      await writeFile(
+        join(tempDir, '.bwrb/templates/meta', 'default.md'),
+        `---
+type: template
+template-for: meta
+defaults:
+  creation_date: "2025-01-01"
+---
+`
+      );
+
+      const result = await resolveTemplateWithInheritance(tempDir, 'task', schema, {});
+
+      expect(result.template).not.toBeNull();
+      expect(result.template?.inheritedFrom).toBe('meta');
+      expect(result.mergedDefaults.creation_date).toBe('2025-01-01');
+    });
+
+    it('skips templates when noTemplate is true', async () => {
+      await mkdir(join(tempDir, '.bwrb/templates/meta'), { recursive: true });
+      await writeFile(
+        join(tempDir, '.bwrb/templates/meta', 'default.md'),
+        `---
+type: template
+template-for: meta
+defaults:
+  creation_date: "2025-01-01"
+---
+`
+      );
+
+      const result = await resolveTemplateWithInheritance(tempDir, 'task', schema, { noTemplate: true });
+
+      expect(result.template).toBeNull();
+      expect(result.mergedDefaults).toEqual({});
+    });
+
+    it('finds specific template by name without inheritance', async () => {
+      await mkdir(join(tempDir, '.bwrb/templates/task'), { recursive: true });
+      await writeFile(
+        join(tempDir, '.bwrb/templates/task', 'bug-report.md'),
+        `---
+type: template
+template-for: task
+defaults:
+  priority: critical
+---
+`
+      );
+
+      const result = await resolveTemplateWithInheritance(tempDir, 'task', schema, { 
+        templateName: 'bug-report' 
+      });
+
+      expect(result.template?.name).toBe('bug-report');
+      expect(result.mergedDefaults.priority).toBe('critical');
+    });
+
+    it('prompts when multiple templates exist without default', async () => {
+      await mkdir(join(tempDir, '.bwrb/templates/task'), { recursive: true });
+      await writeFile(
+        join(tempDir, '.bwrb/templates/task', 'alpha.md'),
+        `---
+type: template
+template-for: task
+---
+`
+      );
+      await writeFile(
+        join(tempDir, '.bwrb/templates/task', 'beta.md'),
+        `---
+type: template
+template-for: task
+---
+`
+      );
+
+      const result = await resolveTemplateWithInheritance(tempDir, 'task', schema, {});
+
+      expect(result.template).toBeNull();
+      expect(result.shouldPrompt).toBe(true);
+      expect(result.availableTemplates).toHaveLength(2);
+    });
+  });
+
+  describe('getInheritedTemplates', () => {
+    it('returns empty array when no ancestors have templates', async () => {
+      const inherited = await getInheritedTemplates(tempDir, 'task', schema);
+      expect(inherited).toEqual([]);
+    });
+
+    it('returns default templates from ancestors', async () => {
+      await mkdir(join(tempDir, '.bwrb/templates/meta'), { recursive: true });
+      await mkdir(join(tempDir, '.bwrb/templates/objective'), { recursive: true });
+      
+      await writeFile(
+        join(tempDir, '.bwrb/templates/meta', 'default.md'),
+        `---
+type: template
+template-for: meta
+---
+`
+      );
+      await writeFile(
+        join(tempDir, '.bwrb/templates/objective', 'default.md'),
+        `---
+type: template
+template-for: objective
+---
+`
+      );
+
+      const inherited = await getInheritedTemplates(tempDir, 'task', schema);
+
+      expect(inherited).toHaveLength(2);
+      expect(inherited[0]?.inheritedFrom).toBe('objective');
+      expect(inherited[1]?.inheritedFrom).toBe('meta');
+    });
+
+    it('does not include templates from the type itself', async () => {
+      await mkdir(join(tempDir, '.bwrb/templates/task'), { recursive: true });
+      await writeFile(
+        join(tempDir, '.bwrb/templates/task', 'default.md'),
+        `---
+type: template
+template-for: task
+---
+`
+      );
+
+      const inherited = await getInheritedTemplates(tempDir, 'task', schema);
+
+      expect(inherited).toEqual([]);
+    });
+  });
+
+  describe('named templates do not inherit', () => {
+    it('findDefaultTemplateWithInheritance only finds default.md', async () => {
+      await mkdir(join(tempDir, '.bwrb/templates/objective'), { recursive: true });
+      // Create a named template (not default.md) in parent
+      await writeFile(
+        join(tempDir, '.bwrb/templates/objective', 'special.md'),
+        `---
+type: template
+template-for: objective
+---
+`
+      );
+
+      const result = await findDefaultTemplateWithInheritance(tempDir, 'task', schema);
+
+      // Should not find the named template
+      expect(result).toBeNull();
     });
   });
 });

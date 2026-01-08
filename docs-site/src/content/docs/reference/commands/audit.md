@@ -44,7 +44,7 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 
 | Option | Description |
 |--------|-------------|
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 
 ## Issue Types
 

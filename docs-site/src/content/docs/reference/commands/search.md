@@ -24,7 +24,7 @@ Search operates in two modes:
 
 | Option | Description |
 |--------|-------------|
-| `-o, --output <format>` | Output format: `text`, `paths`, `link`, `content`, `json` |
+| `--output <format>` | Output format: `text`, `paths`, `link`, `content`, `json` |
 | `--preview` | Show file preview in fzf picker |
 | `--picker <mode>` | Selection mode: `auto`, `fzf`, `numbered`, `none` |
 
@@ -32,7 +32,7 @@ Search operates in two modes:
 
 | Option | Description |
 |--------|-------------|
-| `--open` | Open the selected note after search |
+| `-o, --open` | Open the selected note after search |
 | `--edit` | Edit the selected note's frontmatter after search |
 | `--json <patch>` | JSON patch data for `--edit` mode (non-interactive) |
 | `--app <mode>` | How to open: `system`, `editor`, `visual`, `obsidian`, `print` |

@@ -4,6 +4,16 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Changed (Breaking)
+
+- **Standardized `-o` flag to mean `--open` across all commands** (#239)
+  - Commands with `--open` now support `-o` shorthand: `new`, `edit`, `list`, `search`
+  - `-o` no longer means `--output` on any command
+  - Use `--output` (spelled out) for output format on all commands
+  - Migration: Replace `-o json` with `--output json` in scripts
+  - Example: `bwrb list task -o json` → `bwrb list task --output json`
+  - This improves CLI consistency: `-o` now always means "open" rather than having different meanings on different commands
+
 ### Added
 
 - **Audit --fix Phase 1: Core directory and type fixes** (#152, #268)

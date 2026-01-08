@@ -234,7 +234,7 @@ describe('schema command', () => {
       );
 
       try {
-        const result = await runCLI(['schema', 'list', 'type', 'task', '-o', 'json'], tempVaultDir);
+        const result = await runCLI(['schema', 'list', 'type', 'task', '--output', 'json'], tempVaultDir);
 
         expect(result.exitCode).toBe(0);
         const json = JSON.parse(result.stdout);
@@ -282,7 +282,7 @@ describe('schema command', () => {
       );
 
       try {
-        const result = await runCLI(['schema', 'list', 'type', 'meta', '-o', 'json'], tempVaultDir);
+        const result = await runCLI(['schema', 'list', 'type', 'meta', '--output', 'json'], tempVaultDir);
 
         expect(result.exitCode).toBe(0);
         const json = JSON.parse(result.stdout);
@@ -299,7 +299,7 @@ describe('schema command', () => {
     });
 
     it('should include extends field in JSON output', async () => {
-      const result = await runCLI(['schema', 'list', 'type', 'idea', '-o', 'json'], vaultDir);
+      const result = await runCLI(['schema', 'list', 'type', 'idea', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -706,7 +706,7 @@ describe('schema command', () => {
 
         try {
           const result = await runCLI(
-            ['schema', 'list', '--verbose', '-o', 'json'],
+            ['schema', 'list', '--verbose', '--output', 'json'],
             tempVaultDir
           );
 

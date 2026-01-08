@@ -25,7 +25,7 @@ bwrb dashboard inbox --output json   # Override output format
 
 | Option | Description |
 |--------|-------------|
-| `-o, --output <format>` | Override output format: `text`, `paths`, `tree`, `link`, `json` |
+| `--output <format>` | Override output format: `text`, `paths`, `tree`, `link`, `json` |
 
 ## Subcommands
 

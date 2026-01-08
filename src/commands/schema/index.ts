@@ -42,7 +42,7 @@ interface ValidateOptions {
 schemaCommand
   .command('validate')
   .description('Validate schema structure')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .action(async (options: ValidateOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 

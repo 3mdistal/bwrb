@@ -37,7 +37,7 @@ Examples:
 
 // schema list (no args - show full schema overview)
 listCommand
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .option('--verbose', 'Show all types with their fields inline')
   .action(async (options: ListCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
@@ -74,7 +74,7 @@ listCommand
 listCommand
   .command('types')
   .description('List all type names')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .action(async (options: ListCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
@@ -112,7 +112,7 @@ listCommand
 listCommand
   .command('fields')
   .description('List all fields across all types')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .action(async (options: ListCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
@@ -161,7 +161,7 @@ listCommand
 listCommand
   .command('type <name>')
   .description('Show details for a specific type')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .action(async (name: string, options: ListCommandOptions, cmd: Command) => {
     // Check both this command's options and global options
     const globalOpts = getGlobalOpts(cmd);

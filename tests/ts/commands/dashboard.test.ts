@@ -187,8 +187,8 @@ describe('dashboard command', () => {
       expect(result.stdout).toContain('Ideas/Sample Idea.md');
     });
 
-    it('should support -o shorthand for --output', async () => {
-      const result = await runCLI(['dashboard', 'default-output', '-o', 'link'], vaultDir);
+    it('should support --output flag to override format', async () => {
+      const result = await runCLI(['dashboard', 'default-output', '--output', 'link'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('[[Sample Idea]]');
@@ -410,7 +410,7 @@ describe('dashboard command', () => {
       });
 
       it('should support -o shorthand for --output', async () => {
-        const result = await runCLI(['dashboard', 'list', '-o', 'json'], vaultDir);
+        const result = await runCLI(['dashboard', 'list', '--output', 'json'], vaultDir);
 
         expect(result.exitCode).toBe(0);
         const json = JSON.parse(result.stdout);
@@ -1540,7 +1540,7 @@ describe('dashboard command', () => {
       });
 
       it('should require --force in JSON mode', async () => {
-        const result = await runCLI(['dashboard', 'delete', 'to-delete', '-o', 'json'], vaultDir);
+        const result = await runCLI(['dashboard', 'delete', 'to-delete', '--output', 'json'], vaultDir);
 
         expect(result.exitCode).not.toBe(0);
         const json = JSON.parse(result.stdout);
@@ -1552,7 +1552,7 @@ describe('dashboard command', () => {
     describe('JSON mode', () => {
       it('should return success JSON when deleting', async () => {
         const result = await runCLI(
-          ['dashboard', 'delete', 'to-delete', '--force', '-o', 'json'],
+          ['dashboard', 'delete', 'to-delete', '--force', '--output', 'json'],
           vaultDir
         );
 
@@ -1566,7 +1566,7 @@ describe('dashboard command', () => {
 
       it('should return error JSON when dashboard does not exist', async () => {
         const result = await runCLI(
-          ['dashboard', 'delete', 'nonexistent', '--force', '-o', 'json'],
+          ['dashboard', 'delete', 'nonexistent', '--force', '--output', 'json'],
           vaultDir
         );
 
@@ -1578,7 +1578,7 @@ describe('dashboard command', () => {
 
       it('should require name in JSON mode', async () => {
         const result = await runCLI(
-          ['dashboard', 'delete', '--force', '-o', 'json'],
+          ['dashboard', 'delete', '--force', '--output', 'json'],
           vaultDir
         );
 
@@ -1622,7 +1622,7 @@ describe('dashboard command', () => {
         await writeFile(schemaPath, JSON.stringify(schema, null, 2));
 
         const result = await runCLI(
-          ['dashboard', 'delete', 'to-delete', '--force', '-o', 'json'],
+          ['dashboard', 'delete', 'to-delete', '--force', '--output', 'json'],
           vaultDir
         );
 

@@ -37,7 +37,7 @@ Delete operates in two modes:
 | `-x, --execute` | Actually delete files (default is dry-run for bulk) |
 | `-f, --force` | Skip confirmation prompt (single-file mode) |
 | `--picker <mode>` | Selection mode: `auto`, `fzf`, `numbered`, `none` |
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 
 ## Safety: Two-Gate Model
 
@@ -70,7 +70,7 @@ bwrb delete "My Note"
 bwrb delete "My Note" --force
 
 # Scripting mode
-bwrb delete "My Note" -o json --force
+bwrb delete "My Note" --output json --force
 ```
 
 ### Bulk Mode
