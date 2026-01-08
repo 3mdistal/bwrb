@@ -54,7 +54,7 @@ bwrb config list [options] [option]
 
 | Option | Description |
 |--------|-------------|
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 
 ### Examples
 
@@ -93,7 +93,7 @@ bwrb config edit [options] [option]
 | Option | Description |
 |--------|-------------|
 | `--json <value>` | Set value directly (JSON mode) |
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 
 ### Examples
 

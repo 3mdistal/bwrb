@@ -170,7 +170,7 @@ Examples:
   .option('--limit <n>', 'Limit to n files')
   .option('--verbose', 'Show detailed changes per file')
   .option('--quiet', 'Only show summary')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .action(async (target: string | undefined, options: BulkCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 

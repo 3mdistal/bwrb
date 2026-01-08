@@ -68,7 +68,7 @@ bwrb schema list type [options] <name>
 
 | Option | Description |
 |--------|-------------|
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 
 ### Examples
 
@@ -107,7 +107,7 @@ bwrb schema validate [options]
 
 | Option | Description |
 |--------|-------------|
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 
 ### Description
 
@@ -152,7 +152,7 @@ bwrb schema diff [options]
 
 | Option | Description |
 |--------|-------------|
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 
 ### Description
 
@@ -199,7 +199,7 @@ bwrb schema migrate [options]
 |--------|-------------|
 | `-x, --execute` | Actually apply the migration (default is dry-run) |
 | `--no-backup` | Skip backup creation (not recommended) |
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 
 ### Description
 
@@ -254,7 +254,7 @@ bwrb schema history [options]
 | Option | Description |
 |--------|-------------|
 | `--limit <n>` | Number of entries to show (default: 10) |
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 
 ### Description
 

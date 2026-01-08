@@ -67,7 +67,7 @@ bwrb template list [options] [type] [name]
 
 | Option | Description |
 |--------|-------------|
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 
 ### Examples
 
@@ -213,7 +213,7 @@ bwrb template delete [options] [type] [name]
 | Option | Description |
 |--------|-------------|
 | `-f, --force` | Skip confirmation prompt |
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 
 ### Examples
 
@@ -228,7 +228,7 @@ bwrb template delete
 bwrb template delete task bug-report --force
 
 # Scripting mode
-bwrb template delete task bug-report -f -o json
+bwrb template delete task bug-report -f --output json
 ```
 
 ---
@@ -253,7 +253,7 @@ bwrb template validate [options] [type]
 
 | Option | Description |
 |--------|-------------|
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 
 ### Description
 

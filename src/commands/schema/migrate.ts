@@ -86,7 +86,7 @@ export function registerMigrationCommands(schemaCommand: Command): void {
   schemaCommand
     .command('diff')
     .description('Show pending schema changes since last migration')
-    .option('-o, --output <format>', 'Output format: text (default) or json')
+    .option('--output <format>', 'Output format: text (default) or json')
     .addHelpText('after', `
 Examples:
   bwrb schema diff              # Show what changed
@@ -162,7 +162,7 @@ Examples:
   schemaCommand
     .command('migrate')
     .description('Apply schema changes to existing notes')
-    .option('-o, --output <format>', 'Output format: text (default) or json')
+    .option('--output <format>', 'Output format: text (default) or json')
     .option('-x, --execute', 'Actually apply the migration (default is dry-run)')
     .option('--no-backup', 'Skip backup creation (not recommended)')
     .addHelpText('after', `
@@ -403,7 +403,7 @@ Examples:
   schemaCommand
     .command('history')
     .description('Show migration history')
-    .option('-o, --output <format>', 'Output format: text (default) or json')
+    .option('--output <format>', 'Output format: text (default) or json')
     .option('--limit <n>', 'Number of entries to show (default: 10)')
     .addHelpText('after', `
 Examples:

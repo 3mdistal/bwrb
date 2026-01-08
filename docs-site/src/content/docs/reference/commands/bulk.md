@@ -50,7 +50,7 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 |--------|-------------|
 | `--verbose` | Show detailed changes per file |
 | `--quiet` | Only show summary |
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 
 ## Safety: Two-Gate Model
 

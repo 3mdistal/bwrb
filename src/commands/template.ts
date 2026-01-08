@@ -125,7 +125,7 @@ async function promptTemplatePicker(
 templateCommand
   .command('list [type] [name]')
   .description('List templates, or show details if type and name provided')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .action(async (typePath: string | undefined, templateName: string | undefined, options: TemplateListOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
@@ -306,7 +306,7 @@ async function showTemplateDetails(
 templateCommand
   .command('validate [type]')
   .description('Validate templates against schema')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .action(async (typePath: string | undefined, options: TemplateValidateOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
@@ -1234,7 +1234,7 @@ templateCommand
   .command('delete [type] [name]')
   .description('Delete a template')
   .option('-f, --force', 'Skip confirmation prompt')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .action(async (typePath: string | undefined, templateName: string | undefined, options: TemplateDeleteOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 

@@ -28,7 +28,7 @@ The positional argument is auto-detected as type, path (contains `/`), or where 
 
 | Option | Description |
 |--------|-------------|
-| `-o, --output <format>` | Output format: `text`, `paths`, `tree`, `link`, `json` |
+| `--output <format>` | Output format: `text`, `paths`, `tree`, `link`, `json` |
 | `--fields <fields>` | Show frontmatter fields in a table (comma-separated) |
 | `-L, --depth <n>` | Limit tree depth |
 
@@ -36,7 +36,7 @@ The positional argument is auto-detected as type, path (contains `/`), or where 
 
 | Option | Description |
 |--------|-------------|
-| `--open` | Open the first result (or pick interactively) |
+| `-o, --open` | Open the first result (or pick interactively) |
 | `--app <mode>` | How to open: `system`, `editor`, `visual`, `obsidian`, `print` |
 | `--save-as <name>` | Save this query as a dashboard |
 | `--force` | Overwrite existing dashboard when using `--save-as` |

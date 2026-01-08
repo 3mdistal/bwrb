@@ -55,7 +55,7 @@ export function registerNewTypeCommand(newCommand: Command): void {
   newCommand
     .command('type [name]')
     .description('Create a new type')
-    .option('-o, --output <format>', 'Output format: text (default) or json')
+    .option('--output <format>', 'Output format: text (default) or json')
     .option('--fields <fields>', 'Comma-separated field definitions (name:type)')
     .option('--directory <dir>', 'Output directory for notes of this type')
     .option('--inherits <type>', 'Parent type to inherit from')
@@ -177,7 +177,7 @@ export function registerEditTypeCommand(editCommand: Command): void {
   editCommand
     .command('type [name]')
     .description('Edit a type definition')
-    .option('-o, --output <format>', 'Output format: text (default) or json')
+    .option('--output <format>', 'Output format: text (default) or json')
     .action(async (name: string | undefined, options: EditTypeOptions, cmd: Command) => {
       const jsonMode = options.output === 'json';
 
@@ -293,7 +293,7 @@ export function registerDeleteTypeCommand(deleteCommand: Command): void {
   deleteCommand
     .command('type [name]')
     .description('Delete a type (dry-run by default)')
-    .option('-o, --output <format>', 'Output format: text (default) or json')
+    .option('--output <format>', 'Output format: text (default) or json')
     .option('-x, --execute', 'Actually perform the deletion (default is dry-run)')
     .action(async (name: string | undefined, options: DeleteTypeOptions, cmd: Command) => {
       const jsonMode = options.output === 'json';

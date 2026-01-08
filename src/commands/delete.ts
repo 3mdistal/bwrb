@@ -141,7 +141,7 @@ export const deleteCommand = new Command('delete')
   // Original options
   .option('-f, --force', 'Skip confirmation prompt (single-file mode)')
   .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .addHelpText('after', `
 Modes:
   Single-file mode (default):

@@ -103,7 +103,7 @@ Examples:
   .option('--strict', 'Treat unknown fields as errors instead of warnings')
   .option('--only <issue-type>', 'Only report specific issue type')
   .option('--ignore <issue-type>', 'Ignore specific issue type')
-  .option('-o, --output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text (default) or json')
   .option('--fix', 'Interactive repair mode')
   .option('--auto', 'With --fix: automatically apply unambiguous fixes')
   .option('--execute', 'With --fix: execute destructive operations (file moves)')

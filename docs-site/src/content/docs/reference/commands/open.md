@@ -17,7 +17,7 @@ bwrb open [options] [query]
 |--------|-------------|
 | `-a, --app <mode>` | Application to open with |
 | `--picker <mode>` | Picker mode: `fzf`, `numbered`, `none` |
-| `-o, --output <format>` | Output format: `text`, `json` |
+| `--output <format>` | Output format: `text`, `json` |
 | `--preview` | Show preview in fzf picker |
 | `-t, --type <type>` | Filter by note type |
 | `-p, --path <glob>` | Filter by path pattern |
