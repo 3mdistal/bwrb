@@ -5,6 +5,8 @@
  * - Type name completion (--type/-t)
  * - Path completion (--path/-p)
  * - Command and option completion
+ * - Subcommand completion (schema, template, dashboard, completion)
+ * - Entity name completion (dashboard names, template names)
  * 
  * The completion system works via a runtime callback model:
  * 1. `bwrb completion <shell>` outputs a shell script
@@ -18,6 +20,8 @@ import { existsSync } from 'fs';
 import type { LoadedSchema } from '../types/schema.js';
 import { loadSchema, getConcreteTypeNames } from './schema.js';
 import { resolveVaultDir } from './vault.js';
+import { listDashboards } from './dashboard.js';
+import { findTemplates } from './template.js';
 
 // ============================================================================
 // Completion Context
@@ -35,15 +39,38 @@ export interface CompletionContext {
   current: string;
   /** The previous word (for option value completion) */
   previous: string;
-  /** The subcommand being used (if any) */
+  /** The main command being used (e.g., 'dashboard', 'template') */
   command: string | undefined;
+  /** Index of the command in words array (-1 if not found) */
+  commandIndex: number;
+  /** The subcommand if any (e.g., 'edit', 'delete' for 'dashboard edit') */
+  subcommand: string | undefined;
+  /** Index of the subcommand in words array (-1 if not found) */
+  subcommandIndex: number;
+  /** Index of positional argument being completed (0 = first positional after command/subcommand) */
+  positionalIndex: number;
 }
+
+/**
+ * Commands that have subcommands.
+ */
+const COMMANDS_WITH_SUBCOMMANDS = ['schema', 'template', 'dashboard', 'completion'];
+
+/**
+ * Subcommands for each parent command.
+ */
+const SUBCOMMANDS: Record<string, string[]> = {
+  schema: ['list', 'new', 'edit', 'delete', 'validate', 'diff', 'migrate', 'history'],
+  template: ['list', 'show', 'new', 'edit', 'delete', 'validate'],
+  dashboard: ['list', 'new', 'edit', 'delete'],
+  completion: ['bash', 'zsh', 'fish'],
+};
 
 /**
  * Parse completion request from argv.
  * 
  * The shell scripts pass the command line words after --completions.
- * Format: bwrb --completions bwrb <subcommand> [options...] <current>
+ * Format: bwrb --completions bwrb <command> [subcommand] [options...] <current>
  * 
  * The first word is 'bwrb' (the command name), which we skip.
  * The last word is always the one being completed (may be empty string).
@@ -68,18 +95,60 @@ export function parseCompletionRequest(argv: string[]): CompletionContext {
   const current = words[currentIndex] ?? '';
   const previous = currentIndex > 0 ? (words[currentIndex - 1] ?? '') : '';
   
-  // Find the subcommand (first word that doesn't start with -)
-  // Only look at words before the current one
+  // Find the command (first non-option word before current)
   let command: string | undefined;
+  let commandIndex = -1;
   for (let i = 0; i < words.length - 1; i++) {
     const word = words[i];
     if (word && !word.startsWith('-')) {
       command = word;
+      commandIndex = i;
       break;
     }
   }
   
-  return { words, currentIndex, current, previous, command };
+  // Find subcommand if the command has subcommands
+  let subcommand: string | undefined;
+  let subcommandIndex = -1;
+  if (command && COMMANDS_WITH_SUBCOMMANDS.includes(command)) {
+    const possibleSubcommands = SUBCOMMANDS[command] ?? [];
+    // Look for subcommand after the command
+    for (let i = commandIndex + 1; i < words.length - 1; i++) {
+      const word = words[i];
+      if (word && !word.startsWith('-') && possibleSubcommands.includes(word)) {
+        subcommand = word;
+        subcommandIndex = i;
+        break;
+      }
+    }
+  }
+  
+  // Calculate positional index (how many positional args after command/subcommand)
+  // A positional arg is a non-option word that isn't the command or subcommand
+  let positionalIndex = -1;
+  const startIndex = subcommandIndex >= 0 ? subcommandIndex + 1 : (commandIndex >= 0 ? commandIndex + 1 : 0);
+  
+  // Count positional arguments before the current word
+  let positionalCount = 0;
+  for (let i = startIndex; i < currentIndex; i++) {
+    const word = words[i];
+    // Skip options and their values
+    if (word?.startsWith('-')) {
+      // If this is an option that takes a value, skip the next word too
+      if (isTypeOption(word) || isPathOption(word) || isValueOption(word)) {
+        i++; // Skip the value
+      }
+      continue;
+    }
+    positionalCount++;
+  }
+  
+  // If current word doesn't start with -, it's a positional
+  if (!current.startsWith('-')) {
+    positionalIndex = positionalCount;
+  }
+  
+  return { words, currentIndex, current, previous, command, commandIndex, subcommand, subcommandIndex, positionalIndex };
 }
 
 // ============================================================================
@@ -180,6 +249,7 @@ const COMMANDS = [
   'bulk',
   'schema',
   'template',
+  'dashboard',
   'delete',
   'completion',
   'config',
@@ -199,6 +269,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
   bulk: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--set', '--vault', '--dry-run', '--yes', '-y', '--help'],
   schema: ['--vault', '--help'],
   template: ['--vault', '--help'],
+  dashboard: ['--output', '-o', '--vault', '--json', '--help'],
   delete: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--vault', '--yes', '-y', '--help'],
   completion: ['--help'],
   config: ['--output', '-o', '--vault', '--json', '--help'],
@@ -230,6 +301,54 @@ function isTypeOption(option: string): boolean {
  */
 function isPathOption(option: string): boolean {
   return option === '--path' || option === '-p';
+}
+
+/**
+ * Check if an option expects any value (used for positional counting).
+ */
+function isValueOption(option: string): boolean {
+  const valueOptions = [
+    '--type', '-t',
+    '--path', '-p', 
+    '--where', '-w',
+    '--output', '-o',
+    '--template',
+    '--app',
+    '--set',
+    '--vault',
+    '--text',
+    '--default-output',
+    '--fields',
+    '--body',
+  ];
+  return valueOptions.includes(option);
+}
+
+// ============================================================================
+// Entity Name Completion
+// ============================================================================
+
+/**
+ * Get dashboard name completions.
+ */
+async function getDashboardCompletions(vaultDir: string): Promise<string[]> {
+  try {
+    return await listDashboards(vaultDir);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get template name completions for a given type.
+ */
+async function getTemplateNameCompletions(vaultDir: string, typePath: string): Promise<string[]> {
+  try {
+    const templates = await findTemplates(vaultDir, typePath);
+    return templates.map(t => t.name);
+  } catch {
+    return [];
+  }
 }
 
 // ============================================================================
@@ -278,25 +397,169 @@ export async function handleCompletionRequest(
   
   // If current word starts with -, complete options
   if (ctx.current.startsWith('-')) {
-    const options = ctx.command 
+    const opts = ctx.command 
       ? getOptionCompletions(ctx.command)
       : ['--vault', '--help', '--version'];
-    return filterByPrefix(options, ctx.current);
+    return filterByPrefix(opts, ctx.current);
   }
   
-  // If we have a command and it's schema or template, complete subcommands
-  if (ctx.command === 'schema') {
-    return filterByPrefix(['list', 'new', 'edit', 'delete', 'validate', 'diff', 'migrate', 'history'], ctx.current);
+  // === Dashboard command ===
+  if (ctx.command === 'dashboard') {
+    // If no subcommand yet, complete with subcommands OR dashboard names
+    if (!ctx.subcommand) {
+      // First positional could be a subcommand or a dashboard name
+      if (ctx.positionalIndex === 0) {
+        try {
+          const vaultDir = resolveVaultDir(options);
+          const subcommands = SUBCOMMANDS['dashboard'] ?? [];
+          const dashboardNames = await getDashboardCompletions(vaultDir);
+          // Combine subcommands and dashboard names (subcommands first)
+          const all = [...subcommands, ...dashboardNames];
+          return filterByPrefix(all, ctx.current);
+        } catch {
+          return filterByPrefix(SUBCOMMANDS['dashboard'] ?? [], ctx.current);
+        }
+      }
+    }
+    
+    // If subcommand is edit or delete, complete with dashboard names
+    if (ctx.subcommand === 'edit' || ctx.subcommand === 'delete') {
+      if (ctx.positionalIndex === 0) {
+        try {
+          const vaultDir = resolveVaultDir(options);
+          return filterByPrefix(await getDashboardCompletions(vaultDir), ctx.current);
+        } catch {
+          return [];
+        }
+      }
+    }
+    
+    return [];
   }
+  
+  // === Template command ===
   if (ctx.command === 'template') {
-    return filterByPrefix(['list', 'show', 'new', 'edit', 'validate'], ctx.current);
+    // If no subcommand yet, complete with subcommands
+    if (!ctx.subcommand) {
+      return filterByPrefix(SUBCOMMANDS['template'] ?? [], ctx.current);
+    }
+    
+    // For subcommands that take [type] [name]: show, edit, delete
+    if (['show', 'edit', 'delete'].includes(ctx.subcommand)) {
+      try {
+        const vaultDir = resolveVaultDir(options);
+        const schema = await loadSchema(vaultDir);
+        
+        // First positional: type name
+        if (ctx.positionalIndex === 0) {
+          return filterByPrefix(getTypeCompletions(schema), ctx.current);
+        }
+        
+        // Second positional: template name for the given type
+        if (ctx.positionalIndex === 1) {
+          // Find the type from previous words
+          const typeArg = findPreviousPositionalArg(ctx, 0);
+          if (typeArg) {
+            return filterByPrefix(await getTemplateNameCompletions(vaultDir, typeArg), ctx.current);
+          }
+        }
+      } catch {
+        return [];
+      }
+    }
+    
+    // For subcommands that take [type]: list, validate, new
+    if (['list', 'validate', 'new'].includes(ctx.subcommand)) {
+      if (ctx.positionalIndex === 0) {
+        try {
+          const vaultDir = resolveVaultDir(options);
+          const schema = await loadSchema(vaultDir);
+          return filterByPrefix(getTypeCompletions(schema), ctx.current);
+        } catch {
+          return [];
+        }
+      }
+    }
+    
+    return [];
   }
+  
+  // === Schema command ===
+  if (ctx.command === 'schema') {
+    // If no subcommand yet, complete with subcommands
+    if (!ctx.subcommand) {
+      return filterByPrefix(SUBCOMMANDS['schema'] ?? [], ctx.current);
+    }
+    
+    // For edit and delete: first arg is 'type' or 'field'
+    if (['edit', 'delete'].includes(ctx.subcommand)) {
+      if (ctx.positionalIndex === 0) {
+        return filterByPrefix(['type', 'field'], ctx.current);
+      }
+      // Second positional could be the type/field name
+      if (ctx.positionalIndex === 1) {
+        const whatArg = findPreviousPositionalArg(ctx, 0);
+        if (whatArg === 'type') {
+          try {
+            const vaultDir = resolveVaultDir(options);
+            const schema = await loadSchema(vaultDir);
+            return filterByPrefix(getTypeCompletions(schema), ctx.current);
+          } catch {
+            return [];
+          }
+        }
+        // For 'field', we'd need to know which type - leave empty for now
+      }
+    }
+    
+    // For new: first arg is 'type' or 'field'
+    if (ctx.subcommand === 'new') {
+      if (ctx.positionalIndex === 0) {
+        return filterByPrefix(['type', 'field'], ctx.current);
+      }
+    }
+    
+    return [];
+  }
+  
+  // === Completion command ===
   if (ctx.command === 'completion') {
-    return filterByPrefix(['bash', 'zsh', 'fish'], ctx.current);
+    if (!ctx.subcommand && ctx.positionalIndex === 0) {
+      return filterByPrefix(SUBCOMMANDS['completion'] ?? [], ctx.current);
+    }
+    return [];
   }
   
   // Default: no completions
   return [];
+}
+
+/**
+ * Find a previous positional argument by its index.
+ * Used to get context for multi-positional completions (e.g., type before template name).
+ */
+function findPreviousPositionalArg(ctx: CompletionContext, targetIndex: number): string | undefined {
+  // Use stored indices instead of indexOf to avoid fragility with duplicate words
+  const startIndex = ctx.subcommandIndex >= 0 
+    ? ctx.subcommandIndex + 1
+    : (ctx.commandIndex >= 0 ? ctx.commandIndex + 1 : 0);
+  
+  let positionalCount = 0;
+  for (let i = startIndex; i < ctx.currentIndex; i++) {
+    const word = ctx.words[i];
+    if (word?.startsWith('-')) {
+      // Skip option and its value
+      if (isValueOption(word)) {
+        i++;
+      }
+      continue;
+    }
+    if (positionalCount === targetIndex) {
+      return word;
+    }
+    positionalCount++;
+  }
+  return undefined;
 }
 
 // ============================================================================

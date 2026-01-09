@@ -267,7 +267,9 @@ bwrb list                         # Skips Archive/ (vault-wide scan respects exc
 
 ## Autocomplete
 
-Shell completion is required for `--type` and `--path`:
+Shell completion makes bwrb discoverable and reduces errors. Completion is offline (derived from local vault/config) and consistent across commands.
+
+### Option Value Completion
 
 ```bash
 bwrb list --type <TAB>
@@ -280,7 +282,55 @@ bwrb audit --path Reflections/<TAB>
 # Shows: Daily Notes/, Weekly/, ...
 ```
 
-Autocomplete makes the targeting model discoverable and reduces errors.
+### Entity Name Completion
+
+Commands that accept known entity names complete those names from local storage:
+
+**Dashboard names:**
+```bash
+bwrb dashboard <TAB>
+# Shows: list, new, edit, delete, my-tasks, active-ideas, ...
+
+bwrb dashboard edit <TAB>
+# Shows: my-tasks, active-ideas, ...
+
+bwrb dashboard delete <TAB>
+# Shows: my-tasks, active-ideas, ...
+```
+
+**Template names:**
+```bash
+bwrb template edit <TAB>
+# Shows: task, idea, objective, ...  (type names first)
+
+bwrb template edit task <TAB>
+# Shows: default, weekly, standup, ...  (template names for that type)
+
+bwrb template delete idea <TAB>
+# Shows: research, brainstorm, ...
+```
+
+**Schema entities:**
+```bash
+bwrb schema edit <TAB>
+# Shows: type, field
+
+bwrb schema edit type <TAB>
+# Shows: task, idea, objective, ...
+
+bwrb schema delete type <TAB>
+# Shows: task, idea, objective, ...
+```
+
+### Behavior Rules
+
+1. **Names only, no descriptions.** Completion shows entity names without inline descriptions. This keeps output clean and predictable.
+
+2. **Offline/local.** All completion data comes from `.bwrb/` (schema, dashboards, templates). No network calls.
+
+3. **Scoped completion.** Multi-positional commands (like `template edit <type> <name>`) complete the second argument based on the first. The type constrains which template names appear.
+
+4. **Subcommands before names.** For commands like `dashboard`, first-position completion shows subcommands AND entity names together, letting users either run a dashboard directly or navigate to a subcommand.
 
 ---
 
