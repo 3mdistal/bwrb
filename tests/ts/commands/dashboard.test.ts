@@ -259,7 +259,8 @@ describe('dashboard command', () => {
         dashboards: {
           'no-matches': {
             type: 'idea',
-            where: ["status == 'nonexistent-status'"],
+            // 'settled' is a valid status for idea, but no ideas in test vault have this status
+            where: ["status == 'settled'"],
           },
         },
       });

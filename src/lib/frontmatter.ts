@@ -4,6 +4,45 @@ import { readFile, writeFile, mkdir } from 'fs/promises';
 import { dirname } from 'path';
 import type { BodySection } from '../types/schema.js';
 
+/**
+ * Convert a YAML-parsed Date to YYYY-MM-DD string using UTC components.
+ *
+ * YAML dates like `2026-01-08` are parsed by gray-matter as midnight UTC
+ * (i.e., `2026-01-08T00:00:00.000Z`). To preserve the original date value,
+ * we must use UTC components, not local timezone components.
+ *
+ * Using local components would cause drift: in Pacific Time (UTC-8),
+ * midnight UTC on Jan 8 is actually 4pm on Jan 7 locally.
+ */
+function formatYamlDate(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeMatterValue(value: unknown): unknown {
+  if (value instanceof Date) {
+    // gray-matter parses YAML date-like strings (e.g., 2026-01-08) into Date objects at midnight UTC.
+    // Convert back to YYYY-MM-DD string using UTC components to preserve the original value.
+    return formatYamlDate(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeMatterValue(item));
+  }
+
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, inner] of Object.entries(value as Record<string, unknown>)) {
+      result[key] = normalizeMatterValue(inner);
+    }
+    return result;
+  }
+
+  return value;
+}
+
 export interface ParsedNote {
   frontmatter: Record<string, unknown>;
   body: string;
@@ -17,7 +56,7 @@ export async function parseNote(filePath: string): Promise<ParsedNote> {
   const content = await readFile(filePath, 'utf-8');
   const { data, content: body } = matter(content);
   return {
-    frontmatter: data as Record<string, unknown>,
+    frontmatter: normalizeMatterValue(data) as Record<string, unknown>,
     body,
     raw: content,
   };
@@ -28,7 +67,7 @@ export async function parseNote(filePath: string): Promise<ParsedNote> {
  */
 export function parseFrontmatter(content: string): Record<string, unknown> {
   const { data } = matter(content);
-  return data as Record<string, unknown>;
+  return normalizeMatterValue(data) as Record<string, unknown>;
 }
 
 /**

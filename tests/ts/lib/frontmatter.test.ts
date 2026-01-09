@@ -55,6 +55,17 @@ Body content`;
       const fm = parseFrontmatter(content);
       expect(fm).toEqual({ type: 'idea', status: 'raw' });
     });
+
+    it('should normalize YAML-parsed Date values to strings', () => {
+      const content = `---
+type: idea
+creation-date: 2026-01-08
+---
+Body content`;
+      const fm = parseFrontmatter(content);
+      expect(typeof fm['creation-date']).toBe('string');
+      expect(String(fm['creation-date'])).toBe('2026-01-08');
+    });
   });
 
   describe('serializeFrontmatter', () => {

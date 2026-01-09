@@ -251,11 +251,21 @@ describe('list command', () => {
     });
 
     it('should handle where expressions that match nothing', async () => {
-      // Where expressions that don't match any notes return empty results, not errors
-      const result = await runCLI(['list', 'idea', '--where', "status == 'nonexistent'"], vaultDir);
+      // Where expressions with valid values that don't match any notes return empty results
+      // Using 'settled' which is a valid status but has no matching notes
+      const result = await runCLI(['list', 'idea', '--where', "status == 'settled'"], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('No notes found matching');
+    });
+
+    it('should error on invalid select field value in where expression', async () => {
+      // When --type is specified, select field values are validated
+      const result = await runCLI(['list', 'idea', '--where', "status == 'nonexistent'"], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Invalid value 'nonexistent' for field 'status'");
+      expect(result.stderr).toContain('Valid options:');
     });
 
     it('should list all notes when no selectors provided (implicit --all for read-only)', async () => {

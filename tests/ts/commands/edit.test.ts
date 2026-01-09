@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFile, writeFile } from 'fs/promises';
+import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { createTestVault, cleanupTestVault, runCLI, TEST_SCHEMA } from '../fixtures/setup.js';
 
 // Note: The `edit` command uses the `prompts` library which requires a TTY.
 // Interactive tests are in edit.pty.test.ts.
@@ -32,9 +32,10 @@ describe('edit command', () => {
     });
 
     it('should detect subtype from objective-type field', async () => {
-      // Create a task file without date fields to avoid YAML date parsing issues
       const testFilePath = join(vaultDir, 'Objectives/Tasks/Test Task.md');
-      await writeFile(testFilePath, `---
+      await writeFile(
+        testFilePath,
+        `---
 type: objective
 objective-type: task
 status: backlog
@@ -44,7 +45,10 @@ status: backlog
 - [ ] Do something
 
 ## Notes
-`, 'utf-8');
+`,
+        'utf-8'
+      );
+
 
       const result = await runCLI(
         ['edit', 'Objectives/Tasks/Test Task.md', '--json', '{"status": "settled"}'],
@@ -86,6 +90,92 @@ status: backlog
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
+    });
+
+    it('should normalize YAML-parsed date values when editing', async () => {
+      // Override schema so task.creation-date is a date field for this test
+      const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+      const schema = JSON.parse(JSON.stringify(TEST_SCHEMA));
+      schema.types.task.fields['creation-date'] = { prompt: 'date' };
+      await writeFile(schemaPath, JSON.stringify(schema, null, 2), 'utf-8');
+
+      const testFilePath = join(vaultDir, 'Objectives/Tasks/Date Task.md');
+      await writeFile(
+        testFilePath,
+        `---
+type: task
+creation-date: 2026-01-08
+status: backlog
+---
+`,
+        'utf-8'
+      );
+
+      const result = await runCLI(
+        ['edit', 'Objectives/Tasks/Date Task.md', '--json', '{"status": "settled"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+
+      const content = await readFile(testFilePath, 'utf-8');
+      expect(content).toMatch(/creation-date:\s*"?2026-01-08"?/);
+      expect(content).not.toMatch(/creation-date:\s*"?2026-01-08T/);
+    });
+
+    it('should accept YAML date objects and normalize on edit', async () => {
+      // Override schema with a type that has a real date field.
+      await writeFile(
+        join(vaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(
+          {
+            version: 2,
+            types: {
+              'agent-task': {
+                output_dir: 'Agent Tasks',
+                fields: {
+                  type: { value: 'agent-task' },
+                  status: { prompt: 'select', options: ['queued', 'done'], default: 'queued', required: true },
+                  'creation-date': { prompt: 'date', required: true },
+                },
+                field_order: ['type', 'creation-date', 'status'],
+              },
+            },
+          },
+          null,
+          2
+        ),
+        'utf-8'
+      );
+
+      const agentTasksDir = join(vaultDir, 'Agent Tasks');
+      await mkdir(agentTasksDir, { recursive: true });
+
+      const filePath = join(agentTasksDir, 'Sample Agent Task.md');
+      await writeFile(
+        filePath,
+        `---
+type: agent-task
+creation-date: 2026-01-08
+status: queued
+---
+`,
+        'utf-8'
+      );
+
+      const result = await runCLI(
+        ['edit', filePath, '--json', '{"status": "done"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.updated).toContain('status');
+
+      const updated = await readFile(filePath, 'utf-8');
+      expect(updated).toContain('creation-date: 2026-01-08');
+      expect(updated).not.toContain('T00:00:00.000Z');
     });
   });
 

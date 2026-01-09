@@ -4,6 +4,46 @@ import { queryByType } from './vault.js';
 import { extractWikilinkTarget } from './audit/types.js';
 import { expandStaticValue, parseDate } from './local-date.js';
 
+export type NormalizedDateResult =
+  | { valid: true; value: string }
+  | { valid: false; error: string };
+
+export function normalizeToIsoDate(value: string): NormalizedDateResult {
+  const trimmed = value.trim();
+
+  // Already ISO date
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const parsed = parseDate(trimmed);
+    return parsed.valid
+      ? { valid: true, value: trimmed }
+      : { valid: false, error: parsed.error ?? 'Invalid date' };
+  }
+
+  // ISO datetime (including Z / offsets) → normalize to date part
+  if (/^\d{4}-\d{2}-\d{2}[ T]/.test(trimmed)) {
+    const datePart = trimmed.slice(0, 10);
+    const parsed = parseDate(datePart);
+    return parsed.valid
+      ? { valid: true, value: datePart }
+      : { valid: false, error: parsed.error ?? 'Invalid date' };
+  }
+
+  // Format-agnostic date validation
+  // Accepts ISO (YYYY-MM-DD), US (MM/DD/YYYY), EU (DD/MM/YYYY) formats
+  // Rejects ambiguous dates where month and day are both <= 12 for non-ISO formats
+  const parsed = parseDate(trimmed);
+  if (!parsed.valid) {
+    return { valid: false, error: parsed.error ?? 'Invalid date' };
+  }
+
+  // Canonical storage format
+  const year = parsed.date!.getFullYear();
+  const month = String(parsed.date!.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.date!.getDate()).padStart(2, '0');
+  return { valid: true, value: `${year}-${month}-${day}` };
+}
+
+
 /**
  * Validation error types.
  */
@@ -207,6 +247,11 @@ function validateFieldType(
 
   // Date fields
   if (field.prompt === 'date') {
+    // Accept Date objects surfaced by YAML parsing, normalize elsewhere.
+    if (value instanceof Date) {
+      return null;
+    }
+
     if (typeof value !== 'string') {
       return {
         type: 'invalid_type',
@@ -216,19 +261,18 @@ function validateFieldType(
         expected: 'date string (YYYY-MM-DD)',
       };
     }
-    // Format-agnostic date validation
-    // Accepts ISO (YYYY-MM-DD), US (MM/DD/YYYY), EU (DD/MM/YYYY) formats
-    // Rejects ambiguous dates where month and day are both <= 12 for non-ISO formats
-    const parsed = parseDate(value);
-    if (!parsed.valid) {
+
+    const normalized = normalizeToIsoDate(value);
+    if (!normalized.valid) {
       return {
         type: 'invalid_date',
         field: fieldName,
         value,
-        message: `Invalid date for ${fieldName}: ${parsed.error}`,
+        message: `Invalid date for ${fieldName}: ${normalized.error}`,
         expected: 'YYYY-MM-DD (recommended), or unambiguous MM/DD/YYYY or DD/MM/YYYY',
       };
     }
+
     return null;
   }
 

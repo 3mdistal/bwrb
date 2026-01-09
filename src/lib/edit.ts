@@ -26,6 +26,7 @@ import {
 import {
   validateFrontmatter,
   validateContextFields,
+  normalizeToIsoDate,
 } from './validation.js';
 import { validateParentNoCycle } from './hierarchy.js';
 import {
@@ -36,6 +37,56 @@ import {
 import type { LoadedSchema, Field, BodySection } from '../types/schema.js';
 import { UserCancelledError } from './errors.js';
 import { expandStaticValue } from './local-date.js';
+
+/**
+ * Format a Date to YYYY-MM-DD using UTC components.
+ * Used for YAML-parsed dates which are stored as midnight UTC.
+ */
+function formatUtcDate(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Normalize date fields to canonical YYYY-MM-DD strings.
+ * Handles both string values (ISO datetimes) and any residual Date objects.
+ * Note: frontmatter parsing already normalizes Date objects, but this provides
+ * defense-in-depth for any edge cases.
+ */
+function normalizeDateFields(
+  schema: LoadedSchema,
+  typePath: string,
+  frontmatter: Record<string, unknown>
+): Record<string, unknown> {
+  const fields = getFieldsForType(schema, typePath);
+  const normalized: Record<string, unknown> = { ...frontmatter };
+
+  for (const [fieldName, field] of Object.entries(fields)) {
+    if (field.prompt !== 'date') continue;
+    if (!(fieldName in normalized)) continue;
+
+    const value = normalized[fieldName];
+    if (value === undefined || value === null || value === '') continue;
+
+    // Handle any residual Date objects (defense-in-depth)
+    // Use UTC components since YAML dates are stored as midnight UTC
+    if (value instanceof Date) {
+      normalized[fieldName] = formatUtcDate(value);
+      continue;
+    }
+
+    if (typeof value === 'string') {
+      const result = normalizeToIsoDate(value);
+      if (result.valid) {
+        normalized[fieldName] = result.value;
+      }
+    }
+  }
+
+  return normalized;
+}
 
 // ============================================================================
 // Types
@@ -120,8 +171,11 @@ export async function editNoteFromJson(
   const mergedFrontmatter = mergeFrontmatter(frontmatter, patchData);
   const updatedFields = Object.keys(patchData).filter(k => patchData[k] !== undefined);
 
+  // Normalize date-like fields to canonical YYYY-MM-DD strings
+  const normalizedFrontmatter = normalizeDateFields(schema, typePath, mergedFrontmatter);
+
   // Validate merged result
-  const validation = validateFrontmatter(schema, typePath, mergedFrontmatter);
+  const validation = validateFrontmatter(schema, typePath, normalizedFrontmatter);
   if (!validation.valid) {
     if (jsonMode) {
       printJson({
@@ -142,7 +196,7 @@ export async function editNoteFromJson(
   }
 
   // Validate context fields (source type constraints)
-  const contextValidation = await validateContextFields(schema, vaultDir, typePath, mergedFrontmatter);
+  const contextValidation = await validateContextFields(schema, vaultDir, typePath, normalizedFrontmatter);
   if (!contextValidation.valid) {
     if (jsonMode) {
       printJson({
@@ -163,13 +217,13 @@ export async function editNoteFromJson(
   }
 
   // Validate parent field doesn't create a cycle (for recursive types)
-  if (typeDef.recursive && mergedFrontmatter['parent']) {
+  if (typeDef.recursive && normalizedFrontmatter['parent']) {
     const noteName = filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
     const cycleError = await validateParentNoCycle(
       schema,
       vaultDir,
       noteName,
-      mergedFrontmatter['parent'] as string
+      normalizedFrontmatter['parent'] as string
     );
     if (cycleError) {
       if (jsonMode) {
@@ -189,10 +243,10 @@ export async function editNoteFromJson(
 
   // Get field order
   const fieldOrder = getFrontmatterOrder(typeDef);
-  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(mergedFrontmatter);
+  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(normalizedFrontmatter);
 
   // Write updated note
-  await writeNote(filePath, mergedFrontmatter, body, orderedFields);
+  await writeNote(filePath, normalizedFrontmatter, body, orderedFields);
 
   return { updatedFields, path: filePath };
 }
@@ -287,12 +341,6 @@ export async function editNoteInteractive(
 // Helpers
 // ============================================================================
 
-/**
- * Merge patch data into existing frontmatter.
- * - Fields in patch overwrite existing fields
- * - null values remove the field
- * - Arrays are replaced, not merged
- */
 function mergeFrontmatter(
   existing: Record<string, unknown>,
   patch: Record<string, unknown>
