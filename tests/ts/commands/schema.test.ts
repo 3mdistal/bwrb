@@ -41,6 +41,69 @@ describe('schema command', () => {
       expect(result.stdout).toContain('milestone');
     });
 
+    it('should show computed directory for top-level types without explicit output_dir', async () => {
+      // Create a schema where a top-level type has no explicit output_dir
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-computed-dir-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            // Top-level type with NO explicit output_dir
+            note: {
+              extends: 'meta',
+              fields: {
+                title: { prompt: 'text' }
+              }
+            }
+          }
+        })
+      );
+
+      try {
+        const result = await runCLI(['schema', 'list'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        // Should show computed directory (pluralized type name)
+        expect(result.stdout).toContain('note');
+        expect(result.stdout).toContain('-> notes');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should show computed directory in JSON output for types without explicit output_dir', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-computed-dir-json-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            note: {
+              extends: 'meta',
+              fields: {}
+            }
+          }
+        })
+      );
+
+      try {
+        const result = await runCLI(['schema', 'list', '--output', 'json'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const data = JSON.parse(result.stdout);
+        // JSON output should include computed output_dir
+        expect(data.types.note).toBeDefined();
+        expect(data.types.note.output_dir).toBe('notes');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
   });
 
   describe('schema list type <name>', () => {
@@ -94,6 +157,38 @@ describe('schema command', () => {
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('Unknown type');
+    });
+
+    it('should show computed directory for type without explicit output_dir', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-type-computed-dir-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            journal: {
+              extends: 'meta',
+              fields: {
+                date: { prompt: 'date' }
+              }
+            }
+          }
+        })
+      );
+
+      try {
+        const result = await runCLI(['schema', 'list', 'type', 'journal'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Type: journal');
+        expect(result.stdout).toContain('Output Dir:');
+        // Should show computed directory (pluralized name)
+        expect(result.stdout).toContain('journals');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
     });
 
     it('should show "(none)" when type has no own fields', async () => {
@@ -617,6 +712,48 @@ describe('schema command', () => {
       expect(result.stdout).toContain('-> Objectives/Tasks');
     });
 
+    it('should show computed directories for types without explicit output_dir', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-verbose-computed-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            // Top-level type with NO explicit output_dir
+            bookmark: {
+              extends: 'meta',
+              fields: {
+                url: { prompt: 'text' }
+              }
+            },
+            // Nested type also without explicit output_dir
+            article: {
+              extends: 'bookmark',
+              fields: {
+                author: { prompt: 'text' }
+              }
+            }
+          }
+        })
+      );
+
+      try {
+        const result = await runCLI(['schema', 'list', '--verbose'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        // Should show computed directories for both types
+        expect(result.stdout).toContain('bookmark');
+        expect(result.stdout).toContain('-> bookmarks');
+        expect(result.stdout).toContain('article');
+        // Nested type should show hierarchical computed directory
+        expect(result.stdout).toContain('-> bookmarks/articles');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
     it('should work with inheritance chains', async () => {
       // Create a schema with 3-level inheritance
       const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-verbose-'));
@@ -749,6 +886,43 @@ describe('schema command', () => {
         expect(objectiveType.subtypes).toBeDefined();
         expect(objectiveType.subtypes).toContain('task');
         expect(objectiveType.subtypes).toContain('milestone');
+      });
+
+      it('should include computed output_dir for types without explicit directory', async () => {
+        const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-verbose-json-computed-'));
+        await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+        await writeFile(
+          join(tempVaultDir, '.bwrb', 'schema.json'),
+          JSON.stringify({
+            version: 2,
+            types: {
+              meta: {},
+              // Type without explicit output_dir
+              snippet: {
+                extends: 'meta',
+                fields: {}
+              }
+            }
+          })
+        );
+
+        try {
+          const result = await runCLI(
+            ['schema', 'list', '--verbose', '--output', 'json'],
+            tempVaultDir
+          );
+
+          expect(result.exitCode).toBe(0);
+          const data = JSON.parse(result.stdout);
+
+          // Find snippet type in array
+          const snippetType = data.types.find((t: { name: string }) => t.name === 'snippet');
+          expect(snippetType).toBeDefined();
+          // Should have computed output_dir (pluralized name)
+          expect(snippetType.output_dir).toBe('snippets');
+        } finally {
+          await rm(tempVaultDir, { recursive: true, force: true });
+        }
       });
     });
   });

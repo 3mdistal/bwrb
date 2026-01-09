@@ -1,5 +1,10 @@
 /**
  * Schema output and display helpers.
+ *
+ * NOTE: For user-facing output (text, JSON), always use `getOutputDir(schema, typeName)`
+ * to show the *effective* directory (explicit, inherited, or computed from type hierarchy).
+ * Use `typeDef.outputDir` only when you need the *declared* value from schema.json,
+ * which may be undefined if not explicitly set.
  */
 
 import chalk from 'chalk';
@@ -11,6 +16,7 @@ import {
   getFieldsForType,
   getFieldsByOrigin,
   getFieldOrderForOrigin,
+  getOutputDir,
 } from '../../../lib/schema.js';
 import { printError } from '../../../lib/prompt.js';
 import { printJson, jsonError, ExitCodes } from '../../../lib/output.js';
@@ -67,7 +73,7 @@ export function outputTypeDetailsJson(schema: LoadedSchema, typePath: string): v
   const output: Record<string, unknown> = {
     type_path: typePath,
     extends: typeDef.parent,
-    output_dir: typeDef.outputDir,
+    output_dir: getOutputDir(schema, typePath),
     filename: typeDef.filename,
     // Own fields defined on this type
     own_fields: Object.fromEntries(
@@ -106,11 +112,11 @@ export function outputTypeDetailsJson(schema: LoadedSchema, typePath: string): v
  */
 function formatTypeForJson(
   schema: LoadedSchema,
-  _typePath: string,
+  typePath: string,
   typeDef: ResolvedType
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {
-    output_dir: typeDef.outputDir,
+    output_dir: getOutputDir(schema, typePath),
   };
 
   // Add subtypes if present (children in new model)
@@ -206,13 +212,11 @@ function printTypeTree(
 ): void {
   const indent = '  '.repeat(depth + 1);
   const typeName = typePath.split('/').pop() ?? typePath;
-  const outputDir = typeDef.outputDir;
+  const outputDir = getOutputDir(schema, typePath);
 
-  // Build type label
+  // Build type label - always show directory since getOutputDir always returns a value
   let label = chalk.green(typeName);
-  if (outputDir) {
-    label += chalk.gray(` -> ${outputDir}`);
-  }
+  label += chalk.gray(` -> ${outputDir}`);
 
   console.log(`${indent}${label}`);
 
@@ -240,10 +244,9 @@ export function showTypeDetails(schema: LoadedSchema, typePath: string): void {
 
   console.log(chalk.bold(`\nType: ${typePath}\n`));
 
-  // Basic info
-  if (typeDef.outputDir) {
-    console.log(`  ${chalk.cyan('Output Dir:')} ${typeDef.outputDir}`);
-  }
+  // Basic info - always show output dir since getOutputDir always returns a value
+  const outputDir = getOutputDir(schema, typePath);
+  console.log(`  ${chalk.cyan('Output Dir:')} ${outputDir}`);
   if (typeDef.filename) {
     console.log(`  ${chalk.cyan('Filename Pattern:')} ${typeDef.filename}`);
   }
@@ -404,14 +407,13 @@ function printTypeTreeVerbose(
   const indent = '  '.repeat(depth + 1);
   const typeName = typePath.split('/').pop() ?? typePath;
 
-  // Build type header line
+  // Build type header line - always show directory since getOutputDir always returns a value
   let header = chalk.green(typeName);
   if (typeDef.parent && typeDef.parent !== 'meta') {
     header += chalk.gray(` (extends ${typeDef.parent})`);
   }
-  if (typeDef.outputDir) {
-    header += chalk.gray(` -> ${typeDef.outputDir}`);
-  }
+  const effectiveOutputDir = getOutputDir(schema, typePath);
+  header += chalk.gray(` -> ${effectiveOutputDir}`);
 
   console.log(`${indent}${header}`);
 
@@ -536,10 +538,8 @@ export function outputSchemaVerboseJson(schema: LoadedSchema): void {
       typeOutput.extends = typeDef.parent;
     }
 
-    // Add output_dir
-    if (typeDef.outputDir) {
-      typeOutput.output_dir = typeDef.outputDir;
-    }
+    // Add output_dir - always show since getOutputDir always returns a value
+    typeOutput.output_dir = getOutputDir(schema, typeName);
 
     // Add own fields
     typeOutput.own_fields = Object.fromEntries(
