@@ -424,7 +424,7 @@ Vault-wide settings:
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `link_format` | string | `"wikilink"` | Link format for relations: `wikilink` (`[[Note]]`) or `markdown` (`[Note](Note.md)`) |
-| `open_with` | string | `"visual"` | Default for `--open`: `editor`, `visual`, or `obsidian` |
+| `open_with` | string | `"system"` | Default for `--open`: `system`, `editor`, `visual`, or `obsidian` |
 | `editor` | string | `$EDITOR` | Terminal editor command |
 | `visual` | string | `$VISUAL` | GUI editor command |
 | `obsidian_vault` | string | auto | Obsidian vault name for URI scheme |
