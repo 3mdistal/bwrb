@@ -56,13 +56,21 @@
         },
         "open_with": {
           "type": "string",
-          "enum": ["editor", "visual", "obsidian"],
-          "default": "visual",
+          "enum": ["system", "editor", "visual", "obsidian"],
+          "default": "system",
           "description": "Default behavior for --open flag"
         },
         "obsidian_vault": {
           "type": "string",
           "description": "Obsidian vault name for URI scheme (auto-detected if not set)"
+        },
+        "default_dashboard": {
+          "type": "string",
+          "description": "Dashboard to run when `bwrb dashboard` is called without arguments"
+        },
+        "date_format": {
+          "type": "string",
+          "description": "Date format for date fields (defaults to YYYY-MM-DD)"
         }
       }
     },
@@ -91,6 +99,10 @@
         "output_dir": {
           "type": "string",
           "description": "Directory path relative to vault root where files of this type are created"
+        },
+        "filename": {
+          "type": "string",
+          "description": "Filename pattern"
         },
         "frontmatter": {
           "type": "object",
@@ -126,6 +138,7 @@
           }
         },
         "output_dir": { "type": "string" },
+        "filename": { "type": "string", "description": "Filename pattern" },
         "frontmatter": {
           "$ref": "#/definitions/typeDefinition/properties/frontmatter"
         },
@@ -182,8 +195,11 @@
           "description": "Allowed values for select fields (inline options)"
         },
         "source": {
-          "type": "string",
-          "description": "Type name(s) for relation prompts"
+          "description": "Type name(s) for relation prompts",
+          "anyOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ]
         },
         "filter": {
           "type": "object",
@@ -201,8 +217,11 @@
           "description": "Whether children referenced by this field are owned (colocate with parent)"
         },
         "default": {
-          "type": "string",
-          "description": "Default value if user skips the prompt"
+          "description": "Default value if user skips the prompt",
+          "anyOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ]
         },
         "required": {
           "type": "boolean",
@@ -239,7 +258,7 @@
         },
         "prompt": {
           "type": "string",
-          "enum": ["list"],
+          "enum": ["none", "list"],
           "description": "If set, prompts user for initial content during creation"
         },
         "prompt_label": {
