@@ -26,6 +26,7 @@ import { parseNote } from './frontmatter.js';
 import { applyFrontmatterFilters } from './query.js';
 import { searchContent } from './content-search.js';
 import { getTypeNames } from './schema.js';
+import { validateWhereExpressions, formatWhereValidationErrors } from './expression-validation.js';
 
 // ============================================================================
 // Types
@@ -271,6 +272,19 @@ export async function resolveTargets(
 ): Promise<TargetingResult> {
   const bodyFilter = options.body ?? options.text;
   const hasTargeting = !!(options.type || options.path || options.where?.length || bodyFilter);
+
+  // Early validation of --where expression values when type is known
+  // This catches invalid select field values before we do any file discovery
+  if (options.type && options.where && options.where.length > 0) {
+    const validation = validateWhereExpressions(options.where, schema, options.type);
+    if (!validation.valid) {
+      return {
+        files: [],
+        hasTargeting,
+        error: formatWhereValidationErrors(validation.errors),
+      };
+    }
+  }
 
   try {
     // Step 1: Discover base files
