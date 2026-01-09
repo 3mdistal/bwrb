@@ -173,6 +173,8 @@ bwrb bulk --all --set status=done --execute
 
 This two-gate model prevents accidental vault-wide mutations.
 
+See also: [CLI Safety and Flags](/concepts/cli-safety-and-flags/)
+
 ## Output Formats
 
 Use `--output <format>` (or `-o`) to control how results are displayed:
@@ -196,6 +198,8 @@ bwrb search "TODO" --output content      # Full file with matches
 
 ## See Also
 
+- [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — `--execute` vs `--force` semantics
 - [Expression syntax](/concepts/schema/) — Query expression details
 - [bwrb list](/reference/commands/list/) — List and filter notes
 - [bwrb bulk](/reference/commands/bulk/) — Batch operations
+

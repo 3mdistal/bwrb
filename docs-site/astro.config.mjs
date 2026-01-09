@@ -50,6 +50,7 @@ export default defineConfig({
 						{ slug: 'concepts/types-and-inheritance' },
 						{ slug: 'concepts/validation-and-audit' },
 						{ slug: 'concepts/migrations' },
+						{ slug: 'concepts/cli-safety-and-flags' },
 					],
 				},
 				// CLI Reference

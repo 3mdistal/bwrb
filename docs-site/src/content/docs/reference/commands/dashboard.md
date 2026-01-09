@@ -76,5 +76,7 @@ bwrb dashboard edit my-tasks
 
 ## See Also
 
+- [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — `--execute` vs `--force` semantics
 - [bwrb list](/reference/commands/list/) — List and filter notes
 - [Targeting Model](/reference/targeting/) — Selector reference
+
