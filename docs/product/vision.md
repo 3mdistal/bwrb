@@ -249,6 +249,14 @@ bwrb template list [type] [name]   # List all, or show details if both provided
 4. **Dry-run default for destructive ops** — `--execute` to apply
 5. **Discoverable prompts** — Missing required info prompts, doesn't error
 
+### Documentation Canon
+
+The docs-site (`https://bwrb.dev`) is the canonical source for user-facing CLI documentation.
+
+The `docs/product/` folder is for product rationale, decisions, and internal design notes that may link to canonical docs-site pages.
+
+**Documentation note:** The docs-site (`docs-site/`) is the canonical source for user-facing CLI documentation. `docs/product/` is for product rationale and internal notes; when it describes CLI behavior, it should link to the docs-site page.
+
 ### Help Output Ordering
 
 Commands in `bwrb --help` are ordered to reflect the product's priority model and guide users through a logical workflow:
