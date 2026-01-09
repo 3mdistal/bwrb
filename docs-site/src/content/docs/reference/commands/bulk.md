@@ -161,6 +161,8 @@ bwrb bulk --type task --rename old_field=new_field --execute
 
 ## See Also
 
+- [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — `--execute` vs `--force` semantics
 - [Targeting Model](/reference/targeting/) — Full selector reference
 - [bwrb audit](/reference/commands/audit/) — Validate notes
 - [bwrb delete](/reference/commands/delete/) — Delete notes
+

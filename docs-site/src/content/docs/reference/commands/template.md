@@ -290,6 +290,8 @@ bwrb template validate --output json
 
 ## See Also
 
+- [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — When to use `--force`
 - [Templates Overview](/templates/overview/) — Template concepts
 - [Creating Templates](/templates/creating-templates/) — Template authoring guide
 - [bwrb schema validate](/reference/commands/schema/#validate) — Validate schema
+

@@ -112,5 +112,7 @@ Deletion is permanent. Use version control (git) to recover deleted notes if nee
 
 ## See Also
 
+- [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — `--execute` vs `--force` semantics
 - [bwrb bulk](/reference/commands/bulk/) — Batch operations (non-destructive)
 - [Targeting Model](/reference/targeting/) — Selector reference
+

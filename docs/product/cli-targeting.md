@@ -2,6 +2,8 @@
 
 > How Bowerbird commands select which notes to operate on.
 
+**Canonical docs:** This document is product rationale. The user-facing, canonical targeting reference lives on the docs-site at `/reference/targeting/`.
+
 ---
 
 ## Overview
@@ -204,6 +206,17 @@ bwrb bulk --all --set status=done --execute
 ```
 
 This two-gate model prevents accidental vault-wide mutations. You must be explicit about *what* (targeting) and *that you mean it* (execution).
+
+### `--execute` vs `--force`
+
+Bowerbird uses two distinct safety flags:
+
+- `--execute` (`-x`) means **apply changes** (many destructive commands default to dry-run).
+- `--force` (`-f`) means **skip a confirmation prompt** (or explicitly allow overwriting an existing artifact like a saved dashboard).
+
+These are intentionally not interchangeable: `--execute` is an execution gate; `--force` is a prompt/overwrite gate.
+
+**Canonical documentation:** The docs-site is the canonical source for CLI documentation. See `https://bwrb.dev/concepts/cli-safety-and-flags/` for the user-facing explanation.
 
 ---
 
