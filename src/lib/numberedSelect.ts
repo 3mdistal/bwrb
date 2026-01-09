@@ -233,13 +233,13 @@ export class NumberedSelectPrompt {
   private submit(): void {
     this.done = true;
     this.cleanup();
-    this.clearPrompt();
 
-    // Show final selection
+    // Build atomic output: clear + final selection line
     const selected = this.choices[this.cursor];
-    process.stdout.write(
-      `${chalk.green('✔')} ${chalk.bold(this.message)} ${chalk.cyan(selected)}\n`
-    );
+    const output =
+      this.buildClearSequence() +
+      `${chalk.green('✔')} ${chalk.bold(this.message)} ${chalk.cyan(selected)}\n`;
+    process.stdout.write(output);
 
     this.resolve?.({
       value: selected,
@@ -251,9 +251,11 @@ export class NumberedSelectPrompt {
   private abort(): void {
     this.done = true;
     this.cleanup();
-    this.clearPrompt();
 
-    process.stdout.write(`${chalk.red('✖')} ${chalk.bold(this.message)}\n`);
+    // Build atomic output: clear + abort message
+    const output =
+      this.buildClearSequence() + `${chalk.red('✖')} ${chalk.bold(this.message)}\n`;
+    process.stdout.write(output);
 
     this.resolve?.({
       value: undefined,
@@ -270,21 +272,27 @@ export class NumberedSelectPrompt {
     this.rl?.close();
   }
 
-  private clearPrompt(): void {
+  /**
+   * Build the ANSI escape sequence to clear the current prompt display.
+   * Returns the sequence as a string without writing to stdout.
+   * This allows for atomic clear+render operations to prevent flicker.
+   */
+  private buildClearSequence(): string {
     // Calculate total lines to clear (prompt line + choices + hint line)
     const pageStart = this.currentPage * ITEMS_PER_PAGE;
     const pageEnd = Math.min(pageStart + ITEMS_PER_PAGE, this.choices.length);
     const visibleChoices = pageEnd - pageStart;
     const totalLines = 1 + visibleChoices + 1; // prompt + choices + hint
 
-    // Move up and clear each line
+    let seq = '';
     for (let i = 0; i < totalLines; i++) {
-      process.stdout.write('\x1b[2K'); // Clear line
+      seq += '\x1b[2K'; // Clear line
       if (i < totalLines - 1) {
-        process.stdout.write('\x1b[1A'); // Move up
+        seq += '\x1b[1A'; // Move up
       }
     }
-    process.stdout.write('\r'); // Move to start of line
+    seq += '\r'; // Move to start of line
+    return seq;
   }
 
   /**
@@ -345,9 +353,12 @@ export class NumberedSelectPrompt {
   }
 
   private render(): void {
-    // Clear previous output if not first render
+    // Build output buffer for atomic write
+    let output = '';
+
+    // Prepend clear sequence if not first render (prevents flicker on page navigation)
     if (!this.done && !this.firstRender) {
-      this.clearPrompt();
+      output += this.buildClearSequence();
     }
     this.firstRender = false;
 
@@ -390,7 +401,10 @@ export class NumberedSelectPrompt {
     }
     lines.push(hint);
 
-    process.stdout.write(lines.join('\n') + '\n');
+    output += lines.join('\n') + '\n';
+
+    // Single atomic write prevents flicker between clear and render
+    process.stdout.write(output);
   }
 }
 
