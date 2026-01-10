@@ -226,54 +226,35 @@ While selectors narrow the candidate set, ignore rules determine what enters the
 
 ### Exclusion Mechanisms
 
-Bowerbird recognizes four types of exclusion rules:
+Bowerbird recognizes multiple exclusion mechanisms:
 
 | Mechanism | Source | Example |
 |-----------|--------|---------|
 | `.gitignore` patterns | `.gitignore` file in vault root | `Archive/`, `*.tmp` |
-| Audit exclusions (schema) | `schema.audit.ignored_directories` | `["Templates", "Sandbox"]` |
-| Audit exclusions (env) | `BWRB_AUDIT_EXCLUDE` (comma-separated) | `BWRB_AUDIT_EXCLUDE=Archive,Drafts` |
+| Exclusions (schema, canonical) | `schema.config.excluded_directories` | `["Templates", "Archive/Old"]` |
+| Exclusions (schema, legacy alias) | `schema.audit.ignored_directories` | `["Templates", "Archive/Old"]` |
+| Exclusions (env, canonical) | `BWRB_EXCLUDE` (comma-separated) | `BWRB_EXCLUDE=Archive,Drafts` |
+| Exclusions (env, legacy alias) | `BWRB_AUDIT_EXCLUDE` (comma-separated) | `BWRB_AUDIT_EXCLUDE=Archive,Drafts` |
 | Hidden directories | Any directory starting with `.` | `.obsidian/`, `.trash/` |
+| Always excluded | `.bwrb/` | `.bwrb/` |
 
 **Notes:**
 - `.gitignore` is optional. Bowerbird works on any folder of Markdown files, Git-backed or not. Only the vault root `.gitignore` is consulted (not nested `.gitignore` files).
-- Exclusions combine: a path matching *any* exclusion source is excluded.
+- Exclusions combine as a union: a path matching *any* exclusion source is excluded.
 
 ### When Exclusion Rules Apply
 
-Different commands apply exclusion rules differently based on their purpose:
-
-| Command | Type Files | Unmanaged Files | Rationale |
-|---------|------------|-----------------|-----------|
-| `audit` | Respects exclusions | Respects exclusions | Validation scope |
-| `search` / `open` / `edit` | **Bypasses** exclusions | Respects exclusions | Nothing feels lost |
-| `list --type <type>` | **Bypasses** exclusions | N/A | Type discovery |
-| `list` (no type) | Respects exclusions | Respects exclusions | Vault-wide scan |
-
-**Definitions:**
-- **Type files**: Notes in a type's `output_dir` (e.g., `Objectives/Tasks/`). These are schema-managed.
-- **Unmanaged files**: Markdown files outside any type's output directory (e.g., loose files in vault root or non-type folders).
-
-### Rationale
-
-This hybrid approach balances two product principles:
-
-1. **"Nothing feels lost"** — Type-managed notes must always be discoverable. If you created a task via `bwrb new task`, you can always find it via `bwrb search`, `bwrb edit`, or `bwrb open`, regardless of whether the type's directory is in `.gitignore` or `ignored_directories`.
-
-2. **Intentional hiding** — Unmanaged files in excluded directories may be intentionally hidden (e.g., archived content, work-in-progress imports). These respect exclusion rules.
-
-3. **Audit is about validation scope** — The `ignored_directories` setting controls what `bwrb audit` validates, not what exists. A type directory might be excluded from audit (e.g., during migration) while its notes remain fully discoverable.
+Excluded directories apply to **all bwrb operations** consistently. If a file is excluded, it does not enter the candidate set for `list`, `search`/`open`/`edit`, or `audit`.
 
 ### Example
 
 ```bash
-# Schema has: audit.ignored_directories: ["Archive"]
+# Schema has: config.excluded_directories: ["Archive"]
 # Archive/Tasks/ contains "Old Task.md" (a task type note)
 
-bwrb list task                    # Finds "Old Task" (type discovery bypasses exclusions)
-bwrb search "Old Task"            # Finds it (navigation bypasses exclusions for type files)
-bwrb audit task                   # Skips Archive/ (audit respects exclusions)
-bwrb list                         # Skips Archive/ (vault-wide scan respects exclusions)
+bwrb list task            # Does NOT find it
+bwrb search "Old Task"    # Does NOT find it
+bwrb audit task           # Skips Archive/
 ```
 
 ---

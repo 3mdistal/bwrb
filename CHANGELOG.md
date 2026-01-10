@@ -14,7 +14,11 @@ All notable changes to Bowerbird are documented in this file.
   - Example: `bwrb list task -o json` → `bwrb list task --output json`
   - This improves CLI consistency: `-o` now always means "open" rather than having different meanings on different commands
 
+- **`bwrb audit --fix` is now dry-run by default** (#271)
+  - Use `--execute` to write changes to disk (including frontmatter edits and file moves)
+
 ### Added
+
 
 - **Interactive parent type selection in `schema new type`** (#240)
   - When creating a new type interactively, now prompts "Extend from type" with list of existing types
@@ -36,8 +40,13 @@ All notable changes to Bowerbird are documented in this file.
   - `parent-cycle` issues now have interactive fix support
     - Detects cycles in recursive type parent references
     - Offers to clear parent field or select different parent
-  - New `--execute` flag for audit command enables destructive operations (file moves)
+  - New `--execute` flag for audit command enables writing fixes (including file edits and moves)
   - JSON output now includes additional issue metadata: `expectedDirectory`, `currentDirectory`, `cyclePath`, `ownerPath`, `ownedNotePath`
+
+- **Audit --fix Phase 4: Structural integrity fixes** (#271)
+  - `frontmatter-not-at-top`: move a single clean-parsing YAML frontmatter block to the top
+  - `duplicate-frontmatter-keys`: auto-merge same/empty values; interactive keep-first/keep-last/skip when values differ
+  - `malformed-wikilink`: deterministic bracket repairs for near-wikilinks in frontmatter only (scalars and list items)
 
 ### Changed
 

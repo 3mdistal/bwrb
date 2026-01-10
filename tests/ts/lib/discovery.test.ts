@@ -63,18 +63,28 @@ describe('Discovery', () => {
       expect(excluded.has('Templates')).toBe(true);
     });
 
-    it('should respect BWRB_AUDIT_EXCLUDE env var', () => {
-      const originalEnv = process.env.BWRB_AUDIT_EXCLUDE;
+    it('should respect BWRB_EXCLUDE env var (and legacy alias)', () => {
+      const originalExclude = process.env.BWRB_EXCLUDE;
+      const originalAuditExclude = process.env.BWRB_AUDIT_EXCLUDE;
+
       try {
-        process.env.BWRB_AUDIT_EXCLUDE = 'Archive,Drafts/';
+        process.env.BWRB_EXCLUDE = 'Archive';
+        process.env.BWRB_AUDIT_EXCLUDE = 'Drafts/';
+
         const excluded = getExcludedDirectories(schema);
         expect(excluded.has('Archive')).toBe(true);
         expect(excluded.has('Drafts')).toBe(true); // Trailing slash normalized
       } finally {
-        if (originalEnv === undefined) {
+        if (originalExclude === undefined) {
+          delete process.env.BWRB_EXCLUDE;
+        } else {
+          process.env.BWRB_EXCLUDE = originalExclude;
+        }
+
+        if (originalAuditExclude === undefined) {
           delete process.env.BWRB_AUDIT_EXCLUDE;
         } else {
-          process.env.BWRB_AUDIT_EXCLUDE = originalEnv;
+          process.env.BWRB_AUDIT_EXCLUDE = originalAuditExclude;
         }
       }
     });
@@ -124,14 +134,14 @@ describe('Discovery', () => {
 
   describe('collectAllMarkdownFilenames', () => {
     it('should return basenames without extension', async () => {
-      const filenames = await collectAllMarkdownFilenames(vaultDir);
+      const filenames = await collectAllMarkdownFilenames(schema, vaultDir);
       
       expect(filenames.has('Sample Idea')).toBe(true);
       expect(filenames.has('Sample Task')).toBe(true);
     });
 
     it('should return relative paths without extension', async () => {
-      const filenames = await collectAllMarkdownFilenames(vaultDir);
+      const filenames = await collectAllMarkdownFilenames(schema, vaultDir);
       
       expect(filenames.has('Ideas/Sample Idea')).toBe(true);
       expect(filenames.has('Objectives/Tasks/Sample Task')).toBe(true);
@@ -186,7 +196,9 @@ describe('Discovery', () => {
 
   describe('collectPooledFiles', () => {
     it('should collect files from a flat directory', async () => {
-      const files = await collectPooledFiles(vaultDir, 'Ideas', 'idea');
+      const excluded = getExcludedDirectories(schema);
+      const gitignore = await loadGitignore(vaultDir);
+      const files = await collectPooledFiles(vaultDir, 'Ideas', 'idea', excluded, gitignore);
       
       const paths = files.map(f => f.relativePath);
       expect(paths).toContain('Ideas/Sample Idea.md');
@@ -194,12 +206,16 @@ describe('Discovery', () => {
     });
 
     it('should set expectedType on all files', async () => {
-      const files = await collectPooledFiles(vaultDir, 'Ideas', 'idea');
+      const excluded = getExcludedDirectories(schema);
+      const gitignore = await loadGitignore(vaultDir);
+      const files = await collectPooledFiles(vaultDir, 'Ideas', 'idea', excluded, gitignore);
       expect(files.every(f => f.expectedType === 'idea')).toBe(true);
     });
 
     it('should return empty for non-existent directory', async () => {
-      const files = await collectPooledFiles(vaultDir, 'Nonexistent', 'test');
+      const excluded = getExcludedDirectories(schema);
+      const gitignore = await loadGitignore(vaultDir);
+      const files = await collectPooledFiles(vaultDir, 'Nonexistent', 'test', excluded, gitignore);
       expect(files).toEqual([]);
     });
   });
@@ -377,24 +393,14 @@ describe('Discovery', () => {
       expect(paths).toContain('Objectives/Milestones/Active Milestone.md');
     });
 
-    it('should NOT respect ignored_directories for type files', async () => {
-      // Create a file in a type directory that's also in ignored_directories
-      // The test vault has "Templates" in ignored_directories
-      // We'll add a type output_dir that overlaps with an ignored dir
-      
-      // For this test, we create a task in an ignored location
-      // Since Tasks dir is not ignored, we need to test differently:
-      // Add Ideas to ignored_directories temporarily via schema modification
-      
-      // Instead, let's verify type files are found regardless of gitignore
+    it('should respect .gitignore for type files', async () => {
       await writeFile(join(vaultDir, '.gitignore'), 'Ideas/');
-      
+
       const files = await discoverAllTypeFiles(schema, vaultDir);
       const paths = files.map(f => f.relativePath);
-      
-      // Ideas files should still be found because type discovery ignores gitignore
-      expect(paths).toContain('Ideas/Sample Idea.md');
-      expect(paths).toContain('Ideas/Another Idea.md');
+
+      expect(paths).not.toContain('Ideas/Sample Idea.md');
+      expect(paths).not.toContain('Ideas/Another Idea.md');
     });
 
     it('should deduplicate files across type hierarchies', async () => {
@@ -472,16 +478,14 @@ describe('Discovery', () => {
       expect(paths).toContain('Notes/Random.md');
     });
 
-    it('should find type files even when in gitignored directories', async () => {
-      // Gitignore the Ideas directory
+    it('should respect .gitignore for type files', async () => {
       await writeFile(join(vaultDir, '.gitignore'), 'Ideas/');
-      
+
       const files = await discoverFilesForNavigation(schema, vaultDir);
       const paths = files.map(f => f.relativePath);
-      
-      // Type files should still be found (this is the bug fix!)
-      expect(paths).toContain('Ideas/Sample Idea.md');
-      expect(paths).toContain('Ideas/Another Idea.md');
+
+      expect(paths).not.toContain('Ideas/Sample Idea.md');
+      expect(paths).not.toContain('Ideas/Another Idea.md');
     });
 
     it('should exclude unmanaged files in gitignored directories', async () => {

@@ -127,6 +127,9 @@ export const ConfigSchema = z.object({
   obsidian_vault: z.string().optional(),
   // Default dashboard to run when `bwrb dashboard` is called without arguments
   default_dashboard: z.string().optional(),
+  // Directories to exclude from all discovery/targeting operations
+  // Values are vault-root-relative directory prefixes (e.g., "Archive", "Templates", "Archive/Old")
+  excluded_directories: z.array(z.string()).optional(),
   // Date format for date fields in frontmatter
   // YYYY-MM-DD: ISO 8601 format (default)
   // MM/DD/YYYY: US format

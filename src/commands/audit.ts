@@ -66,6 +66,9 @@ Issue Types:
   parent-cycle          Cycle detected in parent references
   format-violation      Field value doesn't match expected format (wikilink, etc.)
   stale-reference       Wikilink points to non-existent file
+  frontmatter-not-at-top Frontmatter block is not at top
+  duplicate-frontmatter-keys Duplicate YAML keys in frontmatter
+  malformed-wikilink    Near-wikilink bracket typo (frontmatter only)
 
 Type Resolution:
   Audit resolves each file's type from its frontmatter 'type' field.
@@ -90,10 +93,10 @@ Examples:
   bwrb audit --ignore unknown-field
   bwrb audit --output json        # JSON output for CI
   bwrb audit --allow-field custom # Allow specific extra field
-  bwrb audit --fix                # Interactive repair mode
-  bwrb audit --fix --auto         # Auto-fix unambiguous issues
-  bwrb audit --fix --execute      # Enable file moves for wrong-directory issues
-  bwrb audit --fix --auto --execute  # Auto-fix including file moves`)
+  bwrb audit --fix                # Interactive repair preview (no writes)
+  bwrb audit --fix --execute      # Apply interactive fixes (writes files)
+  bwrb audit --fix --auto         # Auto-fix preview (no writes)
+  bwrb audit --fix --auto --execute  # Auto-fix and write changes`)
   .argument('[target]', 'Type, path, or where expression (auto-detected)')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path pattern')
@@ -106,7 +109,7 @@ Examples:
   .option('--output <format>', 'Output format: text (default) or json')
   .option('--fix', 'Interactive repair mode')
   .option('--auto', 'With --fix: automatically apply unambiguous fixes')
-  .option('--execute', 'With --fix: execute destructive operations (file moves)')
+  .option('--execute', 'With --fix: write fixes to disk (required to modify files)')
   .option('--allow-field <fields...>', 'Allow additional fields beyond schema (repeatable)')
   .action(async (target: string | undefined, options: AuditOptions & {
     type?: string;

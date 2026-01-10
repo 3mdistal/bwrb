@@ -38,7 +38,11 @@ export type IssueCode =
   | 'unknown-enum-casing'
   | 'duplicate-list-values'
   | 'invalid-boolean-coercion'
-  | 'singular-plural-mismatch';
+  | 'singular-plural-mismatch'
+  // Phase 4: Structural integrity fixes
+  | 'frontmatter-not-at-top'
+  | 'duplicate-frontmatter-keys'
+  | 'malformed-wikilink';
 
 /**
  * A single audit issue.
@@ -88,6 +92,15 @@ export interface AuditIssue {
   hasConflict?: boolean | undefined;
   /** For singular-plural-mismatch with conflict: the value of the existing key */
   conflictValue?: unknown;
+  // Phase 4: Structural integrity metadata
+  /** For duplicate-frontmatter-keys: key name */
+  duplicateKey?: string | undefined;
+  /** For duplicate-frontmatter-keys: number of occurrences */
+  duplicateCount?: number | undefined;
+  /** For malformed-wikilink: array index when value is a list */
+  listIndex?: number | undefined;
+  /** For malformed-wikilink: deterministic fixed value */
+  fixedValue?: string | undefined;
 }
 
 /**

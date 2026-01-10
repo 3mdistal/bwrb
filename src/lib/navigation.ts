@@ -2,9 +2,9 @@
  * Navigation and file resolution logic.
  * 
  * This module handles building an index of vault files and resolving
- * user queries to specific files. It scans all vault markdown except
- * excluded directories (respects schema.audit.ignored_directories,
- * .gitignore, and BWRB_AUDIT_EXCLUDE env var).
+ * user queries to specific files. It scans vault markdown while respecting
+ * global exclusion rules (config.excluded_directories, legacy audit.ignored_directories,
+ * vault-root .gitignore, hidden dot-directories, and BWRB_EXCLUDE / BWRB_AUDIT_EXCLUDE).
  */
 
 import { basename } from 'path';
@@ -45,19 +45,12 @@ export type { ManagedFile };
 // ============================================================================
 
 /**
- * Build an index of all vault files for fast lookup.
- * 
- * Uses hybrid discovery to ensure consistency with `list --type`:
- * - Type files: Always included (ignores exclusion rules)
- * - Unmanaged files: Respects exclusion rules (.bwrb, hidden dirs,
- *   schema.audit.ignored_directories, BWRB_AUDIT_EXCLUDE, .gitignore)
- * 
- * This ensures typed files are always discoverable via search/open/edit,
- * matching the behavior of `list --type`.
- */
+  * Build an index of all discoverable vault files for fast lookup.
+  *
+  * Uses the same global discovery rules as the rest of the CLI (exclusions apply
+  * consistently across list/search/open/edit/audit).
+  */
 export async function buildNoteIndex(schema: LoadedSchema, vaultDir: string): Promise<NoteIndex> {
-  // Use hybrid discovery: type files (no exclusions) + unmanaged files (with exclusions)
-  // This ensures typed files are always discoverable via search/open/edit
   const files = await discoverFilesForNavigation(schema, vaultDir);
   
   const byPath = new Map<string, ManagedFile>();

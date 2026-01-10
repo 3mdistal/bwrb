@@ -205,32 +205,24 @@ status: backlog
       await cleanupTestVault(tempVaultDir);
     });
 
-    it('should find notes in type directories even when gitignored', async () => {
-      // Gitignore the Ideas directory
+    it('should respect .gitignore for type directories', async () => {
       await writeFile(join(tempVaultDir, '.gitignore'), 'Ideas/\n');
 
-      // Search should still find ideas because type directories ignore exclusion rules
-      const result = await runCLI(['search', 'Sample Idea', '--picker', 'none'], tempVaultDir);
+      const result = await runCLI(['search', 'Idea', '--picker', 'none'], tempVaultDir);
 
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout.trim()).toBe('Sample Idea');
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('No matching notes found');
     });
 
-    it('should find all type files with JSON output when gitignored', async () => {
-      // Gitignore the Ideas directory
+    it('should return JSON error when matches are excluded', async () => {
       await writeFile(join(tempVaultDir, '.gitignore'), 'Ideas/\n');
 
-      // Search with JSON output
       const result = await runCLI(['search', 'Idea', '--output', 'json'], tempVaultDir);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
-      expect(json.success).toBe(true);
-      
-      // Should find both ideas even though Ideas/ is gitignored
-      const names = json.data.map((d: { name: string }) => d.name);
-      expect(names).toContain('Sample Idea');
-      expect(names).toContain('Another Idea');
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('No matching notes found');
     });
 
     it('should exclude unmanaged files in gitignored directories', async () => {
