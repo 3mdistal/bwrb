@@ -4,6 +4,7 @@ import { existsSync } from 'fs';
 import { dirname, join, relative } from 'path';
 
 const ID_REGISTRY_RELATIVE_PATH = '.bwrb/ids.jsonl';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function getIdRegistryPath(vaultDir: string): string {
   return join(vaultDir, ID_REGISTRY_RELATIVE_PATH);
@@ -37,7 +38,9 @@ export async function readIssuedIds(vaultDir: string): Promise<Set<string>> {
       // fall through
     }
 
-    ids.add(trimmed);
+    if (UUID_RE.test(trimmed)) {
+      ids.add(trimmed);
+    }
   }
 
   return ids;
