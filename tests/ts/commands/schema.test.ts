@@ -412,6 +412,70 @@ describe('schema command', () => {
       expect(result.stdout).toContain('Schema is valid');
     });
 
+    it('should warn when a type is missing output_dir', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-schema-validate-missing-output-dir-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            note: {
+              extends: 'meta',
+              fields: {
+                title: { prompt: 'text' },
+              },
+            },
+          },
+        })
+      );
+
+      try {
+        const result = await runCLI(['schema', 'validate'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Schema is valid');
+        expect(result.stderr).toContain('Warning:');
+        expect(result.stderr).toContain('type "note"');
+        expect(result.stderr).toContain('computed: "notes"');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should include output_dir warnings in JSON output', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-schema-validate-missing-output-dir-json-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            note: {
+              extends: 'meta',
+              fields: {},
+            },
+          },
+        })
+      );
+
+      try {
+        const result = await runCLI(['schema', 'validate', '--output', 'json'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        expect(json.data?.warnings).toBeDefined();
+        expect(json.data.warnings).toEqual([
+          { type: 'note', computed_output_dir: 'notes' },
+        ]);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
     it('should error on invalid schema', async () => {
       // Create a vault with invalid schema
       const invalidVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-invalid-'));

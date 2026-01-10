@@ -117,7 +117,9 @@ Validates the schema.json file against the expected structure:
 - Field types are valid
 - Enum values are properly defined
 - Type hierarchies are consistent
-- Output directories are specified
+- Types missing `output_dir` emit a warning (computed directory included)
+
+Warnings are printed to stderr in text mode. In JSON mode, warnings are included in `data.warnings`.
 
 ### Examples
 
