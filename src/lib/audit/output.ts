@@ -160,7 +160,7 @@ export function outputTextResults(
 
   if (summary.totalErrors > 0) {
     console.log('');
-    console.log(chalk.dim("Run 'bwrb audit --fix' to apply guided fixes, or add '--dry-run' to preview."));
+    console.log(chalk.dim("Run 'bwrb audit --path \"Ideas/**\" --fix' (or use --type/--where/--body/--all), or add '--dry-run' to preview."));
   }
 }
 
@@ -190,7 +190,7 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
 
   if (summary.remaining > 0 && autoMode) {
     console.log('');
-    console.log(chalk.dim("Run 'bwrb audit --fix' to resolve remaining issues interactively."));
+    console.log(chalk.dim("Re-run without '--auto' to resolve remaining issues interactively."));
   }
 }
 

@@ -12,7 +12,7 @@ import {
 } from '../lib/schema.js';
 import { resolveVaultDir } from '../lib/vault.js';
 import { getGlobalOpts } from '../lib/command.js';
-import { printError } from '../lib/prompt.js';
+import { printError, printWarning } from '../lib/prompt.js';
 import {
   printJson,
   jsonError,
@@ -148,6 +148,13 @@ Examples:
     if (fixMode && jsonMode) {
       printError('--fix is not compatible with --output json');
       process.exit(1);
+    }
+
+    if (executeMode) {
+      const message = dryRunMode
+        ? 'Warning: --execute is deprecated for audit fixes; running in --dry-run mode (no changes will be made).'
+        : 'Warning: --execute is deprecated for audit fixes; audit --fix writes by default. Use --dry-run to preview.';
+      printWarning(message);
     }
 
     try {
