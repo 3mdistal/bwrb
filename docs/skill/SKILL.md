@@ -90,6 +90,7 @@ bwrb supports vault-wide configuration in `.bwrb/schema.json` under the `config`
 | `open_with` | `system`, `editor`, `visual`, `obsidian` | `system` | Default --open behavior |
 | `editor` | Command string | `$EDITOR` | Terminal editor command |
 | `visual` | Command string | `$VISUAL` | GUI editor command |
+| `excluded_directories` | `string[]` | `[]` | Directory prefixes to exclude from discovery/targeting |
 
 ### Date Format
 
@@ -105,11 +106,14 @@ Ambiguous dates like `01/02/2026` (where both parts are ≤12) are rejected.
 
 ```bash
 # View current config
-bwrb config
+bwrb config list
 
 # Edit config option
 bwrb config edit date_format  # Interactive
-bwrb config set date_format "MM/DD/YYYY"  # Non-interactive
+bwrb config edit date_format --json '"MM/DD/YYYY"'  # Non-interactive
+
+# Exclude directories globally
+bwrb config edit excluded_directories --json '["Archive","Templates"]'
 ```
 
 ## Core Commands for Agents
@@ -187,9 +191,15 @@ bwrb audit --type task
 # JSON output for parsing issues
 bwrb audit --output json
 
-# Auto-fix issues (interactive repair)
+# Fix issues (dry-run by default)
+# Preview interactive fixes (no writes)
 bwrb audit --fix
-bwrb audit --fix --auto  # Auto-apply unambiguous fixes
+# Apply interactive fixes (writes files)
+bwrb audit --fix --execute
+# Preview auto-fixes (no writes)
+bwrb audit --fix --auto
+# Apply auto-fixes (writes files)
+bwrb audit --fix --auto --execute
 ```
 
 #### Type Inference and Check Dependencies

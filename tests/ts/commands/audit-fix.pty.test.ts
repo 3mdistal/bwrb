@@ -42,7 +42,7 @@ Content without type field.
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix'],
+        ['audit', 'idea', '--fix', '--execute'],
         async (proc, vaultPath) => {
           // Wait for audit to start
           await proc.waitFor('Auditing vault', 10000);
@@ -81,7 +81,7 @@ some-field: value
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix'],
+        ['audit', 'idea', '--fix', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Skip Me.md', 10000);
@@ -122,7 +122,7 @@ Missing required status.
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix'],
+        ['audit', 'idea', '--fix', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Missing Status.md', 10000);
@@ -173,7 +173,7 @@ type: item
       };
 
       await withTempVault(
-        ['audit', 'item', '--fix'],
+        ['audit', 'item', '--fix', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('No Default.md', 10000);
@@ -209,7 +209,7 @@ status: invalid-status-value
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix'],
+        ['audit', 'idea', '--fix', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Bad Status.md', 10000);
@@ -244,7 +244,7 @@ status: keep-this-bad-value
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix'],
+        ['audit', 'idea', '--fix', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Keep Bad.md', 10000);
@@ -281,7 +281,7 @@ extra_unknown_field: some value
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--strict'],
+        ['audit', 'idea', '--fix', '--execute', '--strict'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Extra Field.md', 10000);
@@ -323,7 +323,7 @@ status: raw
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix'],
+        ['audit', 'idea', '--fix', '--execute'],
         async (proc) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Issue', 10000);
@@ -360,7 +360,7 @@ some: value
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix'],
+        ['audit', 'idea', '--fix', '--execute'],
         async (proc) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Abort Test.md', 10000);
@@ -416,7 +416,7 @@ link: Target
       };
 
       await withTempVault(
-        ['audit', 'item', '--fix'],
+        ['audit', 'item', '--fix', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Bad Format.md', 10000);
@@ -456,7 +456,7 @@ Auto-fixable orphan.
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--auto'],
+        ['audit', 'idea', '--fix', '--auto', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auto-fixing', 10000);
 
@@ -499,7 +499,7 @@ type: item
       };
 
       await withTempVault(
-        ['audit', 'item', '--fix', '--auto'],
+        ['audit', 'item', '--fix', '--auto', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auto-fixing', 10000);
 
@@ -514,6 +514,104 @@ type: item
           expect(content).not.toContain('category:');
         },
         { files: [ambiguousFile], schema: noDefaultSchema }
+      );
+    }, 30000);
+  });
+
+  describe('Phase 4 structural fixes', () => {
+    it('should move frontmatter to top when eligible', async () => {
+      const file: TempVaultFile = {
+        path: 'Ideas/Frontmatter Not Top.md',
+        content: `Intro line before frontmatter.
+
+---
+type: idea
+status: raw
+---
+
+Body content.
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'idea', '--fix', '--execute'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Frontmatter Not Top.md', 10000);
+          await proc.waitFor('Frontmatter is not at the top', 10000);
+          await proc.waitFor('Move frontmatter to the top of the file', 10000);
+
+          proc.write('y');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Moved frontmatter to top', 10000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Ideas/Frontmatter Not Top.md');
+          expect(content.startsWith('---')).toBe(true);
+          expect(content).toContain('type: idea');
+          expect(content).toContain('Intro line before frontmatter');
+        },
+        { files: [file], schema: AUDIT_SCHEMA }
+      );
+    }, 30000);
+
+    it('should resolve duplicate frontmatter keys interactively', async () => {
+      const file: TempVaultFile = {
+        path: 'Ideas/Duplicate Keys.md',
+        content: `---
+type: idea
+status: raw
+status: backlog
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'idea', '--fix', '--execute'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Duplicate Keys.md', 10000);
+          await proc.waitFor('Duplicate frontmatter key: status', 10000);
+          await proc.waitFor("Resolve duplicate key 'status'", 10000);
+
+          // Select "keep first" (option 2)
+          proc.write('2');
+          await proc.waitForStable(500);
+
+          await proc.waitFor('Resolved duplicate key', 10000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Ideas/Duplicate Keys.md');
+          expect(content).toContain('status: raw');
+          expect(content).not.toContain('status: backlog');
+        },
+        { files: [file], schema: AUDIT_SCHEMA }
+      );
+    }, 30000);
+
+    it('should auto-fix malformed wikilinks in frontmatter', async () => {
+      const file: TempVaultFile = {
+        path: 'Ideas/Bad Link.md',
+        content: `---
+type: idea
+status: raw
+broken: "[[Target]"
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'idea', '--fix', '--auto', '--execute'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auto-fixing', 10000);
+          await proc.waitFor('Fixed malformed wikilink', 10000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Ideas/Bad Link.md');
+          expect(content).toContain('[[Target]]');
+        },
+        { files: [file], schema: AUDIT_SCHEMA }
       );
     }, 30000);
   });

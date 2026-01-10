@@ -540,7 +540,7 @@ Some content
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Auto-fixing');
       expect(result.stdout).toContain('Added status');
@@ -564,7 +564,7 @@ priority: medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toContain('Issues requiring manual review');
@@ -593,7 +593,7 @@ priority: medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Fixed: 1 issues');
       expect(result.stdout).toContain('Remaining: 1 issues');
@@ -609,7 +609,7 @@ priority: medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Fixed: 1 issues');
@@ -661,7 +661,7 @@ priority: medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--execute'], tempVaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('No issues found');
@@ -679,7 +679,7 @@ priority: medium
 
       // Interactive mode with 'n' input (decline fix) followed by newline
       // This should decline the prompt and skip the issue
-      const result = await runCLI(['audit', 'idea', '--fix'], tempVaultDir, 'n\n');
+      const result = await runCLI(['audit', 'idea', '--fix', '--execute'], tempVaultDir, 'n\n');
 
       expect(result.stdout).toContain('Missing required field: status');
       expect(result.stdout).toContain('Skipped');
@@ -811,7 +811,7 @@ priority: medium
       expect(result.stdout).not.toContain('temp.tmp.md');
     });
 
-    it('should respect BWRB_AUDIT_EXCLUDE env var', async () => {
+    it('should respect BWRB_EXCLUDE env var', async () => {
       // Create a directory that should be excluded via env var
       await mkdir(join(tempVaultDir, 'Archive'), { recursive: true });
       await writeFile(
@@ -834,8 +834,8 @@ priority: medium
       );
 
       // Set env var and run
-      const originalEnv = process.env.BWRB_AUDIT_EXCLUDE;
-      process.env.BWRB_AUDIT_EXCLUDE = 'Archive';
+      const originalEnv = process.env.BWRB_EXCLUDE;
+      process.env.BWRB_EXCLUDE = 'Archive';
 
       try {
         const result = await runCLI(['audit'], tempVaultDir);
@@ -846,19 +846,21 @@ priority: medium
       } finally {
         // Restore env
         if (originalEnv === undefined) {
-          delete process.env.BWRB_AUDIT_EXCLUDE;
+          delete process.env.BWRB_EXCLUDE;
         } else {
-          process.env.BWRB_AUDIT_EXCLUDE = originalEnv;
+          process.env.BWRB_EXCLUDE = originalEnv;
         }
       }
     });
 
-    it('should respect schema audit.ignored_directories config', async () => {
-      // Update schema with ignored_directories
+    it('should respect config.excluded_directories (and legacy alias)', async () => {
       const schemaWithExclusions = {
         ...TEST_SCHEMA,
+        config: {
+          excluded_directories: ['Templates'],
+        },
         audit: {
-          ignored_directories: ['Templates', 'Archive/Old'],
+          ignored_directories: ['Archive/Old'],
         },
       };
       await writeFile(
@@ -934,7 +936,7 @@ Some content
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Auto-fixing');
       expect(result.stdout).toContain('type: idea');
@@ -959,7 +961,7 @@ Task content
 `
       );
 
-      const result = await runCLI(['audit', 'task', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'task', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Auto-fixing');
       // In the new inheritance model, we use a single 'type: task' field instead of 'type: objective' + 'objective-type: task'
@@ -1159,7 +1161,7 @@ milestone: Q1 Release
 `
       );
 
-      const result = await runCLI(['audit', 'task', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'task', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Fixed');
       expect(result.stdout).toContain('milestone');
@@ -2172,6 +2174,7 @@ priority: medium
 
       const result = await runCLI(['audit', '--fix', '--auto'], tempVaultDir);
 
+
       // Should show what would be done
       expect(result.stdout).toContain('Would move to');
       expect(result.stdout).toContain('Ideas/');
@@ -2573,7 +2576,7 @@ priority: medium
       );
 
       const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
- 
+
       expect(result.stdout).toContain('Trimmed whitespace');
       expect(result.stdout).toContain('Fixed: 1');
 
@@ -2651,7 +2654,7 @@ archived: "true"
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Coerced');
       expect(result.stdout).toContain('boolean');
@@ -2715,7 +2718,7 @@ priority: Medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Fixed');
       expect(result.stdout).toContain('casing');
@@ -2786,7 +2789,7 @@ tags:
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Deduplicated');
 
@@ -2852,7 +2855,7 @@ Priority: medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Renamed');
 
@@ -2957,7 +2960,7 @@ tag: urgent
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Renamed');
       expect(result.stdout).toContain('tag');

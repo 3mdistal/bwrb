@@ -16,7 +16,7 @@ import chalk from 'chalk';
 
 import { loadSchema, detectObsidianVault } from '../lib/schema.js';
 import { resolveVaultDir } from '../lib/vault.js';
-import { promptSelection } from '../lib/prompt.js';
+import { promptInput, promptSelection } from '../lib/prompt.js';
 import { getGlobalOpts } from '../lib/command.js';
 import type { Config } from '../types/schema.js';
 
@@ -28,7 +28,7 @@ interface ConfigOptionMeta {
   label: string;
   description: string;
   options?: string[];
-  default: string;
+  default: unknown;
 }
 
 const CONFIG_OPTIONS: ConfigOptionMeta[] = [
@@ -69,6 +69,12 @@ const CONFIG_OPTIONS: ConfigOptionMeta[] = [
     label: 'Default Dashboard',
     description: 'Dashboard to run when `bwrb dashboard` is called without arguments',
     default: '(none)',
+  },
+  {
+    key: 'excluded_directories',
+    label: 'Excluded Directories',
+    description: 'Directory prefixes to exclude from discovery/targeting (applies to all commands)',
+    default: [],
   },
 ];
 
@@ -183,18 +189,19 @@ configCommand
         
         const value = JSON.parse(opts.json);
         
-        // Validate value
-        if (meta.options && !meta.options.includes(String(value))) {
-          throw new Error(`Invalid value for ${option}. Valid options: ${meta.options.join(', ')}`);
-        }
+        validateConfigValue(meta, value);
         
-        config[option] = value;
+        const storedValue = option === 'excluded_directories'
+          ? normalizeExcludedDirectoriesValue(value)
+          : value;
+
+        config[option] = storedValue;
         await writeFile(schemaPath, JSON.stringify(schema, null, 2) + '\n');
-        
+
         if (jsonMode) {
-          console.log(JSON.stringify({ success: true, data: { key: option, value } }));
+          console.log(JSON.stringify({ success: true, data: { key: option, value: storedValue } }));
         } else {
-          console.log(chalk.green(`Set ${option} = ${JSON.stringify(value)}`));
+          console.log(chalk.green(`Set ${option} = ${JSON.stringify(storedValue)}`));
         }
       } else {
         // Interactive mode
@@ -205,23 +212,24 @@ configCommand
             throw new Error(`Unknown config option: ${option}`);
           }
           
-          const newValue = await promptConfigOption(meta, config[option]);
-          if (newValue !== null) {
-            if (newValue === '') {
-              // Empty string means "clear" - delete the key
+          const result = await promptConfigOption(meta, config[option]);
+          if (result.action !== 'keep') {
+            if (result.action === 'clear') {
               delete config[option];
             } else {
-              config[option] = newValue;
+              config[option] = result.value;
             }
             await writeFile(schemaPath, JSON.stringify(schema, null, 2) + '\n');
-            
+
+            const outputValue = result.action === 'clear' ? null : result.value;
+
             if (jsonMode) {
-              console.log(JSON.stringify({ success: true, data: { key: option, value: newValue || null } }));
+              console.log(JSON.stringify({ success: true, data: { key: option, value: outputValue } }));
             } else {
-              if (newValue === '') {
+              if (result.action === 'clear') {
                 console.log(chalk.green(`Cleared ${option}`));
               } else {
-                console.log(chalk.green(`Set ${option} = ${JSON.stringify(newValue)}`));
+                console.log(chalk.green(`Set ${option} = ${JSON.stringify(outputValue)}`));
               }
             }
           }
@@ -232,23 +240,24 @@ configCommand
           
           if (selected) {
             const meta = CONFIG_OPTIONS.find(o => o.key === selected)!;
-            const newValue = await promptConfigOption(meta, config[selected]);
-            if (newValue !== null) {
-              if (newValue === '') {
-                // Empty string means "clear" - delete the key
+            const result = await promptConfigOption(meta, config[selected]);
+            if (result.action !== 'keep') {
+              if (result.action === 'clear') {
                 delete config[selected];
               } else {
-                config[selected] = newValue;
+                config[selected] = result.value;
               }
               await writeFile(schemaPath, JSON.stringify(schema, null, 2) + '\n');
-              
+
+              const outputValue = result.action === 'clear' ? null : result.value;
+
               if (jsonMode) {
-                console.log(JSON.stringify({ success: true, data: { key: selected, value: newValue || null } }));
+                console.log(JSON.stringify({ success: true, data: { key: selected, value: outputValue } }));
               } else {
-                if (newValue === '') {
+                if (result.action === 'clear') {
                   console.log(chalk.green(`Cleared ${selected}`));
                 } else {
-                  console.log(chalk.green(`Set ${selected} = ${JSON.stringify(newValue)}`));
+                  console.log(chalk.green(`Set ${selected} = ${JSON.stringify(outputValue)}`));
                 }
               }
             }
@@ -265,15 +274,20 @@ configCommand
     }
   });
 
+type ConfigEditResult =
+  | { action: 'keep' }
+  | { action: 'clear' }
+  | { action: 'set'; value: unknown };
+
 /**
  * Get the effective config value, considering defaults.
  */
-function getConfigValue(config: Partial<Config>, key: keyof Config, vaultDir: string): string | undefined {
+function getConfigValue(config: Partial<Config>, key: keyof Config, vaultDir: string): unknown {
   const value = config[key];
   if (value !== undefined) {
-    return String(value);
+    return value;
   }
-  
+
   // Return effective defaults
   switch (key) {
     case 'link_format':
@@ -288,6 +302,8 @@ function getConfigValue(config: Partial<Config>, key: keyof Config, vaultDir: st
       return detectObsidianVault(vaultDir);
     case 'default_dashboard':
       return undefined; // No auto-detection for default_dashboard
+    case 'excluded_directories':
+      return [];
     default:
       return undefined;
   }
@@ -296,36 +312,125 @@ function getConfigValue(config: Partial<Config>, key: keyof Config, vaultDir: st
 /**
  * Format a value for display.
  */
-function formatDisplayValue(value: string | undefined): string {
+function formatDisplayValue(value: unknown): string {
   if (value === undefined) {
     return chalk.gray('(not set)');
   }
-  return chalk.green(value);
+  return chalk.green(typeof value === 'string' ? value : JSON.stringify(value));
+}
+
+function normalizeExcludedDirectoryEntry(entry: string): string {
+  return entry.trim().replace(/\/$/, '');
+}
+
+function normalizeExcludedDirectoriesValue(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const normalized = value
+    .filter((v): v is string => typeof v === 'string')
+    .map(normalizeExcludedDirectoryEntry)
+    .filter(Boolean);
+
+  return Array.from(new Set(normalized));
+}
+
+function validateConfigValue(meta: ConfigOptionMeta, value: unknown): void {
+  if (meta.options) {
+    if (!meta.options.includes(String(value))) {
+      throw new Error(`Invalid value for ${String(meta.key)}. Valid options: ${meta.options.join(', ')}`);
+    }
+    return;
+  }
+
+  if (meta.key === 'excluded_directories') {
+    if (!Array.isArray(value) || !value.every(v => typeof v === 'string')) {
+      throw new Error('excluded_directories must be a JSON array of strings');
+    }
+  }
 }
 
 /**
  * Prompt for a config option value.
  */
-async function promptConfigOption(meta: ConfigOptionMeta, currentValue: unknown): Promise<string | null> {
+async function promptConfigOption(meta: ConfigOptionMeta, currentValue: unknown): Promise<ConfigEditResult> {
+  if (meta.key === 'excluded_directories') {
+    return promptExcludedDirectories(currentValue);
+  }
+
   if (meta.options) {
     // Select from options
-    return promptSelection(
+    const choice = await promptSelection(
       `${meta.label} (current: ${currentValue ?? meta.default}):`,
       meta.options
     );
-  } else {
-    // Text input - for now just use selection to clear or keep
-    const choices = ['(keep current)', '(clear)', '(enter new value)'];
-    const choice = await promptSelection(`${meta.label}:`, choices);
-    
-    if (choice === '(keep current)' || choice === null) {
-      return null;
-    } else if (choice === '(clear)') {
-      return ''; // Will be removed from config
-    } else {
-      // For text input, we'd need promptInput but let's keep it simple
-      console.log(chalk.yellow(`Use --json flag to set custom values: bwrb config edit ${meta.key} --json '"value"'`));
-      return null;
+
+    if (choice === null) return { action: 'keep' };
+    return { action: 'set', value: choice };
+  }
+
+  // Text input
+  const choices = ['(keep current)', '(clear)', '(enter new value)'];
+  const choice = await promptSelection(`${meta.label}:`, choices);
+
+  if (choice === '(keep current)' || choice === null) {
+    return { action: 'keep' };
+  }
+  if (choice === '(clear)') {
+    return { action: 'clear' };
+  }
+
+  const current = typeof currentValue === 'string' ? currentValue : undefined;
+  const entered = await promptInput(`Enter ${meta.key}:`, current);
+  if (entered === null) return { action: 'keep' };
+
+  return { action: 'set', value: entered };
+}
+
+async function promptExcludedDirectories(currentValue: unknown): Promise<ConfigEditResult> {
+  const current = normalizeExcludedDirectoriesValue(currentValue);
+  let entries = [...current];
+
+  while (true) {
+    const display = entries.length > 0 ? entries.join(', ') : '(none)';
+
+    const choice = await promptSelection(
+      `Excluded directories (current: ${display}):`,
+      ['(keep current)', '(clear)', '(add)', '(remove)', '(done)']
+    );
+
+    if (choice === null || choice === '(keep current)') {
+      return { action: 'keep' };
+    }
+
+    if (choice === '(clear)') {
+      return { action: 'clear' };
+    }
+
+    if (choice === '(done)') {
+      return { action: 'set', value: entries };
+    }
+
+    if (choice === '(add)') {
+      const entered = await promptInput('Add directories (comma-separated):');
+      if (entered === null) continue;
+
+      const toAdd = entered
+        .split(',')
+        .map(normalizeExcludedDirectoryEntry)
+        .filter(Boolean);
+
+      entries = Array.from(new Set([...entries, ...toAdd]));
+      continue;
+    }
+
+    if (choice === '(remove)') {
+      if (entries.length === 0) continue;
+
+      const toRemove = await promptSelection('Remove which directory?', [...entries, '(back)']);
+      if (toRemove === null || toRemove === '(back)') continue;
+
+      entries = entries.filter(e => e !== toRemove);
+      continue;
     }
   }
 }

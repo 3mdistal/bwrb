@@ -31,6 +31,7 @@ describe('config command', () => {
       expect(result.stdout).toContain('visual');
       expect(result.stdout).toContain('open_with');
       expect(result.stdout).toContain('obsidian_vault');
+      expect(result.stdout).toContain('excluded_directories');
     });
 
     it('should show default values when config is not set', async () => {
@@ -51,6 +52,7 @@ describe('config command', () => {
       expect(json.success).toBe(true);
       expect(json.data).toBeDefined();
       expect(json.data.link_format).toBe('wikilink');
+      expect(json.data.excluded_directories).toEqual([]);
       // open_with should be one of the valid options
       expect(['system', 'editor', 'visual', 'obsidian']).toContain(json.data.open_with);
     });
@@ -185,6 +187,20 @@ describe('config command', () => {
       const verifyResult = await runCLI(['config', 'list', 'editor', '--output', 'json'], tempVaultDir);
       const json = JSON.parse(verifyResult.stdout);
       expect(json.data.value).toBe('nvim');
+    });
+
+    it('should set an array value', async () => {
+      const result = await runCLI(
+        ['config', 'edit', 'excluded_directories', '--json', '["Archive","Templates/"]'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Set excluded_directories');
+
+      const verifyResult = await runCLI(['config', 'list', 'excluded_directories', '--output', 'json'], tempVaultDir);
+      const json = JSON.parse(verifyResult.stdout);
+      expect(json.data.value).toEqual(['Archive', 'Templates']);
     });
 
     it('should reject invalid enum value', async () => {

@@ -88,6 +88,11 @@ export function outputJsonResults(results: FileAuditResult[], summary: AuditSumm
         ...(i.canonicalValue && { canonicalValue: i.canonicalValue }),
         ...(i.hasConflict !== undefined && { hasConflict: i.hasConflict }),
         ...(i.conflictValue !== undefined && { conflictValue: i.conflictValue }),
+        // Phase 4: Structural integrity fields
+        ...(i.duplicateKey && { duplicateKey: i.duplicateKey }),
+        ...(i.duplicateCount !== undefined && { duplicateCount: i.duplicateCount }),
+        ...(i.listIndex !== undefined && { listIndex: i.listIndex }),
+        ...(i.fixedValue && { fixedValue: i.fixedValue }),
       })),
     })),
     summary,
@@ -155,7 +160,7 @@ export function outputTextResults(
 
   if (summary.totalErrors > 0) {
     console.log('');
-    console.log(chalk.dim("Run 'bwrb audit --fix' to repair interactively."));
+    console.log(chalk.dim("Run 'bwrb audit --fix' to preview repairs, or 'bwrb audit --fix --execute' to apply."));
   }
 }
 
@@ -178,7 +183,7 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
 
   if (summary.remaining > 0 && autoMode) {
     console.log('');
-    console.log(chalk.dim("Run 'bwrb audit --fix' to address remaining issues interactively."));
+    console.log(chalk.dim("Run 'bwrb audit --fix' to preview remaining fixes, or 'bwrb audit --fix --execute' to apply."));
   }
 }
 
