@@ -40,6 +40,11 @@ import {
   applyDefaults,
   validateContextFields,
 } from '../lib/validation.js';
+import {
+  ensureIdInFieldOrder,
+  generateUniqueNoteId,
+  registerIssuedNoteId,
+} from '../lib/note-id.js';
 import { validateParentNoCycle } from '../lib/hierarchy.js';
 import {
   printJson,
@@ -353,6 +358,12 @@ async function createNoteFromJson(
 
   // Extract _body from input (special field for body section content)
   const { _body: rawBodyInput, ...frontmatterInput } = inputData;
+
+  // Reserved/system-managed field
+  if ('id' in frontmatterInput) {
+    printJson(jsonError("Frontmatter field 'id' is reserved and cannot be set in --json mode"));
+    process.exit(ExitCodes.VALIDATION_ERROR);
+  }
   
   // Validate _body if provided
   let bodyInput: Record<string, unknown> | undefined;
@@ -544,11 +555,18 @@ async function createPooledNoteFromJson(
 
   // Generate body content
   const body = generateBodyForJson(typeDef, frontmatter, template, bodyInput, schema.config.dateFormat);
-  
+
+  // System-managed stable note id (v1.0)
+  const noteId = await generateUniqueNoteId(vaultDir);
+  frontmatter['id'] = noteId;
+
   const fieldOrder = getFrontmatterOrder(typeDef);
-  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
+  const orderedFields = ensureIdInFieldOrder(
+    fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter)
+  );
 
   await writeNote(filePath, frontmatter, body, orderedFields);
+  await registerIssuedNoteId(vaultDir, noteId, filePath);
   
   // Handle instance scaffolding
   const result: NoteCreationResult = { path: filePath };
@@ -607,11 +625,18 @@ async function createOwnedNoteFromJson(
 
   // Generate body content
   const body = generateBodyForJson(typeDef, frontmatter, template, bodyInput, schema.config.dateFormat);
-  
+
+  // System-managed stable note id (v1.0)
+  const noteId = await generateUniqueNoteId(vaultDir);
+  frontmatter['id'] = noteId;
+
   const fieldOrder = getFrontmatterOrder(typeDef);
-  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
+  const orderedFields = ensureIdInFieldOrder(
+    fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter)
+  );
 
   await writeNote(filePath, frontmatter, body, orderedFields);
+  await registerIssuedNoteId(vaultDir, noteId, filePath);
   
   // Handle instance scaffolding
   const result: NoteCreationResult = { path: filePath };
@@ -863,7 +888,13 @@ async function createPooledNote(
     }
   }
 
+  // System-managed stable note id (v1.0)
+  const noteId = await generateUniqueNoteId(vaultDir);
+  frontmatter['id'] = noteId;
+  orderedFields = ensureIdInFieldOrder(orderedFields);
+
   await writeNote(filePath, frontmatter, body, orderedFields);
+  await registerIssuedNoteId(vaultDir, noteId, filePath);
   printSuccess(`\n✓ Created: ${filePath}`);
   
   // Handle instance scaffolding if template has instances
@@ -1177,7 +1208,13 @@ async function createOwnedNote(
     }
   }
   
+  // System-managed stable note id (v1.0)
+  const noteId = await generateUniqueNoteId(vaultDir);
+  frontmatter['id'] = noteId;
+  orderedFields = ensureIdInFieldOrder(orderedFields);
+
   await writeNote(filePath, frontmatter, body, orderedFields);
+  await registerIssuedNoteId(vaultDir, noteId, filePath);
   printSuccess(`\n✓ Created: ${relative(vaultDir, filePath)}`);
   printInfo(`  Owned by: ${owner.ownerName}`);
   

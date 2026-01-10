@@ -4,6 +4,28 @@ import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
 import { formatLocalDate } from '../../../src/lib/local-date.js';
 
+const UUID_RE = /\bid:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
+
+function extractIdFromFrontmatter(content: string): string {
+  const match = content.match(UUID_RE);
+  if (!match) {
+    throw new Error('Expected note to contain an id field');
+  }
+  return match[1]!;
+}
+
+async function readRegistryIds(vaultDir: string): Promise<Set<string>> {
+  const registry = await readFile(join(vaultDir, '.bwrb', 'ids.jsonl'), 'utf-8');
+  const ids = new Set<string>();
+  for (const line of registry.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const parsed = JSON.parse(trimmed) as { id?: unknown };
+    if (typeof parsed.id === 'string') ids.add(parsed.id);
+  }
+  return ids;
+}
+
 // Note: The `new` command uses the `prompts` library which requires a TTY.
 // Interactive tests cannot be run via piped stdin.
 // This file tests error handling and validation only.
@@ -118,6 +140,10 @@ describe('new command', () => {
       expect(content).toContain('status: backlog');
       expect(content).toContain('Steps to Reproduce');
       expect(content).toContain('Expected Behavior');
+
+      const id = extractIdFromFrontmatter(content);
+      const registryIds = await readRegistryIds(vaultDir);
+      expect(registryIds.has(id)).toBe(true);
     });
 
     it('should create note with --template default', async () => {
@@ -235,6 +261,16 @@ describe('new command - instance scaffolding', () => {
     const compAnalysis = await readFile(join(instanceDir, 'Competitor Analysis.md'), 'utf-8');
     expect(compAnalysis).toContain('type: research');
     expect(compAnalysis).toContain('status: raw');
+
+    const parentId = extractIdFromFrontmatter(parentContent);
+    const bgId = extractIdFromFrontmatter(bgResearch);
+    const compId = extractIdFromFrontmatter(compAnalysis);
+
+    const registryIds = await readRegistryIds(vaultDir);
+    expect(registryIds.size).toBe(3);
+    expect(registryIds.has(parentId)).toBe(true);
+    expect(registryIds.has(bgId)).toBe(true);
+    expect(registryIds.has(compId)).toBe(true);
   });
 
   it('should skip instance creation with --no-instances flag', async () => {

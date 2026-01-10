@@ -179,6 +179,79 @@ status: queued
     });
   });
 
+  describe('stable ids', () => {
+    it('should edit a note by --id selector', async () => {
+      const id = 'b3b9a7d0-3c02-4a1a-9f7c-2c2f1e2c6d4f';
+      const filePath = join(vaultDir, 'Ideas/By Id.md');
+      await writeFile(
+        filePath,
+        `---\ntype: idea\nid: ${id}\nstatus: raw\npriority: medium\n---\n`,
+        'utf-8'
+      );
+
+      const result = await runCLI(
+        ['edit', '--id', id, '--json', '{"status":"backlog"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.updated).toContain('status');
+
+      const updated = await readFile(filePath, 'utf-8');
+      expect(updated).toContain('status: backlog');
+      expect(updated).toContain(`id: ${id}`);
+    });
+
+    it('should hard-error on duplicate ids when targeting by --id', async () => {
+      const id = '0a0d2686-c00a-4a0e-8d4e-d377cbf20e1f';
+      await writeFile(
+        join(vaultDir, 'Ideas/Dupe 1.md'),
+        `---\ntype: idea\nid: ${id}\nstatus: raw\npriority: low\n---\n`,
+        'utf-8'
+      );
+      await writeFile(
+        join(vaultDir, 'Ideas/Dupe 2.md'),
+        `---\ntype: idea\nid: ${id}\nstatus: raw\npriority: low\n---\n`,
+        'utf-8'
+      );
+
+      const result = await runCLI(
+        ['edit', '--id', id, '--json', '{"status":"backlog"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Duplicate id');
+
+      const candidates = (json.errors ?? []).map((e: { value?: string }) => e.value).filter(Boolean);
+      expect(candidates).toContain('Ideas/Dupe 1.md');
+      expect(candidates).toContain('Ideas/Dupe 2.md');
+    });
+
+    it('should reject attempts to modify the id field', async () => {
+      const filePath = join(vaultDir, 'Ideas/Immutable Id.md');
+      await writeFile(
+        filePath,
+        `---\ntype: idea\nid: 8f3c8d3c-7bf2-49a0-b96c-1e2bf4d6f5bb\nstatus: raw\npriority: medium\n---\n`,
+        'utf-8'
+      );
+
+      const result = await runCLI(
+        ['edit', 'Ideas/Immutable Id.md', '--json', '{"id":"11111111-1111-4111-8111-111111111111"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('id');
+    });
+  });
+
   describe('body preservation', () => {
     it('should preserve body content after frontmatter edit', async () => {
       // First, create a file with rich body content

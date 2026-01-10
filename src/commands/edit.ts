@@ -28,6 +28,7 @@ interface EditOptions {
   type?: string;
   path?: string;
   where?: string[];
+  id?: string;
   body?: string;
   json?: string;
   open?: boolean;
@@ -45,6 +46,7 @@ export const editCommand = new Command('edit')
   .option('-t, --type <type>', 'Filter by note type')
   .option('-p, --path <glob>', 'Filter by path pattern')
   .option('-w, --where <expr...>', 'Filter by frontmatter expression')
+  .option('--id <uuid>', 'Filter by stable note id')
   .option('-b, --body <pattern>', 'Filter by body content')
   .option('--json <patch>', 'Non-interactive patch/merge mode')
   .option('-o, --open', 'Open the note in Obsidian after editing')
@@ -55,6 +57,7 @@ Targeting Options:
   -t, --type <type>    Filter by note type (e.g., task, idea)
   -p, --path <glob>    Filter by path pattern (e.g., "Projects/**")
   -w, --where <expr>   Filter by frontmatter (e.g., "status == 'active'")
+  --id <uuid>          Filter by stable note id
   -b, --body <pattern> Filter by body content
 
 Examples:
@@ -125,6 +128,7 @@ Examples:
       if (options.type) targeting.type = options.type;
       if (options.path) targeting.path = options.path;
       if (options.where) targeting.where = options.where;
+      if (options.id) targeting.id = options.id;
       if (options.body) targeting.body = options.body;
 
       // Determine if we have targeting constraints
@@ -148,12 +152,7 @@ Examples:
         // Use resolveTargets for proper filtering
         const targetingResult = await resolveTargets(targeting, schema, vaultDir);
         if (targetingResult.error) {
-          if (jsonMode) {
-            printJson(jsonError(targetingResult.error));
-            process.exit(ExitCodes.VALIDATION_ERROR);
-          }
-          printError(targetingResult.error);
-          process.exit(1);
+          exitWithResolutionError(targetingResult.error, targetingResult.files, jsonMode);
         }
         candidates = targetingResult.files;
       } else {

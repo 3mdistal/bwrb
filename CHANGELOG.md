@@ -22,6 +22,10 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Added
 
+- **Stable system-managed note IDs** (#334)
+  - `bwrb new` writes an `id` (UUIDv4) to frontmatter
+  - IDs are never reused (append-only registry in `.bwrb/ids.jsonl`)
+  - Commands using targeting selectors support `--id <uuid>` for stable lookup
 
 - **Interactive parent type selection in `schema new type`** (#240)
   - When creating a new type interactively, now prompts "Extend from type" with list of existing types

@@ -122,6 +122,22 @@ describe('validation', () => {
       expect(result.errors[0].type).toBe('unknown_field');
     });
 
+    it('should allow reserved id field in strict mode', () => {
+      const result = validateFrontmatter(
+        schema,
+        'idea',
+        {
+          type: 'idea',
+          id: '11111111-1111-4111-8111-111111111111',
+          status: 'raw',
+        },
+        { strictFields: true }
+      );
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
     it('should validate date format', () => {
       // Note: date validation only happens for fields with prompt: 'date'
       // The test schema's deadline field may use 'input' prompt instead

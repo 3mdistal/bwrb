@@ -241,6 +241,7 @@ interface OpenOptions {
   type?: string;
   path?: string;
   where?: string[];
+  id?: string;
   body?: string;
   vault?: string;
 }
@@ -255,6 +256,7 @@ export const openCommand = new Command("open")
   .option("-t, --type <type>", "Filter by note type (e.g., task, objective/milestone)")
   .option("-p, --path <glob>", "Filter by path pattern")
   .option("-w, --where <expr...>", "Filter by frontmatter expression")
+  .option("--id <uuid>", "Filter by stable note id")
   .option("-b, --body <pattern>", "Filter by body content pattern")
   .option("--vault <path>", "Path to vault directory")
   .addHelpText(
@@ -305,7 +307,7 @@ Examples:
       const appMode = resolveAppMode(options.app, schema.config);
 
       // Check if we have any targeting options
-      const hasTargeting = options.type || options.path || options.where?.length || options.body;
+      const hasTargeting = options.type || options.path || options.where?.length || options.id || options.body;
 
       let filteredIndex;
 
@@ -316,18 +318,13 @@ Examples:
         if (options.type) targeting.type = options.type;
         if (options.path) targeting.path = options.path;
         if (options.where?.length) targeting.where = options.where;
+        if (options.id) targeting.id = options.id;
         if (options.body) targeting.body = options.body;
 
         const targetResult = await resolveTargets(targeting, schema, vaultDir);
 
         if (targetResult.error) {
-          if (jsonMode) {
-            printJson(jsonError(targetResult.error));
-            process.exit(ExitCodes.VALIDATION_ERROR);
-          } else {
-            console.error(targetResult.error);
-            process.exit(ExitCodes.VALIDATION_ERROR);
-          }
+          exitWithResolutionError(targetResult.error, targetResult.files, jsonMode);
         }
 
         // Build a filtered index from the targeted files

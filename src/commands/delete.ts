@@ -51,6 +51,7 @@ interface DeleteOptions {
   type?: string;
   path?: string;
   where?: string[];
+  id?: string;
   body?: string;
   text?: string; // deprecated
   all?: boolean;
@@ -133,6 +134,7 @@ export const deleteCommand = new Command('delete')
   .option('-t, --type <type>', 'Filter by type (e.g., "task", "objective/milestone")')
   .option('-p, --path <glob>', 'Filter by path glob (e.g., "Projects/**")')
   .option('-w, --where <expr...>', 'Filter by frontmatter expression (e.g., "status=active")')
+  .option('--id <uuid>', 'Filter by stable note id')
   .option('-b, --body <query>', 'Filter by body content search')
   .option('--text <query>', 'Filter by body content search (deprecated: use --body)', undefined)
   .option('-a, --all', 'Select all notes (required for bulk delete without other targeting)')
@@ -194,6 +196,7 @@ Note: Deletion is permanent. The file is removed from the filesystem.
         ...(options.type && { type: options.type }),
         ...(options.path && { path: options.path }),
         ...(options.where && { where: options.where }),
+        ...(options.id && { id: options.id }),
         ...(bodyQuery && { body: bodyQuery }),
         ...(options.all && { all: options.all }),
       };
@@ -418,11 +421,29 @@ async function handleBulkDelete(
 
   if (result.error) {
     if (jsonMode) {
-      printJson(jsonError(result.error, { code: ExitCodes.VALIDATION_ERROR }));
+      const errorDetails = result.files.length
+        ? {
+            errors: result.files.map(f => ({
+              field: 'candidate',
+              value: f.relativePath,
+              message: 'Matching file',
+            })),
+            code: ExitCodes.VALIDATION_ERROR,
+          }
+        : { code: ExitCodes.VALIDATION_ERROR };
+
+      printJson(jsonError(result.error, errorDetails));
       process.exitCode = ExitCodes.VALIDATION_ERROR;
       return;
     }
+
     printError(result.error);
+    if (result.files.length > 0) {
+      printError('Matching files:');
+      for (const f of result.files) {
+        printError(`  ${f.relativePath}`);
+      }
+    }
     process.exitCode = ExitCodes.VALIDATION_ERROR;
     return;
   }
