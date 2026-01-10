@@ -115,6 +115,8 @@ Some workflows (automation, orchestration, long-lived references) need a stable 
 
 **Behavior:**
 - Composes via AND with the core selectors
+- Counts as explicit targeting for destructive safety gates (where supported)
+- Implemented by reading note frontmatter during discovery; `.bwrb/` remains excluded from candidate sets
 - 0 matches → error
 - >1 matches → hard error (no first-match), candidates listed in text and JSON output
 
