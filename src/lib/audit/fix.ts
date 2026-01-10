@@ -5,8 +5,8 @@
  */
 
 import chalk from 'chalk';
-import { join, dirname, basename } from 'path';
 import { readFile, writeFile } from 'fs/promises';
+import { join, dirname, basename } from 'path';
 import { parseDocument, isMap, isSeq } from 'yaml';
 import { isDeepStrictEqual } from 'node:util';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -78,6 +78,76 @@ function executeRequiredResult(filePath: string, issue: AuditIssue): FixResult {
   return { file: filePath, issue, action: 'skipped', message: 'Use --execute to write changes' };
 }
 
+type RawLine = {
+  text: string;
+  eol: string;
+};
+
+function splitLinesPreserveEol(input: string): RawLine[] {
+  const lines: RawLine[] = [];
+  let start = 0;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch !== '\n' && ch !== '\r') continue;
+
+    const eolStart = i;
+    let eol = ch;
+    if (ch === '\r' && input[i + 1] === '\n') {
+      eol = '\r\n';
+      i++;
+    }
+
+    lines.push({
+      text: input.slice(start, eolStart),
+      eol,
+    });
+
+    start = i + 1;
+  }
+
+  lines.push({
+    text: input.slice(start),
+    eol: '',
+  });
+
+  return lines;
+}
+
+async function applyTrailingWhitespaceFix(filePath: string, issue: AuditIssue): Promise<FixResult> {
+  if (!isExecuteEnabled()) {
+    return executeRequiredResult(filePath, issue);
+  }
+
+  const lineNumber = issue.lineNumber;
+  if (!lineNumber || lineNumber <= 0) {
+    return { file: filePath, issue, action: 'failed', message: 'No line number for whitespace fix' };
+  }
+
+  const content = await readFile(filePath, 'utf-8');
+  const lines = splitLinesPreserveEol(content);
+
+  const index = lineNumber - 1;
+  if (index < 0 || index >= lines.length) {
+    return { file: filePath, issue, action: 'failed', message: `Line ${lineNumber} out of range` };
+  }
+
+  const current = lines[index]!;
+  if (!/[ \t]+$/.test(current.text)) {
+    return { file: filePath, issue, action: 'skipped', message: 'No trailing whitespace found' };
+  }
+
+  lines[index] = {
+    ...current,
+    text: current.text.replace(/[ \t]+$/, ''),
+  };
+
+  const updated = lines.map((l) => l.text + l.eol).join('');
+  await writeFile(filePath, updated, 'utf-8');
+
+  return { file: filePath, issue, action: 'fixed' };
+}
+
 // ============================================================================
 // Fix Application
 // ============================================================================
@@ -95,6 +165,10 @@ async function applyFix(
     // Phase 4 structural fixes operate on raw content.
     if (issue.code === 'frontmatter-not-at-top' || issue.code === 'duplicate-frontmatter-keys' || issue.code === 'malformed-wikilink') {
       return await applyStructuralFix(filePath, issue, newValue);
+    }
+
+    if (issue.code === 'trailing-whitespace') {
+      return await applyTrailingWhitespaceFix(filePath, issue);
     }
 
     if (!isExecuteEnabled()) {
@@ -162,14 +236,6 @@ async function applyFix(
         break;
       }
       // Phase 2: Low-risk hygiene fixes
-      case 'trailing-whitespace': {
-        if (issue.field && typeof frontmatter[issue.field] === 'string') {
-          frontmatter[issue.field] = (frontmatter[issue.field] as string).trim();
-        } else {
-          return { file: filePath, issue, action: 'failed', message: 'Cannot trim non-string value' };
-        }
-        break;
-      }
       case 'invalid-boolean-coercion': {
         if (issue.field && typeof frontmatter[issue.field] === 'string') {
           const strValue = (frontmatter[issue.field] as string).toLowerCase();
@@ -762,12 +828,16 @@ export async function runAutoFix(
           failed++;
         }
       } else if (issue.code === 'trailing-whitespace' && issue.field) {
-        // Auto-fix trailing whitespace
+        // Auto-fix trailing whitespace (minimal diff; write-gated by --execute)
         const fixResult = await applyFix(schema, result.path, issue);
         if (fixResult.action === 'fixed') {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.green(`    ✓ Trimmed whitespace from ${issue.field}`));
           fixed++;
+        } else if (fixResult.action === 'skipped') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ Would trim whitespace from ${issue.field} (use --execute to apply)`));
+          skipped++;
         } else {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.red(`    ✗ Failed to trim ${issue.field}: ${fixResult.message}`));
@@ -967,7 +1037,7 @@ async function handleInteractiveFix(
       return handleMalformedWikilinkFix(schema, result, issue);
     // Phase 2: Hygiene issues
     case 'trailing-whitespace':
-      return handleTrailingWhitespaceFix(schema, result, issue);
+      return handleTrailingWhitespaceFix(context, result, issue);
     case 'invalid-boolean-coercion':
       return handleBooleanCoercionFix(schema, result, issue);
     case 'unknown-enum-casing':
@@ -1802,11 +1872,19 @@ async function handleMalformedWikilinkFix(
  * Handle trailing whitespace fix.
  */
 async function handleTrailingWhitespaceFix(
-  schema: LoadedSchema,
+  context: FixContext,
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
   if (!issue.field) return 'skipped';
+
+  const { schema } = context;
+  const execute = context.execute ?? false;
+
+  if (!execute) {
+    console.log(chalk.yellow(`    ⚠ Would trim whitespace from ${issue.field} (use --execute to apply)`));
+    return 'skipped';
+  }
 
   const confirm = await promptConfirm(
     `    → Trim whitespace from '${issue.field}'?`
@@ -1821,6 +1899,9 @@ async function handleTrailingWhitespaceFix(
   if (fixResult.action === 'fixed') {
     console.log(chalk.green(`    ✓ Trimmed whitespace from ${issue.field}`));
     return 'fixed';
+  } else if (fixResult.action === 'skipped') {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
   } else {
     console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
     return 'failed';

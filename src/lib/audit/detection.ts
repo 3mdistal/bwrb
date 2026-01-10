@@ -210,6 +210,9 @@ export async function auditFile(
   // Phase 4: Structural integrity issues
   issues.push(...collectStructuralIssues(structural, frontmatter));
 
+  // Raw-level hygiene: detect trailing whitespace before YAML parsing
+  issues.push(...detectTrailingWhitespaceInRawFrontmatter(structural));
+
   // Check for type field
   const typeValue = frontmatter['type'];
   if (!typeValue) {
@@ -954,6 +957,137 @@ function checkParentCycle(
 // Phase 2: Hygiene Issue Detection
 // ============================================================================
 
+type RawLine = {
+  text: string;
+  eol: string;
+  lineNumber: number;
+  startOffset: number;
+  endOffset: number;
+};
+
+function splitLinesPreserveEol(input: string): RawLine[] {
+  const lines: RawLine[] = [];
+  let start = 0;
+  let lineNumber = 1;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch !== '\n' && ch !== '\r') continue;
+
+    const eolStart = i;
+    let eol = ch;
+    if (ch === '\r' && input[i + 1] === '\n') {
+      eol = '\r\n';
+      i++;
+    }
+
+    lines.push({
+      text: input.slice(start, eolStart),
+      eol,
+      lineNumber,
+      startOffset: start,
+      endOffset: eolStart,
+    });
+
+    start = i + 1;
+    lineNumber++;
+  }
+
+  lines.push({
+    text: input.slice(start),
+    eol: '',
+    lineNumber,
+    startOffset: start,
+    endOffset: input.length,
+  });
+
+  return lines;
+}
+
+function parseSimpleYamlKeyValueLine(line: string): { indent: number; key: string; rest: string } | null {
+  const match = line.match(/^([ \t]*)([A-Za-z0-9_-]+)\s*:\s*(.*)$/);
+  if (!match) return null;
+
+  return {
+    indent: match[1]!.length,
+    key: match[2]!,
+    rest: match[3]!,
+  };
+}
+
+function isBlockScalarHeader(restTrimStart: string): boolean {
+  // Handles: |, >, |-, |+, |2, |2-, >-, etc (optionally followed by a comment).
+  return /^[>|](?:[1-9])?(?:[+-])?\s*(#.*)?$/.test(restTrimStart);
+}
+
+function detectTrailingWhitespaceInRawFrontmatter(
+  structural: Awaited<ReturnType<typeof readStructuralFrontmatter>>
+): AuditIssue[] {
+  if (!structural.primaryBlock || structural.yaml === null) return [];
+
+  const { yamlStart, yamlEnd } = structural.primaryBlock;
+  const allLines = splitLinesPreserveEol(structural.raw);
+
+  const frontmatterLines = allLines.filter(
+    (line) => line.startOffset >= yamlStart && line.startOffset < yamlEnd
+  );
+
+  const issues: AuditIssue[] = [];
+
+  let inBlockScalar = false;
+  let blockScalarIndent = 0;
+
+  for (let i = 0; i < frontmatterLines.length; i++) {
+    const line = frontmatterLines[i]!;
+    const text = line.text;
+
+    const parsed = parseSimpleYamlKeyValueLine(text);
+
+    if (inBlockScalar) {
+      if (parsed && parsed.indent <= blockScalarIndent) {
+        // Block scalars end when a new key appears at the same or lower indentation.
+        inBlockScalar = false;
+        i--; // re-process this line outside the block context
+      }
+      continue;
+    }
+
+    if (!parsed) continue;
+
+    const { indent, key, rest } = parsed;
+
+    // Skip discriminator fields.
+    if (key === 'type' || key.endsWith('-type')) continue;
+
+    const restTrimStart = rest.replace(/^[ \t]*/, '');
+
+    // Nested structures (`key:` with no inline value) are not single-line scalars.
+    if (restTrimStart === '' || restTrimStart.startsWith('#')) continue;
+
+    // Block scalars are not single-line scalars; skip their content entirely.
+    if (isBlockScalarHeader(restTrimStart)) {
+      inBlockScalar = true;
+      blockScalarIndent = indent;
+      continue;
+    }
+
+    // Detect trailing spaces/tabs at end-of-line.
+    if (/[ \t]+$/.test(text)) {
+      issues.push({
+        severity: 'warning',
+        code: 'trailing-whitespace',
+        message: `Trailing whitespace in '${key}'`,
+        field: key,
+        value: restTrimStart,
+        autoFixable: true,
+        lineNumber: line.lineNumber,
+      });
+    }
+  }
+
+  return issues;
+}
+
 /**
  * Check for low-risk hygiene issues that can be auto-fixed.
  * 
@@ -984,9 +1118,8 @@ function checkHygieneIssues(
     
     const field = fields[fieldName];
     
-    // NOTE: trailing-whitespace detection is not possible because YAML parsers
-    // (gray-matter) strip trailing whitespace during parsing. The issue type
-    // is kept for future use if we implement raw string detection.
+    // NOTE: trailing-whitespace detection is handled on raw frontmatter earlier
+    // (before YAML parsing), because YAML parsers normalize trailing whitespace.
     
     // Check for invalid boolean coercion ("true"/"false" strings)
     if (field?.prompt === 'boolean') {
