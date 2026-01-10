@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { readFile, writeFile } from 'fs/promises';
 import { join, dirname, basename } from 'path';
 import { parseDocument, isMap, isSeq } from 'yaml';
+import type { YAMLSeq } from 'yaml';
 import { isDeepStrictEqual } from 'node:util';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import {
@@ -375,7 +376,16 @@ async function applyStructuralFix(
         keepIndex = matches[matches.length - 1]!.index;
       } else {
         // Auto-merge only when values are effectively the same, or one side is empty.
-        const values = matches.map((m) => (m.pair.value ? (m.pair.value as any).toJSON() : null));
+        const values = matches.map((m) => {
+          const valueNode = m.pair.value as unknown;
+          if (valueNode && typeof valueNode === 'object') {
+            const toJson = (valueNode as Record<string, unknown>)['toJSON'];
+            if (typeof toJson === 'function') {
+              return (toJson as () => unknown)();
+            }
+          }
+          return null;
+        });
         const nonEmptyLocalIndexes = values
           .map((v, i) => (!isEmpty(v) ? i : -1))
           .filter((i) => i >= 0);
@@ -412,11 +422,11 @@ async function applyStructuralFix(
         .sort((a, b) => b - a);
 
       for (const idx of removeIndexes) {
-        (map.items as any[]).splice(idx, 1);
+        map.items.splice(idx, 1);
       }
 
       // Allow stringification even if other duplicate errors remain (handled per-issue).
-      (doc as any).errors = [];
+      (doc.errors as unknown[]).length = 0;
       const newYaml = doc.toString().trimEnd();
       const updated = replacePrimaryYaml(raw, block, newYaml);
       await writeFile(filePath, updated, 'utf-8');
@@ -440,22 +450,23 @@ async function applyStructuralFix(
       }
 
       if (issue.listIndex !== undefined) {
-        if (!isSeq(pair.value as any)) {
+        if (!isSeq(pair.value)) {
           return { file: filePath, issue, action: 'failed', message: `Expected list value for ${issue.field}` };
         }
-        const item = getStringSequenceItem(pair.value as any, issue.listIndex);
+        const item = getStringSequenceItem(pair.value as YAMLSeq, issue.listIndex);
         if (!item) {
           return { file: filePath, issue, action: 'failed', message: `List item not found: ${issue.field}[${issue.listIndex}]` };
         }
-        (item as any).value = issue.fixedValue;
+        item.value = issue.fixedValue;
       } else {
-        if (!pair.value || typeof (pair.value as any).value !== 'string') {
+        const scalarValue = pair.value as unknown as Record<string, unknown>;
+        if (!pair.value || typeof scalarValue['value'] !== 'string') {
           return { file: filePath, issue, action: 'failed', message: `Expected string value for ${issue.field}` };
         }
-        (pair.value as any).value = issue.fixedValue;
+        scalarValue['value'] = issue.fixedValue;
       }
 
-      (doc as any).errors = [];
+      (doc.errors as unknown[]).length = 0;
       const newYaml = doc.toString().trimEnd();
       const updated = replacePrimaryYaml(raw, block, newYaml);
       await writeFile(filePath, updated, 'utf-8');

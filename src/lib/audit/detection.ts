@@ -17,6 +17,7 @@ import {
 } from '../schema.js';
 import { readStructuralFrontmatter } from './structural.js';
 import { isMap } from 'yaml';
+import type { Pair, Scalar, YAMLMap } from 'yaml';
 import { isDeepStrictEqual } from 'node:util';
 import { suggestOptionValue, suggestFieldName } from '../validation.js';
 import { applyFrontmatterFilters } from '../query.js';
@@ -478,11 +479,11 @@ function collectStructuralIssues(
 
   // duplicate-frontmatter-keys
   if (structural.doc && isMap(structural.doc.contents)) {
-    const map = structural.doc.contents;
-    const groups = new Map<string, any[]>();
+    const map = structural.doc.contents as YAMLMap;
+    const groups = new Map<string, Pair[]>();
 
-    for (const pair of map.items as any[]) {
-      const key = String((pair.key as any)?.value ?? '');
+    for (const pair of map.items as Pair[]) {
+      const key = String((pair.key as Scalar)?.value ?? '');
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(pair);
     }
@@ -490,7 +491,16 @@ function collectStructuralIssues(
     for (const [key, pairs] of groups.entries()) {
       if (!key || pairs.length < 2) continue;
 
-      const values = pairs.map((p: any) => (p.value ? p.value.toJSON() : null));
+      const values = pairs.map((p) => {
+        const valueNode = (p as { value?: unknown }).value;
+        if (valueNode && typeof valueNode === 'object') {
+          const toJson = (valueNode as Record<string, unknown>)['toJSON'];
+          if (typeof toJson === 'function') {
+            return (toJson as () => unknown)();
+          }
+        }
+        return null;
+      });
       const nonEmptyValues = values.filter((v: unknown) => !isEffectivelyEmpty(v));
 
       let autoFixable = false;
