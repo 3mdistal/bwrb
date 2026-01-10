@@ -129,11 +129,45 @@ export function readStructuralFrontmatterFromRaw(raw: string): StructuralFrontma
     // Only treat map/null docs as usable frontmatter; otherwise ignore.
     const contents = doc.contents as ParsedNode | null;
     if (contents === null || isMap(contents)) {
-      const json = doc.toJSON() as unknown;
-      if (json && typeof json === 'object' && !Array.isArray(json)) {
-        frontmatter = normalizeYamlValue(json) as Record<string, unknown>;
-      } else {
+      try {
+        const json = doc.toJSON() as unknown;
+        if (json && typeof json === 'object' && !Array.isArray(json)) {
+          frontmatter = normalizeYamlValue(json) as Record<string, unknown>;
+        } else {
+          frontmatter = {};
+        }
+      } catch {
+        // Fall back to a best-effort parse so we can still inspect frontmatter,
+        // even when the YAML library can't convert (e.g., duplicate keys).
         frontmatter = {};
+
+        if (contents && isMap(contents)) {
+          const map = contents as YAMLMap;
+          for (const pair of map.items as Pair[]) {
+            const key = String((pair.key as Scalar | null | undefined)?.value ?? '');
+            if (!key) continue;
+
+            const valueNode = (pair as { value?: unknown }).value;
+            if (valueNode && typeof valueNode === 'object') {
+              const toJson = (valueNode as Record<string, unknown>)['toJSON'];
+              if (typeof toJson === 'function') {
+                try {
+                  frontmatter[key] = normalizeYamlValue((toJson as () => unknown)());
+                  continue;
+                } catch {
+                  // Fall through
+                }
+              }
+
+              if ('value' in (valueNode as Record<string, unknown>)) {
+                frontmatter[key] = normalizeYamlValue((valueNode as Record<string, unknown>)['value']);
+                continue;
+              }
+            }
+
+            frontmatter[key] = normalizeYamlValue(valueNode ?? null);
+          }
+        }
       }
     } else {
       // Not a mapping frontmatter; ignore.
@@ -194,8 +228,8 @@ export function movePrimaryBlockToTop(raw: string, block: FrontmatterBlock): str
 export function getLastPairForKey(map: YAMLMap, key: string): Pair | null {
   let found: Pair | null = null;
   for (const pair of map.items as Pair[]) {
-    const k = (pair.key as Scalar).value;
-    if (String(k) === key) {
+    const k = (pair.key as Scalar | null | undefined)?.value;
+    if (k !== undefined && String(k) === key) {
       found = pair;
     }
   }
@@ -207,8 +241,8 @@ export function getAllPairsForKey(map: YAMLMap, key: string): { pair: Pair; inde
   const items = map.items as Pair[];
   for (let i = 0; i < items.length; i++) {
     const pair = items[i]!;
-    const k = (pair.key as Scalar).value;
-    if (String(k) === key) {
+    const k = (pair.key as Scalar | null | undefined)?.value;
+    if (k !== undefined && String(k) === key) {
       matches.push({ pair, index: i });
     }
   }

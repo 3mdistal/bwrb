@@ -494,9 +494,18 @@ function collectStructuralIssues(
       const values = pairs.map((p) => {
         const valueNode = (p as { value?: unknown }).value;
         if (valueNode && typeof valueNode === 'object') {
-          const toJson = (valueNode as Record<string, unknown>)['toJSON'];
+          const record = valueNode as Record<string, unknown>;
+          const toJson = record['toJSON'];
           if (typeof toJson === 'function') {
-            return (toJson as () => unknown)();
+            try {
+              return (toJson as () => unknown)();
+            } catch {
+              // Fall through
+            }
+          }
+
+          if ('value' in record) {
+            return record['value'];
           }
         }
         return null;
