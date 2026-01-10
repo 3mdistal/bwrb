@@ -99,11 +99,17 @@ bwrb audit --allow-field custom --allow-field legacy
 ### Repair Mode
 
 ```bash
-# Interactive fix mode
-bwrb audit --fix
+# Interactive fix mode (writes by default; requires explicit targeting)
+bwrb audit --path "Ideas/**" --fix
 
-# Auto-apply unambiguous fixes
-bwrb audit --fix --auto
+# Preview fixes without writing
+bwrb audit --path "Ideas/**" --fix --dry-run
+
+# Auto-apply unambiguous fixes (writes by default)
+bwrb audit --path "Ideas/**" --fix --auto
+
+# Preview auto-fixes
+bwrb audit --path "Ideas/**" --fix --auto --dry-run
 ```
 
 ### CI Integration

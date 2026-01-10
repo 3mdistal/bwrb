@@ -14,8 +14,10 @@ All notable changes to Bowerbird are documented in this file.
   - Example: `bwrb list task -o json` → `bwrb list task --output json`
   - This improves CLI consistency: `-o` now always means "open" rather than having different meanings on different commands
 
-- **`bwrb audit --fix` is now dry-run by default** (#271)
-  - Use `--execute` to write changes to disk (including frontmatter edits and file moves)
+- **`bwrb audit --fix` now applies fixes by default** (#346)
+  - Use `--dry-run` to preview without writing
+  - `--execute` is no longer required (accepted as deprecated no-op)
+  - `--fix` requires explicit targeting (`--type`, `--path`, `--where`, `--body`, or `--all`)
 
 - **Vault auto-detection now uses nearest `.bwrb/schema.json` (find-up)** (#337)
   - Precedence: `--vault` > find-up > `BWRB_VAULT` > `cwd` (error if not a vault)
@@ -34,20 +36,20 @@ All notable changes to Bowerbird are documented in this file.
   - `--inherits` CLI flag still works for non-interactive/scripted usage
 
 - **Audit --fix Phase 1: Core directory and type fixes** (#152, #268)
-  - `wrong-directory` issues are now auto-fixable with `--execute` flag
+  - `wrong-directory` issues are now auto-fixable in `audit --fix --auto`
     - Files in wrong directories are automatically moved to correct location based on type
     - Wikilinks pointing to moved files are automatically updated
-    - Shows warning with wikilink count before executing moves
-  - `owned-wrong-location` issues are now auto-fixable with `--execute` flag
+    - Use `--dry-run` to preview moves without writing
+  - `owned-wrong-location` issues are now auto-fixable in `audit --fix --auto`
     - Owned notes in wrong locations are moved to correct owner's directory
     - Wikilinks are updated automatically
+    - Use `--dry-run` to preview moves without writing
   - `invalid-type` issues now have interactive fix support
     - Prompts for type selection from available types
     - Shows suggestions for similar type names (typos)
   - `parent-cycle` issues now have interactive fix support
     - Detects cycles in recursive type parent references
     - Offers to clear parent field or select different parent
-  - New `--execute` flag for audit command enables writing fixes (including file edits and moves)
   - JSON output now includes additional issue metadata: `expectedDirectory`, `currentDirectory`, `cyclePath`, `ownerPath`, `ownedNotePath`
 
 - **Audit --fix Phase 4: Structural integrity fixes** (#271)

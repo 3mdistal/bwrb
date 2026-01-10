@@ -150,7 +150,7 @@ bwrb audit          # Audits all notes
 
 No selectors = prompt with picker.
 
-### Destructive commands (`bulk`, `delete`, `audit --fix`)
+### Destructive commands (`bulk`, `delete`)
 
 **Two safety gates:**
 
@@ -172,6 +172,14 @@ bwrb bulk --all --set status=done --execute
 ```
 
 This two-gate model prevents accidental vault-wide mutations.
+
+### Exception: `audit --fix`
+
+`bwrb audit --fix` is a remediation workflow. It still requires explicit targeting (at least one selector or `--all`), but **it writes by default**.
+
+- **Targeting required:** No selectors = error. Must specify at least one selector OR explicit `--all`.
+- **Execution:** Writes by default. Use `--dry-run` to preview fixes without writing.
+- `--execute` is accepted for compatibility but is not required for audit fixes.
 
 See also: [CLI Safety and Flags](/concepts/cli-safety-and-flags/)
 

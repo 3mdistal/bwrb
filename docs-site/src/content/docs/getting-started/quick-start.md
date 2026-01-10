@@ -128,8 +128,8 @@ If you manually edit a file and accidentally break the schema:
 # Check for violations
 bwrb audit
 
-# Fix violations interactively
-bwrb audit --fix
+# Fix violations interactively (requires explicit targeting)
+bwrb audit --path "Ideas/**" --fix
 ```
 
 Bowerbird reports issues like:

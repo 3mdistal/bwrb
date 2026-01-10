@@ -160,7 +160,7 @@ export function outputTextResults(
 
   if (summary.totalErrors > 0) {
     console.log('');
-    console.log(chalk.dim("Run 'bwrb audit --fix' to preview repairs, or 'bwrb audit --fix --execute' to apply."));
+    console.log(chalk.dim("Run 'bwrb audit --path \"Ideas/**\" --fix' (or use --type/--where/--body/--all), or add '--dry-run' to preview."));
   }
 }
 
@@ -173,8 +173,15 @@ export function outputTextResults(
  */
 export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
   console.log('');
+
+  if (summary.dryRun) {
+    console.log(chalk.yellow('Dry run - no changes will be made'));
+  }
+
   console.log(chalk.bold('Summary:'));
-  console.log(`  Fixed: ${summary.fixed} issues`);
+
+  const fixedLabel = summary.dryRun ? 'Would fix' : 'Fixed';
+  console.log(`  ${fixedLabel}: ${summary.fixed} issues`);
   console.log(`  Skipped: ${summary.skipped} issues`);
   if (summary.failed > 0) {
     console.log(`  Failed: ${summary.failed} issues`);
@@ -183,7 +190,7 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
 
   if (summary.remaining > 0 && autoMode) {
     console.log('');
-    console.log(chalk.dim("Run 'bwrb audit --fix' to preview remaining fixes, or 'bwrb audit --fix --execute' to apply."));
+    console.log(chalk.dim("Re-run without '--auto' to resolve remaining issues interactively."));
   }
 }
 
