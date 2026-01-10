@@ -16,7 +16,7 @@ import {
 import { existsSync } from 'fs';
 
 // Import shared schema for audit tests
-import { AUDIT_SCHEMA } from '../fixtures/schemas.js';
+import { BASELINE_SCHEMA, AUDIT_SCHEMA } from '../fixtures/schemas.js';
 
 // Skip PTY tests if running in CI without TTY support or node-pty is incompatible
 const describePty = shouldSkipPtyTests()
@@ -287,10 +287,10 @@ extra_unknown_field: some value
           await proc.waitFor('Extra Field.md', 10000);
 
           // Should offer action for unknown field
-          await proc.waitFor("Action for unknown field", 10000);
+          await proc.waitFor('Select target for unknown field', 10000);
 
           // Select [remove field] option
-          proc.write('2'); // Assuming [skip] is 1, [remove field] is 2
+          proc.write('2'); // [skip]=1, [remove field]=2
           await proc.waitForStable(200);
 
           // Should show success
@@ -301,6 +301,118 @@ extra_unknown_field: some value
           expect(content).not.toContain('extra_unknown_field');
         },
         { files: [unknownField], schema: AUDIT_SCHEMA }
+      );
+    }, 30000);
+
+    it('should migrate unknown field to exact normalized match', async () => {
+      const file: TempVaultFile = {
+        path: 'Objectives/Tasks/Deadline Typo.md',
+        content: `---
+type: task
+status: backlog
+dead_line: 2026-01-01
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'task', '--fix', '--strict'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Deadline Typo.md', 10000);
+
+          await proc.waitFor('Select target for unknown field', 10000);
+
+          // deadline should be the top candidate
+          proc.write('1');
+          await proc.waitForStable(200);
+
+          await proc.waitFor("Migrate 'dead_line' → 'deadline'", 10000);
+          proc.write('y');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Migrated dead_line → deadline', 5000);
+
+          const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Deadline Typo.md');
+          expect(content).toContain('deadline: 2026-01-01');
+          expect(content).not.toContain('dead_line:');
+        },
+        { files: [file], schema: BASELINE_SCHEMA }
+      );
+    }, 30000);
+
+    it('should warn before overwriting existing target field', async () => {
+      const file: TempVaultFile = {
+        path: 'Objectives/Tasks/Deadline Overwrite.md',
+        content: `---
+type: task
+status: backlog
+deadline: 2025-01-01
+dead_line: 2026-01-01
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'task', '--fix', '--strict'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Deadline Overwrite.md', 10000);
+
+          await proc.waitFor('Select target for unknown field', 10000);
+          proc.write('1'); // deadline candidate
+          await proc.waitForStable(200);
+
+          await proc.waitFor("Overwrite existing 'deadline' value?", 10000);
+          proc.write('n');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Skipped', 5000);
+
+          const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Deadline Overwrite.md');
+          expect(content).toContain('deadline: 2025-01-01');
+          expect(content).toContain('dead_line: 2026-01-01');
+        },
+        { files: [file], schema: BASELINE_SCHEMA }
+      );
+    }, 30000);
+
+    it('should require extra confirmation on TYPE MISMATCH', async () => {
+      const file: TempVaultFile = {
+        path: 'Objectives/Tasks/Tag Mismatch.md',
+        content: `---
+type: task
+status: backlog
+tag: foo
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'task', '--fix', '--strict'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Tag Mismatch.md', 10000);
+
+          await proc.waitFor('Select target for unknown field', 10000);
+          proc.write('1'); // tags (TYPE MISMATCH)
+          await proc.waitForStable(200);
+
+          await proc.waitFor('TYPE MISMATCH: Proceed with migration?', 10000);
+          proc.write('y');
+          await proc.waitForStable(200);
+
+          await proc.waitFor("Migrate 'tag' → 'tags'", 10000);
+          await proc.waitForStable(200);
+          proc.write('y');
+
+          await proc.waitFor('Migrated tag → tags', 5000);
+
+          const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Tag Mismatch.md');
+          expect(content).toContain('tags: foo');
+          expect(content).not.toContain('tag: foo');
+        },
+        { files: [file], schema: BASELINE_SCHEMA }
       );
     }, 30000);
   });

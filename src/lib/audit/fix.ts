@@ -19,7 +19,7 @@ import { queryByType } from '../vault.js';
 import { parseNote, writeNote } from '../frontmatter.js';
 import { levenshteinDistance } from '../discovery.js';
 import { promptSelection, promptConfirm, promptInput } from '../prompt.js';
-import type { LoadedSchema } from '../../types/schema.js';
+import type { LoadedSchema, Field } from '../../types/schema.js';
 import {
   findAllMarkdownFiles,
   findWikilinksToFile,
@@ -51,6 +51,150 @@ function isEmpty(value: unknown): boolean {
   if (value === '') return true;
   if (Array.isArray(value) && value.length === 0) return true;
   return false;
+}
+
+type ValueShape = 'empty' | 'string' | 'number' | 'boolean' | 'array' | 'object' | 'unknown';
+
+function getValueShape(value: unknown): ValueShape {
+  if (value === null || value === undefined) return 'empty';
+  if (Array.isArray(value)) return 'array';
+  const type = typeof value;
+  if (type === 'string') return 'string';
+  if (type === 'number') return 'number';
+  if (type === 'boolean') return 'boolean';
+  if (type === 'object') return 'object';
+  return 'unknown';
+}
+
+function getExpectedFieldShape(field: Field | undefined): ValueShape {
+  if (!field || !field.prompt) return 'unknown';
+
+  switch (field.prompt) {
+    case 'list':
+      return 'array';
+    case 'boolean':
+      return 'boolean';
+    case 'number':
+      return 'number';
+    default:
+      // text/select/relation/date all ultimately serialize as strings in frontmatter
+      return 'string';
+  }
+}
+
+function isFieldShapeCompatible(value: unknown, field: Field | undefined): boolean {
+  const actual = getValueShape(value);
+  if (actual === 'empty') return true;
+
+  const expected = getExpectedFieldShape(field);
+  if (expected === 'unknown') return true;
+
+  return actual === expected;
+}
+
+function normalizeKeyTokens(key: string): string[] {
+  return key
+    .toLowerCase()
+    .split(/[\s\-_]+/)
+    .map(t => t.trim())
+    .filter(Boolean);
+}
+
+function normalizeKeyForComparison(key: string): string {
+  return normalizeKeyTokens(key).join('');
+}
+
+function isSingularPluralVariantNormalized(a: string, b: string): boolean {
+  if (!a || !b || a === b) return false;
+  return a === b + 's' || b === a + 's';
+}
+
+type SimilarFieldCandidate = {
+  field: string;
+  distance: number;
+  typeMismatch: boolean;
+  priority: number;
+};
+
+function getSimilarFieldCandidates(
+  unknownField: string,
+  schemaFields: Record<string, Field>,
+  unknownValue: unknown,
+  maxResults = 3
+): SimilarFieldCandidate[] {
+  const unknownNorm = normalizeKeyForComparison(unknownField);
+  if (!unknownNorm) return [];
+
+  const candidates: SimilarFieldCandidate[] = [];
+
+  for (const fieldName of Object.keys(schemaFields)) {
+    if (fieldName === 'type' || fieldName.endsWith('-type')) continue;
+
+    const candidateNorm = normalizeKeyForComparison(fieldName);
+    if (!candidateNorm) continue;
+
+    const dist = levenshteinDistance(unknownNorm, candidateNorm);
+    const minLen = Math.min(unknownNorm.length, candidateNorm.length);
+    const maxAllowedDist = Math.max(1, Math.floor(minLen * 0.2));
+
+    if (dist > maxAllowedDist) continue;
+
+    const priority = isSingularPluralVariantNormalized(unknownNorm, candidateNorm) ? 0 : 1;
+    const field = schemaFields[fieldName];
+    const typeMismatch = !isFieldShapeCompatible(unknownValue, field);
+
+    candidates.push({ field: fieldName, distance: dist, typeMismatch, priority });
+  }
+
+  candidates.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    if (a.distance !== b.distance) return a.distance - b.distance;
+    return a.field.localeCompare(b.field, 'en');
+  });
+
+  return candidates.slice(0, maxResults);
+}
+
+function getAutoUnknownFieldMigrationTarget(
+  schema: LoadedSchema,
+  frontmatter: Record<string, unknown>,
+  unknownField: string,
+  unknownValue: unknown
+): string | null {
+  const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
+  if (!typePath) return null;
+
+  const schemaFields = getFieldsForType(schema, typePath);
+  const unknownNorm = normalizeKeyForComparison(unknownField);
+  if (!unknownNorm) return null;
+
+  const normalizedExactMatches = Object.keys(schemaFields).filter(
+    fieldName => normalizeKeyForComparison(fieldName) === unknownNorm
+  );
+
+  let targetField: string | undefined;
+
+  if (normalizedExactMatches.length === 1) {
+    targetField = normalizedExactMatches[0];
+  } else {
+    const singularPluralMatches = Object.keys(schemaFields).filter(fieldName =>
+      isSingularPluralVariantNormalized(unknownNorm, normalizeKeyForComparison(fieldName))
+    );
+
+    if (singularPluralMatches.length === 1) {
+      targetField = singularPluralMatches[0];
+    }
+  }
+
+  if (!targetField) return null;
+
+  const existing = frontmatter[targetField];
+  if (!isEmpty(existing)) return null;
+
+  const field = schemaFields[targetField];
+  if (!isFieldShapeCompatible(unknownValue, field)) return null;
+
+  return targetField;
 }
 
 // ============================================================================
@@ -178,6 +322,11 @@ async function applyFix(
         }
         const oldKey = issue.field;
         const newKey = issue.canonicalKey;
+
+        if (!(oldKey in frontmatter)) {
+          return { file: filePath, issue, action: 'skipped', message: `Key '${oldKey}' not found` };
+        }
+
         const oldValue = frontmatter[oldKey];
         const existingValue = frontmatter[newKey];
         
@@ -441,7 +590,7 @@ export async function runAutoFix(
       }
     }
     
-    // Handle stale-reference issues with high-confidence matches
+    // Handle stale-reference issues with high-confidence matches and safe unknown-field migrations
     for (const issue of nonFixableIssues) {
       if (issue.code === 'stale-reference' && !issue.inBody && issue.field) {
         // Check for high-confidence match
@@ -463,6 +612,52 @@ export async function runAutoFix(
           }
         }
       }
+
+      if (issue.code === 'unknown-field' && issue.field) {
+        const hasBetterAutoFix = fixableIssues.some(
+          i =>
+            (i.code === 'frontmatter-key-casing' || i.code === 'singular-plural-mismatch') &&
+            i.field === issue.field
+        );
+        if (hasBetterAutoFix) {
+          continue; // Defer to specialized auto-fix
+        }
+
+        try {
+          const latest = await parseNote(result.path);
+          const targetField = getAutoUnknownFieldMigrationTarget(
+            schema,
+            latest.frontmatter,
+            issue.field,
+            issue.value
+          );
+
+          if (targetField) {
+            if (!(issue.field in latest.frontmatter)) {
+              skipped++;
+              continue;
+            }
+
+            const frontmatter = { ...latest.frontmatter };
+            frontmatter[targetField] = frontmatter[issue.field];
+            delete frontmatter[issue.field];
+
+            const updatedTypePath = resolveTypePathFromFrontmatter(schema, frontmatter);
+            const updatedTypeDef = updatedTypePath ? getTypeDefByPath(schema, updatedTypePath) : undefined;
+            const order = updatedTypeDef?.fieldOrder;
+
+            await writeNote(result.path, frontmatter, latest.body, order);
+
+            console.log(chalk.cyan(`  ${result.relativePath}`));
+            console.log(chalk.green(`    ✓ Migrated ${issue.field} → ${targetField}`));
+            fixed++;
+            continue; // Don't add to manual review
+          }
+        } catch {
+          // Fall through to manual review
+        }
+      }
+
       // Queue for manual review if not auto-fixed
       manualReviewNeeded.push({ file: result.relativePath, issue });
     }
@@ -571,6 +766,8 @@ export async function runAutoFix(
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.green(`    ✓ Renamed ${issue.field} → ${issue.canonicalKey}`));
           fixed++;
+        } else if (fixResult.action === 'skipped') {
+          skipped++;
         } else if (fixResult.action === 'failed' && fixResult.message?.includes('manual merge')) {
           // Conflict case - requires interactive resolution
           skipped++;
@@ -918,27 +1115,116 @@ async function handleUnknownFieldFix(
     console.log(chalk.dim(`    ${issue.suggestion}`));
   }
 
-  const options = ['[skip]', '[remove field]', '[quit]'];
+  const parsed = await parseNote(result.path);
+  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const schemaFields: Record<string, Field> = typePath ? getFieldsForType(schema, typePath) : {};
+
+  const candidates = getSimilarFieldCandidates(issue.field, schemaFields, issue.value, 3);
+
+  const labelToField = new Map<string, { field: string; typeMismatch: boolean }>();
+  const fieldOptions: string[] = [];
+
+  for (const c of candidates) {
+    const label = c.typeMismatch ? `${c.field} (TYPE MISMATCH)` : c.field;
+    labelToField.set(label, { field: c.field, typeMismatch: c.typeMismatch });
+    fieldOptions.push(label);
+  }
+
+  const options = [...fieldOptions, '[skip]', '[remove field]', '[quit]'];
   const selected = await promptSelection(
-    `    Action for unknown field '${issue.field}':`,
+    `    Select target for unknown field '${issue.field}':`,
     options
   );
 
   if (selected === null || selected === '[quit]') {
     return 'quit';
-  } else if (selected === '[remove field]') {
+  }
+
+  if (selected === '[skip]') {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  if (selected === '[remove field]') {
     const fixResult = await removeField(schema, result.path, issue.field);
     if (fixResult.action === 'fixed') {
       console.log(chalk.green(`    ✓ Removed field: ${issue.field}`));
       return 'fixed';
-    } else {
-      console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
-      return 'failed';
+    }
+
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+
+  const choice = labelToField.get(selected);
+  if (!choice) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  const { field: targetField, typeMismatch } = choice;
+  const existingTarget = parsed.frontmatter[targetField];
+  const targetHasValue = !isEmpty(existingTarget);
+
+  const shouldConfirmMigration = !targetHasValue;
+
+  if (typeMismatch) {
+    const actualShape = getValueShape(issue.value);
+    const expectedShape = getExpectedFieldShape(schemaFields[targetField]);
+    console.log(chalk.yellow(`    ⚠ TYPE MISMATCH: '${issue.field}' is ${actualShape}, '${targetField}' expects ${expectedShape}`));
+
+    const mismatchConfirm = await promptConfirm('    TYPE MISMATCH: Proceed with migration?');
+    if (mismatchConfirm === null) return 'quit';
+    if (!mismatchConfirm) {
+      console.log(chalk.dim('    → Skipped'));
+      return 'skipped';
     }
   }
 
-  console.log(chalk.dim('    → Skipped'));
-  return 'skipped';
+  if (targetHasValue) {
+    console.log(chalk.dim(`    Current '${targetField}': ${JSON.stringify(existingTarget)}`));
+    console.log(chalk.dim(`    New '${targetField}': ${JSON.stringify(issue.value)}`));
+
+    const overwriteConfirm = await promptConfirm(`    Overwrite existing '${targetField}' value?`);
+    if (overwriteConfirm === null) return 'quit';
+    if (!overwriteConfirm) {
+      console.log(chalk.dim('    → Skipped'));
+      return 'skipped';
+    }
+  }
+
+  if (shouldConfirmMigration) {
+    const migrateConfirm = await promptConfirm(`    → Migrate '${issue.field}' → '${targetField}'?`);
+    if (migrateConfirm === null) return 'quit';
+    if (!migrateConfirm) {
+      console.log(chalk.dim('    → Skipped'));
+      return 'skipped';
+    }
+  }
+
+  try {
+    const latest = await parseNote(result.path);
+    const frontmatter = { ...latest.frontmatter };
+
+    if (!(issue.field in frontmatter)) {
+      console.log(chalk.dim(`    (Field '${issue.field}' no longer present - skipping)`));
+      return 'skipped';
+    }
+
+    frontmatter[targetField] = frontmatter[issue.field];
+    delete frontmatter[issue.field];
+
+    const updatedTypePath = resolveTypePathFromFrontmatter(schema, frontmatter);
+    const updatedTypeDef = updatedTypePath ? getTypeDefByPath(schema, updatedTypePath) : undefined;
+    const order = updatedTypeDef?.fieldOrder;
+
+    await writeNote(result.path, frontmatter, latest.body, order);
+    console.log(chalk.green(`    ✓ Migrated ${issue.field} → ${targetField}`));
+    return 'fixed';
+  } catch (err) {
+    console.log(chalk.red(`    ✗ Failed: ${err instanceof Error ? err.message : String(err)}`));
+    return 'failed';
+  }
 }
 
 async function handleFormatViolationFix(
@@ -1573,6 +1859,12 @@ async function handleKeyCasingFix(
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
   if (!issue.field || !issue.canonicalKey) return 'skipped';
+
+  const current = await parseNote(result.path);
+  if (!(issue.field in current.frontmatter)) {
+    console.log(chalk.dim(`    (Key '${issue.field}' no longer present - skipping)`));
+    return 'skipped';
+  }
 
   // Check if there's a conflict
   if (issue.hasConflict && issue.conflictValue !== undefined && !isEmpty(issue.conflictValue)) {
