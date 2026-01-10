@@ -2457,7 +2457,7 @@ status: raw
   // NOTE: trailing-whitespace detection is NOT possible because YAML parsers
   // (gray-matter) strip trailing whitespace during parsing. These tests are
   // skipped until we implement raw string detection before YAML parsing.
-  describe.skip('trailing-whitespace detection and fix', () => {
+  describe('trailing-whitespace detection and fix', () => {
     let tempVaultDir: string;
 
     beforeEach(async () => {
@@ -2496,6 +2496,71 @@ priority: medium
       expect(wsIssue.autoFixable).toBe(true);
     });
 
+    it('should detect trailing whitespace after closing quote', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Quoted Trailing Space.md'),
+        `---
+ type: idea
+ status: "raw"  
+ priority: medium
+ ---
+ `
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Quoted Trailing Space.md'));
+      expect(file).toBeDefined();
+      const wsIssue = file.issues.find((i: { code: string }) => i.code === 'trailing-whitespace');
+      expect(wsIssue).toBeDefined();
+      expect(wsIssue.field).toBe('status');
+      expect(wsIssue.lineNumber).toBe(3);
+    });
+
+    it('should not flag whitespace inside quotes', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Quoted Internal Space.md'),
+        `---
+ type: idea
+ status: "raw  "
+ priority: medium
+ ---
+ `
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Quoted Internal Space.md'));
+      expect(file).toBeDefined();
+      const wsIssue = file.issues.find((i: { code: string }) => i.code === 'trailing-whitespace');
+      expect(wsIssue).toBeUndefined();
+    });
+
+    it('should not flag trailing whitespace inside block scalar content', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Block Scalar.md'),
+        `---
+ type: idea
+ status: raw
+ priority: medium
+ notes: |
+   hello  
+   world
+ ---
+ `
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Block Scalar.md'));
+      expect(file).toBeDefined();
+      const wsIssue = file.issues.find((i: { code: string }) => i.code === 'trailing-whitespace');
+      expect(wsIssue).toBeUndefined();
+    });
+
     it('should auto-fix trailing whitespace', async () => {
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Fix Whitespace.md'),
@@ -2507,8 +2572,8 @@ priority: medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
-
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
+ 
       expect(result.stdout).toContain('Trimmed whitespace');
       expect(result.stdout).toContain('Fixed: 1');
 
