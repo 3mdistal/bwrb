@@ -529,11 +529,16 @@ All notable changes to Bowerbird are documented in this file.
 - **Vault auto-detection now uses nearest `.bwrb/schema.json` (find-up)** (#347)
   - Precedence: `--vault` > find-up > `BWRB_VAULT` > `cwd` (error if not a vault)
 
+- **Upgrade notes**
+  - `bwrb audit --fix` writes by default; use `--dry-run` to preview. Example: `bwrb audit --fix --type task --dry-run`
+  - If you rely on running from `cwd`, pass `--vault <path>` (or set `BWRB_VAULT`) to avoid “find-up” selecting a parent vault
+
 ### Added
 
 - **Stable system-managed note IDs** (#351)
   - `bwrb new` writes an `id` (UUIDv4) to frontmatter
   - IDs are never reused (append-only registry in `.bwrb/ids.jsonl`)
+  - Keep `.bwrb/ids.jsonl` with your vault backups to preserve ID continuity
   - Commands using targeting selectors support `--id <uuid>` for stable lookup
 
 - **Configurable excluded directories** (#339)
