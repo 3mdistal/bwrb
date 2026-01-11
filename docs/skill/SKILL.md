@@ -213,6 +213,10 @@ bwrb audit --path "Ideas/**" --fix --auto
 # Preview auto-fixes
 bwrb audit --path "Ideas/**" --fix --auto --dry-run
 
+# Fix a specific issue code (auto-fix; safe to script)
+bwrb audit --path "Ideas/**" --only trailing-whitespace --fix --auto
+bwrb audit --path "Ideas/**" --only trailing-whitespace --fix --auto --dry-run
+
 # Note: --execute is deprecated for audit fixes (kept for compatibility).
 ```
 
@@ -230,6 +234,7 @@ Audit resolves each file's type from its frontmatter `type` field. Understanding
 |-------|-------------------------|
 | `orphan-file` | No (reports missing type) |
 | `invalid-type` | No (reports unrecognized type) |
+| `trailing-whitespace` | No (operates on raw frontmatter lines; schema/type not needed) |
 | `missing-required` | Yes |
 | `invalid-option` | Yes |
 | `unknown-field` | Yes |
@@ -243,6 +248,9 @@ Audit resolves each file's type from its frontmatter `type` field. Understanding
 # Step 1: Find files with type problems
 bwrb audit --only orphan-file --output json
 bwrb audit --only invalid-type --output json
+
+# Step 1b: Find whitespace hygiene issues (warnings; auto-fixable)
+bwrb audit --only trailing-whitespace --output json
 
 # Step 2: Fix type field (bulk or individual)
 bwrb bulk --path "SomeDir/" --set type=task --execute

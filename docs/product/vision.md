@@ -245,7 +245,7 @@ bwrb template list [type] [name]   # List all, or show details if both provided
 
 1. **Consistent flags** — Same flag means same thing everywhere
 2. **Unified verbs** — `new`, `edit`, `delete`, `list`, `search` work everywhere
-3. **JSON mode everywhere** — `--output json` on all commands
+3. **JSON mode everywhere** — `--output json` on all commands (see `docs/product/cli-output-contract.md`)
 4. **Dry-run default for destructive ops** — `--execute` to apply (exception: `audit --fix` writes by default; use `--dry-run` to preview)
 5. **Discoverable prompts** — Missing required info prompts, doesn't error
 

@@ -5,8 +5,9 @@ import { dirname, join, relative } from 'path';
 
 const ID_REGISTRY_RELATIVE_PATH = '.bwrb/ids.jsonl';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_ID_GENERATION_ATTEMPTS = 1000;
 
-export function getIdRegistryPath(vaultDir: string): string {
+function getIdRegistryPath(vaultDir: string): string {
   return join(vaultDir, ID_REGISTRY_RELATIVE_PATH);
 }
 
@@ -16,7 +17,7 @@ export interface IdRegistryEntry {
   path?: string;
 }
 
-export async function readIssuedIds(vaultDir: string): Promise<Set<string>> {
+async function readIssuedIds(vaultDir: string): Promise<Set<string>> {
   const registryPath = getIdRegistryPath(vaultDir);
   if (!existsSync(registryPath)) return new Set();
 
@@ -49,10 +50,14 @@ export async function readIssuedIds(vaultDir: string): Promise<Set<string>> {
 export async function generateUniqueNoteId(vaultDir: string): Promise<string> {
   const issued = await readIssuedIds(vaultDir);
 
-  while (true) {
+  for (let attempt = 0; attempt < MAX_ID_GENERATION_ATTEMPTS; attempt++) {
     const id = randomUUID();
     if (!issued.has(id)) return id;
   }
+
+  throw new Error(
+    `Failed to generate a unique note ID after ${MAX_ID_GENERATION_ATTEMPTS} attempts`
+  );
 }
 
 export async function registerIssuedNoteId(

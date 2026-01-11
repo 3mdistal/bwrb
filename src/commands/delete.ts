@@ -181,6 +181,14 @@ Note: Deletion is permanent. The file is removed from the filesystem.
     const jsonMode = options.output === 'json';
     const pickerMode = parsePickerMode(options.picker);
 
+    // Defensive: if `--help` is accidentally parsed as the positional `query`,
+    // show command help and return success.
+    if (query === '--help' || query === '-h') {
+      cmd.outputHelp();
+      process.exitCode = ExitCodes.SUCCESS;
+      return;
+    }
+
     try {
       const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
       const schema = await loadSchema(vaultDir);

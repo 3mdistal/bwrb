@@ -68,6 +68,13 @@ import { expandStaticValue } from '../lib/local-date.js';
 import type { LoadedSchema, Field, BodySection, Template, ResolvedType } from '../types/schema.js';
 import { UserCancelledError } from '../lib/errors.js';
 
+// eslint-disable-next-line no-control-regex
+const INVALID_ITEM_NAME_CHARS = /[/\\:*?"<>|\x00-\x1F]/g;
+
+function sanitizeItemNameForFilename(name: string): string {
+  return name.replace(INVALID_ITEM_NAME_CHARS, '').trim();
+}
+
 interface NewCommandOptions {
   open?: boolean;
   json?: string;
@@ -546,7 +553,12 @@ async function createPooledNoteFromJson(
   }
 
   const fullOutputDir = join(vaultDir, outputDir);
-  const filePath = join(fullOutputDir, `${itemName}.md`);
+  const sanitizedItemName = sanitizeItemNameForFilename(itemName);
+  if (!sanitizedItemName) {
+    printJson(jsonError('Invalid note name (empty after sanitizing)'));
+    process.exit(ExitCodes.VALIDATION_ERROR);
+  }
+  const filePath = join(fullOutputDir, `${sanitizedItemName}.md`);
 
   if (existsSync(filePath)) {
     printJson(jsonError(`File already exists: ${relative(vaultDir, filePath)}`));
@@ -616,7 +628,12 @@ async function createOwnedNoteFromJson(
   
   // Ensure the owned output directory exists
   const outputDir = await ensureOwnedOutputDir(owner.ownerPath, typeName);
-  const filePath = join(outputDir, `${itemName}.md`);
+  const sanitizedItemName = sanitizeItemNameForFilename(itemName);
+  if (!sanitizedItemName) {
+    printJson(jsonError('Invalid note name (empty after sanitizing)'));
+    process.exit(ExitCodes.VALIDATION_ERROR);
+  }
+  const filePath = join(outputDir, `${sanitizedItemName}.md`);
 
   if (existsSync(filePath)) {
     printJson(jsonError(`File already exists: ${relative(vaultDir, filePath)}`));
@@ -873,8 +890,14 @@ async function createPooledNote(
     orderedFields = content.orderedFields;
   }
 
+  const sanitizedItemName = sanitizeItemNameForFilename(itemName);
+  if (!sanitizedItemName) {
+    printError('Invalid name (empty after sanitizing)');
+    process.exit(1);
+  }
+
   // Create file
-  const filePath = join(fullOutputDir, `${itemName}.md`);
+  const filePath = join(fullOutputDir, `${sanitizedItemName}.md`);
 
   if (existsSync(filePath)) {
     printWarning(`\nWarning: File already exists: ${filePath}`);
@@ -1193,8 +1216,14 @@ async function createOwnedNote(
   // Ensure the owned output directory exists
   const outputDir = await ensureOwnedOutputDir(owner.ownerPath, typeName);
   
+  const sanitizedItemName = sanitizeItemNameForFilename(itemName);
+  if (!sanitizedItemName) {
+    printError('Invalid name (empty after sanitizing)');
+    process.exit(1);
+  }
+
   // Create file path
-  const filePath = join(outputDir, `${itemName}.md`);
+  const filePath = join(outputDir, `${sanitizedItemName}.md`);
   
   if (existsSync(filePath)) {
     printWarning(`\nWarning: File already exists: ${filePath}`);

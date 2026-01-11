@@ -102,6 +102,8 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Fixed
 
+- **Ignore slashes in note names when creating files** (#353)
+
 - **Fixed markdown→wikilink conversion in link format migration** (#182)
   - `bwrb schema migrate` now correctly converts markdown links `[Note](Note.md)` to wikilinks `[[Note]]`
   - Previously, the conversion produced invalid output like `[[[Note](Note.md)]]`

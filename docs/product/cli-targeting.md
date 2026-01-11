@@ -366,6 +366,8 @@ Use `--output <format>` to control how results are displayed:
 | `tree` | ✓ | - | Hierarchical tree view |
 | `content` | - | ✓ | Full file contents |
 
+**JSON contract:** In `--output json`, stdout must be exactly one JSON value (newline-terminated) and contain no non-JSON text. See `docs/product/cli-output-contract.md`.
+
 ```bash
 bwrb list --type task --output json
 bwrb list --type task --output paths
