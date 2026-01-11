@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { join } from 'path';
-import { writeFile, mkdir, rm } from 'fs/promises';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { join, relative } from 'path';
+import { writeFile, mkdir, rm, mkdtemp, realpath } from 'fs/promises';
+import { tmpdir } from 'os';
 import {
   resolveVaultDir,
   listFilesInDir,
@@ -29,8 +30,11 @@ describe('vault', () => {
 
   describe('resolveVaultDir', () => {
     const originalEnv = process.env['BWRB_VAULT'];
+    const originalCwd = process.cwd();
 
     afterEach(() => {
+      process.chdir(originalCwd);
+
       if (originalEnv !== undefined) {
         process.env['BWRB_VAULT'] = originalEnv;
       } else {
@@ -38,48 +42,133 @@ describe('vault', () => {
       }
     });
 
-    it('should default to fixture vault in tests (regression test for vault isolation)', () => {
-      // This test verifies that tests/ts/setup.ts sets BWRB_VAULT to the fixture vault.
-      // Without this, tests could accidentally read a developer's real vault.
-      // See issue bwrb-smjf.
+    it('should default to test fixture vault via BWRB_VAULT (regression test for vault isolation)', () => {
+      // tests/ts/setup.ts pins BWRB_VAULT to a fixture vault as a safety net.
       const result = resolveVaultDir({});
-      expect(result).toContain('tests/ts/fixtures/vault');
+      expect(result).toContain('tests/fixtures/vault');
     });
 
-    it('should use --vault option first', () => {
-      process.env['BWRB_VAULT'] = '/env/path';
-      const result = resolveVaultDir({ vault: '/option/path' });
-      expect(result).toBe('/option/path');
+    it('should prefer --vault over find-up and env', async () => {
+      const optionVaultDir = await createTestVault();
+      try {
+        process.env['BWRB_VAULT'] = vaultDir;
+        process.chdir(join(vaultDir, 'Ideas'));
+
+        const relativeOptionVault = relative(process.cwd(), optionVaultDir);
+        const result = resolveVaultDir({ vault: relativeOptionVault });
+        expect(result).toBe(relativeOptionVault);
+      } finally {
+        await cleanupTestVault(optionVaultDir);
+      }
     });
 
-    it('should use env var if no option', () => {
-      process.env['BWRB_VAULT'] = '/env/path';
+    it('should use find-up when running under a vault', async () => {
+      process.env['BWRB_VAULT'] = vaultDir;
+      process.chdir(join(vaultDir, 'Ideas'));
+
       const result = resolveVaultDir({});
-      expect(result).toBe('/env/path');
+      expect(result).toBe(await realpath(vaultDir));
     });
 
-    it('should use cwd as fallback', () => {
-      delete process.env['BWRB_VAULT'];
-      const result = resolveVaultDir({});
-      expect(result).toBe(process.cwd());
+    it('should resolve to nearest nested vault', async () => {
+      const nestedVaultDir = join(vaultDir, 'nested-vault');
+      await mkdir(join(nestedVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(join(nestedVaultDir, '.bwrb', 'schema.json'), '{}');
+
+      try {
+        process.chdir(join(nestedVaultDir, '.bwrb'));
+        const result = resolveVaultDir({});
+        expect(result).toBe(await realpath(nestedVaultDir));
+      } finally {
+        await rm(nestedVaultDir, { recursive: true, force: true });
+      }
     });
 
-    it('should preserve relative path from --vault option', () => {
-      delete process.env['BWRB_VAULT'];
-      const result = resolveVaultDir({ vault: './my-vault' });
-      expect(result).toBe('./my-vault');
+    it('should use env var if find-up fails', async () => {
+      const nonVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-nonvault-'));
+      try {
+        process.chdir(nonVaultDir);
+        process.env['BWRB_VAULT'] = vaultDir;
+
+        const result = resolveVaultDir({});
+        expect(result).toBe(vaultDir);
+      } finally {
+        await rm(nonVaultDir, { recursive: true, force: true });
+      }
     });
 
-    it('should preserve relative path from env var', () => {
-      process.env['BWRB_VAULT'] = '../other-vault';
-      const result = resolveVaultDir({});
-      expect(result).toBe('../other-vault');
+    it('should preserve relative path from --vault option', async () => {
+      const baseDir = await mkdtemp(join(tmpdir(), 'bwrb-rel-vault-'));
+      try {
+        const relativeVault = './my-vault';
+
+        await mkdir(join(baseDir, 'my-vault', '.bwrb'), { recursive: true });
+        await writeFile(join(baseDir, 'my-vault', '.bwrb', 'schema.json'), '{}');
+
+        process.chdir(baseDir);
+        delete process.env['BWRB_VAULT'];
+
+        const result = resolveVaultDir({ vault: relativeVault });
+        expect(result).toBe(relativeVault);
+      } finally {
+        await rm(baseDir, { recursive: true, force: true });
+      }
     });
 
-    it('should preserve dotted relative path', () => {
-      delete process.env['BWRB_VAULT'];
-      const result = resolveVaultDir({ vault: '../../some/nested/vault' });
-      expect(result).toBe('../../some/nested/vault');
+    it('should preserve relative path from env var', async () => {
+      const baseDir = await mkdtemp(join(tmpdir(), 'bwrb-rel-env-'));
+      try {
+        await mkdir(join(baseDir, 'other-vault', '.bwrb'), { recursive: true });
+        await writeFile(join(baseDir, 'other-vault', '.bwrb', 'schema.json'), '{}');
+
+        await mkdir(join(baseDir, 'work'), { recursive: true });
+        process.chdir(join(baseDir, 'work'));
+        process.env['BWRB_VAULT'] = '../other-vault';
+
+        const result = resolveVaultDir({});
+        expect(result).toBe('../other-vault');
+      } finally {
+        await rm(baseDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should error when --vault does not contain a schema', async () => {
+      const nonVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-bad-vault-'));
+      try {
+        expect(() => resolveVaultDir({ vault: nonVaultDir })).toThrow(/Invalid --vault path/);
+        expect(() => resolveVaultDir({ vault: nonVaultDir })).toThrow(/\.bwrb\/schema\.json/);
+      } finally {
+        await rm(nonVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should error when BWRB_VAULT is invalid and find-up fails', async () => {
+      const nonVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-bad-env-'));
+      const cwdDir = await mkdtemp(join(tmpdir(), 'bwrb-bad-env-cwd-'));
+      try {
+        process.chdir(cwdDir);
+        process.env['BWRB_VAULT'] = nonVaultDir;
+
+        expect(() => resolveVaultDir({})).toThrow(/Invalid BWRB_VAULT/);
+      } finally {
+        await rm(nonVaultDir, { recursive: true, force: true });
+        await rm(cwdDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should error with helpful message when no vault can be resolved', async () => {
+      const nonVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-no-vault-'));
+      try {
+        process.chdir(nonVaultDir);
+        delete process.env['BWRB_VAULT'];
+
+        expect(() => resolveVaultDir({})).toThrow(/searched upward/);
+        expect(() => resolveVaultDir({})).toThrow(/\.bwrb\/schema\.json/);
+        expect(() => resolveVaultDir({})).toThrow(/--vault/);
+        expect(() => resolveVaultDir({})).toThrow(/bwrb init/);
+      } finally {
+        await rm(nonVaultDir, { recursive: true, force: true });
+      }
     });
   });
 

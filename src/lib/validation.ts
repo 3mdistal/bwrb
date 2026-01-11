@@ -161,8 +161,11 @@ export function validateFrontmatter(
     }
   }
 
+  const reservedFields = new Set(['type', 'id']);
+
   // Check for unknown fields
   for (const fieldName of providedFields) {
+    if (reservedFields.has(fieldName)) continue;
     if (!fieldNames.has(fieldName)) {
       const suggestion = suggestFieldName(fieldName, Array.from(fieldNames));
       const error: ValidationError = {

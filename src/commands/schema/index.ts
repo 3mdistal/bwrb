@@ -4,7 +4,7 @@
  */
 
 import { Command } from 'commander';
-import { loadSchema } from '../../lib/schema.js';
+import { loadSchema, getOutputDir } from '../../lib/schema.js';
 import { resolveVaultDir } from '../../lib/vault.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes } from '../../lib/output.js';
 import { printError } from '../../lib/prompt.js';
@@ -51,11 +51,29 @@ schemaCommand
       const vaultDir = resolveVaultDir(getGlobalOpts(cmd));
 
       // Loading the schema validates it via Zod
-      await loadSchema(vaultDir);
+      const schema = await loadSchema(vaultDir);
+
+      const warnings = Array.from(schema.types.keys())
+        .filter(typeName => typeName !== 'meta')
+        .filter(typeName => !schema.types.get(typeName)?.outputDir)
+        .sort((a, b) => a.localeCompare(b))
+        .map(typeName => ({
+          type: typeName,
+          computed_output_dir: getOutputDir(schema, typeName),
+        }));
 
       if (jsonMode) {
-        printJson(jsonSuccess({ message: 'Schema is valid' }));
+        printJson(
+          warnings.length > 0
+            ? jsonSuccess({ message: 'Schema is valid', data: { warnings } })
+            : jsonSuccess({ message: 'Schema is valid' })
+        );
       } else {
+        for (const warning of warnings) {
+          console.error(
+            `Warning: type "${warning.type}" is missing output_dir (computed: "${warning.computed_output_dir}")`
+          );
+        }
         console.log('Schema is valid');
       }
     } catch (err) {

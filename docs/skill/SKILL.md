@@ -20,8 +20,9 @@ Use bwrb when you need to:
 
 bwrb finds the vault in this order:
 1. `--vault <path>` flag
-2. `BWRB_VAULT` environment variable
-3. Current working directory
+2. Find-up nearest ancestor containing `.bwrb/schema.json`
+3. `BWRB_VAULT` environment variable
+4. Current working directory (error if not a vault)
 
 Always verify you're targeting the correct vault before operations.
 
@@ -132,6 +133,9 @@ bwrb list task --where "priority == 'high' && status != 'done'" --output json
 # Include specific fields in output
 bwrb list task --fields status,priority --output json
 
+# Target by stable id
+bwrb list --id "<uuid>" --output json
+
 # Full-text search in note content
 bwrb list --body "search term" --output json
 ```
@@ -153,11 +157,16 @@ bwrb new task --no-template --json '{"name": "Quick task"}'
 bwrb new task --json '{"name": "Task", "_body": {"Steps": ["Step 1", "Step 2"]}}'
 ```
 
+Notes created via `bwrb new` always include a system-managed frontmatter `id` (UUIDv4). The `id` is reserved: you cannot set it in `bwrb new --json`, and you cannot modify it via `bwrb edit`.
+
 ### Editing Notes
 
 ```bash
 # Patch frontmatter by query
 bwrb edit "Note Name" --json '{"status": "done"}'
+
+# Patch frontmatter by stable id
+bwrb edit --id "<uuid>" --json '{"status": "done"}'
 
 # Target specific type
 bwrb edit --type task "Fix bug" --json '{"priority": "high"}'
@@ -177,6 +186,9 @@ bwrb search "Note" --output json --picker none
 
 # Open and get path
 bwrb open "Note Name" --app print --picker none
+
+# Open and get path by stable id
+bwrb open --id "<uuid>" --app print --picker none
 ```
 
 ### Validation

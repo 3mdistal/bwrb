@@ -1,28 +1,77 @@
 import { readdir, stat, mkdir } from 'fs/promises';
-import { join, basename } from 'path';
+import { join, basename, dirname, resolve } from 'path';
 import { existsSync } from 'fs';
 import { parseNote } from './frontmatter.js';
 import type { LoadedSchema, FilterCondition, OwnerInfo } from '../types/schema.js';
-import { 
-  getOutputDir as getOutputDirFromSchema, 
-  getType, 
+import {
+  getOutputDir as getOutputDirFromSchema,
+  getType,
   getDescendants,
-  canTypeBeOwned, 
+  canTypeBeOwned,
   getOwnerTypes,
   resolveTypeFromFrontmatter,
 } from './schema.js';
 
+const SCHEMA_RELATIVE_PATH = '.bwrb/schema.json';
+
+function hasVaultSchema(vaultDir: string): boolean {
+  return existsSync(join(vaultDir, SCHEMA_RELATIVE_PATH));
+}
+
+function findUpVaultDir(startDir: string): string | null {
+  let currentDir = resolve(startDir);
+  while (true) {
+    if (hasVaultSchema(currentDir)) {
+      return currentDir;
+    }
+
+    const parentDir = dirname(currentDir);
+    if (parentDir === currentDir) {
+      return null;
+    }
+    currentDir = parentDir;
+  }
+}
+
 /**
- * Resolve vault directory from options, env, or cwd.
+ * Resolve vault directory.
+ *
+ * Precedence (authoritative):
+ * 1) --vault option
+ * 2) find-up nearest ancestor containing .bwrb/schema.json
+ * 3) BWRB_VAULT env var
+ * 4) cwd (error if not a vault)
  */
 export function resolveVaultDir(options: { vault?: string }): string {
   if (options.vault) {
+    if (!hasVaultSchema(options.vault)) {
+      throw new Error(
+        `Invalid --vault path: "${options.vault}" (expected ${SCHEMA_RELATIVE_PATH})`
+      );
+    }
     return options.vault;
   }
-  if (process.env['BWRB_VAULT']) {
-    return process.env['BWRB_VAULT'];
+
+  const found = findUpVaultDir(process.cwd());
+  if (found) {
+    return found;
   }
-  return process.cwd();
+
+  const envVault = process.env['BWRB_VAULT'];
+  if (envVault) {
+    if (!hasVaultSchema(envVault)) {
+      throw new Error(
+        `Invalid BWRB_VAULT: "${envVault}" (expected ${SCHEMA_RELATIVE_PATH})`
+      );
+    }
+    return envVault;
+  }
+
+  const cwd = process.cwd();
+  throw new Error(
+    `Could not resolve vault: searched upward from "${cwd}" for ${SCHEMA_RELATIVE_PATH}. ` +
+      `Try "--vault <path>" or run "bwrb init".`
+  );
 }
 
 /**

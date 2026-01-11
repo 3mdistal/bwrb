@@ -42,6 +42,8 @@ export interface TargetingOptions {
   path?: string;
   /** Filter by frontmatter expression (e.g., 'status=active') */
   where?: string[];
+  /** Target a specific note id (system-managed UUID) */
+  id?: string;
   /** Filter by body content search pattern */
   body?: string;
   /** @deprecated Use `body` instead */
@@ -271,7 +273,9 @@ export async function resolveTargets(
   vaultDir: string
 ): Promise<TargetingResult> {
   const bodyFilter = options.body ?? options.text;
-  const hasTargeting = !!(options.type || options.path || options.where?.length || bodyFilter);
+  const hasTargeting = !!(
+    options.type || options.path || options.where?.length || options.id || bodyFilter
+  );
 
   // Early validation of --where expression values when type is known
   // This catches invalid select field values before we do any file discovery
@@ -369,9 +373,34 @@ export async function resolveTargets(
       }
     }
 
-    // Step 5: Filter by --where expressions
+    let filteredFiles: TargetedFile[] = filesWithFrontmatter;
+
+    // Step 5: Filter by --id (stable system-managed note id)
+    if (options.id) {
+      filteredFiles = filteredFiles.filter(
+        (f) => typeof f.frontmatter['id'] === 'string' && f.frontmatter['id'] === options.id
+      );
+
+      if (filteredFiles.length > 1) {
+        return {
+          files: filteredFiles,
+          hasTargeting,
+          error: `Duplicate id: ${options.id}`,
+        };
+      }
+
+      if (filteredFiles.length === 0) {
+        return {
+          files: [],
+          hasTargeting,
+          error: `No note found with id: ${options.id}`,
+        };
+      }
+    }
+
+    // Step 6: Filter by --where expressions
     if (options.where && options.where.length > 0) {
-      const filtered = await applyFrontmatterFilters(filesWithFrontmatter, {
+      const filtered = await applyFrontmatterFilters(filteredFiles, {
         whereExpressions: options.where,
         vaultDir,
         silent: true,
@@ -384,7 +413,7 @@ export async function resolveTargets(
     }
 
     return {
-      files: filesWithFrontmatter,
+      files: filteredFiles,
       hasTargeting,
     };
   } catch (err) {
@@ -417,6 +446,7 @@ export function validateDestructiveTargeting(
     options.type ||
     options.path ||
     options.where?.length ||
+    options.id ||
     options.body ||
     options.text
   );
@@ -474,6 +504,9 @@ export function formatTargetingSummary(options: TargetingOptions): string {
   if (options.where && options.where.length > 0) {
     parts.push(`where=(${options.where.join(' AND ')})`);
   }
+  if (options.id) {
+    parts.push(`id=${options.id}`);
+  }
   if (options.body || options.text) {
     parts.push(`body="${options.body ?? options.text}"`);
   }
@@ -493,6 +526,7 @@ export function hasAnyTargeting(options: TargetingOptions): boolean {
     options.type ||
     options.path ||
     options.where?.length ||
+    options.id ||
     options.body ||
     options.text ||
     options.all

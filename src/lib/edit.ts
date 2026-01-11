@@ -143,6 +143,18 @@ export async function editNoteFromJson(
     throw new Error(error);
   }
 
+  // Disallow editing system-managed fields
+  if ('id' in patchData && patchData['id'] !== undefined) {
+    const error = "Field 'id' is system-managed and cannot be modified";
+    if (jsonMode) {
+      printJson(jsonError(error, {
+        errors: [{ field: 'id', value: patchData['id'], message: error }],
+      }));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    throw new Error(error);
+  }
+
   // Parse existing note
   const { frontmatter, body } = await parseNote(filePath);
 

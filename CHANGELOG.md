@@ -17,8 +17,15 @@ All notable changes to Bowerbird are documented in this file.
 - **`bwrb audit --fix` is now dry-run by default** (#271)
   - Use `--execute` to write changes to disk (including frontmatter edits and file moves)
 
+- **Vault auto-detection now uses nearest `.bwrb/schema.json` (find-up)** (#337)
+  - Precedence: `--vault` > find-up > `BWRB_VAULT` > `cwd` (error if not a vault)
+
 ### Added
 
+- **Stable system-managed note IDs** (#334)
+  - `bwrb new` writes an `id` (UUIDv4) to frontmatter
+  - IDs are never reused (append-only registry in `.bwrb/ids.jsonl`)
+  - Commands using targeting selectors support `--id <uuid>` for stable lookup
 
 - **Interactive parent type selection in `schema new type`** (#240)
   - When creating a new type interactively, now prompts "Extend from type" with list of existing types

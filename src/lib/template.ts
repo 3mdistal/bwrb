@@ -8,6 +8,11 @@ import { matchesExpression, parseExpression, type EvalContext } from './expressi
 import { applyDefaults } from './validation.js';
 import { evaluateTemplateDefault, validateDateExpression, isDateExpression } from './date-expression.js';
 import { formatDateWithPattern, DEFAULT_DATE_FORMAT } from './local-date.js';
+import {
+  ensureIdInFieldOrder,
+  generateUniqueNoteId,
+  registerIssuedNoteId,
+} from './note-id.js';
 
 /**
  * Template Discovery and Parsing
@@ -1595,23 +1600,34 @@ export async function createScaffoldedInstances(
       
       // Apply schema defaults for any missing required fields
       frontmatter = applyDefaults(schema, instance.type, frontmatter);
-      
+
+      // System-managed stable note id (v1.0)
+      const noteId = await generateUniqueNoteId(vaultDir);
+      frontmatter['id'] = noteId;
+
       // Generate body
       let body = '';
       if (instanceTemplate?.body) {
-        body = processTemplateBody(instanceTemplate.body, {
-          ...parentFrontmatter,
-          ...frontmatter,
-        }, schema.config.dateFormat);
+        body = processTemplateBody(
+          instanceTemplate.body,
+          {
+            ...parentFrontmatter,
+            ...frontmatter,
+          },
+          schema.config.dateFormat
+        );
       } else if (instanceType.bodySections && instanceType.bodySections.length > 0) {
         body = generateBodySections(instanceType.bodySections);
       }
-      
+
       // Get field order from type definition
-      const orderedFields = instanceType.fieldOrder.length > 0 ? instanceType.fieldOrder : Object.keys(frontmatter);
-      
+      const orderedFields = ensureIdInFieldOrder(
+        instanceType.fieldOrder.length > 0 ? instanceType.fieldOrder : Object.keys(frontmatter)
+      );
+
       // Write file
       await writeNote(filePath, frontmatter, body, orderedFields);
+      await registerIssuedNoteId(vaultDir, noteId, filePath);
       created.push(filePath);
       
     } catch (e) {

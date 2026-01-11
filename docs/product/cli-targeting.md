@@ -8,13 +8,13 @@
 
 ## Overview
 
-Bowerbird uses a unified targeting model across all commands that operate on sets of notes. This provides a consistent, learnable interface: once you understand the four selectors, you can use any command.
+Bowerbird uses a unified targeting model across all commands that operate on sets of notes. This provides a consistent, learnable interface: once you understand the core selectors, you can use any command.
 
 **Core principle:** All targeting selectors compose via AND (intersection). Each selector narrows the set of matched files.
 
 ---
 
-## The Four Selectors
+## The Four Core Selectors
 
 ### 1. Type (`--type <type>`)
 
@@ -105,6 +105,23 @@ bwrb search --body "meeting notes" --type task
 
 ---
 
+## Direct Addressing
+
+### Stable ID (`--id <uuid>`)
+
+Some workflows (automation, orchestration, long-lived references) need a stable identifier that survives rename/move operations.
+
+`--id` targets notes by the reserved, system-managed frontmatter field `id` (UUID). IDs are created by `bwrb new` and must never change.
+
+**Behavior:**
+- Composes via AND with the core selectors
+- Counts as explicit targeting for destructive safety gates (where supported)
+- Implemented by reading note frontmatter during discovery; `.bwrb/` remains excluded from candidate sets
+- 0 matches → error
+- >1 matches → hard error (no first-match), candidates listed in text and JSON output
+
+---
+
 ## Selector Composition
 
 **All selectors compose via AND (intersection).** Each additional selector narrows the result set.
@@ -146,17 +163,17 @@ Use the explicit flag to clarify.
 
 ## Command Support Matrix
 
-All commands that operate on note sets support the same selectors:
+Commands that operate on note sets support the core selectors. Some commands also support `--id` for stable lookup:
 
-| Command | `--type` | `--path` | `--where` | `--body` | Picker |
-|---------|----------|----------|-----------|----------|--------|
-| list    | Y | Y | Y | Y | - |
-| bulk    | Y | Y | Y | Y | - |
-| audit   | Y | Y | Y | Y | - |
-| search  | Y | Y | Y | Y | Y |
-| open    | Y | Y | Y | Y | Y |
-| edit    | Y | Y | Y | Y | Y |
-| delete  | Y | Y | Y | Y | - |
+| Command | `--type` | `--path` | `--where` | `--body` | `--id` | Picker |
+|---------|----------|----------|-----------|----------|--------|--------|
+| list    | Y | Y | Y | Y | Y | - |
+| bulk    | Y | Y | Y | Y | N | - |
+| audit   | Y | Y | Y | Y | N | - |
+| search  | Y | Y | Y | Y | N | Y |
+| open    | Y | Y | Y | Y | Y | Y |
+| edit    | Y | Y | Y | Y | Y | Y |
+| delete  | Y | Y | Y | Y | Y | - |
 
 **Short flags:** `-t` (type), `-p` (path), `-w` (where), `-b` (body)
 

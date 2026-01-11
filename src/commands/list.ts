@@ -16,6 +16,7 @@ import {
   printJson,
   jsonError,
   ExitCodes,
+  exitWithResolutionError,
   warnDeprecated,
   type ListOutputFormat,
 } from '../lib/output.js';
@@ -75,6 +76,7 @@ interface ListCommandOptions {
   paths?: boolean; // deprecated
   fields?: string;
   where?: string[];
+  id?: string;
   output?: string;
   json?: boolean; // deprecated
   // Open options
@@ -98,6 +100,7 @@ Targeting Selectors (compose via AND):
   --type <type>        Filter by type (e.g., task, objective/milestone)
   --path <glob>        Filter by file path (e.g., Projects/**, Ideas/)
   --where <expr>       Filter by frontmatter expression (can repeat)
+  --id <uuid>          Filter by stable note id
   --body <query>       Filter by body content (uses ripgrep)
 
 Expression Filters (--where):
@@ -150,6 +153,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--json', 'Output as JSON (deprecated: use --output json)')
   .option('--fields <fields>', 'Show frontmatter fields in a table (comma-separated)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
+  .option('--id <uuid>', 'Filter by stable note id')
   .option('--output <format>', 'Output format: text (default), paths, tree, link, json')
   // Open options
   .option('-o, --open', 'Open the first result (or pick from results interactively)')
@@ -191,6 +195,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       if (options.type) targeting.type = options.type;
       if (options.path) targeting.path = options.path;
       if (options.where) targeting.where = options.where;
+      if (options.id) targeting.id = options.id;
       // Handle --body (new) and --text (deprecated)
       if (options.text) {
         console.error('Warning: --text is deprecated, use --body instead');
@@ -232,12 +237,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       const targetResult = await resolveTargets(targeting, schema, vaultDir);
       
       if (targetResult.error) {
-        if (jsonMode) {
-          printJson(jsonError(targetResult.error));
-          process.exit(ExitCodes.VALIDATION_ERROR);
-        }
-        printError(targetResult.error);
-        process.exit(1);
+        exitWithResolutionError(targetResult.error, targetResult.files, jsonMode);
       }
 
       // Show targeting summary if no results

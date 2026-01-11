@@ -615,6 +615,30 @@ priority: medium
       expect(result.stdout).toContain('Fixed: 1 issues');
       expect(result.stdout).toContain('Remaining: 0 issues');
     });
+
+    it('should auto-migrate unambiguous unknown field in --auto mode', async () => {
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Deadline Typo.md'),
+        `---
+type: task
+status: backlog
+dead_line: 2026-01-01
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Migrated dead_line');
+      expect(result.stdout).toContain('Remaining: 0 issues');
+
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(join(tempVaultDir, 'Objectives/Tasks', 'Deadline Typo.md'), 'utf-8');
+      expect(content).toContain('deadline: 2026-01-01');
+      expect(content).not.toContain('dead_line:');
+    });
   });
 
   describe('--fix option validation', () => {

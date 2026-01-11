@@ -23,7 +23,7 @@ import { killAllPtyProcesses } from './lib/pty-helpers.js';
 // This ensures tests that forget --vault don't accidentally use the developer's real vault.
 // Individual tests can still override via --vault flag or by creating temp vaults.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-process.env.BWRB_VAULT = path.resolve(__dirname, 'fixtures/vault');
+process.env.BWRB_VAULT = path.resolve(__dirname, '../fixtures/vault');
 
 // Kill any orphaned PTY processes after each test
 afterEach(() => {
