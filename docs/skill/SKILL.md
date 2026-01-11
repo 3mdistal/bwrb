@@ -200,6 +200,12 @@ bwrb audit --fix --execute
 bwrb audit --fix --auto
 # Apply auto-fixes (writes files)
 bwrb audit --fix --auto --execute
+
+# Fix a specific issue code
+bwrb audit --only trailing-whitespace --fix --execute
+
+# Auto-fix only that issue code
+bwrb audit --only trailing-whitespace --fix --auto --execute
 ```
 
 #### Type Inference and Check Dependencies
@@ -216,6 +222,7 @@ Audit resolves each file's type from its frontmatter `type` field. Understanding
 |-------|-------------------------|
 | `orphan-file` | No (reports missing type) |
 | `invalid-type` | No (reports unrecognized type) |
+| `trailing-whitespace` | No (operates on raw frontmatter lines; schema/type not needed) |
 | `missing-required` | Yes |
 | `invalid-option` | Yes |
 | `unknown-field` | Yes |
@@ -229,6 +236,9 @@ Audit resolves each file's type from its frontmatter `type` field. Understanding
 # Step 1: Find files with type problems
 bwrb audit --only orphan-file --output json
 bwrb audit --only invalid-type --output json
+
+# Step 1b: Find whitespace hygiene issues (warnings; auto-fixable)
+bwrb audit --only trailing-whitespace --output json
 
 # Step 2: Fix type field (bulk or individual)
 bwrb bulk --path "SomeDir/" --set type=task --execute
