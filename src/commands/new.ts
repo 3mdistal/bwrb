@@ -547,9 +547,6 @@ async function createPooledNoteFromJson(
     printJson(jsonError('Invalid note name (empty after sanitizing)'));
     process.exit(ExitCodes.VALIDATION_ERROR);
   }
-  if (frontmatter['name'] === itemName) {
-    frontmatter['name'] = sanitizedItemName;
-  }
   const filePath = join(fullOutputDir, `${sanitizedItemName}.md`);
 
   if (existsSync(filePath)) {
@@ -617,9 +614,6 @@ async function createOwnedNoteFromJson(
   if (!sanitizedItemName) {
     printJson(jsonError('Invalid note name (empty after sanitizing)'));
     process.exit(ExitCodes.VALIDATION_ERROR);
-  }
-  if (frontmatter['name'] === itemName) {
-    frontmatter['name'] = sanitizedItemName;
   }
   const filePath = join(outputDir, `${sanitizedItemName}.md`);
 

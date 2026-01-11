@@ -134,6 +134,7 @@ describe('new command', () => {
 
       const content = await readFile(join(vaultDir, output.path), 'utf-8');
       expect(content).toContain('status: backlog');
+      expect(content).toContain('name: Foo/Bar');
 
       const unsanitizedPath = join(vaultDir, output.path.replace('FooBar.md', 'Foo/Bar.md'));
       await expect(readFile(unsanitizedPath, 'utf-8')).rejects.toThrow();
