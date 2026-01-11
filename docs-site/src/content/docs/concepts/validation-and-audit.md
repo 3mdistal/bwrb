@@ -35,16 +35,18 @@ Audit catches:
 
 ## Fixing Issues
 
-Preview fixes:
+`bwrb audit --fix` applies fixes by default, but requires explicit targeting.
+
+Preview fixes without writing:
 
 ```bash
-bwrb audit --fix
+bwrb audit --path "Ideas/**" --fix --dry-run
 ```
 
 Apply fixes:
 
 ```bash
-bwrb audit --fix --execute
+bwrb audit --path "Ideas/**" --fix
 ```
 
 ## CI Integration

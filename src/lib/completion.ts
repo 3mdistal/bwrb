@@ -265,7 +265,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
   list: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--output', '-o', '--vault', '--json', '--help'],
   open: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--app', '--vault', '--help'],
   search: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--wikilink', '--vault', '--help'],
-  audit: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--fix', '--vault', '--help'],
+  audit: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--text', '--all', '-a', '--strict', '--only', '--ignore', '--output', '--fix', '--auto', '--dry-run', '--execute', '--allow-field', '--vault', '--help'],
   bulk: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--set', '--vault', '--dry-run', '--yes', '-y', '--help'],
   schema: ['--vault', '--help'],
   template: ['--vault', '--help'],

@@ -213,14 +213,10 @@ function getAutoUnknownFieldMigrationTarget(
   return targetField;
 }
 
-const executeStorage = new AsyncLocalStorage<boolean>();
+const dryRunStorage = new AsyncLocalStorage<boolean>();
 
-function isExecuteEnabled(): boolean {
-  return executeStorage.getStore() ?? false;
-}
-
-function executeRequiredResult(filePath: string, issue: AuditIssue): FixResult {
-  return { file: filePath, issue, action: 'skipped', message: 'Use --execute to write changes' };
+function isDryRunEnabled(): boolean {
+  return dryRunStorage.getStore() ?? false;
 }
 
 type RawLine = {
@@ -260,10 +256,6 @@ function splitLinesPreserveEol(input: string): RawLine[] {
 }
 
 async function applyTrailingWhitespaceFix(filePath: string, issue: AuditIssue): Promise<FixResult> {
-  if (!isExecuteEnabled()) {
-    return executeRequiredResult(filePath, issue);
-  }
-
   const lineNumber = issue.lineNumber;
   if (!lineNumber || lineNumber <= 0) {
     return { file: filePath, issue, action: 'failed', message: 'No line number for whitespace fix' };
@@ -288,7 +280,10 @@ async function applyTrailingWhitespaceFix(filePath: string, issue: AuditIssue): 
   };
 
   const updated = lines.map((l) => l.text + l.eol).join('');
-  await writeFile(filePath, updated, 'utf-8');
+
+  if (!isDryRunEnabled()) {
+    await writeFile(filePath, updated, 'utf-8');
+  }
 
   return { file: filePath, issue, action: 'fixed' };
 }
@@ -314,10 +309,6 @@ async function applyFix(
 
     if (issue.code === 'trailing-whitespace') {
       return await applyTrailingWhitespaceFix(filePath, issue);
-    }
-
-    if (!isExecuteEnabled()) {
-      return executeRequiredResult(filePath, issue);
     }
 
     const parsed = await parseNote(filePath);
@@ -456,7 +447,9 @@ async function applyFix(
     const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
     const order = typeDef?.fieldOrder;
 
-    await writeNote(filePath, frontmatter, parsed.body, order);
+    if (!isDryRunEnabled()) {
+      await writeNote(filePath, frontmatter, parsed.body, order);
+    }
     return { file: filePath, issue, action: 'fixed' };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -469,10 +462,6 @@ async function applyStructuralFix(
   issue: AuditIssue,
   newValue?: unknown
 ): Promise<FixResult> {
-  if (!isExecuteEnabled()) {
-    return executeRequiredResult(filePath, issue);
-  }
-
   const raw = await readFile(filePath, 'utf-8');
   const structural = readStructuralFrontmatterFromRaw(raw);
   const block = structural.primaryBlock;
@@ -494,7 +483,9 @@ async function applyStructuralFix(
       }
 
       const updated = movePrimaryBlockToTop(raw, block);
-      await writeFile(filePath, updated, 'utf-8');
+      if (!isDryRunEnabled()) {
+        await writeFile(filePath, updated, 'utf-8');
+      }
       return { file: filePath, issue, action: 'fixed' };
     }
 
@@ -578,7 +569,9 @@ async function applyStructuralFix(
       (doc.errors as unknown[]).length = 0;
       const newYaml = doc.toString().trimEnd();
       const updated = replacePrimaryYaml(raw, block, newYaml);
-      await writeFile(filePath, updated, 'utf-8');
+      if (!isDryRunEnabled()) {
+        await writeFile(filePath, updated, 'utf-8');
+      }
       return { file: filePath, issue, action: 'fixed' };
     }
 
@@ -618,7 +611,9 @@ async function applyStructuralFix(
       (doc.errors as unknown[]).length = 0;
       const newYaml = doc.toString().trimEnd();
       const updated = replacePrimaryYaml(raw, block, newYaml);
-      await writeFile(filePath, updated, 'utf-8');
+      if (!isDryRunEnabled()) {
+        await writeFile(filePath, updated, 'utf-8');
+      }
       return { file: filePath, issue, action: 'fixed' };
     }
 
@@ -636,10 +631,6 @@ async function removeField(
   fieldName: string
 ): Promise<FixResult> {
   try {
-    if (!isExecuteEnabled()) {
-      return executeRequiredResult(filePath, { severity: 'warning', code: 'unknown-field', message: '', autoFixable: false });
-    }
-
     const parsed = await parseNote(filePath);
     const frontmatter = { ...parsed.frontmatter };
 
@@ -659,7 +650,9 @@ async function removeField(
     const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
     const order = typeDef?.fieldOrder;
 
-    await writeNote(filePath, frontmatter, parsed.body, order);
+    if (!isDryRunEnabled()) {
+      await writeNote(filePath, frontmatter, parsed.body, order);
+    }
     return {
       file: filePath,
       issue: { severity: 'warning', code: 'unknown-field', message: '', field: fieldName, autoFixable: false },
@@ -741,12 +734,15 @@ export async function runAutoFix(
   results: FileAuditResult[],
   schema: LoadedSchema,
   vaultDir: string,
-  options?: { execute?: boolean }
+  options?: { dryRun?: boolean }
 ): Promise<FixSummary> {
-  const execute = options?.execute ?? false;
-  executeStorage.enterWith(execute);
+  const dryRun = options?.dryRun ?? false;
+  dryRunStorage.enterWith(dryRun);
   
   console.log(chalk.bold('Auditing vault...\n'));
+  if (dryRun) {
+    console.log(chalk.yellow('Dry run - no changes will be made\n'));
+  }
   console.log(chalk.bold('Auto-fixing unambiguous issues...\n'));
 
   let fixed = 0;
@@ -758,13 +754,13 @@ export async function runAutoFix(
     const fixableIssues = result.issues.filter(i => i.autoFixable);
     const nonFixableIssues = result.issues.filter(i => !i.autoFixable);
 
-    // Handle wrong-directory issues (require --execute)
+    // Handle wrong-directory issues
     for (const issue of [...fixableIssues]) {
       if (issue.code === 'wrong-directory' && issue.expectedDirectory) {
-        if (!execute) {
+        if (dryRun) {
           // Show what would be done
           console.log(chalk.cyan(`  ${result.relativePath}`));
-          console.log(chalk.yellow(`    ⚠ Would move to ${issue.expectedDirectory}/ (use --execute to apply)`));
+          console.log(chalk.yellow(`    ⚠ Would move to ${issue.expectedDirectory}/`));
           skipped++;
           // Remove from fixableIssues so we don't process it again
           const idx = fixableIssues.indexOf(issue);
@@ -810,11 +806,11 @@ export async function runAutoFix(
         continue;
       }
       
-      // Handle owned-wrong-location issues (require --execute)
+      // Handle owned-wrong-location issues
       if (issue.code === 'owned-wrong-location' && issue.expectedDirectory) {
-        if (!execute) {
+        if (dryRun) {
           console.log(chalk.cyan(`  ${result.relativePath}`));
-          console.log(chalk.yellow(`    ⚠ Would move to ${issue.expectedDirectory}/ (use --execute to apply)`));
+          console.log(chalk.yellow(`    ⚠ Would move to ${issue.expectedDirectory}/`));
           skipped++;
           const idx = fixableIssues.indexOf(issue);
           if (idx > -1) fixableIssues.splice(idx, 1);
@@ -915,7 +911,9 @@ export async function runAutoFix(
             const updatedTypeDef = updatedTypePath ? getTypeDefByPath(schema, updatedTypePath) : undefined;
             const order = updatedTypeDef?.fieldOrder;
 
-            await writeNote(result.path, frontmatter, latest.body, order);
+            if (!dryRun) {
+              await writeNote(result.path, frontmatter, latest.body, order);
+            }
 
             console.log(chalk.cyan(`  ${result.relativePath}`));
             console.log(chalk.green(`    ✓ Migrated ${issue.field} → ${targetField}`));
@@ -1034,7 +1032,7 @@ export async function runAutoFix(
           failed++;
         }
       } else if (issue.code === 'trailing-whitespace' && issue.field) {
-        // Auto-fix trailing whitespace (minimal diff; write-gated by --execute)
+        // Auto-fix trailing whitespace
         const fixResult = await applyFix(schema, result.path, issue);
         if (fixResult.action === 'fixed') {
           console.log(chalk.cyan(`  ${result.relativePath}`));
@@ -1042,7 +1040,7 @@ export async function runAutoFix(
           fixed++;
         } else if (fixResult.action === 'skipped') {
           console.log(chalk.cyan(`  ${result.relativePath}`));
-          console.log(chalk.yellow(`    ⚠ Would trim whitespace from ${issue.field} (use --execute to apply)`));
+          console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
           skipped++;
         } else {
           console.log(chalk.cyan(`  ${result.relativePath}`));
@@ -1125,6 +1123,7 @@ export async function runAutoFix(
   }
 
   return {
+    dryRun,
     fixed,
     skipped,
     failed,
@@ -1143,17 +1142,20 @@ export async function runInteractiveFix(
   results: FileAuditResult[],
   schema: LoadedSchema,
   vaultDir: string,
-  options?: { execute?: boolean }
+  options?: { dryRun?: boolean }
 ): Promise<FixSummary> {
-  const execute = options?.execute ?? false;
-  executeStorage.enterWith(execute);
-  const context: FixContext = { schema, vaultDir, execute };
+  const dryRun = options?.dryRun ?? false;
+  dryRunStorage.enterWith(dryRun);
+  const context: FixContext = { schema, vaultDir, dryRun };
   
   console.log(chalk.bold('Auditing vault...\n'));
+  if (dryRun) {
+    console.log(chalk.yellow('Dry run - no changes will be made\n'));
+  }
 
   if (results.length === 0) {
     console.log(chalk.green('✓ No issues found\n'));
-    return { fixed: 0, skipped: 0, failed: 0, remaining: 0 };
+    return { dryRun, fixed: 0, skipped: 0, failed: 0, remaining: 0 };
   }
 
   let fixed = 0;
@@ -1197,7 +1199,7 @@ export async function runInteractiveFix(
   }
   remaining = remaining - fixed;
 
-  return { fixed, skipped, failed, remaining };
+  return { dryRun, fixed, skipped, failed, remaining };
 }
 
 /**
@@ -1552,7 +1554,9 @@ async function handleUnknownFieldFix(
     const updatedTypeDef = updatedTypePath ? getTypeDefByPath(schema, updatedTypePath) : undefined;
     const order = updatedTypeDef?.fieldOrder;
 
-    await writeNote(result.path, frontmatter, latest.body, order);
+    if (!isDryRunEnabled()) {
+      await writeNote(result.path, frontmatter, latest.body, order);
+    }
     console.log(chalk.green(`    ✓ Migrated ${issue.field} → ${targetField}`));
     return 'fixed';
   } catch (err) {
@@ -1801,7 +1805,7 @@ async function handleInvalidSourceTypeFix(
  * (e.g., should be in owner's folder but isn't).
  * 
  * Options:
- * 1. Move file to correct location (requires --execute)
+ * 1. Move file to correct location
  * 2. Skip (leave for manual fix)
  */
 async function handleOwnedWrongLocationFix(
@@ -1809,7 +1813,7 @@ async function handleOwnedWrongLocationFix(
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
-  const { vaultDir, execute } = context;
+  const { vaultDir, dryRun } = context;
   
   // Show context
   console.log(chalk.dim(`    Expected location: ${issue.expectedDirectory}/`));
@@ -1823,9 +1827,7 @@ async function handleOwnedWrongLocationFix(
     console.log(chalk.yellow(`    ⚠ ${refs.length} wikilink(s) will be updated`));
   }
 
-  const options = execute 
-    ? ['[move file]', '[skip]', '[quit]']
-    : ['[skip] (use --execute to enable move)', '[quit]'];
+  const options = ['[move file]', '[skip]', '[quit]'];
   
   const selected = await promptSelection(
     `    Action for misplaced owned note:`,
@@ -1835,6 +1837,11 @@ async function handleOwnedWrongLocationFix(
   if (selected === null || selected === '[quit]') {
     return 'quit';
   } else if (selected === '[move file]' && issue.expectedDirectory) {
+    if (dryRun) {
+      console.log(chalk.yellow(`    ⚠ Would move to ${issue.expectedDirectory}/`));
+      return 'fixed';
+    }
+
     // Execute the move
     const targetDir = join(vaultDir, issue.expectedDirectory);
     const moveResult = await executeBulkMove({
@@ -1867,7 +1874,7 @@ async function handleOwnedWrongLocationFix(
  * This occurs when a file is in the wrong directory for its type.
  * 
  * Options:
- * 1. Move file to correct directory (requires --execute)
+ * 1. Move file to correct directory
  * 2. Skip (leave for manual fix)
  */
 async function handleWrongDirectoryFix(
@@ -1875,7 +1882,7 @@ async function handleWrongDirectoryFix(
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
-  const { vaultDir, execute } = context;
+  const { vaultDir, dryRun } = context;
   
   // Show context
   console.log(chalk.dim(`    Current location: ${dirname(result.relativePath)}/`));
@@ -1889,9 +1896,7 @@ async function handleWrongDirectoryFix(
     console.log(chalk.yellow(`    ⚠ ${refs.length} wikilink(s) will be updated`));
   }
 
-  const options = execute 
-    ? ['[move file]', '[skip]', '[quit]']
-    : ['[skip] (use --execute to enable move)', '[quit]'];
+  const options = ['[move file]', '[skip]', '[quit]'];
   
   const selected = await promptSelection(
     `    Action for wrong directory:`,
@@ -1901,6 +1906,11 @@ async function handleWrongDirectoryFix(
   if (selected === null || selected === '[quit]') {
     return 'quit';
   } else if (selected === '[move file]' && issue.expectedDirectory) {
+    if (dryRun) {
+      console.log(chalk.yellow(`    ⚠ Would move to ${issue.expectedDirectory}/`));
+      return 'fixed';
+    }
+
     // Execute the move
     const targetDir = join(vaultDir, issue.expectedDirectory);
     const moveResult = await executeBulkMove({
@@ -2176,12 +2186,6 @@ async function handleTrailingWhitespaceFix(
   if (!issue.field) return 'skipped';
 
   const { schema } = context;
-  const execute = context.execute ?? false;
-
-  if (!execute) {
-    console.log(chalk.yellow(`    ⚠ Would trim whitespace from ${issue.field} (use --execute to apply)`));
-    return 'skipped';
-  }
 
   const confirm = await promptConfirm(
     `    → Trim whitespace from '${issue.field}'?`
@@ -2350,7 +2354,9 @@ async function handleKeyCasingFix(
       const typeDef = typePath ? getType(schema, typePath) : undefined;
       const order = typeDef?.fieldOrder;
       
-      await writeNote(result.path, frontmatter, parsed.body, order);
+      if (!isDryRunEnabled()) {
+        await writeNote(result.path, frontmatter, parsed.body, order);
+      }
       console.log(chalk.green(`    ✓ Merged ${issue.field} → ${issue.canonicalKey}`));
       return 'fixed';
     } catch (err) {

@@ -69,7 +69,7 @@ Define types with required fields, select options, and relationships. Bowerbird 
 ```bash
 bwrb new task       # Prompts for required fields
 bwrb audit          # Finds notes that don't match schema
-bwrb audit --fix    # Interactive repair for violations
+bwrb audit --path "Ideas/**" --fix    # Guided repair (requires targeting)
 ```
 
 ### Structured Queries

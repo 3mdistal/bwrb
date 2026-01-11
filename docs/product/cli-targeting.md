@@ -201,7 +201,7 @@ bwrb audit          # Audits all notes
 
 No selectors = prompt with picker.
 
-### Destructive commands (`bulk`, `delete`, `audit --fix`)
+### Destructive commands (`bulk`, `delete`)
 
 **Two safety gates:**
 
@@ -223,6 +223,14 @@ bwrb bulk --all --set status=done --execute
 ```
 
 This two-gate model prevents accidental vault-wide mutations. You must be explicit about *what* (targeting) and *that you mean it* (execution).
+
+### Exception: `audit --fix`
+
+`bwrb audit --fix` is a remediation workflow. It still requires explicit targeting (at least one selector or `--all`), but **it writes by default**.
+
+- **Targeting required:** No selectors = error. Must specify at least one selector OR explicit `--all`.
+- **Execution:** Writes by default. Use `--dry-run` to preview fixes without writing.
+- `--execute` is accepted for compatibility but is not required for audit fixes.
 
 ### `--execute` vs `--force`
 
@@ -357,6 +365,8 @@ Use `--output <format>` to control how results are displayed:
 | `link` | ✓ | ✓ | Wikilinks (`[[Note Name]]`) |
 | `tree` | ✓ | - | Hierarchical tree view |
 | `content` | - | ✓ | Full file contents |
+
+**JSON contract:** In `--output json`, stdout must be exactly one JSON value (newline-terminated) and contain no non-JSON text. See `docs/product/cli-output-contract.md`.
 
 ```bash
 bwrb list --type task --output json

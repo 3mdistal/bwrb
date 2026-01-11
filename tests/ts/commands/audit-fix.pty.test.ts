@@ -42,7 +42,7 @@ Content without type field.
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--execute'],
+        ['audit', 'idea', '--fix'],
         async (proc, vaultPath) => {
           // Wait for audit to start
           await proc.waitFor('Auditing vault', 10000);
@@ -81,7 +81,7 @@ some-field: value
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--execute'],
+        ['audit', 'idea', '--fix'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Skip Me.md', 10000);
@@ -122,7 +122,7 @@ Missing required status.
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--execute'],
+        ['audit', 'idea', '--fix'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Missing Status.md', 10000);
@@ -173,7 +173,7 @@ type: item
       };
 
       await withTempVault(
-        ['audit', 'item', '--fix', '--execute'],
+        ['audit', 'item', '--fix'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('No Default.md', 10000);
@@ -209,7 +209,7 @@ status: invalid-status-value
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--execute'],
+        ['audit', 'idea', '--fix'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Bad Status.md', 10000);
@@ -244,7 +244,7 @@ status: keep-this-bad-value
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--execute'],
+        ['audit', 'idea', '--fix'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Keep Bad.md', 10000);
@@ -281,7 +281,7 @@ extra_unknown_field: some value
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--execute', '--strict'],
+        ['audit', 'idea', '--fix', '--strict'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Extra Field.md', 10000);
@@ -435,7 +435,7 @@ status: raw
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--execute'],
+        ['audit', 'idea', '--fix'],
         async (proc) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Issue', 10000);
@@ -472,7 +472,7 @@ some: value
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--execute'],
+        ['audit', 'idea', '--fix'],
         async (proc) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Abort Test.md', 10000);
@@ -528,7 +528,7 @@ link: Target
       };
 
       await withTempVault(
-        ['audit', 'item', '--fix', '--execute'],
+        ['audit', 'item', '--fix'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Bad Format.md', 10000);
@@ -568,7 +568,7 @@ Auto-fixable orphan.
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--auto', '--execute'],
+        ['audit', 'idea', '--fix', '--auto'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auto-fixing', 10000);
 
@@ -611,7 +611,7 @@ type: item
       };
 
       await withTempVault(
-        ['audit', 'item', '--fix', '--auto', '--execute'],
+        ['audit', 'item', '--fix', '--auto'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auto-fixing', 10000);
 
@@ -646,7 +646,7 @@ Body content.
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--execute'],
+        ['audit', 'idea', '--fix'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Frontmatter Not Top.md', 10000);
@@ -680,7 +680,7 @@ status: backlog
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--execute'],
+        ['audit', 'idea', '--fix'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Duplicate Keys.md', 10000);
@@ -714,7 +714,7 @@ broken: "[[Target]"
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--auto', '--execute'],
+        ['audit', 'idea', '--fix', '--auto'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auto-fixing', 10000);
           await proc.waitFor('Fixed malformed wikilink', 10000);

@@ -143,6 +143,8 @@ export interface FixResult {
  * Summary of fix operations.
  */
 export interface FixSummary {
+  /** When true, fixes are previewed (no writes). */
+  dryRun: boolean;
   fixed: number;
   skipped: number;
   failed: number;
@@ -167,7 +169,11 @@ export interface AuditOptions {
   output?: string;
   fix?: boolean;
   auto?: boolean;
+  /** Preview fixes without writing. */
+  dryRun?: boolean;
+  /** Deprecated for audit fixes (kept for compatibility). */
   execute?: boolean;
+  all?: boolean;
   allowField?: string[];
 }
 
@@ -197,8 +203,8 @@ export interface AuditRunOptions {
 export interface FixContext {
   schema: LoadedSchema;
   vaultDir: string;
-  /** Whether destructive operations (file moves) should be executed */
-  execute?: boolean;
+  /** When true, fixes are previewed (no writes). */
+  dryRun: boolean;
 }
 
 // ============================================================================
