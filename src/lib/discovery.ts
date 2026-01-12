@@ -64,7 +64,10 @@ const stablePathCompare = (a: ManagedFile, b: ManagedFile): number =>
 // ============================================================================
 
 /**
- * Load and parse .gitignore file if it exists.
+ * Load and parse `.gitignore` file if it exists.
+ *
+ * Note: this does NOT include `.bwrbignore` rules.
+ * Prefer `loadIgnoreMatcher()` for vault traversal.
  */
 export async function loadGitignore(vaultDir: string): Promise<Ignore | null> {
   const gitignorePath = join(vaultDir, '.gitignore');
@@ -74,6 +77,126 @@ export async function loadGitignore(vaultDir: string): Promise<Ignore | null> {
   } catch {
     return null; // No .gitignore or can't read it
   }
+}
+
+const BWRBIGNORE_FILENAME = '.bwrbignore';
+
+function toPosixPath(p: string): string {
+  return p.replace(/\\/g, '/');
+}
+
+function transformBwrbignoreLine(line: string, dirRelPosix: string): string | null {
+  // Preserve comment/blank handling from the `ignore` library by passing them through.
+  // We only transform actual patterns when the ignore file is not at the vault root.
+  if (!dirRelPosix) return line;
+
+  if (line.trim() === '') return line;
+  if (line.startsWith('#')) return line;
+
+  // Only treat leading '!' as negation when it's not escaped.
+  const isNegated = line.startsWith('!') && !line.startsWith('\\!');
+  const prefix = isNegated ? '!' : '';
+  const pattern = isNegated ? line.slice(1) : line;
+
+  if (pattern.trim() === '') return line;
+
+  const trailingSlash = pattern.endsWith('/');
+  const patternNoTrail = trailingSlash ? pattern.slice(0, -1) : pattern;
+
+  // Anchored pattern (relative to the directory containing this .bwrbignore)
+  if (patternNoTrail.startsWith('/')) {
+    const anchored = patternNoTrail.slice(1);
+    if (!anchored) return null;
+    return `${prefix}${dirRelPosix}/${anchored}${trailingSlash ? '/' : ''}`;
+  }
+
+  // If the pattern contains a path separator (excluding a trailing slash), treat it as path-relative.
+  const hasInternalSlash = patternNoTrail.includes('/');
+  if (hasInternalSlash) {
+    return `${prefix}${dirRelPosix}/${patternNoTrail}${trailingSlash ? '/' : ''}`;
+  }
+
+  // Otherwise, match at any depth under this directory.
+  return `${prefix}${dirRelPosix}/**/${patternNoTrail}${trailingSlash ? '/' : ''}`;
+}
+
+async function addBwrbignoreIfPresent(
+  ignoreMatcher: Ignore,
+  dirFull: string,
+  dirRelPosix: string
+): Promise<void> {
+  const bwrbignorePath = join(dirFull, BWRBIGNORE_FILENAME);
+
+  try {
+    const content = await readFile(bwrbignorePath, 'utf-8');
+    const lines = content.split(/\r?\n/);
+    const transformed = lines
+      .map((line: string) => transformBwrbignoreLine(line, dirRelPosix))
+      .filter((line: string | null): line is string => line !== null);
+
+    ignoreMatcher.add(transformed);
+  } catch {
+    // No .bwrbignore or can't read it
+  }
+}
+
+async function populateHierarchicalBwrbignore(
+  ignoreMatcher: Ignore,
+  vaultDir: string,
+  dirFull: string,
+  excluded: Set<string>
+): Promise<void> {
+  let entries;
+  try {
+    entries = await readdir(dirFull, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith('.')) continue; // includes .git
+
+    const childFull = join(dirFull, entry.name);
+    const childRelPosix = toPosixPath(relative(vaultDir, childFull));
+
+    // Respect bwrb's hard exclusions before traversing.
+    const excludedByConfig = Array.from(excluded).some(excl =>
+      childRelPosix === excl || childRelPosix.startsWith(excl + '/')
+    );
+    if (excludedByConfig) continue;
+
+    // Respect current ignore rules (gitignore + any already-loaded .bwrbignore).
+    if (ignoreMatcher.ignores(childRelPosix) || ignoreMatcher.ignores(childRelPosix + '/')) continue;
+
+    await addBwrbignoreIfPresent(ignoreMatcher, childFull, childRelPosix);
+    await populateHierarchicalBwrbignore(ignoreMatcher, vaultDir, childFull, excluded);
+  }
+}
+
+/**
+ * Load ignore rules for traversing a vault.
+ *
+ * - Starts with `.gitignore` at vault root (if present)
+ * - Adds hierarchical `.bwrbignore` files, allowing negation (e.g. `!dist/**`)
+ */
+export async function loadIgnoreMatcher(vaultDir: string, excluded: Set<string>): Promise<Ignore> {
+  const ignoreMatcher = ignore();
+
+  try {
+    const content = await readFile(join(vaultDir, '.gitignore'), 'utf-8');
+    ignoreMatcher.add(content);
+  } catch {
+    // No .gitignore or can't read it
+  }
+
+  // Root .bwrbignore (highest-level overrides for .gitignore)
+  await addBwrbignoreIfPresent(ignoreMatcher, vaultDir, '');
+
+  // Discover deeper .bwrbignore files using current ignore rules.
+  await populateHierarchicalBwrbignore(ignoreMatcher, vaultDir, vaultDir, excluded);
+
+  return ignoreMatcher;
 }
 
 /**
@@ -128,14 +251,20 @@ export function getExcludedDirectories(schema: LoadedSchema): Set<string> {
 function shouldExcludePath(
   relativePath: string,
   excluded: Set<string>,
-  gitignore: Ignore | null
+  ignoreMatcher: Ignore | null,
+  isDirectory = false
 ): boolean {
+  const relativePathPosix = toPosixPath(relativePath).replace(/\/$/, '');
+
   const excludedByConfig = Array.from(excluded).some(excl =>
-    relativePath === excl || relativePath.startsWith(excl + '/')
+    relativePathPosix === excl || relativePathPosix.startsWith(excl + '/')
   );
   if (excludedByConfig) return true;
 
-  if (gitignore && gitignore.ignores(relativePath)) return true;
+  if (!ignoreMatcher) return false;
+
+  if (ignoreMatcher.ignores(relativePathPosix)) return true;
+  if (isDirectory && ignoreMatcher.ignores(relativePathPosix + '/')) return true;
 
   return false;
 }
@@ -147,7 +276,7 @@ export async function collectAllMarkdownFiles(
   dir: string,
   baseDir: string,
   excluded: Set<string>,
-  gitignore: Ignore | null
+  ignoreMatcher: Ignore | null
 ): Promise<ManagedFile[]> {
   const files: ManagedFile[] = [];
   
@@ -165,10 +294,11 @@ export async function collectAllMarkdownFiles(
     // Skip hidden directories (starting with .)
     if (entry.isDirectory() && entry.name.startsWith('.')) continue;
 
-    if (shouldExcludePath(relativePath, excluded, gitignore)) continue;
+    const isDirectory = entry.isDirectory();
+    if (shouldExcludePath(relativePath, excluded, ignoreMatcher, isDirectory)) continue;
     
-    if (entry.isDirectory()) {
-      const subFiles = await collectAllMarkdownFiles(fullPath, baseDir, excluded, gitignore);
+    if (isDirectory) {
+      const subFiles = await collectAllMarkdownFiles(fullPath, baseDir, excluded, ignoreMatcher);
       files.push(...subFiles);
     } else if (entry.isFile() && entry.name.endsWith('.md')) {
       files.push({
@@ -192,9 +322,9 @@ export async function collectAllMarkdownFilenames(
 ): Promise<Set<string>> {
   const filenames = new Set<string>();
   const excluded = getExcludedDirectories(schema);
-  const gitignore = await loadGitignore(vaultDir);
+  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
 
-  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, gitignore);
+  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
   for (const file of allFiles) {
     // Add basename without extension
     filenames.add(basename(file.relativePath, '.md'));
@@ -215,9 +345,9 @@ export async function buildNotePathMap(
 ): Promise<Map<string, string>> {
   const pathMap = new Map<string, string>();
   const excluded = getExcludedDirectories(schema);
-  const gitignore = await loadGitignore(vaultDir);
+  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
 
-  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, gitignore);
+  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
   for (const file of allFiles) {
     // Map basename (without .md) to relative path (with .md)
     const noteName = basename(file.relativePath, '.md');
@@ -237,9 +367,10 @@ export async function buildNoteTypeMap(
 ): Promise<Map<string, string>> {
   const typeMap = new Map<string, string>();
   const excluded = getExcludedDirectories(schema);
-  const gitignore = await loadGitignore(vaultDir);
-  
-  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, gitignore);
+  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+
+  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
+
   
   for (const file of allFiles) {
     const noteName = basename(file.relativePath, '.md');
@@ -274,8 +405,8 @@ export async function discoverManagedFiles(
   
   // No type specified - scan entire vault
   const excluded = getExcludedDirectories(schema);
-  const gitignore = await loadGitignore(vaultDir);
-  return collectAllMarkdownFiles(vaultDir, vaultDir, excluded, gitignore);
+  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+  return collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
 }
 
 // ============================================================================
@@ -354,11 +485,11 @@ export async function discoverUnmanagedFiles(
   vaultDir: string
 ): Promise<ManagedFile[]> {
   const excluded = getExcludedDirectories(schema);
-  const gitignore = await loadGitignore(vaultDir);
+  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
   const typeOutputDirs = getTypeOutputDirs(schema);
   
   // Vault-wide scan with exclusions
-  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, gitignore);
+  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
   
   // Filter to only files NOT in type output directories
   return allFiles.filter(f => !isInTypeOutputDir(f.relativePath, typeOutputDirs));
@@ -413,13 +544,13 @@ export async function collectPooledFiles(
   outputDir: string,
   expectedType: string,
   excluded: Set<string>,
-  gitignore: Ignore | null
+  ignoreMatcher: Ignore | null
 ): Promise<ManagedFile[]> {
   const normalizedOutputDir = outputDir.replace(/\/$/, '');
   const fullDir = join(vaultDir, normalizedOutputDir);
   if (!existsSync(fullDir)) return [];
 
-  if (shouldExcludePath(normalizedOutputDir, excluded, gitignore)) return [];
+  if (shouldExcludePath(normalizedOutputDir, excluded, ignoreMatcher, true)) return [];
 
   const files: ManagedFile[] = [];
   const entries = await readdir(fullDir, { withFileTypes: true });
@@ -428,7 +559,7 @@ export async function collectPooledFiles(
     if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
 
     const relativePath = join(normalizedOutputDir, entry.name);
-    if (shouldExcludePath(relativePath, excluded, gitignore)) continue;
+    if (shouldExcludePath(relativePath, excluded, ignoreMatcher)) continue;
 
     files.push({
       path: join(fullDir, entry.name),
@@ -454,7 +585,7 @@ async function collectOwnedFiles(
   vaultDir: string,
   ownerTypeName: string,
   excluded: Set<string>,
-  gitignore: Ignore | null
+  ignoreMatcher: Ignore | null
 ): Promise<ManagedFile[]> {
   const ownedFields = getOwnedFields(schema, ownerTypeName);
   if (ownedFields.length === 0) return [];
@@ -468,7 +599,7 @@ async function collectOwnedFiles(
 
   if (!existsSync(fullOwnerDir)) return [];
 
-  if (shouldExcludePath(normalizedOwnerOutputDir, excluded, gitignore)) return [];
+  if (shouldExcludePath(normalizedOwnerOutputDir, excluded, ignoreMatcher, true)) return [];
 
   // Scan owner directory for owner folders (e.g., drafts/My Novel/)
   const entries = await readdir(fullOwnerDir, { withFileTypes: true });
@@ -480,19 +611,19 @@ async function collectOwnedFiles(
     if (entry.name.startsWith('.')) continue;
 
     const ownerFolderRel = join(normalizedOwnerOutputDir, entry.name);
-    if (shouldExcludePath(ownerFolderRel, excluded, gitignore)) continue;
+    if (shouldExcludePath(ownerFolderRel, excluded, ignoreMatcher, true)) continue;
 
     // Check if this folder has an owner note (e.g., drafts/My Novel/My Novel.md)
     const ownerNotePath = join(fullOwnerDir, entry.name, `${entry.name}.md`);
     const ownerNoteRel = join(normalizedOwnerOutputDir, entry.name, `${entry.name}.md`);
 
-    if (shouldExcludePath(ownerNoteRel, excluded, gitignore)) continue;
+    if (shouldExcludePath(ownerNoteRel, excluded, ignoreMatcher)) continue;
     if (!existsSync(ownerNotePath)) continue;
 
     // For each owned field, look for the child type subfolder
     for (const ownedField of ownedFields) {
       const childTypeFolderRel = join(normalizedOwnerOutputDir, entry.name, ownedField.childType);
-      if (shouldExcludePath(childTypeFolderRel, excluded, gitignore)) continue;
+      if (shouldExcludePath(childTypeFolderRel, excluded, ignoreMatcher, true)) continue;
 
       const childTypeFolder = join(fullOwnerDir, entry.name, ownedField.childType);
       if (!existsSync(childTypeFolder)) continue;
@@ -503,7 +634,7 @@ async function collectOwnedFiles(
         if (!childEntry.isFile() || !childEntry.name.endsWith('.md')) continue;
 
         const relativePath = join(normalizedOwnerOutputDir, entry.name, ownedField.childType, childEntry.name);
-        if (shouldExcludePath(relativePath, excluded, gitignore)) continue;
+        if (shouldExcludePath(relativePath, excluded, ignoreMatcher)) continue;
 
         files.push({
           path: join(childTypeFolder, childEntry.name),
@@ -539,12 +670,12 @@ async function collectFilesForTypeWithOwnership(
   const files: ManagedFile[] = [];
 
   const excluded = getExcludedDirectories(schema);
-  const gitignore = await loadGitignore(vaultDir);
+  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
 
   // Collect files in the type's output_dir (non-owned notes)
   const outputDir = getOutputDirFromSchema(schema, typeName);
   if (outputDir) {
-    const typeFiles = await collectPooledFiles(vaultDir, outputDir, typeName, excluded, gitignore);
+    const typeFiles = await collectPooledFiles(vaultDir, outputDir, typeName, excluded, ignoreMatcher);
     files.push(...typeFiles);
   }
   
@@ -554,7 +685,7 @@ async function collectFilesForTypeWithOwnership(
     for (const [ownerTypeName, ownedFields] of schema.ownership.owns) {
       const ownsThisType = ownedFields.some((f: OwnedFieldInfo) => f.childType === typeName);
       if (ownsThisType) {
-        const ownedFiles = await collectOwnedFiles(schema, vaultDir, ownerTypeName, excluded, gitignore);
+        const ownedFiles = await collectOwnedFiles(schema, vaultDir, ownerTypeName, excluded, ignoreMatcher);
         // Filter to only files of this type
         const relevantFiles = ownedFiles.filter(f => f.expectedType === typeName);
         files.push(...relevantFiles);

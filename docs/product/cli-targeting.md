@@ -256,8 +256,9 @@ Bowerbird recognizes multiple exclusion mechanisms:
 | Mechanism | Source | Example |
 |-----------|--------|---------|
 | `.gitignore` patterns | `.gitignore` file in vault root | `Archive/`, `*.tmp` |
-| Exclusions (schema, canonical) | `schema.config.excluded_directories` | `["Templates", "Archive/Old"]` |
-| Exclusions (schema, legacy alias) | `schema.audit.ignored_directories` | `["Templates", "Archive/Old"]` |
+| `.bwrbignore` patterns | `.bwrbignore` files (hierarchical) | `dist/`, `!dist/`, `!dist/**` |
+| Exclusions (schema, canonical) | `schema.config.excluded_directories` | `[`"Templates"`, `"Archive/Old"`]` |
+| Exclusions (schema, legacy alias) | `schema.audit.ignored_directories` | `[`"Templates"`, `"Archive/Old"`]` |
 | Exclusions (env, canonical) | `BWRB_EXCLUDE` (comma-separated) | `BWRB_EXCLUDE=Archive,Drafts` |
 | Exclusions (env, legacy alias) | `BWRB_AUDIT_EXCLUDE` (comma-separated) | `BWRB_AUDIT_EXCLUDE=Archive,Drafts` |
 | Hidden directories | Any directory starting with `.` | `.obsidian/`, `.trash/` |
@@ -265,7 +266,9 @@ Bowerbird recognizes multiple exclusion mechanisms:
 
 **Notes:**
 - `.gitignore` is optional. Bowerbird works on any folder of Markdown files, Git-backed or not. Only the vault root `.gitignore` is consulted (not nested `.gitignore` files).
-- Exclusions combine as a union: a path matching *any* exclusion source is excluded.
+- `.bwrbignore` is optional. Patterns use `.gitignore`-style matching (including `!` negation) and are discovered hierarchically.
+- `.bwrbignore` rules are applied after `.gitignore`, so they can override gitignored paths. Note: re-including a file under a gitignored directory requires unignoring the directory too (e.g. `!dist/` then `!dist/**`).
+- Hard exclusions (schema/env exclusions, hidden directories, and `.bwrb/`) are always excluded and are not overrideable via `.bwrbignore`.
 
 ### When Exclusion Rules Apply
 
