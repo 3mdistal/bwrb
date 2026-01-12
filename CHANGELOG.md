@@ -29,10 +29,6 @@ All notable changes to Bowerbird are documented in this file.
 - IDs are never reused (append-only registry in `.bwrb/ids.jsonl`)
 - Commands using targeting selectors support `--id <uuid>` for stable lookup
 
-- **Hierarchical `.bwrbignore` support** (#365)
-  - Add `.bwrbignore` files to customize vault traversal beyond `.gitignore`
-  - Supports `!` negation so you can include gitignored paths (e.g. `!dist/` then `!dist/**`)
-
 - **Interactive parent type selection in `schema new type`** (#240)
 
   - When creating a new type interactively, now prompts "Extend from type" with list of existing types
@@ -521,6 +517,15 @@ All notable changes to Bowerbird are documented in this file.
 - **PTY tests failing due to node-pty spawn-helper permissions**
 - **Body sections skipped when using templates** - Now works alongside templates
 - **Numbered select prompt flicker** - Uses differential updates instead of full re-render
+
+## [0.1.3] - 2026-01-12
+
+### Added
+
+- **Hierarchical `.bwrbignore` support** (#365)
+  - Add `.bwrbignore` files to customize vault traversal beyond `.gitignore`
+  - Supports `!` negation so you can include gitignored paths (e.g. `!dist/` then `!dist/**`)
+  - `.bwrbignore` files inside an ignored directory may not be discovered; put override rules in an ancestor directory (often the vault root)
 
 ## [0.1.2] - 2026-01-11
 
