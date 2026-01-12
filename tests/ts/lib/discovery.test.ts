@@ -63,6 +63,19 @@ describe('Discovery', () => {
       expect(ignoreMatcher.ignores('Ideas/Sample Idea.md')).toBe(true);
     });
 
+    it('should not allow unignoring hidden directories', async () => {
+      await mkdir(join(vaultDir, '.bwrb'), { recursive: true });
+      await writeFile(join(vaultDir, '.bwrb', 'Secret.md'), '---\ntype: idea\n---\n');
+      await writeFile(join(vaultDir, '.bwrbignore'), '!/.bwrb/**\n!.bwrb/**');
+
+      const excluded = new Set<string>();
+      const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+
+      const files = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
+      const paths = files.map(f => f.relativePath);
+      expect(paths.some(p => p.startsWith('.bwrb/'))).toBe(false);
+    });
+
     it('should allow .bwrbignore to negate .gitignore', async () => {
       await writeFile(join(vaultDir, '.gitignore'), 'Ideas/');
       // Gitignore semantics: to re-include files under an ignored directory,
