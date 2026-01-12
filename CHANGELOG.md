@@ -31,7 +31,7 @@ All notable changes to Bowerbird are documented in this file.
 
 - **Hierarchical `.bwrbignore` support** (#365)
   - Add `.bwrbignore` files to customize vault traversal beyond `.gitignore`
-  - Supports `!` negation so you can include gitignored paths (e.g. `!dist/**`)
+  - Supports `!` negation so you can include gitignored paths (e.g. `!dist/` then `!dist/**`)
 
 - **Interactive parent type selection in `schema new type`** (#240)
 
