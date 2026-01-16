@@ -26,10 +26,11 @@ All notable changes to Bowerbird are documented in this file.
 
 - **Stable system-managed note IDs** (#334)
   - `bwrb new` writes an `id` (UUIDv4) to frontmatter
-  - IDs are never reused (append-only registry in `.bwrb/ids.jsonl`)
-  - Commands using targeting selectors support `--id <uuid>` for stable lookup
+- IDs are never reused (append-only registry in `.bwrb/ids.jsonl`)
+- Commands using targeting selectors support `--id <uuid>` for stable lookup
 
 - **Interactive parent type selection in `schema new type`** (#240)
+
   - When creating a new type interactively, now prompts "Extend from type" with list of existing types
   - Shows "Root (extends meta)" option for creating standalone types
   - Displays inherited fields after parent selection to help users understand what they're inheriting
@@ -102,6 +103,7 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Fixed
 
+- **Handle malformed frontmatter wikilink scalars without crashing audit fixes** (#354)
 - **Ignore slashes in note names when creating files** (#353)
 
 - **Fixed markdown→wikilink conversion in link format migration** (#182)
@@ -516,6 +518,76 @@ All notable changes to Bowerbird are documented in this file.
 - **PTY tests failing due to node-pty spawn-helper permissions**
 - **Body sections skipped when using templates** - Now works alongside templates
 - **Numbered select prompt flicker** - Uses differential updates instead of full re-render
+
+## [0.1.3] - 2026-01-12
+
+### Added
+
+- **Hierarchical `.bwrbignore` support** (#365)
+  - Add `.bwrbignore` files to customize vault traversal beyond `.gitignore`
+  - Supports `!` negation so you can include gitignored paths (e.g. `!dist/` then `!dist/**`)
+  - `.bwrbignore` files inside an ignored directory may not be discovered; put override rules in an ancestor directory (often the vault root)
+
+## [0.1.2] - 2026-01-11
+
+### Changed (Breaking)
+
+- **`bwrb audit --fix` now applies fixes by default** (#352)
+  - Use `--dry-run` to preview without writing
+  - `--execute` is no longer required (accepted as deprecated no-op)
+  - `--fix` requires explicit targeting (`--type`, `--path`, `--where`, `--body`, or `--all`)
+
+- **Vault auto-detection now uses nearest `.bwrb/schema.json` (find-up)** (#347)
+  - Precedence: `--vault` > find-up > `BWRB_VAULT` > `cwd` (error if not a vault)
+
+- **Upgrade notes**
+  - `bwrb audit --fix` writes by default; use `--dry-run` to preview. Example: `bwrb audit --fix --type task --dry-run`
+  - If you rely on running from `cwd`, pass `--vault <path>` (or set `BWRB_VAULT`) to avoid “find-up” selecting a parent vault
+
+### Added
+
+- **Stable system-managed note IDs** (#351)
+  - `bwrb new` writes an `id` (UUIDv4) to frontmatter
+  - IDs are never reused (append-only registry in `.bwrb/ids.jsonl`)
+  - Keep `.bwrb/ids.jsonl` with your vault backups to preserve ID continuity
+  - Commands using targeting selectors support `--id <uuid>` for stable lookup
+
+- **Configurable excluded directories** (#339)
+
+- **Audit detection: trailing whitespace in raw frontmatter** (#341)
+
+- **Audit --fix: migrate unknown fields** (#345)
+
+- **Audit --fix Phase 4: structural integrity fixes** (#340)
+  - `frontmatter-not-at-top`: move a single clean-parsing YAML frontmatter block to the top
+  - `duplicate-frontmatter-keys`: auto-merge same/empty values; interactive keep-first/keep-last/skip when values differ
+  - `malformed-wikilink`: deterministic bracket repairs for near-wikilinks in frontmatter only (scalars and list items)
+
+- **Validate unknown fields in `--where` and `--fields`** (#326)
+
+- **Schema validate warns when `output_dir` is missing** (#348)
+
+### Fixed
+
+- **Aligned JSON Schema with runtime schema** (#323)
+
+- **Ignore slashes in note names when creating files** (#355)
+
+- **Avoid truncated JSON output on `delete` errors** (#350)
+
+- **`delete` falls back to help when query-parsed** (#360)
+
+- **Add max attempts for UUID generation** (#361)
+
+### Documentation
+
+- **Document CLI flag semantics (`--force` vs `--execute`)** (#324)
+- **Document audit trailing-whitespace in AI skill** (#357)
+- **Define CLI JSON output + exit contract** (#362)
+
+### Changed (Internal)
+
+- **Stop exporting unused note-id helpers (Knip)** (#359)
 
 ## [0.2.0] - 2025-12-29
 

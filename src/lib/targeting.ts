@@ -20,7 +20,7 @@ import {
   discoverManagedFiles,
   collectAllMarkdownFiles,
   getExcludedDirectories,
-  loadGitignore,
+  loadIgnoreMatcher,
 } from './discovery.js';
 import { parseNote } from './frontmatter.js';
 import { applyFrontmatterFilters } from './query.js';
@@ -300,8 +300,8 @@ export async function resolveTargets(
     } else {
       // Vault-wide discovery
       const excluded = getExcludedDirectories(schema);
-      const gitignore = await loadGitignore(vaultDir);
-      files = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, gitignore);
+      const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+      files = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
     }
 
     if (files.length === 0) {

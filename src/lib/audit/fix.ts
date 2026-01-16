@@ -7,7 +7,7 @@
 import chalk from 'chalk';
 import { readFile, writeFile } from 'fs/promises';
 import { join, dirname, basename } from 'path';
-import { parseDocument, isMap, isSeq } from 'yaml';
+import { parseDocument, isMap, isSeq, isScalar } from 'yaml';
 import type { YAMLSeq } from 'yaml';
 import { isDeepStrictEqual } from 'node:util';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -601,11 +601,11 @@ async function applyStructuralFix(
         }
         item.value = issue.fixedValue;
       } else {
-        const scalarValue = pair.value as unknown as Record<string, unknown>;
-        if (!pair.value || typeof scalarValue['value'] !== 'string') {
+        if (isScalar(pair.value) && typeof pair.value.value === 'string') {
+          pair.value.value = issue.fixedValue;
+        } else {
           return { file: filePath, issue, action: 'failed', message: `Expected string value for ${issue.field}` };
         }
-        scalarValue['value'] = issue.fixedValue;
       }
 
       (doc.errors as unknown[]).length = 0;

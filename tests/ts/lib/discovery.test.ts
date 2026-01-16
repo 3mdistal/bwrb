@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestVault, cleanupTestVault } from '../fixtures/setup.js';
 import {
   loadGitignore,
+  loadIgnoreMatcher,
   getExcludedDirectories,
   collectAllMarkdownFiles,
   collectAllMarkdownFilenames,
@@ -49,6 +50,60 @@ describe('Discovery', () => {
       expect(result!.ignores('node_modules/foo')).toBe(true);
       expect(result!.ignores('error.log')).toBe(true);
       expect(result!.ignores('Ideas/Test.md')).toBe(false);
+    });
+  });
+
+  describe('loadIgnoreMatcher', () => {
+    it('should include .bwrbignore patterns', async () => {
+      await writeFile(join(vaultDir, '.bwrbignore'), 'Ideas/');
+
+      const excluded = new Set<string>();
+      const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+
+      expect(ignoreMatcher.ignores('Ideas/Sample Idea.md')).toBe(true);
+    });
+
+    it('should not allow unignoring hidden directories', async () => {
+      await mkdir(join(vaultDir, '.bwrb'), { recursive: true });
+      await writeFile(join(vaultDir, '.bwrb', 'Secret.md'), '---\ntype: idea\n---\n');
+      await writeFile(join(vaultDir, '.bwrbignore'), '!/.bwrb/**\n!.bwrb/**');
+
+      const excluded = new Set<string>();
+      const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+
+      const files = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
+      const paths = files.map(f => f.relativePath);
+      expect(paths.some(p => p.startsWith('.bwrb/'))).toBe(false);
+    });
+
+    it('should allow .bwrbignore to negate .gitignore', async () => {
+      await writeFile(join(vaultDir, '.gitignore'), 'Ideas/');
+      // Gitignore semantics: to re-include files under an ignored directory,
+      // you must also unignore the directory itself.
+      await writeFile(join(vaultDir, '.bwrbignore'), '!Ideas/\n!Ideas/**');
+
+      const excluded = new Set<string>();
+      const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+
+      const files = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
+      const paths = files.map(f => f.relativePath);
+      expect(paths).toContain('Ideas/Sample Idea.md');
+    });
+
+    it('should apply nested .bwrbignore relative to its directory', async () => {
+      await mkdir(join(vaultDir, 'Ideas', 'Sub'), { recursive: true });
+      await writeFile(join(vaultDir, 'Ideas', '.bwrbignore'), 'secret.md');
+      await writeFile(join(vaultDir, 'Ideas', 'secret.md'), '---\ntype: idea\n---\n');
+      await writeFile(join(vaultDir, 'Ideas', 'Sub', 'secret.md'), '---\ntype: idea\n---\n');
+
+      const excluded = new Set<string>();
+      const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+
+      const files = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
+      const paths = files.map(f => f.relativePath);
+
+      expect(paths).not.toContain('Ideas/secret.md');
+      expect(paths).not.toContain('Ideas/Sub/secret.md');
     });
   });
 
