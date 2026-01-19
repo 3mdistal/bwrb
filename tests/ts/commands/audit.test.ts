@@ -42,6 +42,96 @@ describe('audit command', () => {
     });
   });
 
+  describe('relation field integrity', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Objectives/Milestones'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect self-reference in parent relation', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Self Task.md'),
+        `---
+type: task
+status: backlog
+parent: [[Self Task]]
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Self-reference detected');
+    });
+
+    it('should detect ambiguous relation target', async () => {
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks/Sub'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Ambiguous.md'),
+        `---
+type: task
+status: backlog
+milestone: [[Shared]]
+---
+`
+      );
+      await mkdir(join(tempVaultDir, 'Objectives/Milestones/Shared'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Milestones', 'Shared.md'),
+        `---
+type: milestone
+status: raw
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Milestones', 'Shared', 'Shared.md'),
+        `---
+type: milestone
+status: raw
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Ambiguous link target');
+    });
+
+    it('should detect invalid list elements', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Bad List.md'),
+        `---
+type: task
+status: backlog
+tags:
+  - good
+  - 42
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Invalid list element');
+    });
+  });
+
   describe('missing required fields', () => {
     let tempVaultDir: string;
 

@@ -15,6 +15,7 @@ import {
   getOutputDir,
 } from './schema.js';
 import type { LoadedSchema } from '../types/schema.js';
+import { extractLinkTarget } from './audit/types.js';
 
 // ============================================================================
 // Types
@@ -276,24 +277,24 @@ export function validateNewOwned(
  */
 export function extractWikilinkReferences(value: unknown): string[] {
   const references: string[] = [];
-  const wikilinkPattern = /\[\[([^\]]+)\]\]/g;
-  
-  if (typeof value === 'string') {
-    let match;
-    while ((match = wikilinkPattern.exec(value)) !== null) {
-      references.push(match[1]!);
+
+  const maybeAddTarget = (candidate: string) => {
+    const target = extractLinkTarget(candidate);
+    if (target) {
+      references.push(target);
     }
+  };
+
+  if (typeof value === 'string') {
+    maybeAddTarget(value);
   } else if (Array.isArray(value)) {
     for (const item of value) {
       if (typeof item === 'string') {
-        let match;
-        while ((match = wikilinkPattern.exec(item)) !== null) {
-          references.push(match[1]!);
-        }
+        maybeAddTarget(item);
       }
     }
   }
-  
+
   return references;
 }
 

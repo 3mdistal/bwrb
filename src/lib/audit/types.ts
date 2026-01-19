@@ -32,6 +32,9 @@ export type IssueCode =
   | 'owned-note-referenced'
   | 'owned-wrong-location'
   | 'parent-cycle'
+  | 'self-reference'
+  | 'ambiguous-link-target'
+  | 'invalid-list-element'
   // Phase 2: Low-risk hygiene auto-fixes
   | 'trailing-whitespace' // NOTE: Not currently detectable (YAML parser strips whitespace)
   | 'frontmatter-key-casing'
@@ -101,6 +104,8 @@ export interface AuditIssue {
   listIndex?: number | undefined;
   /** For malformed-wikilink: deterministic fixed value */
   fixedValue?: string | undefined;
+  /** For ambiguous-link-target: candidate paths */
+  candidates?: string[] | undefined;
 }
 
 /**
@@ -279,6 +284,25 @@ export function extractWikilinkTarget(value: string): string | null {
   
   const match = v.match(/^\[\[([^\]|#]+)/);
   return match ? match[1]! : null;
+}
+
+/**
+ * Extract a relation target from a link value.
+ * Supports wikilinks and markdown links (quoted or unquoted).
+ */
+export function extractLinkTarget(value: string): string | null {
+  if (!value) return null;
+  if (isWikilink(value) || isQuotedWikilink(value)) {
+    const wikilinkTarget = extractWikilinkTarget(value);
+    if (wikilinkTarget) return wikilinkTarget;
+  }
+
+  if (isMarkdownLink(value)) {
+    const markdownTarget = extractMarkdownLinkTarget(value);
+    if (markdownTarget) return markdownTarget;
+  }
+
+  return null;
 }
 
 /**

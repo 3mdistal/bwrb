@@ -90,6 +90,7 @@ export const BASELINE_SCHEMA: TestSchema = {
     task: {
       extends: 'objective',
       output_dir: 'Objectives/Tasks',
+      recursive: true,
       fields: {
         type: { value: 'task' },
         status: {
@@ -104,6 +105,10 @@ export const BASELINE_SCHEMA: TestSchema = {
           filter: { status: { not_in: ['settled'] } },
           format: 'quoted-wikilink',
         },
+        parent: {
+          prompt: 'relation',
+          source: ['objective', 'task'],
+        },
         'creation-date': { value: '$NOW' },
         deadline: { prompt: 'text', label: 'Deadline (YYYY-MM-DD)' },
         tags: {
@@ -112,7 +117,7 @@ export const BASELINE_SCHEMA: TestSchema = {
           default: [],
         },
       },
-      field_order: ['type', 'status', 'milestone', 'creation-date', 'deadline', 'tags'],
+      field_order: ['type', 'status', 'milestone', 'parent', 'creation-date', 'deadline', 'tags'],
       body_sections: [
         { title: 'Steps', level: 2, content_type: 'checkboxes', prompt: 'list', prompt_label: 'Steps' },
         { title: 'Notes', level: 2, content_type: 'paragraphs' },

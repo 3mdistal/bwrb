@@ -53,6 +53,11 @@ All notable changes to Bowerbird are documented in this file.
     - Offers to clear parent field or select different parent
   - JSON output now includes additional issue metadata: `expectedDirectory`, `currentDirectory`, `cyclePath`, `ownerPath`, `ownedNotePath`
 
+- **Audit --fix Phase 6: Relation field fixes** (#273)
+  - `self-reference`: detect and clear or reassign relations pointing to the same note
+  - `ambiguous-link-target`: prompt for a specific target when multiple notes share a link name
+  - `invalid-list-element`: flag and fix non-string values in list fields
+
 - **Audit --fix Phase 4: Structural integrity fixes** (#271)
   - `frontmatter-not-at-top`: move a single clean-parsing YAML frontmatter block to the top
   - `duplicate-frontmatter-keys`: auto-merge same/empty values; interactive keep-first/keep-last/skip when values differ

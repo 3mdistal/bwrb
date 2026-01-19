@@ -65,6 +65,9 @@ Issue Types:
   wrong-directory       File location doesn't match its type
   owned-wrong-location  Owned note not in expected location
   parent-cycle          Cycle detected in parent references
+  self-reference        Relation field references the same note
+  ambiguous-link-target Relation target matches multiple files
+  invalid-list-element  List field contains non-string values
   format-violation      Field value doesn't match expected format (wikilink, etc.)
   stale-reference       Wikilink points to non-existent file
   frontmatter-not-at-top Frontmatter block is not at top
