@@ -14,15 +14,21 @@ All notable changes to Bowerbird are documented in this file.
   - Example: `bwrb list task -o json` → `bwrb list task --output json`
   - This improves CLI consistency: `-o` now always means "open" rather than having different meanings on different commands
 
-- **`bwrb audit --fix` now applies fixes by default** (#346)
-  - Use `--dry-run` to preview without writing
-  - `--execute` is no longer required (accepted as deprecated no-op)
+- **`bwrb audit --fix` now requires `--execute` to apply fixes** (#346, #272)
+  - Omit `--execute` to preview fixes without writing
+  - `--fix` remains interactive-only; non-TTY requires `--fix --auto` or `--output json`
+  - `--fix --auto` applies only unambiguous fixes and reports remaining issues without failing the run
   - `--fix` requires explicit targeting (`--type`, `--path`, `--where`, `--body`, or `--all`)
 
 - **Vault auto-detection now uses nearest `.bwrb/schema.json` (find-up)** (#337)
   - Precedence: `--vault` > find-up > `BWRB_VAULT` > `cwd` (error if not a vault)
 
 ### Added
+
+- **Audit --fix Phase 5: Type coercion fixes** (#272)
+  - `wrong-scalar-type`: safe string -> number/boolean coercion in `audit --fix --auto`
+  - `invalid-date-format`: interactive prompts with ISO-ish suggestions for date fields
+  - `empty-string-required`: whitespace-only or empty list values now treated as missing required fields
 
 - **Stable system-managed note IDs** (#334)
   - `bwrb new` writes an `id` (UUIDv4) to frontmatter

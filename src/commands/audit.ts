@@ -95,9 +95,9 @@ Examples:
   bwrb audit --output json        # JSON output for CI
   bwrb audit --allow-field custom # Allow specific extra field
   bwrb audit --fix --path "Ideas/**"             # Interactive guided fixes (writes)
-  bwrb audit --fix --dry-run --path "Ideas/**"    # Preview guided fixes (no writes)
-  bwrb audit --fix --auto --path "Ideas/**"       # Auto-fix unambiguous issues (writes)
-  bwrb audit --fix --auto --dry-run --path "Ideas/**"  # Preview auto-fixes (no writes)`)
+  bwrb audit --fix --dry-run --path "Ideas/**"   # Preview guided fixes (no writes)
+  bwrb audit --fix --auto --execute --path "Ideas/**"  # Auto-fix unambiguous issues (writes)
+  bwrb audit --fix --auto --path "Ideas/**"      # Preview auto-fixes (no writes)`) 
   .argument('[target]', 'Type, path, or where expression (auto-detected)')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path pattern')
@@ -112,7 +112,7 @@ Examples:
   .option('--fix', 'Interactive repair mode')
   .option('--auto', 'With --fix: automatically apply unambiguous fixes')
   .option('--dry-run', 'With --fix: preview fixes without writing')
-  .option('--execute', 'With --fix: deprecated (no longer required)')
+  .option('--execute', 'With --fix: apply fixes (required to write changes)')
   .option('--allow-field <fields...>', 'Allow additional fields beyond schema (repeatable)')
   .action(async (target: string | undefined, options: AuditOptions & {
     type?: string;
@@ -150,11 +150,13 @@ Examples:
       process.exit(1);
     }
 
+    if (executeMode && dryRunMode) {
+      printError('--execute cannot be used with --dry-run');
+      process.exit(1);
+    }
+
     if (executeMode) {
-      const message = dryRunMode
-        ? 'Warning: --execute is deprecated for audit fixes; running in --dry-run mode (no changes will be made).'
-        : 'Warning: --execute is deprecated for audit fixes; audit --fix writes by default. Use --dry-run to preview.';
-      printWarning(message);
+      printWarning('Warning: --execute will apply fixes; omit it to preview changes.');
     }
 
     try {
@@ -216,6 +218,7 @@ Examples:
         }
       }
 
+
       // Validate type if specified
       if (typePath) {
         const typeDef = getTypeDefByPath(schema, typePath);
@@ -252,14 +255,19 @@ Examples:
 
       // Handle fix mode
       if (fixMode) {
+        if (!autoMode && !process.stdin.isTTY && results.length > 0) {
+          printError('audit --fix is interactive and requires a TTY; use --fix --auto or --output json');
+          process.exit(1);
+        }
+
         const fixSummary = autoMode
-          ? await runAutoFix(results, schema, vaultDir, { dryRun: dryRunMode })
+          ? await runAutoFix(results, schema, vaultDir, { dryRun: dryRunMode || !executeMode })
           : await runInteractiveFix(results, schema, vaultDir, { dryRun: dryRunMode });
 
         outputFixResults(fixSummary, autoMode);
 
-        // Exit with error if there are remaining issues
-        if (fixSummary.remaining > 0) {
+        // Exit with error if there are remaining issues (interactive only)
+        if (fixSummary.remaining > 0 && !autoMode) {
           process.exit(ExitCodes.VALIDATION_ERROR);
         }
         return;

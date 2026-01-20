@@ -109,15 +109,12 @@ some-field: value
   });
 
   describe('missing required field fix', () => {
-    it('should fix missing required field with default value', async () => {
-      // File with type but missing required status field
+    it('should add required field with default value', async () => {
       const missingField: TempVaultFile = {
         path: 'Ideas/Missing Status.md',
         content: `---
 type: idea
 ---
-
-Missing required status.
 `,
       };
 
@@ -128,7 +125,7 @@ Missing required status.
           await proc.waitFor('Missing Status.md', 10000);
 
           // Should offer to add with default value
-          await proc.waitFor("Add with default", 10000);
+          await proc.waitFor('Add with default', 10000);
 
           // Confirm
           proc.write('y');
@@ -148,6 +145,36 @@ Missing required status.
       );
     }, 30000);
 
+    it('should treat empty required values as missing', async () => {
+      const emptyRequired: TempVaultFile = {
+        path: 'Ideas/Empty Required.md',
+        content: `---
+type: idea
+status: " "
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'idea', '--fix'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Empty Required.md', 10000);
+          await proc.waitFor('Missing required field: status', 10000);
+          await proc.waitFor('Add with default', 10000);
+
+          proc.write('y');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Added status', 5000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Ideas/Empty Required.md');
+          expect(content).toContain('status: raw');
+        },
+        { files: [emptyRequired], schema: AUDIT_SCHEMA }
+      );
+    }, 30000);
+
     it('should prompt for value when no default available', async () => {
       // Schema without default for a required field
       const noDefaultSchema = {
@@ -157,7 +184,7 @@ Missing required status.
             output_dir: 'Items',
             fields: {
               type: { value: 'item' },
-              category: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], required: true }, // No default
+              category: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], required: true },
             },
             field_order: ['type', 'category'],
           },
@@ -232,6 +259,38 @@ status: invalid-status-value
         { files: [invalidEnum], schema: AUDIT_SCHEMA }
       );
     }, 30000);
+
+    it('should prompt for invalid date formats', async () => {
+      const invalidDate: TempVaultFile = {
+        path: 'Objectives/Tasks/Bad Date.md',
+        content: `---
+type: task
+status: backlog
+deadline: 01/02/2026
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'task', '--fix'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Bad Date.md', 10000);
+          await proc.waitFor('Invalid date', 10000);
+          await proc.waitFor('Enter YYYY-MM-DD for deadline', 10000);
+
+          proc.write('2026-02-01');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Updated deadline: 2026-02-01', 10000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Bad Date.md');
+          expect(content).toContain('deadline: 2026-02-01');
+        },
+        { files: [invalidDate], schema: AUDIT_SCHEMA }
+      );
+    }, 30000);
+
 
     it('should allow skipping invalid enum fix', async () => {
       const invalidEnum: TempVaultFile = {
@@ -332,7 +391,6 @@ dead_line: 2026-01-01
           proc.write(Keys.ENTER);
 
           await proc.waitFor('Migrated dead_line → deadline', 5000);
-
           const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Deadline Typo.md');
           expect(content).toContain('deadline: 2026-01-01');
           expect(content).not.toContain('dead_line:');
@@ -426,6 +484,7 @@ status: raw
 ---
 `,
       };
+
       const file2: TempVaultFile = {
         path: 'Ideas/Issue 2.md',
         content: `---
@@ -568,7 +627,7 @@ Auto-fixable orphan.
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--auto'],
+        ['audit', 'idea', '--fix', '--auto', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auto-fixing', 10000);
 
@@ -583,6 +642,35 @@ Auto-fixable orphan.
           expect(content).toContain('type: idea');
         },
         { files: [orphanFile], schema: AUDIT_SCHEMA }
+      );
+    }, 30000);
+
+    it('should auto-coerce wrong scalar type', async () => {
+      const scalarFile: TempVaultFile = {
+        path: 'Ideas/Scalar Coerce.md',
+        content: `---
+type: idea
+status: raw
+priority: medium
+archived: "false"
+effort: "5"
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'idea', '--fix', '--auto', '--execute'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auto-fixing', 10000);
+          await proc.waitFor('Coerced archived to boolean', 10000);
+          await proc.waitFor('Coerced effort to number', 10000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Ideas/Scalar Coerce.md');
+          expect(content).toContain('archived: false');
+          expect(content).toContain('effort: 5');
+        },
+        { files: [scalarFile], schema: AUDIT_SCHEMA }
       );
     }, 30000);
 
@@ -611,7 +699,7 @@ type: item
       };
 
       await withTempVault(
-        ['audit', 'item', '--fix', '--auto'],
+        ['audit', 'item', '--fix', '--auto', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auto-fixing', 10000);
 
@@ -714,7 +802,7 @@ broken: "[[Target]"
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--auto'],
+        ['audit', 'idea', '--fix', '--auto', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auto-fixing', 10000);
           await proc.waitFor('Fixed malformed wikilink', 10000);

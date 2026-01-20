@@ -167,7 +167,7 @@ describe('expression-validation', () => {
     });
 
     it('skips validation for non-select fields', () => {
-      // deadline is a text field, not select
+      // deadline is a date field, not select
       const result = validateWhereExpressions(
         ["deadline == '2024-01-01'"],
         schema,

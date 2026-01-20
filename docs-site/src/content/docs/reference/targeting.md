@@ -175,11 +175,11 @@ This two-gate model prevents accidental vault-wide mutations.
 
 ### Exception: `audit --fix`
 
-`bwrb audit --fix` is a remediation workflow. It still requires explicit targeting (at least one selector or `--all`), but **it writes by default**.
+`bwrb audit --fix` is a remediation workflow. It still requires explicit targeting (at least one selector or `--all`). Interactive fixes write by default; auto-fixes require `--execute` to apply.
 
 - **Targeting required:** No selectors = error. Must specify at least one selector OR explicit `--all`.
-- **Execution:** Writes by default. Use `--dry-run` to preview fixes without writing.
-- `--execute` is accepted for compatibility but is not required for audit fixes.
+- **Interactive preview:** Use `--dry-run` to preview guided fixes without writing.
+- **Non-interactive:** Use `--fix --auto --execute` for safe auto-fixes when stdin is not a TTY (omit `--execute` to preview).
 
 See also: [CLI Safety and Flags](/concepts/cli-safety-and-flags/)
 
@@ -210,4 +210,3 @@ bwrb search "TODO" --output content      # Full file with matches
 - [Expression syntax](/concepts/schema/) — Query expression details
 - [bwrb list](/reference/commands/list/) — List and filter notes
 - [bwrb bulk](/reference/commands/bulk/) — Batch operations
-

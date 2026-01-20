@@ -16,10 +16,13 @@ import {
   getDescendants,
 } from '../schema.js';
 import { readStructuralFrontmatter } from './structural.js';
+import { isEmptyRequiredValue } from './emptiness.js';
+import { coerceBooleanFromString, coerceNumberFromString } from './coercion.js';
+import { suggestIsoDate } from './date-suggest.js';
 import { isMap } from 'yaml';
 import type { Pair, Scalar, YAMLMap } from 'yaml';
 import { isDeepStrictEqual } from 'node:util';
-import { suggestOptionValue, suggestFieldName } from '../validation.js';
+import { normalizeToIsoDate, suggestOptionValue, suggestFieldName } from '../validation.js';
 import { applyFrontmatterFilters } from '../query.js';
 import { searchContent } from '../content-search.js';
 import type { LoadedSchema, Field } from '../../types/schema.js';
@@ -303,7 +306,7 @@ export async function auditFile(
   
   for (const [fieldName, field] of Object.entries(fields)) {
     const value = frontmatter[fieldName];
-    const hasValue = value !== undefined && value !== null && value !== '';
+    const hasValue = !isEmptyRequiredValue(value);
 
     if (field.required && !hasValue) {
       // Check if a case-variant of this field exists in frontmatter
@@ -331,6 +334,53 @@ export async function auditFile(
   for (const [fieldName, value] of Object.entries(frontmatter)) {
     const field = fields[fieldName];
     if (!field) continue;
+
+    if (field.prompt === 'number' && typeof value === 'string') {
+      const numberCoercion = coerceNumberFromString(value);
+      issues.push({
+        severity: 'error',
+        code: 'wrong-scalar-type',
+        message: numberCoercion.ok
+          ? `String value for ${fieldName} should be a number`
+          : `Invalid number for ${fieldName}: '${value}'`,
+        field: fieldName,
+        value,
+        expected: 'number',
+        autoFixable: numberCoercion.ok,
+      });
+    }
+
+    if (field.prompt === 'boolean' && typeof value === 'string') {
+      const booleanCoercion = coerceBooleanFromString(value);
+      issues.push({
+        severity: 'error',
+        code: 'wrong-scalar-type',
+        message: booleanCoercion.ok
+          ? `String value for ${fieldName} should be a boolean`
+          : `Invalid boolean for ${fieldName}: '${value}'`,
+        field: fieldName,
+        value,
+        expected: 'boolean',
+        autoFixable: booleanCoercion.ok,
+      });
+    }
+
+    if (field.prompt === 'date' && typeof value === 'string') {
+      const suggestion = suggestIsoDate(value);
+      const normalized = normalizeToIsoDate(value);
+      if (!normalized.valid) {
+        issues.push({
+          severity: 'error',
+          code: 'invalid-date-format',
+          message: `Invalid date for ${fieldName}: ${normalized.error}`,
+          field: fieldName,
+          value,
+          expected: 'YYYY-MM-DD',
+          ...(suggestion && { suggestion: `Suggested: ${suggestion}` }),
+          autoFixable: false,
+        });
+      }
+    }
 
     // Check select field options
     if (field.options && field.options.length > 0) {
@@ -1212,8 +1262,8 @@ function checkInvalidBooleanCoercion(
   value: unknown
 ): AuditIssue | null {
   if (typeof value !== 'string') return null;
-  
-  const lower = value.toLowerCase();
+
+  const lower = value.trim().toLowerCase();
   if (lower === 'true' || lower === 'false') {
     return {
       severity: 'warning',

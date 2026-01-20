@@ -20,11 +20,14 @@ import {
   getConcreteTypeNames,
   getTypeFamilies,
 } from '../schema.js';
+import { coerceBooleanFromString, coerceNumberFromString } from './coercion.js';
+import { suggestIsoDate } from './date-suggest.js';
 import { queryByType } from '../vault.js';
 import { parseNote, writeNote } from '../frontmatter.js';
 import { levenshteinDistance } from '../discovery.js';
 import { promptSelection, promptConfirm, promptInput } from '../prompt.js';
 import type { LoadedSchema, Field } from '../../types/schema.js';
+import { normalizeToIsoDate } from '../validation.js';
 import {
   findAllMarkdownFiles,
   findWikilinksToFile,
@@ -374,11 +377,52 @@ async function applyFix(
       // Phase 2: Low-risk hygiene fixes
       case 'invalid-boolean-coercion': {
         if (issue.field && typeof frontmatter[issue.field] === 'string') {
-          const strValue = (frontmatter[issue.field] as string).toLowerCase();
-          frontmatter[issue.field] = strValue === 'true';
+          const result = coerceBooleanFromString(frontmatter[issue.field] as string);
+          if (result.ok) {
+            frontmatter[issue.field] = result.value;
+          } else {
+            return { file: filePath, issue, action: 'failed', message: 'Cannot coerce boolean value' };
+          }
         } else {
           return { file: filePath, issue, action: 'failed', message: 'Cannot coerce non-string value' };
         }
+        break;
+      }
+      case 'wrong-scalar-type': {
+        if (!issue.field) {
+          return { file: filePath, issue, action: 'failed', message: 'Missing field for coercion' };
+        }
+
+        const current = frontmatter[issue.field];
+        if (typeof current !== 'string') {
+          return { file: filePath, issue, action: 'failed', message: 'Cannot coerce non-string value' };
+        }
+
+        if (issue.expected === 'number') {
+          const result = coerceNumberFromString(current);
+          if (result.ok) {
+            frontmatter[issue.field] = result.value;
+          } else {
+            return { file: filePath, issue, action: 'failed', message: 'Cannot coerce number value' };
+          }
+        } else if (issue.expected === 'boolean') {
+          const result = coerceBooleanFromString(current);
+          if (result.ok) {
+            frontmatter[issue.field] = result.value;
+          } else {
+            return { file: filePath, issue, action: 'failed', message: 'Cannot coerce boolean value' };
+          }
+        } else {
+          return { file: filePath, issue, action: 'failed', message: 'Unsupported coercion target' };
+        }
+
+        break;
+      }
+      case 'invalid-date-format': {
+        if (!issue.field || typeof newValue !== 'string') {
+          return { file: filePath, issue, action: 'failed', message: 'No date value provided' };
+        }
+        frontmatter[issue.field] = newValue;
         break;
       }
       case 'unknown-enum-casing': {
@@ -754,8 +798,43 @@ export async function runAutoFix(
     const fixableIssues = result.issues.filter(i => i.autoFixable);
     const nonFixableIssues = result.issues.filter(i => !i.autoFixable);
 
+
+    const coercedIssues = new Set<AuditIssue>();
+    for (const issue of fixableIssues) {
+      if (issue.code !== 'wrong-scalar-type' || !issue.field || typeof issue.value !== 'string') {
+        continue;
+      }
+
+      if (isDryRunEnabled()) {
+        console.log(chalk.cyan(`  ${result.relativePath}`));
+        console.log(chalk.yellow(`    ⚠ Would coerce ${issue.field} to ${issue.expected}`));
+        skipped++;
+        coercedIssues.add(issue);
+        continue;
+      }
+
+      const fixResult = await applyFix(schema, result.path, issue);
+      if (fixResult.action === 'fixed') {
+        console.log(chalk.cyan(`  ${result.relativePath}`));
+        console.log(chalk.green(`    ✓ Coerced ${issue.field} to ${issue.expected}`));
+        fixed++;
+        coercedIssues.add(issue);
+      } else if (fixResult.action === 'skipped') {
+        console.log(chalk.cyan(`  ${result.relativePath}`));
+        console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+        skipped++;
+        coercedIssues.add(issue);
+      } else {
+        console.log(chalk.cyan(`  ${result.relativePath}`));
+        console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
+        failed++;
+        coercedIssues.add(issue);
+      }
+    }
+
     // Handle wrong-directory issues
     for (const issue of [...fixableIssues]) {
+
       if (issue.code === 'wrong-directory' && issue.expectedDirectory) {
         if (dryRun) {
           // Show what would be done
@@ -858,6 +937,7 @@ export async function runAutoFix(
     // Handle stale-reference issues with high-confidence matches and safe unknown-field migrations
     for (const issue of nonFixableIssues) {
       if (issue.code === 'stale-reference' && !issue.inBody && issue.field) {
+
         // Check for high-confidence match
         if (issue.similarFiles?.length === 1 && 
             issue.targetName && 
@@ -1047,19 +1127,35 @@ export async function runAutoFix(
           console.log(chalk.red(`    ✗ Failed to trim ${issue.field}: ${fixResult.message}`));
           failed++;
         }
-      } else if (issue.code === 'invalid-boolean-coercion' && issue.field) {
-        // Auto-fix boolean coercion
-        const fixResult = await applyFix(schema, result.path, issue);
-        if (fixResult.action === 'fixed') {
-          console.log(chalk.cyan(`  ${result.relativePath}`));
-          console.log(chalk.green(`    ✓ Coerced ${issue.field} to boolean`));
-          fixed++;
-        } else {
-          console.log(chalk.cyan(`  ${result.relativePath}`));
-          console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
-          failed++;
-        }
-      } else if (issue.code === 'unknown-enum-casing' && issue.field && issue.canonicalValue) {
+       } else if (issue.code === 'invalid-boolean-coercion' && issue.field) {
+         // Auto-fix boolean coercion
+         const fixResult = await applyFix(schema, result.path, issue);
+         if (fixResult.action === 'fixed') {
+           console.log(chalk.cyan(`  ${result.relativePath}`));
+           console.log(chalk.green(`    ✓ Coerced ${issue.field} to boolean`));
+           fixed++;
+         } else {
+           console.log(chalk.cyan(`  ${result.relativePath}`));
+           console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
+           failed++;
+         }
+       } else if (issue.code === 'wrong-scalar-type' && issue.field) {
+         const fixResult = await applyFix(schema, result.path, issue);
+         if (fixResult.action === 'fixed') {
+           console.log(chalk.cyan(`  ${result.relativePath}`));
+           console.log(chalk.green(`    ✓ Coerced ${issue.field} to ${issue.expected}`));
+           fixed++;
+         } else if (fixResult.action === 'skipped') {
+           console.log(chalk.cyan(`  ${result.relativePath}`));
+           console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+           skipped++;
+         } else {
+           console.log(chalk.cyan(`  ${result.relativePath}`));
+           console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
+           failed++;
+         }
+       } else if (issue.code === 'unknown-enum-casing' && issue.field && issue.canonicalValue) {
+
         // Auto-fix enum casing
         const fixResult = await applyFix(schema, result.path, issue);
         if (fixResult.action === 'fixed') {
@@ -1250,6 +1346,10 @@ async function handleInteractiveFix(
       return handleTrailingWhitespaceFix(context, result, issue);
     case 'invalid-boolean-coercion':
       return handleBooleanCoercionFix(schema, result, issue);
+    case 'wrong-scalar-type':
+      return handleWrongScalarTypeFix(schema, result, issue);
+    case 'invalid-date-format':
+      return handleInvalidDateFormatFix(schema, result, issue);
     case 'unknown-enum-casing':
       return handleEnumCasingFix(schema, result, issue);
     case 'duplicate-list-values':
@@ -2237,6 +2337,105 @@ async function handleBooleanCoercionFix(
     return 'failed';
   }
 }
+
+async function handleWrongScalarTypeFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field || typeof issue.value !== 'string') return 'skipped';
+
+  const canAutoCoerce = issue.expected === 'number'
+    ? coerceNumberFromString(issue.value).ok
+    : issue.expected === 'boolean'
+      ? coerceBooleanFromString(issue.value).ok
+      : false;
+
+  if (canAutoCoerce) {
+    const fixResult = await applyFix(schema, result.path, issue);
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Coerced ${issue.field} to ${issue.expected}`));
+      return 'fixed';
+    }
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+
+  const value = await promptInput(`    Enter ${issue.expected ?? 'value'} for ${issue.field}:`);
+  if (value === null) return 'quit';
+  if (!value.trim()) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  if (issue.expected === 'number') {
+    const resultValue = coerceNumberFromString(value);
+    if (!resultValue.ok) {
+      console.log(chalk.yellow('    ⚠ Invalid number format.'));
+      return 'skipped';
+    }
+    const fixResult = await applyFix(schema, result.path, issue, resultValue.value);
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Updated ${issue.field}: ${resultValue.value}`));
+      return 'fixed';
+    }
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+
+  if (issue.expected === 'boolean') {
+    const resultValue = coerceBooleanFromString(value);
+    if (!resultValue.ok) {
+      console.log(chalk.yellow('    ⚠ Invalid boolean. Use true/false.'));
+      return 'skipped';
+    }
+    const fixResult = await applyFix(schema, result.path, issue, resultValue.value);
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Updated ${issue.field}: ${resultValue.value}`));
+      return 'fixed';
+    }
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+
+  console.log(chalk.dim('    (Unsupported coercion - skipping)'));
+  return 'skipped';
+}
+
+async function handleInvalidDateFormatFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field || typeof issue.value !== 'string') return 'skipped';
+
+  const suggestion = suggestIsoDate(issue.value);
+  if (suggestion) {
+    console.log(chalk.dim(`    Suggested: ${suggestion}`));
+  }
+
+  const value = await promptInput(`    Enter YYYY-MM-DD for ${issue.field}:`, suggestion ?? undefined);
+  if (value === null) return 'quit';
+  if (!value.trim()) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  const normalized = normalizeToIsoDate(value);
+  if (!normalized.valid) {
+    console.log(chalk.yellow(`    ⚠ ${normalized.error}`));
+    return 'skipped';
+  }
+
+  const fixResult = await applyFix(schema, result.path, issue, normalized.value);
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Updated ${issue.field}: ${normalized.value}`));
+    return 'fixed';
+  }
+  console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+  return 'failed';
+}
+
 
 /**
  * Handle enum casing fix.
