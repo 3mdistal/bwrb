@@ -183,7 +183,7 @@ Note: Deletion is permanent. The file is removed from the filesystem.
 
     // Defensive: if `--help` is accidentally parsed as the positional `query`,
     // or help flags slip through parsing, show command help and return success.
-    const hasHelpFlag = cmd.rawArgs.some(arg => arg === '--help' || arg === '-h');
+    const hasHelpFlag = process.argv.some(arg => arg === '--help' || arg === '-h');
     if (query === '--help' || query === '-h' || hasHelpFlag) {
       cmd.outputHelp();
       process.exitCode = ExitCodes.SUCCESS;
@@ -571,4 +571,3 @@ async function handleBulkDelete(
     process.exitCode = ExitCodes.VALIDATION_ERROR;
   }
 }
-
