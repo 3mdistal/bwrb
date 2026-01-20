@@ -112,7 +112,7 @@ Examples:
   .option('--fix', 'Interactive repair mode')
   .option('--auto', 'With --fix: automatically apply unambiguous fixes')
   .option('--dry-run', 'With --fix: preview fixes without writing')
-  .option('--execute', 'With --fix: apply fixes (required to write changes)')
+  .option('--execute', 'With --fix --auto: apply fixes (required to write changes)')
   .option('--allow-field <fields...>', 'Allow additional fields beyond schema (repeatable)')
   .action(async (target: string | undefined, options: AuditOptions & {
     type?: string;

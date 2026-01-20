@@ -14,8 +14,9 @@ All notable changes to Bowerbird are documented in this file.
   - Example: `bwrb list task -o json` → `bwrb list task --output json`
   - This improves CLI consistency: `-o` now always means "open" rather than having different meanings on different commands
 
-- **`bwrb audit --fix` now requires `--execute` to apply fixes** (#346, #272)
-  - Omit `--execute` to preview fixes without writing
+- **`bwrb audit --fix` now previews and applies fixes more explicitly** (#346, #272)
+  - Interactive fixes write by default; use `--dry-run` to preview without writing
+  - Auto-fixes require `--execute` to apply changes
   - `--fix` remains interactive-only; non-TTY requires `--fix --auto` or `--output json`
   - `--fix --auto` applies only unambiguous fixes and reports remaining issues without failing the run
   - `--fix` requires explicit targeting (`--type`, `--path`, `--where`, `--body`, or `--all`)

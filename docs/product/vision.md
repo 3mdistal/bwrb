@@ -247,7 +247,7 @@ bwrb template list [type] [name]   # List all, or show details if both provided
 1. **Consistent flags** — Same flag means same thing everywhere
 2. **Unified verbs** — `new`, `edit`, `delete`, `list`, `search` work everywhere
 3. **JSON mode everywhere** — `--output json` on all commands (see `docs/product/cli-output-contract.md`)
-4. **Dry-run default for destructive ops** — `--execute` to apply (including `audit --fix`; omit `--execute` to preview)
+4. **Dry-run default for destructive ops** — `--execute` to apply (including auto audit fixes); use `--dry-run` to preview interactive audit fixes
 5. **Discoverable prompts** — Missing required info prompts, doesn't error
 
 ### Documentation Canon
