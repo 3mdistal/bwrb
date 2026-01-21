@@ -18,7 +18,6 @@ CHANGELOG.md
 
 # Development
 .github/
- .gitattributes
 
 # Shell scripts (legacy)
 lib/
