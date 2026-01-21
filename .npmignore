@@ -18,8 +18,7 @@ CHANGELOG.md
 
 # Development
 .github/
-.beads-backup/
-.gitattributes
+ .gitattributes
 
 # Shell scripts (legacy)
 lib/
