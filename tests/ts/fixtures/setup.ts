@@ -53,6 +53,8 @@ export async function createTestVault(): Promise<string> {
 type: idea
 status: raw
 priority: medium
+effort: 2
+archived: false
 ---
 `
   );
