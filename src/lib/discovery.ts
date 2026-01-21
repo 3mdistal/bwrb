@@ -352,6 +352,9 @@ export async function buildNotePathMap(
     // Map basename (without .md) to relative path (with .md)
     const noteName = basename(file.relativePath, '.md');
     pathMap.set(noteName, file.relativePath);
+    // Map relative path without extension for path-based links
+    const pathKey = file.relativePath.replace(/\.md$/, '');
+    pathMap.set(pathKey, file.relativePath);
   }
   
   return pathMap;
@@ -374,11 +377,13 @@ export async function buildNoteTypeMap(
   
   for (const file of allFiles) {
     const noteName = basename(file.relativePath, '.md');
+    const pathKey = file.relativePath.replace(/\.md$/, '');
     try {
       const { frontmatter } = await parseNote(file.path);
       const typeName = resolveTypeFromFrontmatter(schema, frontmatter);
       if (typeName) {
         typeMap.set(noteName, typeName);
+        typeMap.set(pathKey, typeName);
       }
     } catch {
       // Skip files that can't be parsed
@@ -386,6 +391,61 @@ export async function buildNoteTypeMap(
   }
   
   return typeMap;
+}
+
+export type NoteTargetIndex = {
+  targetToPaths: Map<string, string[]>;
+  pathToType: Map<string, string>;
+  pathNoExtToType: Map<string, string>;
+};
+
+/**
+ * Build target indexes for resolving note references.
+ */
+export async function buildNoteTargetIndex(
+  schema: LoadedSchema,
+  vaultDir: string
+): Promise<NoteTargetIndex> {
+  const targetToPaths = new Map<string, string[]>();
+  const pathToType = new Map<string, string>();
+  const pathNoExtToType = new Map<string, string>();
+  const excluded = getExcludedDirectories(schema);
+  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+
+  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
+
+  const addTarget = (key: string, relativePath: string) => {
+    const existing = targetToPaths.get(key);
+    if (existing) {
+      if (!existing.includes(relativePath)) {
+        existing.push(relativePath);
+      }
+      return;
+    }
+    targetToPaths.set(key, [relativePath]);
+  };
+
+  for (const file of allFiles) {
+    const relativePath = file.relativePath;
+    const basenameKey = basename(relativePath, '.md');
+    const pathKey = relativePath.replace(/\.md$/, '');
+
+    addTarget(basenameKey, relativePath);
+    addTarget(pathKey, relativePath);
+
+    try {
+      const { frontmatter } = await parseNote(file.path);
+      const typeName = resolveTypeFromFrontmatter(schema, frontmatter);
+      if (typeName) {
+        pathToType.set(relativePath, typeName);
+        pathNoExtToType.set(pathKey, typeName);
+      }
+    } catch {
+      // Skip files that can't be parsed
+    }
+  }
+
+  return { targetToPaths, pathToType, pathNoExtToType };
 }
 
 /**

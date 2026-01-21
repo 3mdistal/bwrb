@@ -99,18 +99,42 @@ bwrb audit --allow-field custom --allow-field legacy
 ### Repair Mode
 
 ```bash
-# Interactive fix mode (writes by default; requires explicit targeting)
+# Interactive fix mode (requires explicit targeting)
 bwrb audit --path "Ideas/**" --fix
 
 # Preview fixes without writing
 bwrb audit --path "Ideas/**" --fix --dry-run
 
-# Auto-apply unambiguous fixes (writes by default)
-bwrb audit --path "Ideas/**" --fix --auto
+# Auto-apply unambiguous fixes (requires --execute)
+bwrb audit --path "Ideas/**" --fix --auto --execute
 
 # Preview auto-fixes
-bwrb audit --path "Ideas/**" --fix --auto --dry-run
+bwrb audit --path "Ideas/**" --fix --auto
 ```
+
+`bwrb audit --fix` refuses to run without a TTY when interactive fixes are needed (use `--fix --auto --execute` for non-interactive automation; use `--dry-run` to preview fixes).
+
+### Non-interactive mode
+
+```bash
+# Safe automation (no prompts)
+bwrb audit --fix --auto --execute --all
+# Report-only JSON for CI/daemons
+bwrb audit --output json
+```
+
+### Phase 5: Type coercion fixes
+
+```bash
+# Auto-coerce unambiguous string scalars
+bwrb audit --only wrong-scalar-type --fix --auto --execute --all
+
+# Fix invalid date formats interactively
+bwrb audit --only invalid-date-format --fix --all
+```
+
+Empty required values ("", whitespace-only strings, or empty lists) are treated like missing required fields during fixes.
+
 
 ### CI Integration
 
@@ -128,7 +152,7 @@ Audit resolves each file's type from its frontmatter `type` field:
 
 - If `type` is missing: reports `orphan-file` and skips type-dependent checks
 - If `type` is invalid: reports `invalid-type` and skips type-dependent checks
-- Type-dependent checks (`missing-required`, `invalid-enum`, `wrong-directory`) require valid type resolution
+- Type-dependent checks (`missing-required`, `invalid-option`, `wrong-directory`) require valid type resolution
 
 Use `--type` to filter by type; it does not fix missing type fields.
 
@@ -136,8 +160,8 @@ Use `--type` to filter by type; it does not fix missing type fields.
 
 | Code | Meaning |
 |------|---------|
-| `0` | No violations found |
-| `1` | Violations found |
+| `0` | No violations found, or `--fix --auto` completed (remaining issues are reported) |
+| `1` | Violations found in report-only mode, or `--fix` (interactive) left remaining issues |
 
 ## See Also
 

@@ -16,7 +16,7 @@ import {
 import { existsSync } from 'fs';
 
 // Import shared schema for audit tests
-import { BASELINE_SCHEMA, AUDIT_SCHEMA } from '../fixtures/schemas.js';
+import { BASELINE_SCHEMA } from '../fixtures/schemas.js';
 
 // Skip PTY tests if running in CI without TTY support or node-pty is incompatible
 const describePty = shouldSkipPtyTests()
@@ -67,7 +67,7 @@ Content without type field.
           const content = await readVaultFile(vaultPath, 'Ideas/Orphan Idea.md');
           expect(content).toContain('type: idea');
         },
-        { files: [orphanFile], schema: AUDIT_SCHEMA }
+        { files: [orphanFile], schema: BASELINE_SCHEMA }
       );
     }, 30000);
 
@@ -103,21 +103,137 @@ some-field: value
           const content = await readVaultFile(vaultPath, 'Ideas/Skip Me.md');
           expect(content).not.toContain('type: idea');
         },
-        { files: [orphanFile], schema: AUDIT_SCHEMA }
+        { files: [orphanFile], schema: BASELINE_SCHEMA }
+      );
+    }, 30000);
+  });
+
+  describe('relation field fixes', () => {
+    it('should clear self-reference in parent field', async () => {
+      const taskFile: TempVaultFile = {
+        path: 'Objectives/Tasks/Self Task.md',
+        content: `---
+type: task
+status: backlog
+parent: [[Self Task]]
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'task', '--fix'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Self Task.md', 10000);
+          await proc.waitFor('Self-reference detected', 10000);
+          await proc.waitFor('Action for self-reference', 10000);
+
+          proc.write('1');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Cleared parent', 5000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Self Task.md');
+          expect(content).not.toContain('parent: [[Self Task]]');
+        },
+        { files: [taskFile], schema: BASELINE_SCHEMA }
+      );
+    }, 30000);
+
+    it('should resolve ambiguous relation target', async () => {
+      const taskFile: TempVaultFile = {
+        path: 'Objectives/Tasks/Ambiguous Task.md',
+        content: `---
+type: task
+status: backlog
+milestone: [[Shared]]
+---
+`,
+      };
+      const milestoneFile: TempVaultFile = {
+        path: 'Objectives/Milestones/Shared.md',
+        content: `---
+type: milestone
+status: raw
+---
+`,
+      };
+      const milestoneFolderFile: TempVaultFile = {
+        path: 'Objectives/Milestones/Shared/Shared.md',
+        content: `---
+type: milestone
+status: raw
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'task', '--fix'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Ambiguous Task.md', 10000);
+          await proc.waitFor('Ambiguous link target', 10000);
+          await proc.waitFor('Select target for milestone', 10000);
+
+          proc.write('1');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Updated milestone', 5000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Ambiguous Task.md');
+          expect(content).toContain('milestone:');
+          expect(content).toContain('[[Objectives/Milestones/Shared]]');
+          expect(content).not.toContain('milestone: [[Shared]]');
+        },
+        { files: [taskFile, milestoneFile, milestoneFolderFile], schema: BASELINE_SCHEMA }
+      );
+    }, 30000);
+
+    it('should remove invalid list element', async () => {
+      const taskFile: TempVaultFile = {
+        path: 'Objectives/Tasks/Bad Tags.md',
+        content: `---
+type: task
+status: backlog
+tags:
+  - good
+  - 42
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'task', '--fix'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Bad Tags.md', 10000);
+          await proc.waitFor('Invalid list element', 10000);
+          await proc.waitFor('Fix list value for tags', 10000);
+
+          proc.write('1');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Removed invalid element', 5000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Bad Tags.md');
+          expect(content).toContain('- good');
+          expect(content).not.toContain('- 42');
+        },
+        { files: [taskFile], schema: BASELINE_SCHEMA }
       );
     }, 30000);
   });
 
   describe('missing required field fix', () => {
-    it('should fix missing required field with default value', async () => {
-      // File with type but missing required status field
+    it('should add required field with default value', async () => {
       const missingField: TempVaultFile = {
         path: 'Ideas/Missing Status.md',
         content: `---
 type: idea
 ---
-
-Missing required status.
 `,
       };
 
@@ -128,7 +244,7 @@ Missing required status.
           await proc.waitFor('Missing Status.md', 10000);
 
           // Should offer to add with default value
-          await proc.waitFor("Add with default", 10000);
+          await proc.waitFor('Add with default', 10000);
 
           // Confirm
           proc.write('y');
@@ -144,20 +260,50 @@ Missing required status.
           const content = await readVaultFile(vaultPath, 'Ideas/Missing Status.md');
           expect(content).toContain('status: raw');
         },
-        { files: [missingField], schema: AUDIT_SCHEMA }
+        { files: [missingField], schema: BASELINE_SCHEMA }
+      );
+    }, 30000);
+
+    it('should treat empty required values as missing', async () => {
+      const emptyRequired: TempVaultFile = {
+        path: 'Ideas/Empty Required.md',
+        content: `---
+type: idea
+status: " "
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'idea', '--fix'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Empty Required.md', 10000);
+          await proc.waitFor('Missing required field: status', 10000);
+          await proc.waitFor('Add with default', 10000);
+
+          proc.write('y');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Added status', 5000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Ideas/Empty Required.md');
+          expect(content).toContain('status: raw');
+        },
+        { files: [emptyRequired], schema: AUDIT_SCHEMA }
       );
     }, 30000);
 
     it('should prompt for value when no default available', async () => {
       // Schema without default for a required field
       const noDefaultSchema = {
-        ...AUDIT_SCHEMA,
+        ...BASELINE_SCHEMA,
         types: {
           item: {
             output_dir: 'Items',
             fields: {
               type: { value: 'item' },
-              category: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], required: true }, // No default
+              category: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], required: true },
             },
             field_order: ['type', 'category'],
           },
@@ -229,9 +375,41 @@ status: invalid-status-value
           expect(content).toContain('status: backlog');
           expect(content).not.toContain('invalid-status-value');
         },
-        { files: [invalidEnum], schema: AUDIT_SCHEMA }
+        { files: [invalidEnum], schema: BASELINE_SCHEMA }
       );
     }, 30000);
+
+    it('should prompt for invalid date formats', async () => {
+      const invalidDate: TempVaultFile = {
+        path: 'Objectives/Tasks/Bad Date.md',
+        content: `---
+type: task
+status: backlog
+deadline: 01/02/2026
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'task', '--fix'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Bad Date.md', 10000);
+          await proc.waitFor('Invalid date', 10000);
+          await proc.waitFor('Enter YYYY-MM-DD for deadline', 10000);
+
+          proc.write('2026-02-01');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Updated deadline: 2026-02-01', 10000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Bad Date.md');
+          expect(content).toContain('deadline: 2026-02-01');
+        },
+        { files: [invalidDate], schema: AUDIT_SCHEMA }
+      );
+    }, 30000);
+
 
     it('should allow skipping invalid enum fix', async () => {
       const invalidEnum: TempVaultFile = {
@@ -263,7 +441,7 @@ status: keep-this-bad-value
           const content = await readVaultFile(vaultPath, 'Ideas/Keep Bad.md');
           expect(content).toContain('keep-this-bad-value');
         },
-        { files: [invalidEnum], schema: AUDIT_SCHEMA }
+        { files: [invalidEnum], schema: BASELINE_SCHEMA }
       );
     }, 30000);
   });
@@ -300,7 +478,7 @@ extra_unknown_field: some value
           const content = await readVaultFile(vaultPath, 'Ideas/Extra Field.md');
           expect(content).not.toContain('extra_unknown_field');
         },
-        { files: [unknownField], schema: AUDIT_SCHEMA }
+        { files: [unknownField], schema: BASELINE_SCHEMA }
       );
     }, 30000);
 
@@ -332,7 +510,6 @@ dead_line: 2026-01-01
           proc.write(Keys.ENTER);
 
           await proc.waitFor('Migrated dead_line → deadline', 5000);
-
           const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Deadline Typo.md');
           expect(content).toContain('deadline: 2026-01-01');
           expect(content).not.toContain('dead_line:');
@@ -426,6 +603,7 @@ status: raw
 ---
 `,
       };
+
       const file2: TempVaultFile = {
         path: 'Ideas/Issue 2.md',
         content: `---
@@ -458,7 +636,7 @@ status: raw
           // Should have exited (Ctrl+C cancels during prompts)
           expect(proc.hasExited()).toBe(true);
         },
-        { files: [file1, file2], schema: AUDIT_SCHEMA }
+        { files: [file1, file2], schema: BASELINE_SCHEMA }
       );
     }, 30000);
 
@@ -487,7 +665,7 @@ some: value
           await proc.waitForExit(5000);
           expect(proc.hasExited()).toBe(true);
         },
-        { files: [orphanFile], schema: AUDIT_SCHEMA }
+        { files: [orphanFile], schema: BASELINE_SCHEMA }
       );
     }, 30000);
   });
@@ -495,7 +673,7 @@ some: value
   describe('format violation fix', () => {
     it('should fix format violation by converting to wikilink', async () => {
       const formatSchema = {
-        ...AUDIT_SCHEMA,
+        ...BASELINE_SCHEMA,
         types: {
           item: {
             output_dir: 'Items',
@@ -568,7 +746,7 @@ Auto-fixable orphan.
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--auto'],
+        ['audit', 'idea', '--fix', '--auto', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auto-fixing', 10000);
 
@@ -582,14 +760,43 @@ Auto-fixable orphan.
           const content = await readVaultFile(vaultPath, 'Ideas/Auto Fix Me.md');
           expect(content).toContain('type: idea');
         },
-        { files: [orphanFile], schema: AUDIT_SCHEMA }
+        { files: [orphanFile], schema: BASELINE_SCHEMA }
+      );
+    }, 30000);
+
+    it('should auto-coerce wrong scalar type', async () => {
+      const scalarFile: TempVaultFile = {
+        path: 'Ideas/Scalar Coerce.md',
+        content: `---
+type: idea
+status: raw
+priority: medium
+archived: "false"
+effort: "5"
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'idea', '--fix', '--auto', '--execute'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auto-fixing', 10000);
+          await proc.waitFor('Coerced archived to boolean', 10000);
+          await proc.waitFor('Coerced effort to number', 10000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Ideas/Scalar Coerce.md');
+          expect(content).toContain('archived: false');
+          expect(content).toContain('effort: 5');
+        },
+        { files: [scalarFile], schema: AUDIT_SCHEMA }
       );
     }, 30000);
 
     it('should skip ambiguous issues in auto mode', async () => {
       // Schema without default value - can't auto-fix
       const noDefaultSchema = {
-        ...AUDIT_SCHEMA,
+        ...BASELINE_SCHEMA,
         types: {
           item: {
             output_dir: 'Items',
@@ -611,7 +818,7 @@ type: item
       };
 
       await withTempVault(
-        ['audit', 'item', '--fix', '--auto'],
+        ['audit', 'item', '--fix', '--auto', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auto-fixing', 10000);
 
@@ -664,7 +871,7 @@ Body content.
           expect(content).toContain('type: idea');
           expect(content).toContain('Intro line before frontmatter');
         },
-        { files: [file], schema: AUDIT_SCHEMA }
+        { files: [file], schema: BASELINE_SCHEMA }
       );
     }, 30000);
 
@@ -698,7 +905,7 @@ status: backlog
           expect(content).toContain('status: raw');
           expect(content).not.toContain('status: backlog');
         },
-        { files: [file], schema: AUDIT_SCHEMA }
+        { files: [file], schema: BASELINE_SCHEMA }
       );
     }, 30000);
 
@@ -714,7 +921,7 @@ broken: "[[Target]"
       };
 
       await withTempVault(
-        ['audit', 'idea', '--fix', '--auto'],
+        ['audit', 'idea', '--fix', '--auto', '--execute'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auto-fixing', 10000);
           await proc.waitFor('Fixed malformed wikilink', 10000);
@@ -723,7 +930,7 @@ broken: "[[Target]"
           const content = await readVaultFile(vaultPath, 'Ideas/Bad Link.md');
           expect(content).toContain('[[Target]]');
         },
-        { files: [file], schema: AUDIT_SCHEMA }
+        { files: [file], schema: BASELINE_SCHEMA }
       );
     }, 30000);
   });

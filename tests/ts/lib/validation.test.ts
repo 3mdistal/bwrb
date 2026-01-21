@@ -139,8 +139,6 @@ describe('validation', () => {
     });
 
     it('should validate date format', () => {
-      // Note: date validation only happens for fields with prompt: 'date'
-      // The test schema's deadline field may use 'input' prompt instead
       const result = validateFrontmatter(schema, 'task', {
         type: 'objective',
         'objective-type': 'task',
@@ -148,14 +146,8 @@ describe('validation', () => {
         deadline: 'not-a-date',
       });
 
-      // This test checks for date validation; if the field isn't a date prompt,
-      // validation passes (which may be correct behavior depending on schema)
-      if (result.valid) {
-        // Field is not a date-prompt field, so no date validation occurs
-        expect(result.valid).toBe(true);
-      } else {
-        expect(result.errors[0].type).toBe('invalid_date');
-      }
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].type).toBe('invalid_date');
     });
 
     it('should accept valid date format', () => {

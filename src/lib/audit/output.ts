@@ -93,6 +93,7 @@ export function outputJsonResults(results: FileAuditResult[], summary: AuditSumm
         ...(i.duplicateCount !== undefined && { duplicateCount: i.duplicateCount }),
         ...(i.listIndex !== undefined && { listIndex: i.listIndex }),
         ...(i.fixedValue && { fixedValue: i.fixedValue }),
+        ...(i.candidates && { candidates: i.candidates }),
       })),
     })),
     summary,
@@ -181,8 +182,9 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
   console.log(chalk.bold('Summary:'));
 
   const fixedLabel = summary.dryRun ? 'Would fix' : 'Fixed';
+  const skippedLabel = summary.dryRun ? 'Would skip' : 'Skipped';
   console.log(`  ${fixedLabel}: ${summary.fixed} issues`);
-  console.log(`  Skipped: ${summary.skipped} issues`);
+  console.log(`  ${skippedLabel}: ${summary.skipped} issues`);
   if (summary.failed > 0) {
     console.log(`  Failed: ${summary.failed} issues`);
   }
@@ -191,6 +193,16 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
   if (summary.remaining > 0 && autoMode) {
     console.log('');
     console.log(chalk.dim("Re-run without '--auto' to resolve remaining issues interactively."));
+  }
+
+  if (summary.dryRun && autoMode) {
+    console.log('');
+    console.log(chalk.dim("Re-run with '--execute' to apply fixes."));
+  }
+
+  if (!autoMode && summary.remaining > 0) {
+    console.log('');
+    console.log(chalk.dim("Re-run with '--execute' to apply fixes."));
   }
 }
 
