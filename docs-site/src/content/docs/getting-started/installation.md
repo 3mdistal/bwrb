@@ -5,12 +5,12 @@ description: How to install Bowerbird
 
 ## Prerequisites
 
-- **Node.js** >= 18
+- **Node.js** >= 22
 
 Check your Node.js version:
 
 ```bash
-node --version  # Should be v18.0.0 or higher
+node --version  # Should be v22.0.0 or higher
 ```
 
 ## Install from npm
@@ -94,7 +94,7 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `BWRB_VAULT` | Default vault path | Current directory |
-| `BWRB_DEFAULT_APP` | Default app for `bwrb open` | `obsidian` |
+| `BWRB_DEFAULT_APP` | Default app for `bwrb open` | `system` |
 | `EDITOR` / `VISUAL` | Editor for `--app editor` | — |
 
 Example:
