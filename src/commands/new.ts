@@ -51,6 +51,8 @@ import {
   jsonSuccess,
   jsonError,
   ExitCodes,
+  type ExitCode,
+  type JsonResult,
 } from '../lib/output.js';
 import {
   findTemplateByName,
@@ -86,6 +88,19 @@ interface NewCommandOptions {
   standalone?: boolean;
 }
 
+type CreationMode = 'interactive' | 'json';
+
+type OwnershipMode =
+  | { kind: 'pooled' }
+  | { kind: 'owned'; owner: OwnerNoteRef };
+
+interface PlannedNoteContent {
+  frontmatter: Record<string, unknown>;
+  body: string;
+  orderedFields: string[];
+  itemName: string;
+}
+
 /**
  * Result of creating a note in JSON mode (includes instance scaffolding info).
  */
@@ -98,6 +113,45 @@ interface NoteCreationResult {
     skipped: string[];
     errors: Array<{ type: string; filename?: string | undefined; message: string }>;
   };
+}
+
+interface WritePlanArgs {
+  schema: LoadedSchema;
+  vaultDir: string;
+  typePath: string;
+  typeDef: ResolvedType;
+  ownership: OwnershipMode;
+  mode: CreationMode;
+  content: PlannedNoteContent;
+  template?: Template | null;
+}
+
+interface JsonNoteInputResult {
+  frontmatter: Record<string, unknown>;
+  bodyInput?: Record<string, unknown>;
+}
+
+interface FileExistsStrategy {
+  onExists: (filePath: string, vaultDir: string) => Promise<void>;
+}
+
+class JsonCommandError extends Error {
+  result: JsonResult;
+  exitCode: ExitCode;
+
+  constructor(result: JsonResult, exitCode: ExitCode) {
+    super('JSON command error');
+    this.name = 'JsonCommandError';
+    this.result = result;
+    this.exitCode = exitCode;
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, JsonCommandError);
+    }
+  }
+}
+
+function throwJsonError(result: JsonResult, exitCode: ExitCode): never {
+  throw new JsonCommandError(result, exitCode);
 }
 
 export const newCommand = new Command('new')
@@ -312,377 +366,46 @@ async function createNoteFromJson(
   template?: Template | null,
   ownershipOptions?: { owner?: string | undefined; standalone?: boolean | undefined; noInstances?: boolean | undefined }
 ): Promise<NoteCreationResult> {
-  // Parse JSON input
-  let inputData: Record<string, unknown>;
   try {
-    inputData = JSON.parse(jsonInput) as Record<string, unknown>;
-  } catch (e) {
-    const error = `Invalid JSON: ${(e as Error).message}`;
-    printJson(jsonError(error));
-    process.exit(ExitCodes.VALIDATION_ERROR);
-  }
-
-  // Get type definition
-  const typeDef = getTypeDefByPath(schema, typePath);
-  if (!typeDef) {
-    printJson(jsonError(`Unknown type: ${typePath}`));
-    process.exit(ExitCodes.VALIDATION_ERROR);
-  }
-
-  // Validate ownership flags
-  const ownerArg = ownershipOptions?.owner;
-  const standaloneArg = ownershipOptions?.standalone;
-  
-  // Error if both --owner and --standalone are provided
-  if (ownerArg && standaloneArg) {
-    printJson(jsonError('Cannot use both --owner and --standalone flags together'));
-    process.exit(ExitCodes.VALIDATION_ERROR);
-  }
-  
-  const typeName = typeDef.name;
-  const canBeOwned = typeCanBeOwned(schema, typeName);
-  
-  // Error if --standalone is used on a type that cannot be owned (meaningless flag)
-  if (standaloneArg && !canBeOwned) {
-    printJson(jsonError(`Type '${typePath}' cannot be owned, so --standalone is not applicable.`));
-    process.exit(ExitCodes.VALIDATION_ERROR);
-  }
-  
-  // Resolve ownership if --owner is provided
-  let owner: OwnerNoteRef | undefined;
-  if (ownerArg) {
-    if (!canBeOwned) {
-      printJson(jsonError(`Type '${typePath}' cannot be owned. Remove the --owner flag.`));
-      process.exit(ExitCodes.VALIDATION_ERROR);
+    const typeDef = getTypeDefByPath(schema, typePath);
+    if (!typeDef) {
+      throwJsonError(jsonError(`Unknown type: ${typePath}`), ExitCodes.VALIDATION_ERROR);
     }
-    
-    owner = await findOwnerFromArg(schema, vaultDir, typeName, ownerArg);
-    if (!owner) {
-      printJson(jsonError(`Owner not found: ${ownerArg}`));
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-  }
 
-  // Extract _body from input (special field for body section content)
-  const { _body: rawBodyInput, ...frontmatterInput } = inputData;
+    const ownership = await resolveJsonOwnership(schema, vaultDir, typePath, typeDef, ownershipOptions);
+    const resolvedTemplate = template ?? null;
+    const content = await buildJsonNoteContent(schema, vaultDir, typePath, typeDef, jsonInput, resolvedTemplate);
 
-  // Reserved/system-managed field
-  if ('id' in frontmatterInput) {
-    printJson(jsonError("Frontmatter field 'id' is reserved and cannot be set in --json mode"));
-    process.exit(ExitCodes.VALIDATION_ERROR);
-  }
-  
-  // Validate _body if provided
-  let bodyInput: Record<string, unknown> | undefined;
-  if (rawBodyInput !== undefined && rawBodyInput !== null) {
-    if (typeof rawBodyInput !== 'object' || Array.isArray(rawBodyInput)) {
-      printJson(jsonError('_body must be an object with section names as keys'));
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-    bodyInput = rawBodyInput as Record<string, unknown>;
-  }
-
-  // Apply template defaults first, then JSON input overrides them
-  let mergedInput = { ...frontmatterInput };
-  if (template?.defaults) {
-    // Evaluate date expressions in template defaults (e.g., today() + '7d')
-    const evaluatedDefaults: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(template.defaults)) {
-      evaluatedDefaults[key] = evaluateTemplateDefault(value, schema.config.dateFormat);
-    }
-    // Template defaults are base, JSON input takes precedence
-    mergedInput = { ...evaluatedDefaults, ...frontmatterInput };
-  }
-
-  // Validate and apply defaults
-  const validation = validateFrontmatter(schema, typePath, mergedInput);
-  if (!validation.valid) {
-    // Convert validation result to JSON error format
-    printJson({
-      success: false,
-      error: 'Validation failed',
-      errors: validation.errors.map(e => ({
-        field: e.field,
-        message: e.message,
-        ...(e.value !== undefined && { value: e.value }),
-        ...(e.expected !== undefined && { expected: e.expected }),
-        ...(e.suggestion !== undefined && { suggestion: e.suggestion }),
-      })),
-    });
-    process.exit(ExitCodes.VALIDATION_ERROR);
-  }
-
-  // Apply schema defaults for missing fields
-  const frontmatter = applyDefaults(schema, typePath, mergedInput);
-
-  // Validate context fields (source type constraints)
-  const contextValidation = await validateContextFields(schema, vaultDir, typePath, mergedInput);
-  if (!contextValidation.valid) {
-    printJson({
-      success: false,
-      error: 'Context field validation failed',
-      errors: contextValidation.errors.map(e => ({
-        type: e.type,
-        field: e.field,
-        message: e.message,
-        ...(e.value !== undefined && { value: e.value }),
-        ...(e.expected !== undefined && { expected: e.expected }),
-      })),
-    });
-    process.exit(ExitCodes.VALIDATION_ERROR);
-  }
-
-  // Validate template constraints
-  if (template?.constraints) {
-    const constraintResult = validateConstraints(frontmatter, template.constraints);
-    if (!constraintResult.valid) {
-      printJson({
-        success: false,
-        error: 'Template constraint validation failed',
-        errors: constraintResult.errors.map(e => ({
-          field: e.field,
-          message: e.message,
-          constraint: e.constraint,
-        })),
-      });
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-  }
-
-  // Validate parent field doesn't create a cycle (for recursive types)
-  if (typeDef.recursive && frontmatter['parent']) {
-    const cycleError = await validateParentNoCycle(
-      schema,
-      vaultDir,
-      frontmatter['name'] as string,
-      frontmatter['parent'] as string
-    );
-    if (cycleError) {
-      printJson({
-        success: false,
-        error: cycleError.message,
-        errors: [{
-          field: cycleError.field,
-          message: cycleError.message,
-        }],
-      });
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-  }
-
-  // Determine filename: use pattern if available, otherwise require 'name' field
-  const filenamePattern = getFilenamePattern(template ?? null, typeDef);
-  let itemName: string;
-  
-  if (filenamePattern) {
-    // Try to resolve filename from pattern
-    const patternResult = resolveFilenamePattern(filenamePattern, frontmatter, schema.config.dateFormat);
-    
-    if (patternResult.resolved && patternResult.filename) {
-      itemName = patternResult.filename;
-    } else {
-      // Pattern couldn't resolve - fall back to 'name' field
-      const nameField = frontmatter['name'];
-      if (!nameField || typeof nameField !== 'string') {
-        const missingInfo = patternResult.missingFields.length > 0
-          ? ` Pattern references missing fields: ${patternResult.missingFields.join(', ')}.`
-          : '';
-        printJson(jsonError(`Filename pattern could not be resolved.${missingInfo} Provide a 'name' field as fallback.`));
-        process.exit(ExitCodes.VALIDATION_ERROR);
-      }
-      itemName = nameField;
-    }
-  } else {
-    // No pattern - require 'name' field
-    const nameField = frontmatter['name'];
-    if (!nameField || typeof nameField !== 'string') {
-      printJson(jsonError(`Missing or invalid 'name' field`));
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-    itemName = nameField;
-  }
-
-  // Create note (owned or pooled)
-  if (owner) {
-    return await createOwnedNoteFromJson(
+    const result = await writeNotePlan({
       schema,
       vaultDir,
       typePath,
       typeDef,
-      frontmatter,
-      itemName,
-      owner,
-      template,
-      bodyInput,
-      ownershipOptions?.noInstances
-    );
-  }
+      ownership,
+      mode: 'json',
+      content,
+      template: resolvedTemplate,
+    },
+    {
+      onExists: (filePath, baseDir) => {
+        throwJsonError(jsonError(`File already exists: ${relative(baseDir, filePath)}`), ExitCodes.IO_ERROR);
+      },
+    },
+    ownershipOptions?.noInstances ?? false);
 
-  // Create pooled note (default behavior)
-  return await createPooledNoteFromJson(
-    schema,
-    vaultDir,
-    typePath,
-    typeDef,
-    frontmatter,
-    itemName,
-    template,
-    bodyInput,
-    ownershipOptions?.noInstances
-  );
-}
-
-/**
- * Create a pooled note from JSON input.
- */
-async function createPooledNoteFromJson(
-  schema: LoadedSchema,
-  vaultDir: string,
-  typePath: string,
-  typeDef: ResolvedType,
-  frontmatter: Record<string, unknown>,
-  itemName: string,
-  template?: Template | null,
-  bodyInput?: Record<string, unknown>,
-  noInstances?: boolean
-): Promise<NoteCreationResult> {
-  const outputDir = getOutputDirForType(schema, typePath);
-  if (!outputDir) {
-    printJson(jsonError(`No output_dir defined for type: ${typePath}`));
-    process.exit(ExitCodes.SCHEMA_ERROR);
-  }
-
-  const fullOutputDir = join(vaultDir, outputDir);
-  const sanitizedItemName = sanitizeItemNameForFilename(itemName);
-  if (!sanitizedItemName) {
-    printJson(jsonError('Invalid note name (empty after sanitizing)'));
-    process.exit(ExitCodes.VALIDATION_ERROR);
-  }
-  const filePath = join(fullOutputDir, `${sanitizedItemName}.md`);
-
-  if (existsSync(filePath)) {
-    printJson(jsonError(`File already exists: ${relative(vaultDir, filePath)}`));
-    process.exit(ExitCodes.IO_ERROR);
-  }
-
-  // Generate body content
-  const body = generateBodyForJson(typeDef, frontmatter, template, bodyInput, schema.config.dateFormat);
-
-  // System-managed stable note id (v1.0)
-  const noteId = await generateUniqueNoteId(vaultDir);
-  frontmatter['id'] = noteId;
-
-  const fieldOrder = getFrontmatterOrder(typeDef);
-  const orderedFields = ensureIdInFieldOrder(
-    fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter)
-  );
-
-  await writeNote(filePath, frontmatter, body, orderedFields);
-  await registerIssuedNoteId(vaultDir, noteId, filePath);
-  
-  // Handle instance scaffolding
-  const result: NoteCreationResult = { path: filePath };
-  if (template && !noInstances) {
-    const scaffoldResult = await handleInstanceScaffolding(
-      schema,
-      vaultDir,
-      filePath,
-      typeDef.name,
-      template,
-      frontmatter,
-      false, // don't skip instances (already checked noInstances above)
-      true // JSON mode
-    );
-    if (scaffoldResult) {
-      result.instances = {
-        created: scaffoldResult.created,
-        skipped: scaffoldResult.skipped,
-        errors: scaffoldResult.errors.map(e => ({
-          type: e.subtype,
-          filename: e.filename,
-          message: e.message,
-        })),
-      };
+    return result;
+  } catch (err) {
+    if (err instanceof JsonCommandError) {
+      if (!err.result.success) {
+        err.result.code = err.exitCode;
+      }
+      printJson(err.result);
+      process.exit(err.exitCode);
     }
+    throw err;
   }
-  
-  return result;
 }
 
-/**
- * Create an owned note from JSON input.
- */
-async function createOwnedNoteFromJson(
-  schema: LoadedSchema,
-  vaultDir: string,
-  _typePath: string,
-  typeDef: ResolvedType,
-  frontmatter: Record<string, unknown>,
-  itemName: string,
-  owner: OwnerNoteRef,
-  template?: Template | null,
-  bodyInput?: Record<string, unknown>,
-  noInstances?: boolean
-): Promise<NoteCreationResult> {
-  const typeName = typeDef.name;
-  
-  // Ensure the owned output directory exists
-  const outputDir = await ensureOwnedOutputDir(owner.ownerPath, typeName);
-  const sanitizedItemName = sanitizeItemNameForFilename(itemName);
-  if (!sanitizedItemName) {
-    printJson(jsonError('Invalid note name (empty after sanitizing)'));
-    process.exit(ExitCodes.VALIDATION_ERROR);
-  }
-  const filePath = join(outputDir, `${sanitizedItemName}.md`);
-
-  if (existsSync(filePath)) {
-    printJson(jsonError(`File already exists: ${relative(vaultDir, filePath)}`));
-    process.exit(ExitCodes.IO_ERROR);
-  }
-
-  // Generate body content
-  const body = generateBodyForJson(typeDef, frontmatter, template, bodyInput, schema.config.dateFormat);
-
-  // System-managed stable note id (v1.0)
-  const noteId = await generateUniqueNoteId(vaultDir);
-  frontmatter['id'] = noteId;
-
-  const fieldOrder = getFrontmatterOrder(typeDef);
-  const orderedFields = ensureIdInFieldOrder(
-    fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter)
-  );
-
-  await writeNote(filePath, frontmatter, body, orderedFields);
-  await registerIssuedNoteId(vaultDir, noteId, filePath);
-  
-  // Handle instance scaffolding
-  const result: NoteCreationResult = { path: filePath };
-  if (template && !noInstances) {
-    const scaffoldResult = await handleInstanceScaffolding(
-      schema,
-      vaultDir,
-      filePath,
-      typeDef.name,
-      template,
-      frontmatter,
-      false, // don't skip instances (already checked noInstances above)
-      true // JSON mode
-    );
-    if (scaffoldResult) {
-      result.instances = {
-        created: scaffoldResult.created,
-        skipped: scaffoldResult.skipped,
-        errors: scaffoldResult.errors.map(e => ({
-          type: e.subtype,
-          filename: e.filename,
-          message: e.message,
-        })),
-      };
-    }
-  }
-  
-  return result;
-}
 
 /**
  * Generate body content for JSON mode.
@@ -805,137 +528,52 @@ async function createNote(
     printInfo(`Using template: ${template.name}${template.description ? ` - ${template.description}` : ''}${inheritedSuffix}`);
   }
 
-  // Check if this type can be owned
-  const canBeOwned = typeCanBeOwned(schema, typeName);
-  
-  if (canBeOwned && !options?.standalone) {
-    // Determine ownership (prompt or use --owner flag)
-    const ownershipDecision = await resolveOwnership(schema, vaultDir, typeName, options?.owner);
-    
-    if (ownershipDecision.isOwned && ownershipDecision.owner) {
-      // Create as owned note
-      return await createOwnedNote(schema, vaultDir, typePath, typeDef, templateResolution, ownershipDecision.owner, options?.noInstances ? { noInstances: true } : undefined);
-    }
-    // Fall through to standard creation if standalone
+  const ownership = await resolveInteractiveOwnership(schema, vaultDir, typeName, options?.owner, options?.standalone);
+  if (ownership.kind === 'owned') {
+    printInfo(`Creating ${typeName} owned by ${ownership.owner.ownerName}`);
   }
 
-  // Standard pooled mode
-  return await createPooledNote(schema, vaultDir, typePath, typeDef, templateResolution, options?.noInstances ? { noInstances: true } : undefined);
+  const content = await buildInteractiveNoteContent(schema, vaultDir, typePath, typeDef, templateResolution);
+  const fileExistsStrategy: FileExistsStrategy = {
+    onExists: async (filePath: string) => {
+      printWarning(`\nWarning: File already exists: ${filePath}`);
+      const overwrite = await promptConfirm('Overwrite?');
+      if (overwrite === null) {
+        throw new UserCancelledError();
+      }
+      if (overwrite === false) {
+        console.log('Aborted.');
+        process.exit(1);
+      }
+    },
+  };
+
+  const result = await writeNotePlan({
+    schema,
+    vaultDir,
+    typePath,
+    typeDef,
+    ownership,
+    mode: 'interactive',
+    content,
+    template,
+  },
+  fileExistsStrategy,
+  options?.noInstances ?? false);
+
+  if (ownership.kind === 'owned') {
+    printSuccess(`\n✓ Created: ${relative(vaultDir, result.path)}`);
+    printInfo(`  Owned by: ${ownership.owner.ownerName}`);
+  } else {
+    printSuccess(`\n✓ Created: ${result.path}`);
+  }
+
+  return result.path;
 }
 
 /**
  * Create a note in pooled mode (standard flat directory).
  */
-async function createPooledNote(
-  schema: LoadedSchema,
-  vaultDir: string,
-  typePath: string,
-  typeDef: ResolvedType,
-  templateResolution: InheritedTemplateResolution,
-  options?: { noInstances?: boolean }
-): Promise<string> {
-  // Get output directory
-  const outputDir = getOutputDirForType(schema, typePath);
-  if (!outputDir) {
-    printError(`No output_dir defined for type: ${typePath}`);
-    process.exit(1);
-  }
-  const fullOutputDir = join(vaultDir, outputDir);
-
-  // Check if we have a filename pattern
-  const template = templateResolution.template;
-  const filenamePattern = getFilenamePattern(template ?? null, typeDef);
-  
-  let itemName: string;
-  let frontmatter: Record<string, unknown>;
-  let body: string;
-  let orderedFields: string[];
-  
-  if (filenamePattern) {
-    // Filename pattern exists: collect frontmatter first, then derive filename
-    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, templateResolution);
-    frontmatter = content.frontmatter;
-    body = content.body;
-    orderedFields = content.orderedFields;
-    
-    // Try to resolve the filename pattern
-    const patternResult = resolveFilenamePattern(filenamePattern, frontmatter, schema.config.dateFormat);
-    
-    if (patternResult.resolved && patternResult.filename) {
-      // Pattern resolved successfully - use it as the filename
-      itemName = patternResult.filename;
-    } else {
-      // Pattern couldn't be resolved (missing fields) - fall back to prompting
-      if (patternResult.missingFields.length > 0) {
-        printWarning(`Filename pattern references missing fields: ${patternResult.missingFields.join(', ')}`);
-      }
-      const prompted = await promptRequired('Name');
-      if (prompted === null) {
-        throw new UserCancelledError();
-      }
-      itemName = prompted;
-    }
-  } else {
-    // No filename pattern: prompt for name first (original behavior)
-    const prompted = await promptRequired('Name');
-    if (prompted === null) {
-      throw new UserCancelledError();
-    }
-    itemName = prompted;
-    
-    // Build frontmatter and body (may throw UserCancelledError)
-    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, templateResolution);
-    frontmatter = content.frontmatter;
-    body = content.body;
-    orderedFields = content.orderedFields;
-  }
-
-  const sanitizedItemName = sanitizeItemNameForFilename(itemName);
-  if (!sanitizedItemName) {
-    printError('Invalid name (empty after sanitizing)');
-    process.exit(1);
-  }
-
-  // Create file
-  const filePath = join(fullOutputDir, `${sanitizedItemName}.md`);
-
-  if (existsSync(filePath)) {
-    printWarning(`\nWarning: File already exists: ${filePath}`);
-    const overwrite = await promptConfirm('Overwrite?');
-    if (overwrite === null) {
-      throw new UserCancelledError();
-    }
-    if (overwrite === false) {
-      console.log('Aborted.');
-      process.exit(1);
-    }
-  }
-
-  // System-managed stable note id (v1.0)
-  const noteId = await generateUniqueNoteId(vaultDir);
-  frontmatter['id'] = noteId;
-  orderedFields = ensureIdInFieldOrder(orderedFields);
-
-  await writeNote(filePath, frontmatter, body, orderedFields);
-  await registerIssuedNoteId(vaultDir, noteId, filePath);
-  printSuccess(`\n✓ Created: ${filePath}`);
-  
-  // Handle instance scaffolding if template has instances
-  if (template) {
-    await handleInstanceScaffolding(
-      schema,
-      vaultDir,
-      filePath,
-      typeDef.name,
-      template,
-      frontmatter,
-      options?.noInstances ?? false,
-      false // not JSON mode
-    );
-  }
-  
-  return filePath;
-}
 
 /**
  * Build frontmatter and body content for a note.
@@ -1028,9 +666,305 @@ async function buildNoteContent(
   return { frontmatter, body, orderedFields };
 }
 
+async function buildInteractiveNoteContent(
+  schema: LoadedSchema,
+  vaultDir: string,
+  typePath: string,
+  typeDef: ResolvedType,
+  templateResolution: InheritedTemplateResolution
+): Promise<PlannedNoteContent> {
+  const template = templateResolution.template;
+  const filenamePattern = getFilenamePattern(template ?? null, typeDef);
+
+  if (filenamePattern) {
+    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, templateResolution);
+    const patternResult = resolveFilenamePattern(filenamePattern, content.frontmatter, schema.config.dateFormat);
+
+    if (patternResult.resolved && patternResult.filename) {
+      return {
+        ...content,
+        itemName: patternResult.filename,
+      };
+    }
+
+    if (patternResult.missingFields.length > 0) {
+      printWarning(`Filename pattern references missing fields: ${patternResult.missingFields.join(', ')}`);
+    }
+
+    const prompted = await promptRequired('Name');
+    if (prompted === null) {
+      throw new UserCancelledError();
+    }
+
+    return {
+      ...content,
+      itemName: prompted,
+    };
+  }
+
+  const prompted = await promptRequired('Name');
+  if (prompted === null) {
+    throw new UserCancelledError();
+  }
+
+  const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, templateResolution);
+  return {
+    ...content,
+    itemName: prompted,
+  };
+}
+
+async function buildJsonNoteContent(
+  schema: LoadedSchema,
+  vaultDir: string,
+  typePath: string,
+  typeDef: ResolvedType,
+  jsonInput: string,
+  template?: Template | null
+): Promise<PlannedNoteContent> {
+  const { frontmatter, bodyInput } = parseJsonNoteInput(jsonInput);
+  const mergedInput = mergeJsonTemplateDefaults(schema, frontmatter, template);
+  await validateJsonFrontmatter(schema, vaultDir, typePath, typeDef, mergedInput, template);
+  const resolvedFrontmatter = applyDefaults(schema, typePath, mergedInput);
+
+  const itemName = resolveJsonItemName(schema, typeDef, resolvedFrontmatter, template);
+  const body = generateBodyForJson(typeDef, resolvedFrontmatter, template, bodyInput, schema.config.dateFormat);
+  const orderedFields = resolveOrderedFields(typeDef, resolvedFrontmatter);
+
+  return {
+    frontmatter: resolvedFrontmatter,
+    body,
+    orderedFields,
+    itemName,
+  };
+}
+
+function parseJsonNoteInput(jsonInput: string): JsonNoteInputResult {
+  let inputData: Record<string, unknown>;
+  try {
+    inputData = JSON.parse(jsonInput) as Record<string, unknown>;
+  } catch (e) {
+    const error = `Invalid JSON: ${(e as Error).message}`;
+    throwJsonError(jsonError(error), ExitCodes.VALIDATION_ERROR);
+  }
+
+  const { _body: rawBodyInput, ...frontmatterInput } = inputData;
+  if ('id' in frontmatterInput) {
+    throwJsonError(
+      jsonError("Frontmatter field 'id' is reserved and cannot be set in --json mode"),
+      ExitCodes.VALIDATION_ERROR
+    );
+  }
+
+  let bodyInput: Record<string, unknown> | undefined;
+  if (rawBodyInput !== undefined && rawBodyInput !== null) {
+    if (typeof rawBodyInput !== 'object' || Array.isArray(rawBodyInput)) {
+      throwJsonError(jsonError('_body must be an object with section names as keys'), ExitCodes.VALIDATION_ERROR);
+    }
+    bodyInput = rawBodyInput as Record<string, unknown>;
+  }
+
+  if (bodyInput === undefined) {
+    return { frontmatter: frontmatterInput };
+  }
+
+  return { frontmatter: frontmatterInput, bodyInput };
+}
+
+function mergeJsonTemplateDefaults(
+  schema: LoadedSchema,
+  frontmatterInput: Record<string, unknown>,
+  template?: Template | null
+): Record<string, unknown> {
+  if (!template?.defaults) {
+    return { ...frontmatterInput };
+  }
+
+  const evaluatedDefaults: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(template.defaults)) {
+    evaluatedDefaults[key] = evaluateTemplateDefault(value, schema.config.dateFormat);
+  }
+
+  return { ...evaluatedDefaults, ...frontmatterInput };
+}
+
+async function validateJsonFrontmatter(
+  schema: LoadedSchema,
+  vaultDir: string,
+  typePath: string,
+  typeDef: ResolvedType,
+  mergedInput: Record<string, unknown>,
+  template?: Template | null
+): Promise<void> {
+  const validation = validateFrontmatter(schema, typePath, mergedInput);
+  if (!validation.valid) {
+    throwJsonError({
+      success: false,
+      error: 'Validation failed',
+      errors: validation.errors.map(e => ({
+        field: e.field,
+        message: e.message,
+        ...(e.value !== undefined && { value: e.value }),
+        ...(e.expected !== undefined && { expected: e.expected }),
+        ...(e.suggestion !== undefined && { suggestion: e.suggestion }),
+      })),
+    }, ExitCodes.VALIDATION_ERROR);
+  }
+
+  const contextValidation = await validateContextFields(schema, vaultDir, typePath, mergedInput);
+  if (!contextValidation.valid) {
+    throwJsonError({
+      success: false,
+      error: 'Context field validation failed',
+      errors: contextValidation.errors.map(e => ({
+        type: e.type,
+        field: e.field,
+        message: e.message,
+        ...(e.value !== undefined && { value: e.value }),
+        ...(e.expected !== undefined && { expected: e.expected }),
+      })),
+    }, ExitCodes.VALIDATION_ERROR);
+  }
+
+  if (template?.constraints) {
+    const constraintResult = validateConstraints(mergedInput, template.constraints);
+    if (!constraintResult.valid) {
+      throwJsonError({
+        success: false,
+        error: 'Template constraint validation failed',
+        errors: constraintResult.errors.map(e => ({
+          field: e.field,
+          message: e.message,
+          constraint: e.constraint,
+        })),
+      }, ExitCodes.VALIDATION_ERROR);
+    }
+  }
+
+  if (typeDef.recursive && mergedInput['parent']) {
+    const cycleError = await validateParentNoCycle(
+      schema,
+      vaultDir,
+      mergedInput['name'] as string,
+      mergedInput['parent'] as string
+    );
+    if (cycleError) {
+      throwJsonError({
+        success: false,
+        error: cycleError.message,
+        errors: [{
+          field: cycleError.field,
+          message: cycleError.message,
+        }],
+      }, ExitCodes.VALIDATION_ERROR);
+    }
+  }
+}
+
+function resolveJsonItemName(
+  schema: LoadedSchema,
+  typeDef: ResolvedType,
+  frontmatter: Record<string, unknown>,
+  template?: Template | null
+): string {
+  const filenamePattern = getFilenamePattern(template ?? null, typeDef);
+
+  if (filenamePattern) {
+    const patternResult = resolveFilenamePattern(filenamePattern, frontmatter, schema.config.dateFormat);
+
+    if (patternResult.resolved && patternResult.filename) {
+      return patternResult.filename;
+    }
+
+    const nameField = frontmatter['name'];
+    if (!nameField || typeof nameField !== 'string') {
+      const missingInfo = patternResult.missingFields.length > 0
+        ? ` Pattern references missing fields: ${patternResult.missingFields.join(', ')}.`
+        : '';
+      throwJsonError(
+        jsonError(`Filename pattern could not be resolved.${missingInfo} Provide a 'name' field as fallback.`),
+        ExitCodes.VALIDATION_ERROR
+      );
+    }
+    return nameField;
+  }
+
+  const nameField = frontmatter['name'];
+  if (!nameField || typeof nameField !== 'string') {
+    throwJsonError(jsonError('Missing or invalid \'name\' field'), ExitCodes.VALIDATION_ERROR);
+  }
+
+  return nameField;
+}
+
+function resolveOrderedFields(typeDef: ResolvedType, frontmatter: Record<string, unknown>): string[] {
+  const fieldOrder = getFrontmatterOrder(typeDef);
+  return fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
+}
+
 // ============================================================================
 // Ownership Flow
 // ============================================================================
+
+async function resolveInteractiveOwnership(
+  schema: LoadedSchema,
+  vaultDir: string,
+  typeName: string,
+  ownerArg?: string,
+  standaloneArg?: boolean
+): Promise<OwnershipMode> {
+  const canBeOwned = typeCanBeOwned(schema, typeName);
+  if (canBeOwned && !standaloneArg) {
+    const ownershipDecision = await resolveOwnership(schema, vaultDir, typeName, ownerArg);
+    if (ownershipDecision.isOwned && ownershipDecision.owner) {
+      return { kind: 'owned', owner: ownershipDecision.owner };
+    }
+  }
+
+  return { kind: 'pooled' };
+}
+
+async function resolveJsonOwnership(
+  schema: LoadedSchema,
+  vaultDir: string,
+  typePath: string,
+  typeDef: ResolvedType,
+  ownershipOptions?: { owner?: string | undefined; standalone?: boolean | undefined }
+): Promise<OwnershipMode> {
+  const ownerArg = ownershipOptions?.owner;
+  const standaloneArg = ownershipOptions?.standalone;
+
+  if (ownerArg && standaloneArg) {
+    throwJsonError(jsonError('Cannot use both --owner and --standalone flags together'), ExitCodes.VALIDATION_ERROR);
+  }
+
+  const typeName = typeDef.name;
+  const canBeOwned = typeCanBeOwned(schema, typeName);
+
+  if (standaloneArg && !canBeOwned) {
+    throwJsonError(
+      jsonError(`Type '${typePath}' cannot be owned, so --standalone is not applicable.`),
+      ExitCodes.VALIDATION_ERROR
+    );
+  }
+
+  if (ownerArg) {
+    if (!canBeOwned) {
+      throwJsonError(
+        jsonError(`Type '${typePath}' cannot be owned. Remove the --owner flag.`),
+        ExitCodes.VALIDATION_ERROR
+      );
+    }
+
+    const owner = await findOwnerFromArg(schema, vaultDir, typeName, ownerArg);
+    if (!owner) {
+      throwJsonError(jsonError(`Owner not found: ${ownerArg}`), ExitCodes.VALIDATION_ERROR);
+    }
+    return { kind: 'owned', owner };
+  }
+
+  return { kind: 'pooled' };
+}
 
 /**
  * Resolve ownership for a note that can be owned.
@@ -1148,121 +1082,6 @@ async function findOwnerFromArg(
   return undefined;
 }
 
-/**
- * Create a note that is owned by another note.
- * Owned notes live in: {owner_folder}/{child_type}/
- */
-async function createOwnedNote(
-  schema: LoadedSchema,
-  vaultDir: string,
-  typePath: string,
-  typeDef: ResolvedType,
-  templateResolution: InheritedTemplateResolution,
-  owner: OwnerNoteRef,
-  options?: { noInstances?: boolean }
-): Promise<string> {
-  const typeName = typeDef.name;
-  
-  printInfo(`Creating ${typeName} owned by ${owner.ownerName}`);
-  
-  // Check if we have a filename pattern
-  const template = templateResolution.template;
-  const filenamePattern = getFilenamePattern(template ?? null, typeDef);
-  
-  let itemName: string;
-  let frontmatter: Record<string, unknown>;
-  let body: string;
-  let orderedFields: string[];
-  
-  if (filenamePattern) {
-    // Filename pattern exists: collect frontmatter first, then derive filename
-    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, templateResolution);
-    frontmatter = content.frontmatter;
-    body = content.body;
-    orderedFields = content.orderedFields;
-    
-    // Try to resolve the filename pattern
-    const patternResult = resolveFilenamePattern(filenamePattern, frontmatter, schema.config.dateFormat);
-    
-    if (patternResult.resolved && patternResult.filename) {
-      // Pattern resolved successfully - use it as the filename
-      itemName = patternResult.filename;
-    } else {
-      // Pattern couldn't be resolved (missing fields) - fall back to prompting
-      if (patternResult.missingFields.length > 0) {
-        printWarning(`Filename pattern references missing fields: ${patternResult.missingFields.join(', ')}`);
-      }
-      const prompted = await promptRequired('Name');
-      if (prompted === null) {
-        throw new UserCancelledError();
-      }
-      itemName = prompted;
-    }
-  } else {
-    // No filename pattern: prompt for name first (original behavior)
-    const prompted = await promptRequired('Name');
-    if (prompted === null) {
-      throw new UserCancelledError();
-    }
-    itemName = prompted;
-    
-    // Build frontmatter and body (may throw UserCancelledError)
-    const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, templateResolution);
-    frontmatter = content.frontmatter;
-    body = content.body;
-    orderedFields = content.orderedFields;
-  }
-  
-  // Ensure the owned output directory exists
-  const outputDir = await ensureOwnedOutputDir(owner.ownerPath, typeName);
-  
-  const sanitizedItemName = sanitizeItemNameForFilename(itemName);
-  if (!sanitizedItemName) {
-    printError('Invalid name (empty after sanitizing)');
-    process.exit(1);
-  }
-
-  // Create file path
-  const filePath = join(outputDir, `${sanitizedItemName}.md`);
-  
-  if (existsSync(filePath)) {
-    printWarning(`\nWarning: File already exists: ${filePath}`);
-    const overwrite = await promptConfirm('Overwrite?');
-    if (overwrite === null) {
-      throw new UserCancelledError();
-    }
-    if (overwrite === false) {
-      console.log('Aborted.');
-      process.exit(1);
-    }
-  }
-  
-  // System-managed stable note id (v1.0)
-  const noteId = await generateUniqueNoteId(vaultDir);
-  frontmatter['id'] = noteId;
-  orderedFields = ensureIdInFieldOrder(orderedFields);
-
-  await writeNote(filePath, frontmatter, body, orderedFields);
-  await registerIssuedNoteId(vaultDir, noteId, filePath);
-  printSuccess(`\n✓ Created: ${relative(vaultDir, filePath)}`);
-  printInfo(`  Owned by: ${owner.ownerName}`);
-  
-  // Handle instance scaffolding if template has instances
-  if (template) {
-    await handleInstanceScaffolding(
-      schema,
-      vaultDir,
-      filePath,
-      typeDef.name,
-      template,
-      frontmatter,
-      options?.noInstances ?? false,
-      false // not JSON mode
-    );
-  }
-  
-  return filePath;
-}
 
 /**
  * Get output directory for a type, walking up the hierarchy.
@@ -1272,6 +1091,93 @@ function getOutputDirForType(schema: LoadedSchema, typePath: string): string | u
   const typeDef = getTypeDefByPath(schema, typePath);
   return typeDef?.outputDir;
 }
+
+async function writeNotePlan(
+  args: WritePlanArgs,
+  fileExistsStrategy: FileExistsStrategy,
+  skipInstances: boolean
+): Promise<NoteCreationResult> {
+  const outputDir = await resolveOutputDir(args.schema, args.vaultDir, args.typePath, args.typeDef, args.ownership, args.mode);
+  const filePath = buildNotePath(outputDir, args.content.itemName, args.mode);
+
+  if (existsSync(filePath)) {
+    await fileExistsStrategy.onExists(filePath, args.vaultDir);
+  }
+
+  const noteId = await generateUniqueNoteId(args.vaultDir);
+  args.content.frontmatter['id'] = noteId;
+  const orderedFields = ensureIdInFieldOrder(args.content.orderedFields);
+
+  await writeNote(filePath, args.content.frontmatter, args.content.body, orderedFields);
+  await registerIssuedNoteId(args.vaultDir, noteId, filePath);
+
+  let scaffoldResult: ScaffoldResult | null = null;
+  if (args.template) {
+    scaffoldResult = await handleInstanceScaffolding(
+      args.schema,
+      args.vaultDir,
+      filePath,
+      args.typeDef.name,
+      args.template,
+      args.content.frontmatter,
+      skipInstances,
+      args.mode === 'json'
+    );
+  }
+
+  const result: NoteCreationResult = { path: filePath };
+  if (args.mode === 'json' && scaffoldResult) {
+    result.instances = {
+      created: scaffoldResult.created,
+      skipped: scaffoldResult.skipped,
+      errors: scaffoldResult.errors.map(e => ({
+        type: e.subtype,
+        filename: e.filename,
+        message: e.message,
+      })),
+    };
+  }
+
+  return result;
+}
+
+async function resolveOutputDir(
+  schema: LoadedSchema,
+  vaultDir: string,
+  typePath: string,
+  typeDef: ResolvedType,
+  ownership: OwnershipMode,
+  mode: CreationMode
+): Promise<string> {
+  if (ownership.kind === 'owned') {
+    return ensureOwnedOutputDir(ownership.owner.ownerPath, typeDef.name);
+  }
+
+  const outputDir = getOutputDirForType(schema, typePath);
+  if (!outputDir) {
+    if (mode === 'json') {
+      throwJsonError(jsonError(`No output_dir defined for type: ${typePath}`), ExitCodes.SCHEMA_ERROR);
+    }
+    printError(`No output_dir defined for type: ${typePath}`);
+    process.exit(1);
+  }
+
+  return join(vaultDir, outputDir);
+}
+
+function buildNotePath(outputDir: string, itemName: string, mode: CreationMode): string {
+  const sanitizedItemName = sanitizeItemNameForFilename(itemName);
+  if (!sanitizedItemName) {
+    if (mode === 'json') {
+      throwJsonError(jsonError('Invalid note name (empty after sanitizing)'), ExitCodes.VALIDATION_ERROR);
+    }
+    printError('Invalid name (empty after sanitizing)');
+    process.exit(1);
+  }
+
+  return join(outputDir, `${sanitizedItemName}.md`);
+}
+
 
 /**
  * Prompt for a single frontmatter field value.

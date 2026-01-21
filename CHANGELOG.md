@@ -115,6 +115,7 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Fixed
 
+- **Handle malformed frontmatter wikilink scalars without crashing audit fixes** (#354)
 - **Ignore slashes in note names when creating files** (#353)
 
 - **Fixed markdown→wikilink conversion in link format migration** (#182)

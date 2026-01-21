@@ -182,8 +182,9 @@ Note: Deletion is permanent. The file is removed from the filesystem.
     const pickerMode = parsePickerMode(options.picker);
 
     // Defensive: if `--help` is accidentally parsed as the positional `query`,
-    // show command help and return success.
-    if (query === '--help' || query === '-h') {
+    // or help flags slip through parsing, show command help and return success.
+    const hasHelpFlag = process.argv.some(arg => arg === '--help' || arg === '-h');
+    if (query === '--help' || query === '-h' || hasHelpFlag) {
       cmd.outputHelp();
       process.exitCode = ExitCodes.SUCCESS;
       return;
@@ -570,5 +571,3 @@ async function handleBulkDelete(
     process.exitCode = ExitCodes.VALIDATION_ERROR;
   }
 }
-
-

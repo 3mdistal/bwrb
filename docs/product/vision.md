@@ -118,6 +118,7 @@ The CLI should be predictable and learnable.
 - Consistent flags across commands
 - JSON mode for every command (AI/scripting friendly)
 - No hidden modes or surprising behavior
+- Selection prompts use consistent input rules: number keys (1-9, 0) select and submit, arrow keys move selection, Enter submits the highlighted option
 - `audit --fix` behavior is conservative and documented (see `docs/product/audit-fix-policy.md`)
 
 ---

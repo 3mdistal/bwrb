@@ -3,6 +3,7 @@ import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
 import { formatLocalDate } from '../../../src/lib/local-date.js';
+import { ExitCodes } from '../../../src/lib/output.js';
 
 const UUID_RE = /\bid:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
 
@@ -104,12 +105,13 @@ describe('new command', () => {
         ['new', 'idea', '--json', '{"name": "Test"}', '--template', 'nonexistent'],
         vaultDir
       );
-
-      expect(result.exitCode).not.toBe(0);
+ 
+      expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
       const output = JSON.parse(result.stdout);
       expect(output.success).toBe(false);
       expect(output.error).toContain('Template not found');
     });
+
 
     it('should error when --template default but no default.md exists', async () => {
       const result = await runCLI(
@@ -117,7 +119,7 @@ describe('new command', () => {
         vaultDir
       );
 
-      expect(result.exitCode).not.toBe(0);
+      expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
       const output = JSON.parse(result.stdout);
       expect(output.success).toBe(false);
       expect(output.error).toContain('Template not found');
@@ -130,7 +132,8 @@ describe('new command', () => {
         vaultDir
       );
  
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+      expect(result.stderr).toBe('');
       const output = JSON.parse(result.stdout);
       expect(output.success).toBe(true);
       expect(output.path).toContain('Fix the bug.md');
@@ -152,7 +155,8 @@ describe('new command', () => {
         vaultDir
       );
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+      expect(result.stderr).toBe('');
       const output = JSON.parse(result.stdout);
       expect(output.success).toBe(true);
       expect(output.path).toContain('FooBar.md');
@@ -173,7 +177,8 @@ describe('new command', () => {
         vaultDir
       );
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+      expect(result.stderr).toBe('');
       const output = JSON.parse(result.stdout);
       expect(output.success).toBe(true);
 
@@ -192,7 +197,8 @@ describe('new command', () => {
         vaultDir
       );
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+      expect(result.stderr).toBe('');
       const output = JSON.parse(result.stdout);
       expect(output.success).toBe(true);
 
@@ -207,7 +213,8 @@ describe('new command', () => {
         vaultDir
       );
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+      expect(result.stderr).toBe('');
       const output = JSON.parse(result.stdout);
       expect(output.success).toBe(true);
 
@@ -224,7 +231,8 @@ describe('new command', () => {
         vaultDir
       );
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+      expect(result.stderr).toBe('');
       const output = JSON.parse(result.stdout);
       
       // The template body has # {title} - check it's NOT literally there
@@ -235,6 +243,32 @@ describe('new command', () => {
   });
 
   // Ownership tests are in new-ownership.test.ts with their own isolated vault
+});
+
+describe('new command - json output purity', () => {
+  let vaultDir: string;
+
+  beforeEach(async () => {
+    vaultDir = await createTestVault();
+  });
+
+  afterEach(async () => {
+    await cleanupTestVault(vaultDir);
+  });
+
+  it('should return IO_ERROR and JSON output when file exists', async () => {
+    const result = await runCLI(
+      ['new', 'idea', '--json', '{"name": "Sample Idea"}'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(ExitCodes.IO_ERROR);
+    expect(result.stderr).toBe('');
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(false);
+    expect(output.error).toContain('File already exists');
+    expect(output.error).toContain('Ideas/Sample Idea.md');
+  });
 });
 
 describe('new command - instance scaffolding', () => {
@@ -254,7 +288,8 @@ describe('new command - instance scaffolding', () => {
       vaultDir
     );
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+    expect(result.stderr).toBe('');
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(true);
     expect(output.path).toContain('My Project.md');
@@ -299,7 +334,8 @@ describe('new command - instance scaffolding', () => {
       vaultDir
     );
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+    expect(result.stderr).toBe('');
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(true);
     expect(output.path).toContain('No Instances Project.md');
@@ -334,7 +370,8 @@ describe('new command - instance scaffolding', () => {
       vaultDir
     );
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+    expect(result.stderr).toBe('');
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(true);
 
@@ -358,7 +395,8 @@ describe('new command - instance scaffolding', () => {
       vaultDir
     );
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+    expect(result.stderr).toBe('');
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(true);
 
@@ -385,7 +423,8 @@ describe('new command - date expression evaluation', () => {
       vaultDir
     );
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+    expect(result.stderr).toBe('');
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(true);
 
@@ -410,7 +449,8 @@ describe('new command - date expression evaluation', () => {
       vaultDir
     );
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+    expect(result.stderr).toBe('');
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(true);
 

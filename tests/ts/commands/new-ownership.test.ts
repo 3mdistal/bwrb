@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir, writeFile, rm } from 'fs/promises';
 import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { ExitCodes } from '../../../src/lib/output.js';
 
 /**
  * Tests for JSON mode ownership flags (--owner and --standalone).
@@ -43,7 +44,8 @@ A test project for ownership testing.
       vaultDir
     );
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+    expect(result.stderr).toBe('');
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(true);
     expect(output.path).toContain('Projects/My Project/research/Project Research.md');
@@ -55,7 +57,8 @@ A test project for ownership testing.
       vaultDir
     );
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+    expect(result.stderr).toBe('');
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(true);
     expect(output.path).toBe('Research/Standalone Research.md');
@@ -67,7 +70,8 @@ A test project for ownership testing.
       vaultDir
     );
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+    expect(result.stderr).toBe('');
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(true);
     expect(output.path).toBe('Research/Default Research.md');
@@ -79,7 +83,7 @@ A test project for ownership testing.
       vaultDir
     );
 
-    expect(result.exitCode).not.toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
     // Error output may go to stderr for early validation errors
     const outputStr = result.stdout || result.stderr;
     expect(outputStr).toContain('Cannot use both --owner and --standalone');
@@ -91,7 +95,7 @@ A test project for ownership testing.
       vaultDir
     );
 
-    expect(result.exitCode).not.toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
     // Error output may go to stderr for early validation errors
     const outputStr = result.stdout || result.stderr;
     expect(outputStr).toContain('cannot be owned');
@@ -103,7 +107,7 @@ A test project for ownership testing.
       vaultDir
     );
 
-    expect(result.exitCode).not.toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
     // Error output may go to stderr for early validation errors
     const outputStr = result.stdout || result.stderr;
     expect(outputStr).toContain('Owner not found');
@@ -115,7 +119,8 @@ A test project for ownership testing.
       vaultDir
     );
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+    expect(result.stderr).toBe('');
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(true);
     expect(output.path).toContain('Projects/My Project/research/');
@@ -127,7 +132,7 @@ A test project for ownership testing.
       vaultDir
     );
 
-    expect(result.exitCode).not.toBe(0);
+    expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(false);
     expect(output.error).toContain('cannot be owned');
