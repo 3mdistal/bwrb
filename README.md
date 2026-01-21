@@ -19,7 +19,7 @@ Schema-driven note management for markdown vaults.
 
 ## Prerequisites
 
-- **Node.js** >= 18
+- **Node.js** >= 22
 
 ## Installation
 
@@ -80,7 +80,7 @@ bwrb list --output paths --fields=status objective  # Combine paths + fields
 
 # Open a note by query (or browse all)
 bwrb open                                    # Browse all notes with picker
-bwrb open "My Note"                          # Open in Obsidian (default)
+bwrb open "My Note"                          # Open with system default (default)
 bwrb open "My Note" --app editor             # Open in $EDITOR
 bwrb open "My Note" --app print              # Just print the path
 bwrb open "Amb" --picker fzf                 # Use fzf for ambiguous matches
@@ -416,7 +416,7 @@ Open a note by name or path query. If no query is provided, shows a picker to br
 
 ```sh
 bwrb open                              # Browse all notes with picker
-bwrb open "My Note"                    # Open in Obsidian (default)
+bwrb open "My Note"                    # Open with system default (default)
 bwrb open "my note"                    # Case-insensitive
 bwrb open "Ideas/My Note"              # By path
 bwrb open "My Note" --app editor       # Open in $VISUAL or $EDITOR
@@ -425,9 +425,9 @@ bwrb open "My Note" --app print        # Just print the resolved path
 ```
 
 **App modes:**
-- `obsidian` - Open in Obsidian via URI scheme (default)
+- `obsidian` - Open in Obsidian via URI scheme
 - `editor` - Open in `$VISUAL` or `$EDITOR`
-- `system` - Open with system default handler
+- `system` - Open with system default handler (default)
 - `print` - Just print the resolved path
 
 **Environment variable:** Set `BWRB_DEFAULT_APP` to change the default app mode:

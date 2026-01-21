@@ -100,7 +100,7 @@ bwrb list task --where "status = 'todo'"
 ## 5. Open a Note
 
 ```bash
-# Open in Obsidian (default)
+# Open with system default (default)
 bwrb open "My Great Idea"
 
 # Open in your $EDITOR
