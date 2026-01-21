@@ -19,10 +19,10 @@ import {
   getOptionsForField,
   getConcreteTypeNames,
   getTypeFamilies,
+  getDescendants,
 } from '../schema.js';
 import { coerceBooleanFromString, coerceNumberFromString } from './coercion.js';
 import { suggestIsoDate } from './date-suggest.js';
-import { queryByType } from '../vault.js';
 import { parseNote, writeNote } from '../frontmatter.js';
 import { levenshteinDistance } from '../discovery.js';
 import { promptSelection, promptConfirm, promptInput } from '../prompt.js';
@@ -33,6 +33,8 @@ import {
   findWikilinksToFile,
   executeBulkMove,
 } from '../bulk/move.js';
+import { formatValue } from '../vault.js';
+import { buildNoteTargetIndex, type NoteTargetIndex } from '../discovery.js';
 
 // Alias for backward compatibility
 const resolveTypePathFromFrontmatter = resolveTypeFromFrontmatter;
@@ -1331,9 +1333,15 @@ async function handleInteractiveFix(
     case 'owned-wrong-location':
       return handleOwnedWrongLocationFix(context, result, issue);
     case 'invalid-source-type':
-      return handleInvalidSourceTypeFix(schema, result, issue);
+      return handleInvalidSourceTypeFix(context, result, issue);
     case 'parent-cycle':
-      return handleParentCycleFix(schema, result, issue);
+      return handleParentCycleFix(context, result, issue);
+    case 'self-reference':
+      return handleSelfReferenceFix(context, result, issue);
+    case 'ambiguous-link-target':
+      return handleAmbiguousLinkTargetFix(context, result, issue);
+    case 'invalid-list-element':
+      return handleInvalidListElementFix(context, result, issue);
     // Phase 4: Structural integrity issues
     case 'frontmatter-not-at-top':
       return handleFrontmatterNotAtTopFix(schema, result, issue);
@@ -1665,6 +1673,42 @@ async function handleUnknownFieldFix(
   }
 }
 
+function collectTargetsBySource(
+  schema: LoadedSchema,
+  source: string | string[],
+  targetIndex: NoteTargetIndex
+): string[] {
+  const sources = Array.isArray(source) ? source : [source];
+
+  if (sources.includes('any')) {
+    return Array.from(targetIndex.targetToPaths.keys()).filter((key) => !key.includes('/'));
+  }
+
+  const validTypes = new Set<string>();
+  for (const src of sources) {
+    const sourceType = schema.types.get(src);
+    if (sourceType) {
+      validTypes.add(src);
+      for (const descendant of getDescendants(schema, src)) {
+        validTypes.add(descendant);
+      }
+    }
+  }
+
+  if (validTypes.size === 0) return [];
+
+  const targets = new Set<string>();
+  for (const [pathKey, typeName] of targetIndex.pathNoExtToType.entries()) {
+    if (validTypes.has(typeName)) {
+      targets.add(pathKey);
+      const basenameKey = basename(pathKey);
+      targets.add(basenameKey);
+    }
+  }
+
+  return Array.from(targets.values()).sort((a, b) => a.localeCompare(b));
+}
+
 async function handleFormatViolationFix(
   schema: LoadedSchema,
   result: FileAuditResult,
@@ -1821,7 +1865,7 @@ async function handleOwnedNoteReferencedFix(
  * 3. Skip (leave for manual fix)
  */
 async function handleInvalidSourceTypeFix(
-  schema: LoadedSchema,
+  context: FixContext,
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
@@ -1829,6 +1873,8 @@ async function handleInvalidSourceTypeFix(
     console.log(chalk.dim('    (Cannot fix - no field specified)'));
     return 'skipped';
   }
+
+  const { schema, vaultDir } = context;
 
   // Get the source type constraint from the schema
   const parsed = await parseNote(result.path);
@@ -1851,17 +1897,16 @@ async function handleInvalidSourceTypeFix(
   const expectedTypes = Array.isArray(issue.expected) ? issue.expected.join(', ') : issue.expected;
   console.log(chalk.dim(`    Expected types: ${expectedTypes || field.source}`));
 
-  // Query for valid notes of the correct source type
-  const vaultDir = result.path.substring(0, result.path.indexOf(result.relativePath));
-  const validNotes = await queryByType(schema, vaultDir, field.source);
+  const targetIndex = await buildNoteTargetIndex(schema, vaultDir);
+  const validTargets = collectTargetsBySource(schema, field.source, targetIndex);
 
   // Build options
   const options: string[] = [];
-  if (validNotes.length > 0) {
+  if (validTargets.length > 0) {
     // Format as wikilinks
-    options.push(...validNotes.slice(0, 20).map(n => `[[${n}]]`));
-    if (validNotes.length > 20) {
-      options.push(`... (${validNotes.length - 20} more)`);
+    options.push(...validTargets.slice(0, 20).map(n => `[[${n}]]`));
+    if (validTargets.length > 20) {
+      options.push(`... (${validTargets.length - 20} more)`);
     }
   }
   options.push('[clear field]', '[skip]', '[quit]');
@@ -2105,10 +2150,12 @@ async function handleInvalidTypeFix(
  * 3. Skip (leave for manual fix)
  */
 async function handleParentCycleFix(
-  schema: LoadedSchema,
+  context: FixContext,
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  const { schema, vaultDir } = context;
+
   // Show the cycle path
   if (issue.cyclePath && issue.cyclePath.length > 0) {
     console.log(chalk.dim(`    Cycle: ${issue.cyclePath.join(' → ')}`));
@@ -2123,11 +2170,11 @@ async function handleParentCycleFix(
   let validParents: string[] = [];
   
   if (typePath) {
-    const vaultDir = result.path.substring(0, result.path.indexOf(result.relativePath));
-    const sameTypeNotes = await queryByType(schema, vaultDir, typePath);
+    const targetIndex = await buildNoteTargetIndex(schema, vaultDir);
+    const validTargets = collectTargetsBySource(schema, typePath, targetIndex);
     // Filter out the current note and notes in the cycle
     const cycleSet = new Set(issue.cyclePath ?? []);
-    validParents = sameTypeNotes.filter(n => n !== noteName && !cycleSet.has(n));
+    validParents = validTargets.filter(n => n !== noteName && !cycleSet.has(n));
   }
   
   // Build options
@@ -2269,6 +2316,292 @@ async function handleMalformedWikilinkFix(
   }
   console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
   return 'failed';
+}
+
+async function updateFrontmatterValue(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  update: (frontmatter: Record<string, unknown>) => boolean
+): Promise<FixResult> {
+  try {
+    const parsed = await parseNote(result.path);
+    const frontmatter = { ...parsed.frontmatter };
+    const changed = update(frontmatter);
+    if (!changed) {
+      return {
+        file: result.path,
+        issue: { severity: 'warning', code: 'invalid-option', message: '', autoFixable: false },
+        action: 'skipped',
+        message: 'No changes applied',
+      };
+    }
+
+    const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
+    const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
+    const order = typeDef?.fieldOrder;
+
+    if (!isDryRunEnabled()) {
+      await writeNote(result.path, frontmatter, parsed.body, order);
+    }
+
+    return {
+      file: result.path,
+      issue: { severity: 'warning', code: 'invalid-option', message: '', autoFixable: false },
+      action: 'fixed',
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      file: result.path,
+      issue: { severity: 'warning', code: 'invalid-option', message: '', autoFixable: false },
+      action: 'failed',
+      message,
+    };
+  }
+}
+
+async function handleSelfReferenceFix(
+  context: FixContext,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field) {
+    console.log(chalk.dim('    (Cannot fix - no field specified)'));
+    return 'skipped';
+  }
+
+  const { schema, vaultDir } = context;
+  const parsed = await parseNote(result.path);
+  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const fields = typePath ? getFieldsForType(schema, typePath) : {};
+  const field = fields[issue.field];
+
+  const options = ['[clear field]'];
+
+  if (field?.source) {
+    const targetIndex = await buildNoteTargetIndex(schema, vaultDir);
+    const validTargets = collectTargetsBySource(schema, field.source, targetIndex);
+    const noteName = basename(result.path, '.md');
+    const notePathKey = result.relativePath.replace(/\.md$/, '');
+    const filteredTargets = validTargets.filter(
+      (target) => target !== noteName && target !== notePathKey
+    );
+
+    if (filteredTargets.length > 0) {
+      options.push(...filteredTargets.slice(0, 20).map((target) => `[[${target}]]`));
+      if (filteredTargets.length > 20) {
+        options.push(`... (${filteredTargets.length - 20} more)`);
+      }
+    }
+  }
+
+  options.push('[skip]', '[quit]');
+
+  const selected = await promptSelection(
+    `    Action for self-reference in ${issue.field}:`,
+    options
+  );
+
+  if (selected === null || selected === '[quit]') {
+    return 'quit';
+  }
+
+  if (selected === '[skip]' || selected.startsWith('... (')) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  if (selected === '[clear field]') {
+    const fixResult = await applyFix(schema, result.path, issue, '');
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Cleared ${issue.field}`));
+      return 'fixed';
+    }
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+
+  const fixResult = await applyFix(schema, result.path, issue, selected);
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Updated ${issue.field}: ${selected}`));
+    return 'fixed';
+  }
+  console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+  return 'failed';
+}
+
+async function handleAmbiguousLinkTargetFix(
+  context: FixContext,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field || !issue.candidates || issue.candidates.length === 0) {
+    console.log(chalk.dim('    (Cannot fix - no candidates)'));
+    return 'skipped';
+  }
+
+  const { schema } = context;
+  const linkFormat = schema.config.linkFormat ?? 'wikilink';
+
+  const candidateOptions = issue.candidates.map((candidate) => {
+    const target = candidate.replace(/\.md$/, '');
+    return formatValue(target, linkFormat);
+  });
+
+  const options = [...candidateOptions, '[clear field]', '[skip]', '[quit]'];
+
+  const selected = await promptSelection(
+    `    Select target for ${issue.field}:`,
+    options
+  );
+
+  if (selected === null || selected === '[quit]') {
+    return 'quit';
+  }
+
+  if (selected === '[skip]') {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  if (selected === '[clear field]') {
+    const fixResult = await applyFix(schema, result.path, issue, '');
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Cleared ${issue.field}`));
+      return 'fixed';
+    }
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+
+  const fixResult = await applyFix(schema, result.path, issue, selected);
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Updated ${issue.field}: ${selected}`));
+    return 'fixed';
+  }
+  console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+  return 'failed';
+}
+
+async function handleInvalidListElementFix(
+  context: FixContext,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field) {
+    console.log(chalk.dim('    (Cannot fix - no field specified)'));
+    return 'skipped';
+  }
+
+  const { schema } = context;
+  const fieldName = issue.field;
+  const listIndex = issue.listIndex;
+
+  const options: string[] = [];
+
+  if (listIndex === undefined) {
+    options.push('[wrap into list]', '[clear field]');
+  } else {
+    options.push('[remove element]', '[edit element]', '[clear field]');
+  }
+
+  options.push('[skip]', '[quit]');
+
+  const selected = await promptSelection(
+    `    Fix list value for ${fieldName}:`,
+    options
+  );
+
+  if (selected === null || selected === '[quit]') {
+    return 'quit';
+  }
+
+  if (selected === '[skip]') {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  if (selected === '[clear field]') {
+    const fixResult = await updateFrontmatterValue(schema, result, (frontmatter) => {
+      if (!(fieldName in frontmatter)) return false;
+      delete frontmatter[fieldName];
+      return true;
+    });
+
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Cleared ${fieldName}`));
+      return 'fixed';
+    }
+
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+
+  if (selected === '[wrap into list]') {
+    const fixResult = await updateFrontmatterValue(schema, result, (frontmatter) => {
+      const current = frontmatter[fieldName];
+      if (current === undefined || current === null) return false;
+      const wrapped = typeof current === 'string' ? [current] : [String(current)];
+      frontmatter[fieldName] = wrapped;
+      return true;
+    });
+
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Wrapped ${fieldName} into list`));
+      return 'fixed';
+    }
+
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+
+  if (selected === '[remove element]' && listIndex !== undefined) {
+    const fixResult = await updateFrontmatterValue(schema, result, (frontmatter) => {
+      const current = frontmatter[fieldName];
+      if (!Array.isArray(current)) return false;
+      if (listIndex < 0 || listIndex >= current.length) return false;
+      current.splice(listIndex, 1);
+      frontmatter[fieldName] = current;
+      return true;
+    });
+
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Removed invalid element from ${fieldName}`));
+      return 'fixed';
+    }
+
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+
+  if (selected === '[edit element]' && listIndex !== undefined) {
+    const value = await promptInput(`    Enter value for ${fieldName}[${listIndex}]:`);
+    if (value === null) return 'quit';
+    if (!value) {
+      console.log(chalk.dim('    → Skipped'));
+      return 'skipped';
+    }
+
+    const fixResult = await updateFrontmatterValue(schema, result, (frontmatter) => {
+      const current = frontmatter[fieldName];
+      if (!Array.isArray(current)) return false;
+      if (listIndex < 0 || listIndex >= current.length) return false;
+      current[listIndex] = value;
+      frontmatter[fieldName] = current;
+      return true;
+    });
+
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Updated ${fieldName}[${listIndex}]`));
+      return 'fixed';
+    }
+
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+
+  console.log(chalk.dim('    → Skipped'));
+  return 'skipped';
 }
 
 // ============================================================================
