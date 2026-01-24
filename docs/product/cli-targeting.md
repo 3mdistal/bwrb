@@ -226,7 +226,7 @@ This two-gate model prevents accidental vault-wide mutations. You must be explic
 
 ### Exception: `audit --fix`
 
-`bwrb audit --fix` is a remediation workflow. It still requires explicit targeting (at least one selector or `--all`). Interactive fixes write by default; auto-fixes require `--execute` to apply.
+`bwrb audit --fix` is a remediation workflow. Report-mode audit defaults to implicit `--all`, but fixes require explicit targeting (at least one selector or `--all`). Interactive fixes write by default; auto-fixes require `--execute` to apply.
 
 - **Targeting required:** No selectors = error. Must specify at least one selector OR explicit `--all`.
 - **Interactive preview:** Use `--dry-run` to preview guided fixes without writing.

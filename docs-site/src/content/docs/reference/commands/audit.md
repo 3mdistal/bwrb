@@ -23,6 +23,7 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `-p, --path <glob>` | Filter by file path pattern |
 | `-w, --where <expr>` | Filter by frontmatter expression (repeatable) |
 | `-b, --body <query>` | Filter by body content |
+| `-a, --all` | Target all files (explicit vault-wide selector) |
 
 ### Issue Filtering
 
@@ -37,8 +38,10 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 
 | Option | Description |
 |--------|-------------|
-| `--fix` | Interactive repair mode |
+| `--fix` | Interactive repair mode (writes by default; requires explicit targeting) |
 | `--auto` | With `--fix`: automatically apply unambiguous fixes |
+| `--dry-run` | With `--fix`: preview fixes without writing |
+| `--execute` | Deprecated: no longer required for audit fixes |
 
 ### Output
 
@@ -53,7 +56,7 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `orphan-file` | File in managed directory but no `type` field |
 | `invalid-type` | Type field value not recognized in schema |
 | `missing-required` | Required field is missing |
-| `invalid-enum` | Field value not in allowed enum values |
+| `invalid-option` | Field value not in allowed option values |
 | `unknown-field` | Field not defined in schema (warning by default) |
 | `wrong-directory` | File location doesn't match its type's output_dir |
 | `format-violation` | Field value doesn't match expected format (wikilink, etc.) |
@@ -99,7 +102,10 @@ bwrb audit --allow-field custom --allow-field legacy
 ### Repair Mode
 
 ```bash
-# Interactive fix mode (requires explicit targeting)
+# Interactive fix mode (writes by default; requires explicit targeting)
+bwrb audit --all --fix
+
+# Interactive fix mode for a subset
 bwrb audit --path "Ideas/**" --fix
 
 # Preview fixes without writing

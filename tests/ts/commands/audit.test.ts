@@ -2304,7 +2304,9 @@ status: raw
       const result = await runCLI(['audit', '--fix'], vaultDir);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('No files selected. Use --type, --path, --where, --body, or --all.');
+      expect(result.stderr).toContain('No files selected.');
+      expect(result.stderr).toContain('writes by default');
+      expect(result.stderr).toContain('bwrb audit --all --fix');
     });
   });
 

@@ -97,22 +97,23 @@ Examples:
   bwrb audit --ignore unknown-field
   bwrb audit --output json        # JSON output for CI
   bwrb audit --allow-field custom # Allow specific extra field
-  bwrb audit --fix --path "Ideas/**"             # Interactive guided fixes (writes)
-  bwrb audit --fix --dry-run --path "Ideas/**"   # Preview guided fixes (no writes)
+  bwrb audit --all --fix                  # Interactive guided fixes across vault (writes)
+  bwrb audit --fix --path "Ideas/**"      # Interactive guided fixes (writes)
+  bwrb audit --fix --dry-run --path "Ideas/**"    # Preview guided fixes (no writes)
   bwrb audit --fix --auto --execute --path "Ideas/**"  # Auto-fix unambiguous issues (writes)
-  bwrb audit --fix --auto --path "Ideas/**"      # Preview auto-fixes (no writes)`) 
+  bwrb audit --fix --auto --path "Ideas/**"      # Preview auto-fixes (no writes)`)
   .argument('[target]', 'Type, path, or where expression (auto-detected)')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path pattern')
   .option('-w, --where <expr...>', 'Filter by frontmatter expression')
   .option('-b, --body <query>', 'Filter by body content')
   .option('--text <query>', 'Filter by body content (deprecated: use --body)', undefined)
-  .option('-a, --all', 'Target all files (required for --fix without other targeting)')
+  .option('-a, --all', 'Target all files (explicit vault-wide selector)')
   .option('--strict', 'Treat unknown fields as errors instead of warnings')
   .option('--only <issue-type>', 'Only report specific issue type')
   .option('--ignore <issue-type>', 'Ignore specific issue type')
   .option('--output <format>', 'Output format: text (default) or json')
-  .option('--fix', 'Interactive repair mode')
+  .option('--fix', 'Interactive repair mode (writes by default; requires explicit targeting)')
   .option('--auto', 'With --fix: automatically apply unambiguous fixes')
   .option('--dry-run', 'With --fix: preview fixes without writing')
   .option('--execute', 'With --fix --auto: apply fixes (required to write changes)')
@@ -156,10 +157,6 @@ Examples:
     if (executeMode && dryRunMode) {
       printError('--execute cannot be used with --dry-run');
       process.exit(1);
-    }
-
-    if (executeMode) {
-      printWarning('Warning: --execute will apply fixes; omit it to preview changes.');
     }
 
     try {
@@ -216,11 +213,14 @@ Examples:
         });
 
         if (!hasTargetingForFix) {
-          printError('No files selected. Use --type, --path, --where, --body, or --all.');
+          printError('No files selected. Refusing to run --fix without explicit targeting because it writes by default; use --all (vault-wide) or --type/--path/--where/--body. Example: bwrb audit --all --fix');
           process.exit(1);
         }
       }
 
+      if (executeMode) {
+        printWarning('Warning: --execute will apply fixes; omit it to preview changes.');
+      }
 
       // Validate type if specified
       if (typePath) {
