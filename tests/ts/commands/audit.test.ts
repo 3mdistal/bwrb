@@ -641,6 +641,68 @@ dead_line: 2026-01-01
     });
   });
 
+  describe('audit --fix messaging', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-fix-msg-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Needs Status.md'),
+        `---
+type: idea
+priority: medium
+---
+`
+      );
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should prompt to rerun without --dry-run after preview', async () => {
+      const result = await runCLI(
+        ['audit', '--fix', '--auto', '--dry-run', '--path', 'Ideas/**'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Re-run without '--dry-run' to apply changes.");
+      expect(result.stdout).not.toContain('--execute');
+    });
+
+    it('should not mention --execute after applying fixes', async () => {
+      const result = await runCLI(
+        ['audit', '--fix', '--auto', '--path', 'Ideas/**'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain('--execute');
+      expect(result.stdout).not.toContain("Re-run without '--dry-run'");
+    });
+
+    it('should warn about deprecated --execute without guidance to rerun', async () => {
+      const result = await runCLI(
+        ['audit', '--fix', '--auto', '--execute', '--path', 'Ideas/**'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain('deprecated');
+      expect(result.stderr).not.toContain('Run with --execute');
+      expect(result.stderr).not.toContain('rerun with --execute');
+      expect(result.stdout).not.toContain('--execute');
+    });
+  });
+
   describe('--fix option validation', () => {
     it('should error when --auto is used without --fix', async () => {
       const result = await runCLI(['audit', '--auto'], vaultDir);

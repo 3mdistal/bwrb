@@ -192,6 +192,11 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
     console.log('');
     console.log(chalk.dim("Re-run without '--auto' to resolve remaining issues interactively."));
   }
+
+  if (summary.dryRun) {
+    console.log('');
+    console.log(chalk.dim("Re-run without '--dry-run' to apply changes."));
+  }
 }
 
 // ============================================================================
