@@ -87,6 +87,14 @@ function isDryRunEnabled(): boolean {
   return dryRunStorage.getStore() ?? false;
 }
 
+function getDryRunBanner(dryRunReason?: FixSummary['dryRunReason']): string {
+  if (dryRunReason === 'execute-required') {
+    return "Dry run - no changes will be made (run with '--execute' to apply)\n";
+  }
+
+  return "Dry run - no changes will be made (re-run without '--dry-run' to apply)\n";
+}
+
 type RawLine = {
   text: string;
   eol: string;
@@ -651,7 +659,7 @@ export async function runAutoFix(
   
   console.log(chalk.bold('Auditing vault...\n'));
   if (dryRun) {
-    console.log(chalk.yellow("Dry run - no changes will be made (re-run without '--dry-run' to apply)\n"));
+    console.log(chalk.yellow(getDryRunBanner(dryRunReason)));
   }
   console.log(chalk.bold('Auto-fixing unambiguous issues...\n'));
 
@@ -1114,7 +1122,7 @@ export async function runInteractiveFix(
   
   console.log(chalk.bold('Auditing vault...\n'));
   if (dryRun) {
-    console.log(chalk.yellow("Dry run - no changes will be made (re-run without '--dry-run' to apply)\n"));
+    console.log(chalk.yellow(getDryRunBanner(dryRunReason)));
   }
 
   if (results.length === 0) {
