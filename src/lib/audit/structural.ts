@@ -181,7 +181,8 @@ export function replacePrimaryYaml(
   newYaml: string
 ): string {
   const eol = detectEol(raw);
-  const yamlBody = newYaml.trimEnd().replace(/\n/g, eol) + eol;
+  const normalizedYaml = newYaml.replace(/\r\n/g, '\n').trimEnd();
+  const yamlBody = normalizedYaml.replace(/\n/g, eol) + eol;
   return raw.slice(0, block.yamlStart) + yamlBody + raw.slice(block.yamlEnd);
 }
 
