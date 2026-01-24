@@ -93,6 +93,7 @@ export function outputJsonResults(results: FileAuditResult[], summary: AuditSumm
         ...(i.duplicateCount !== undefined && { duplicateCount: i.duplicateCount }),
         ...(i.listIndex !== undefined && { listIndex: i.listIndex }),
         ...(i.fixedValue && { fixedValue: i.fixedValue }),
+        ...(i.candidates && { candidates: i.candidates }),
       })),
     })),
     summary,
@@ -175,22 +176,37 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
   console.log('');
 
   if (summary.dryRun) {
-    console.log(chalk.yellow('Dry run - no changes will be made'));
+    console.log(chalk.yellow('Dry run - no changes written'));
   }
 
   console.log(chalk.bold('Summary:'));
 
   const fixedLabel = summary.dryRun ? 'Would fix' : 'Fixed';
+  const skippedLabel = summary.dryRun ? 'Would skip' : 'Skipped';
   console.log(`  ${fixedLabel}: ${summary.fixed} issues`);
-  console.log(`  Skipped: ${summary.skipped} issues`);
+  console.log(`  ${skippedLabel}: ${summary.skipped} issues`);
   if (summary.failed > 0) {
     console.log(`  Failed: ${summary.failed} issues`);
   }
   console.log(`  Remaining: ${summary.remaining} issues`);
 
+  if (!summary.dryRun) {
+    console.log('');
+    console.log(chalk.dim(`Applied fixes to ${summary.fixed} issues.`));
+  }
+
   if (summary.remaining > 0 && autoMode) {
     console.log('');
     console.log(chalk.dim("Re-run without '--auto' to resolve remaining issues interactively."));
+  }
+
+  if (summary.dryRun) {
+    console.log('');
+    if (summary.dryRunReason === 'execute-required') {
+      console.log(chalk.dim("Re-run with '--execute' to apply fixes."));
+    } else {
+      console.log(chalk.dim("Re-run without '--dry-run' to apply changes."));
+    }
   }
 }
 

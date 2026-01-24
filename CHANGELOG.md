@@ -14,9 +14,11 @@ All notable changes to Bowerbird are documented in this file.
   - Example: `bwrb list task -o json` → `bwrb list task --output json`
   - This improves CLI consistency: `-o` now always means "open" rather than having different meanings on different commands
 
-- **`bwrb audit --fix` now applies fixes by default** (#346)
-  - Use `--dry-run` to preview without writing
-  - `--execute` is no longer required (accepted as deprecated no-op)
+- **`bwrb audit --fix` now previews and applies fixes more explicitly** (#346, #272)
+  - Interactive fixes write by default; use `--dry-run` to preview without writing
+  - Auto-fixes require `--execute` to apply changes
+  - `--fix` remains interactive-only; non-TTY requires `--fix --auto` or `--output json`
+  - `--fix --auto` applies only unambiguous fixes and reports remaining issues without failing the run
   - `--fix` requires explicit targeting (`--type`, `--path`, `--where`, `--body`, or `--all`)
 
 - **Vault auto-detection now uses nearest `.bwrb/schema.json` (find-up)** (#337)
@@ -28,6 +30,10 @@ All notable changes to Bowerbird are documented in this file.
   - When not inside a vault and `--vault` is missing, bwrb now discovers vaults below `cwd`
   - Auto-selects the only match, prompts in TTY when multiple matches
   - Non-interactive or `--output json` now errors with candidate list
+- **Audit --fix Phase 5: Type coercion fixes** (#272)
+  - `wrong-scalar-type`: safe string -> number/boolean coercion in `audit --fix --auto`
+  - `invalid-date-format`: interactive prompts with ISO-ish suggestions for date fields
+  - `empty-string-required`: whitespace-only or empty list values now treated as missing required fields
 
 - **Stable system-managed note IDs** (#334)
   - `bwrb new` writes an `id` (UUIDv4) to frontmatter
@@ -58,6 +64,11 @@ All notable changes to Bowerbird are documented in this file.
     - Offers to clear parent field or select different parent
   - JSON output now includes additional issue metadata: `expectedDirectory`, `currentDirectory`, `cyclePath`, `ownerPath`, `ownedNotePath`
 
+- **Audit --fix Phase 6: Relation field fixes** (#273)
+  - `self-reference`: detect and clear or reassign relations pointing to the same note
+  - `ambiguous-link-target`: prompt for a specific target when multiple notes share a link name
+  - `invalid-list-element`: flag and fix non-string values in list fields
+
 - **Audit --fix Phase 4: Structural integrity fixes** (#271)
   - `frontmatter-not-at-top`: move a single clean-parsing YAML frontmatter block to the top
   - `duplicate-frontmatter-keys`: auto-merge same/empty values; interactive keep-first/keep-last/skip when values differ
@@ -70,6 +81,10 @@ All notable changes to Bowerbird are documented in this file.
   - Subcommands are documented as sections with anchor links instead of separate pages
   - Reduces navigation depth and makes it easier to see all related functionality at a glance
   - Matches common CLI documentation patterns (e.g., git man pages)
+
+- **Clarified audit --fix completion messaging** (#396)
+  - Confirms when fixes are applied and avoids deprecated `--execute` guidance
+  - Dry-run output now points to re-running without `--dry-run`
 
 ### Added
 

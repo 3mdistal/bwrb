@@ -5,8 +5,29 @@
  * for interactive prompts that can't be tested with mocked stdin/stdout.
  */
 
-import * as pty from 'node-pty';
+import { createRequire } from 'module';
+import type { IPty } from 'node-pty';
 import * as path from 'path';
+
+const require = createRequire(import.meta.url);
+
+let _pty: typeof import('node-pty') | null = null;
+function loadPty(): typeof import('node-pty') {
+  if (_pty) return _pty;
+  _pty = require('node-pty') as typeof import('node-pty');
+  return _pty;
+}
+
+function isNodePtyLoadable(): boolean {
+  try {
+    // Avoid loading the native module at import time.
+    loadPty();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 import * as fs from 'fs/promises';
 import * as os from 'os';
 
@@ -112,13 +133,13 @@ export interface SpawnOptions {
  * A wrapper around a node-pty process with helper methods for testing.
  */
 export class PtyProcess {
-  private ptyProcess: pty.IPty;
+  private ptyProcess: IPty;
   private output: string = '';
   private outputLines: string[] = [];
   private exitCode: number | null = null;
   private exitPromise: Promise<number>;
 
-  constructor(ptyProcess: pty.IPty) {
+  constructor(ptyProcess: IPty) {
     this.ptyProcess = ptyProcess;
 
     // Register for global tracking (cleanup on test timeout)
@@ -361,7 +382,7 @@ export function spawnBowerbird(
   } = options;
 
   // Use tsx to run the TypeScript source directly
-  const ptyProcess = pty.spawn(TSX_BIN, ['src/index.ts', ...args], {
+  const ptyProcess = loadPty().spawn(TSX_BIN, ['src/index.ts', ...args], {
     name: 'xterm-256color',
     cols,
     rows,
@@ -714,10 +735,16 @@ export async function withTempVaultRelative(
 let _ptyWorks: boolean | null = null;
 function canUsePty(): boolean {
   if (_ptyWorks !== null) return _ptyWorks;
-  
+
+  // If the native module can't be required, it definitely won't work.
+  if (!isNodePtyLoadable()) {
+    _ptyWorks = false;
+    return _ptyWorks;
+  }
+
   try {
     // Try to spawn a simple echo command
-    const testProc = pty.spawn('/bin/echo', ['test'], {
+    const testProc = loadPty().spawn('/bin/echo', ['test'], {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
@@ -729,7 +756,7 @@ function canUsePty(): boolean {
   } catch {
     _ptyWorks = false;
   }
-  
+
   return _ptyWorks;
 }
 
@@ -742,6 +769,11 @@ export function shouldSkipPtyTests(): boolean {
     return true;
   }
   
+  // Skip if node-pty native module can't be loaded
+  if (!isNodePtyLoadable()) {
+    return true;
+  }
+
   // Skip if node-pty doesn't work (e.g., Node.js version incompatibility)
   if (!canUsePty()) {
     return true;
