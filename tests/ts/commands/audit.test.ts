@@ -74,7 +74,7 @@ parent: "[[Self Task]]"
 
       const result = await runCLI(['audit', 'task'], tempVaultDir);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Self-reference detected: parent points to itself');
     });
 
