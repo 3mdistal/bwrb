@@ -12,6 +12,26 @@ Bowerbird uses a unified targeting model across all commands that operate on set
 
 **Core principle:** All targeting selectors compose via AND (intersection). Each selector narrows the set of matched files.
 
+### Vault resolution (Phase 2)
+
+When `--vault` is not provided and the CLI is not inside a vault, Bowerbird runs a bounded find-down to discover candidate vaults beneath the current directory.
+
+**Order of precedence:**
+- `--vault <path>` (explicit)
+- Find-up nearest ancestor containing `.bwrb/schema.json`
+- `BWRB_VAULT` environment variable
+- Find-down under `cwd` (Phase 2)
+
+**Find-down behavior:**
+- A vault root is any directory containing `.bwrb/schema.json`
+- Once a vault is found on a branch, traversal does not continue into that directory
+- Discovery is bounded and deterministic (sorted traversal, capped depth/results)
+
+**Selection rules:**
+- One candidate → auto-select
+- Multiple candidates → prompt in TTY; otherwise error and require `--vault`
+- `--output json` always errors with a structured candidate list
+
 ---
 
 ## The Four Core Selectors

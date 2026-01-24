@@ -107,6 +107,18 @@ export function exitWithError(
 }
 
 /**
+ * Exit with a standardized cancellation response.
+ */
+export function exitWithCancel(jsonMode: boolean): never {
+  if (jsonMode) {
+    printJson(jsonError('Cancelled', { code: ExitCodes.VALIDATION_ERROR }));
+  } else {
+    console.log('Cancelled.');
+  }
+  process.exit(ExitCodes.VALIDATION_ERROR);
+}
+
+/**
  * A candidate file for error reporting (minimal interface).
  */
 export interface ErrorCandidate {

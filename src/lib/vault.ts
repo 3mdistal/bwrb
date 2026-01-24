@@ -15,6 +15,7 @@ import {
 const SCHEMA_RELATIVE_PATH = '.bwrb/schema.json';
 const DEFAULT_MAX_DEPTH = 6;
 const DEFAULT_MAX_CANDIDATES = 25;
+const DEFAULT_MAX_DIRS_VISITED = 5000;
 
 export function hasVaultSchema(vaultDir: string): boolean {
   return existsSync(join(vaultDir, SCHEMA_RELATIVE_PATH));
@@ -52,6 +53,7 @@ export class VaultResolutionError extends Error {
 export interface DiscoverVaultOptions {
   maxDepth?: number;
   maxCandidates?: number;
+  maxDirsVisited?: number;
 }
 
 export interface DiscoverVaultResult {
@@ -65,15 +67,18 @@ export async function discoverVaultRootsDown(
 ): Promise<DiscoverVaultResult> {
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
   const maxCandidates = options.maxCandidates ?? DEFAULT_MAX_CANDIDATES;
+  const maxDirsVisited = options.maxDirsVisited ?? DEFAULT_MAX_DIRS_VISITED;
   const rootDir = resolve(startDir);
   const candidates: string[] = [];
   const queue: Array<{ dir: string; depth: number }> = [{ dir: rootDir, depth: 0 }];
+  let visited = 0;
 
-  while (queue.length > 0 && candidates.length < maxCandidates) {
+  while (queue.length > 0 && candidates.length < maxCandidates && visited < maxDirsVisited) {
     const next = queue.shift();
     if (!next) {
       break;
     }
+    visited += 1;
     const { dir, depth } = next;
 
     if (hasVaultSchema(dir)) {
@@ -113,7 +118,7 @@ export async function discoverVaultRootsDown(
     }
   }
 
-  const truncated = candidates.length >= maxCandidates && queue.length > 0;
+  const truncated = queue.length > 0 && (candidates.length >= maxCandidates || visited >= maxDirsVisited);
   return { candidates, truncated };
 }
 
@@ -123,6 +128,7 @@ export interface ResolveVaultOptions {
   allowFindDown?: boolean;
   maxDepth?: number;
   maxCandidates?: number;
+  maxDirsVisited?: number;
 }
 
 /**
@@ -170,6 +176,7 @@ export async function resolveVaultDir(options: ResolveVaultOptions = {}): Promis
   const discoverOptions: DiscoverVaultOptions = {};
   if (options.maxDepth !== undefined) discoverOptions.maxDepth = options.maxDepth;
   if (options.maxCandidates !== undefined) discoverOptions.maxCandidates = options.maxCandidates;
+  if (options.maxDirsVisited !== undefined) discoverOptions.maxDirsVisited = options.maxDirsVisited;
 
   const { candidates, truncated } = await discoverVaultRootsDown(cwd, discoverOptions);
 

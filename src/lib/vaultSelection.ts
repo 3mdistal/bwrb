@@ -1,7 +1,6 @@
 import { relative } from 'path';
 import { promptSelection } from './prompt.js';
-import { exitWithVaultResolutionError } from './output.js';
-import { UserCancelledError } from './errors.js';
+import { exitWithVaultResolutionError, exitWithCancel } from './output.js';
 import { resolveVaultDir, VaultResolutionError, type ResolveVaultOptions } from './vault.js';
 
 interface VaultSelectionOptions extends ResolveVaultOptions {
@@ -36,7 +35,7 @@ export async function resolveVaultDirWithSelection(
 
     const selection = await promptSelection('Select a vault:', candidatesRelative);
     if (selection === null) {
-      throw new UserCancelledError();
+      return exitWithCancel(jsonMode);
     }
 
     const selectionIndex = candidatesRelative.indexOf(selection);
