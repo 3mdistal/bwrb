@@ -101,8 +101,8 @@ Examples:
   bwrb audit --all --fix                  # Interactive guided fixes across vault (writes)
   bwrb audit --fix --path "Ideas/**"      # Interactive guided fixes (writes)
   bwrb audit --fix --dry-run --path "Ideas/**"    # Preview guided fixes (no writes)
-  bwrb audit --fix --auto --execute --path "Ideas/**"  # Auto-fix unambiguous issues (writes)
-  bwrb audit --fix --auto --path "Ideas/**"      # Preview auto-fixes (no writes)`)
+  bwrb audit --fix --auto --path "Ideas/**"      # Auto-fix unambiguous issues (writes)
+  bwrb audit --fix --auto --dry-run --path "Ideas/**" # Preview auto-fixes (no writes)`)
   .argument('[target]', 'Type, path, or where expression (auto-detected)')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path pattern')
@@ -117,7 +117,7 @@ Examples:
   .option('--fix', 'Interactive repair mode (writes by default; requires explicit targeting)')
   .option('--auto', 'With --fix: automatically apply unambiguous fixes')
   .option('--dry-run', 'With --fix: preview fixes without writing')
-  .option('--execute', 'With --fix --auto: apply fixes (required to write changes)')
+  .option('--execute', 'Deprecated (auto-fixes write by default; use --dry-run to preview)')
   .option('--allow-field <fields...>', 'Allow additional fields beyond schema (repeatable)')
   .action(async (target: string | undefined, options: AuditOptions & {
     type?: string;
@@ -220,9 +220,9 @@ Examples:
       }
 
       if (executeMode && autoMode) {
-        printWarning('Warning: --execute will apply auto-fixes; omit it to preview changes.');
+        printWarning('Warning: --execute is deprecated; auto-fixes write by default. Use --dry-run to preview changes.');
       } else if (executeMode) {
-        printWarning('Warning: --execute has no effect without --auto; interactive --fix writes by default.');
+        printWarning('Warning: --execute is deprecated and has no effect without --auto; interactive --fix writes by default.');
       }
 
       // Validate type if specified
@@ -266,8 +266,19 @@ Examples:
           process.exit(1);
         }
 
+        const executeRequiredIssueCodes = new Set<IssueCode>(['trailing-whitespace']);
+        const hasExecuteRequiredIssues = autoMode && !executeMode && results.some(result =>
+          result.issues.some(issue => issue.autoFixable && executeRequiredIssueCodes.has(issue.code))
+        );
+        const autoFixDryRun = dryRunMode || hasExecuteRequiredIssues;
+        const autoFixDryRunReason = dryRunMode
+          ? 'explicit'
+          : hasExecuteRequiredIssues
+            ? 'execute-required'
+            : undefined;
+
         const fixSummary = autoMode
-          ? await runAutoFix(results, schema, vaultDir, { dryRun: dryRunMode || !executeMode })
+          ? await runAutoFix(results, schema, vaultDir, { dryRun: autoFixDryRun, dryRunReason: autoFixDryRunReason })
           : await runInteractiveFix(results, schema, vaultDir, { dryRun: dryRunMode });
 
         outputFixResults(fixSummary, autoMode);

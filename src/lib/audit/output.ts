@@ -176,7 +176,7 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
   console.log('');
 
   if (summary.dryRun) {
-    console.log(chalk.yellow('Dry run - no changes will be made'));
+    console.log(chalk.yellow('Dry run - no changes written'));
   }
 
   console.log(chalk.bold('Summary:'));
@@ -190,19 +190,23 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
   }
   console.log(`  Remaining: ${summary.remaining} issues`);
 
+  if (!summary.dryRun) {
+    console.log('');
+    console.log(chalk.dim(`Applied fixes to ${summary.fixed} issues.`));
+  }
+
   if (summary.remaining > 0 && autoMode) {
     console.log('');
     console.log(chalk.dim("Re-run without '--auto' to resolve remaining issues interactively."));
   }
 
-  if (summary.dryRun && autoMode) {
+  if (summary.dryRun) {
     console.log('');
-    console.log(chalk.dim("Re-run with '--execute' to apply fixes."));
-  }
-
-  if (!autoMode && summary.remaining > 0) {
-    console.log('');
-    console.log(chalk.dim("Re-run with '--execute' to apply fixes."));
+    if (summary.dryRunReason === 'execute-required') {
+      console.log(chalk.dim("Re-run with '--execute' to apply fixes."));
+    } else {
+      console.log(chalk.dim("Re-run without '--dry-run' to apply changes."));
+    }
   }
 }
 

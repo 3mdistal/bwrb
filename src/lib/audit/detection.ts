@@ -288,7 +288,7 @@ export async function auditFile(
         expected: expectedOutputDir,
         currentDirectory: actualDir,
         expectedDirectory: expectedOutputDir,
-        autoFixable: true, // Can be auto-fixed with --execute
+        autoFixable: true, // Can be auto-fixed with --fix
       });
     }
   }
@@ -1109,7 +1109,7 @@ async function checkOwnershipViolations(
         expected: expectedDir,
         currentDirectory: actualDir,
         expectedDirectory: expectedDir,
-        autoFixable: true, // Can be auto-fixed with --execute
+        autoFixable: true, // Can be auto-fixed with --fix
         ownerPath: ownedInfo.ownerPath,
         ownedNotePath: file.relativePath,
       });

@@ -78,6 +78,10 @@ All notable changes to Bowerbird are documented in this file.
   - Reduces navigation depth and makes it easier to see all related functionality at a glance
   - Matches common CLI documentation patterns (e.g., git man pages)
 
+- **Clarified audit --fix completion messaging** (#396)
+  - Confirms when fixes are applied and avoids deprecated `--execute` guidance
+  - Dry-run output now points to re-running without `--dry-run`
+
 ### Added
 
 - **Parent template instance scaffolding** (#75)
