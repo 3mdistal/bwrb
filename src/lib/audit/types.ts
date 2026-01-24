@@ -179,7 +179,7 @@ export interface AuditOptions {
   auto?: boolean;
   /** Preview fixes without writing. */
   dryRun?: boolean;
-  /** Apply fixes; required for audit --fix to write changes. */
+  /** Apply auto-fixes; required for audit --fix --auto to write changes. */
   execute?: boolean;
   all?: boolean;
   allowField?: string[];
