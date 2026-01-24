@@ -123,6 +123,7 @@ The CLI should be predictable and learnable.
 - JSON mode for every command (AI/scripting friendly)
 - No hidden modes or surprising behavior
 - Selection prompts use consistent input rules: number keys (1-9, 0) select and submit, arrow keys move selection, Enter submits the highlighted option
+- `audit --fix` behavior is conservative and documented (see `docs/product/audit-fix-policy.md`)
 
 ---
 
@@ -251,7 +252,7 @@ bwrb template list [type] [name]   # List all, or show details if both provided
 1. **Consistent flags** — Same flag means same thing everywhere
 2. **Unified verbs** — `new`, `edit`, `delete`, `list`, `search` work everywhere
 3. **JSON mode everywhere** — `--output json` on all commands (see `docs/product/cli-output-contract.md`)
-4. **Dry-run default for destructive ops** — `--execute` to apply (exception: `audit --fix` writes by default; use `--dry-run` to preview)
+4. **Dry-run default for destructive ops** — `--execute` to apply (including auto audit fixes); use `--dry-run` to preview interactive audit fixes
 5. **Discoverable prompts** — Missing required info prompts, doesn't error
 
 ### Documentation Canon

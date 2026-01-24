@@ -27,3 +27,7 @@ npm-debug.log*
 
 # Docs site build
 docs-site/.astro/
+
+# Beads artifacts (deprecated)
+.beads/
+.beads-backup/
