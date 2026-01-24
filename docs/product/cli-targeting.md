@@ -391,12 +391,13 @@ Pagination is currently implemented only for the numbered selection prompt (the 
 - Picker mode `fzf` uses fzf's own controls; this contract does not apply.
 - Picker mode `none` is non-interactive and errors on ambiguity.
 
-**Page size:** 10 items per page.
+**Page size:** 10 items per page. Pagination appears when there are more than 10 options.
 
 **Keys:**
 - `-`: previous page
 - `+` / `=`: next page (`=` is supported because `+` is Shift-`=`)
-- `1-9`, `0`: immediate select in the current page
+- `1-9`: select item 1-9 on the current page
+- `0`: select item 10 on the current page
 - `Up/Down` (or `j/k`): move selection
 - `Enter`: confirm selection
 - `Ctrl+C` / `Escape`: cancel the operation
