@@ -392,19 +392,39 @@ export async function auditFile(
     // Check select field options
     if (field.options && field.options.length > 0) {
       const validOptions = field.options;
-      const strValue = String(value);
-      if (!validOptions.includes(strValue)) {
-        const suggestion = suggestOptionValue(strValue, validOptions);
-        issues.push({
-          severity: 'error',
-          code: 'invalid-option',
-          message: `Invalid ${fieldName} value: '${value}'`,
-          field: fieldName,
-          value,
-          expected: validOptions,
-          ...(suggestion && { suggestion: `Did you mean '${suggestion}'?` }),
-          autoFixable: false,
+      if (Array.isArray(value)) {
+        value.forEach((item, index) => {
+          if (typeof item !== 'string') return;
+          if (!validOptions.includes(item)) {
+            const suggestion = suggestOptionValue(item, validOptions);
+            issues.push({
+              severity: 'error',
+              code: 'invalid-option',
+              message: `Invalid ${fieldName} value: '${item}'`,
+              field: fieldName,
+              value: item,
+              expected: validOptions,
+              listIndex: index,
+              ...(suggestion && { suggestion: `Did you mean '${suggestion}'?` }),
+              autoFixable: false,
+            });
+          }
         });
+      } else {
+        const strValue = String(value);
+        if (!validOptions.includes(strValue)) {
+          const suggestion = suggestOptionValue(strValue, validOptions);
+          issues.push({
+            severity: 'error',
+            code: 'invalid-option',
+            message: `Invalid ${fieldName} value: '${value}'`,
+            field: fieldName,
+            value,
+            expected: validOptions,
+            ...(suggestion && { suggestion: `Did you mean '${suggestion}'?` }),
+            autoFixable: false,
+          });
+        }
       }
     }
 
