@@ -382,6 +382,43 @@ bwrb search "TODO" --output content      # Full file with matches
 
 ---
 
+## Pagination / Interactive Output
+
+Pagination is currently implemented only for the numbered selection prompt (the in-terminal picker used when multiple results need a choice).
+
+**Where it applies:**
+- Picker mode `numbered` (and `auto` when it falls back to numbered).
+- Picker mode `fzf` uses fzf's own controls; this contract does not apply.
+- Picker mode `none` is non-interactive and errors on ambiguity.
+
+**Page size:** 10 items per page. Pagination appears when there are more than 10 options.
+
+**Keys:**
+- `-`: previous page
+- `+` / `=`: next page (`=` is supported because `+` is Shift-`=`)
+- `1-9`: select item 1-9 on the current page
+- `0`: select item 10 on the current page
+- `Up/Down` (or `j/k`): move selection
+- `Enter`: confirm selection
+- `Ctrl+C` / `Escape`: cancel the operation
+
+**JSON output:** `--output json` is never interactive and must not paginate or prompt.
+
+### Planned: result output pagination (not yet implemented)
+
+If/when Bowerbird adds interactive pagination for command output, it will:
+- Apply only when stdout is a TTY and the output format is human-readable.
+- Never apply to `--output json` (full output only).
+- Use a 10-item increment per page.
+- Define "append" per format:
+  - `text`, `paths`, `link`: append next 10 items (line-based output)
+  - `tree`: append next 10 top-level nodes with their full subtree
+  - `content`: append next 10 note bodies
+
+This section is a product contract for future work and is not implemented yet.
+
+---
+
 ## Examples
 
 ### Onboarding/migration workflow

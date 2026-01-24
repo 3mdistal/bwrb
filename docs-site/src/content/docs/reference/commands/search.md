@@ -78,7 +78,7 @@ bwrb search "My Note"
 bwrb search "My Note" --output link
 # Output: [[My Note]]
 
-# Find and open in Obsidian
+# Find and open with default app (system by default)
 bwrb search "My Note" --open
 
 # Find and open in $EDITOR

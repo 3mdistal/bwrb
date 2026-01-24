@@ -99,6 +99,10 @@ Bowerbird works anywhere, on anything.
 - No account, no cloud, no lock-in
 - Install and point at a folder—that's it
 
+**Runtime support:** Node.js >= 22.
+
+**Opening notes:** `bwrb open` defaults to your system's default handler. Override with `config.open_with` or `BWRB_DEFAULT_APP` when you want a specific app (e.g., `obsidian`, `editor`).
+
 ### 4. Incrementally Adoptable
 
 You don't need a complete schema upfront. Start minimal, grow as needed.

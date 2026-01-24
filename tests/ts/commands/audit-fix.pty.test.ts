@@ -505,10 +505,6 @@ dead_line: 2026-01-01
           proc.write('1');
           await proc.waitForStable(200);
 
-          await proc.waitFor("Migrate 'dead_line' → 'deadline'", 10000);
-          proc.write('y');
-          proc.write(Keys.ENTER);
-
           await proc.waitFor('Migrated dead_line → deadline', 5000);
           const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Deadline Typo.md');
           expect(content).toContain('deadline: 2026-01-01');
@@ -554,6 +550,42 @@ dead_line: 2026-01-01
       );
     }, 30000);
 
+    it('should overwrite existing target field when confirmed', async () => {
+      const file: TempVaultFile = {
+        path: 'Objectives/Tasks/Deadline Overwrite Yes.md',
+        content: `---
+type: task
+status: backlog
+deadline: 2025-01-01
+dead_line: 2026-01-01
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'task', '--fix', '--strict'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Deadline Overwrite Yes.md', 10000);
+
+          await proc.waitFor('Select target for unknown field', 10000);
+          proc.write('1'); // deadline candidate
+          await proc.waitForStable(200);
+
+          await proc.waitFor("Overwrite existing 'deadline' value?", 10000);
+          proc.write('y');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Migrated dead_line → deadline', 5000);
+
+          const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Deadline Overwrite Yes.md');
+          expect(content).toContain('deadline: 2026-01-01');
+          expect(content).not.toContain('dead_line: 2026-01-01');
+        },
+        { files: [file], schema: BASELINE_SCHEMA }
+      );
+    }, 30000);
+
     it('should require extra confirmation on TYPE MISMATCH', async () => {
       const file: TempVaultFile = {
         path: 'Objectives/Tasks/Tag Mismatch.md',
@@ -579,15 +611,74 @@ tag: foo
           proc.write('y');
           await proc.waitForStable(200);
 
-          await proc.waitFor("Migrate 'tag' → 'tags'", 10000);
-          await proc.waitForStable(200);
-          proc.write('y');
-
           await proc.waitFor('Migrated tag → tags', 5000);
 
           const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Tag Mismatch.md');
           expect(content).toContain('tags: foo');
           expect(content).not.toContain('tag: foo');
+        },
+        { files: [file], schema: BASELINE_SCHEMA }
+      );
+    }, 30000);
+
+    it('should migrate singular/plural match when shape is compatible', async () => {
+      const file: TempVaultFile = {
+        path: 'Objectives/Tasks/Tag List.md',
+        content: `---
+type: task
+status: backlog
+tag:
+  - foo
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'task', '--fix', '--strict'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Tag List.md', 10000);
+
+          await proc.waitFor('Select target for unknown field', 10000);
+          proc.write('1'); // tags candidate
+          await proc.waitForStable(200);
+
+          await proc.waitFor('Migrated tag → tags', 5000);
+
+          const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Tag List.md');
+          expect(content).toContain('tags:');
+          expect(content).not.toContain('tag:');
+        },
+        { files: [file], schema: BASELINE_SCHEMA }
+      );
+    }, 30000);
+
+    it('should not write unknown-field migrations in dry-run mode', async () => {
+      const file: TempVaultFile = {
+        path: 'Objectives/Tasks/Deadline Dry Run.md',
+        content: `---
+type: task
+status: backlog
+dead_line: 2026-01-01
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'task', '--fix', '--strict', '--dry-run'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Deadline Dry Run.md', 10000);
+
+          await proc.waitFor('Select target for unknown field', 10000);
+          proc.write('1');
+          await proc.waitForStable(200);
+
+          await proc.waitFor('Migrated dead_line → deadline', 5000);
+
+          const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Deadline Dry Run.md');
+          expect(content).toContain('dead_line: 2026-01-01');
+          expect(content).not.toContain('deadline: 2026-01-01');
         },
         { files: [file], schema: BASELINE_SCHEMA }
       );
