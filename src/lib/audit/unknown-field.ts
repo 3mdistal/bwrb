@@ -48,7 +48,7 @@ export function getExpectedFieldShape(field: Field | undefined): ValueShape {
   }
 }
 
-export function isFieldShapeCompatible(value: unknown, field: Field | undefined): boolean {
+function isFieldShapeCompatible(value: unknown, field: Field | undefined): boolean {
   const actual = getValueShape(value);
   if (actual === 'empty') return true;
 
@@ -66,11 +66,11 @@ function normalizeKeyTokens(key: string): string[] {
     .filter(Boolean);
 }
 
-export function normalizeKeyForComparison(key: string): string {
+function normalizeKeyForComparison(key: string): string {
   return normalizeKeyTokens(key).join('');
 }
 
-export function isSingularPluralVariantNormalized(a: string, b: string): boolean {
+function isSingularPluralVariantNormalized(a: string, b: string): boolean {
   if (!a || !b || a === b) return false;
   return a === b + 's' || b === a + 's';
 }
