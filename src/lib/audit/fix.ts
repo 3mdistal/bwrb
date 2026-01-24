@@ -1083,7 +1083,7 @@ export async function runAutoFix(
 
   return {
     dryRun,
-    dryRunReason,
+    ...(dryRunReason ? { dryRunReason } : {}),
     fixed,
     skipped,
     failed,
@@ -1113,7 +1113,14 @@ export async function runInteractiveFix(
 
   if (results.length === 0) {
     console.log(chalk.green('✓ No issues found\n'));
-    return { dryRun, dryRunReason, fixed: 0, skipped: 0, failed: 0, remaining: 0 };
+    return {
+      dryRun,
+      ...(dryRunReason ? { dryRunReason } : {}),
+      fixed: 0,
+      skipped: 0,
+      failed: 0,
+      remaining: 0,
+    };
   }
 
   let fixed = 0;
@@ -1157,7 +1164,14 @@ export async function runInteractiveFix(
   }
   remaining = remaining - fixed;
 
-  return { dryRun, dryRunReason, fixed, skipped, failed, remaining };
+  return {
+    dryRun,
+    ...(dryRunReason ? { dryRunReason } : {}),
+    fixed,
+    skipped,
+    failed,
+    remaining,
+  };
 }
 
 /**
