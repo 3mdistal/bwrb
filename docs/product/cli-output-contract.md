@@ -96,6 +96,8 @@ export type JsonResult<T = unknown> = JsonSuccess<T> | JsonError;
 - Success MUST exit with code `0`.
 - Failure MUST exit with a non-zero code.
 
+Exception: `bwrb audit --fix --auto` exits `0` after applying unambiguous fixes even if issues remain. Remaining issues are reported in the output summary and should be treated as follow-up work rather than a hard failure.
+
 The CLI-wide exit codes are defined in `src/lib/output.ts`:
 
 - `0` `SUCCESS`

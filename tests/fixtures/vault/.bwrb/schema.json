@@ -27,7 +27,7 @@
           "format": "quoted-wikilink"
         },
         "creation-date": { "value": "$NOW" },
-        "deadline": { "prompt": "text", "label": "Deadline (YYYY-MM-DD)" },
+        "deadline": { "prompt": "date", "label": "Deadline (YYYY-MM-DD)" },
         "tags": {
           "prompt": "list",
           "list_format": "yaml-array",

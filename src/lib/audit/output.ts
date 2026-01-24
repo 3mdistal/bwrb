@@ -93,6 +93,7 @@ export function outputJsonResults(results: FileAuditResult[], summary: AuditSumm
         ...(i.duplicateCount !== undefined && { duplicateCount: i.duplicateCount }),
         ...(i.listIndex !== undefined && { listIndex: i.listIndex }),
         ...(i.fixedValue && { fixedValue: i.fixedValue }),
+        ...(i.candidates && { candidates: i.candidates }),
       })),
     })),
     summary,
@@ -181,8 +182,9 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
   console.log(chalk.bold('Summary:'));
 
   const fixedLabel = summary.dryRun ? 'Would fix' : 'Fixed';
+  const skippedLabel = summary.dryRun ? 'Would skip' : 'Skipped';
   console.log(`  ${fixedLabel}: ${summary.fixed} issues`);
-  console.log(`  Skipped: ${summary.skipped} issues`);
+  console.log(`  ${skippedLabel}: ${summary.skipped} issues`);
   if (summary.failed > 0) {
     console.log(`  Failed: ${summary.failed} issues`);
   }
@@ -200,7 +202,7 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
 
   if (summary.dryRun) {
     console.log('');
-    console.log(chalk.dim("Re-run without '--dry-run' to apply fixes."));
+    console.log(chalk.dim("Re-run without '--dry-run' to apply changes."));
   }
 }
 

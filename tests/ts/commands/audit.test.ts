@@ -42,6 +42,120 @@ describe('audit command', () => {
     });
   });
 
+  describe('relation field integrity', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Objectives/Milestones'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect self-reference in parent relation', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Self Task.md'),
+`---
+type: task
+status: backlog
+parent: "[[Self Task]]"
+---
+`
+      );
+
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Self-reference detected: parent points to itself');
+    });
+
+    it('should detect ambiguous relation target', async () => {
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks/Sub'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Ambiguous.md'),
+`---
+type: task
+status: backlog
+milestone: "[[Shared]]"
+---
+`
+      );
+
+      await mkdir(join(tempVaultDir, 'Objectives/Milestones/Shared'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Milestones', 'Shared.md'),
+        `---
+type: milestone
+status: raw
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Milestones', 'Shared', 'Shared.md'),
+        `---
+type: milestone
+status: raw
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Ambiguous link target for milestone: 'Shared'");
+    });
+
+    it('should detect invalid list elements', async () => {
+      const schema = {
+        ...TEST_SCHEMA,
+        types: {
+          ...TEST_SCHEMA.types,
+          task: {
+            ...TEST_SCHEMA.types.task,
+            fields: {
+              ...TEST_SCHEMA.types.task.fields,
+              tags: {
+                ...TEST_SCHEMA.types.task.fields.tags,
+                prompt: 'select',
+                options: ['good', 'bad'],
+                multiple: true,
+              },
+            },
+          },
+        },
+      };
+
+      await writeFile(join(tempVaultDir, '.bwrb', 'schema.json'), JSON.stringify(schema, null, 2));
+
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Bad List.md'),
+        `---
+ type: task
+ status: backlog
+ tags:
+   - good
+   - 42
+ ---
+ `
+      );
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain("Invalid list element in 'tags' at index 1");
+    });
+
+  });
+
   describe('missing required fields', () => {
     let tempVaultDir: string;
 
@@ -66,6 +180,7 @@ describe('audit command', () => {
         join(tempVaultDir, '.bwrb', 'schema.json'),
         JSON.stringify(schemaWithRequired, null, 2)
       );
+
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
     });
 
@@ -540,7 +655,7 @@ Some content
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Auto-fixing');
       expect(result.stdout).toContain('Added status');
@@ -564,12 +679,13 @@ priority: medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Issues requiring manual review');
       expect(result.stdout).toContain('Invalid status value');
       expect(result.stdout).toContain('Remaining: 1 issues');
+      expect(result.stdout).toContain('Fixed: 0 issues');
     });
 
     it('should handle mix of fixable and non-fixable issues', async () => {
@@ -593,10 +709,11 @@ priority: medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Fixed: 1 issues');
       expect(result.stdout).toContain('Remaining: 1 issues');
+      expect(result.stdout).toContain('Skipped: 0 issues');
     });
 
     it('should exit with 0 when all issues are fixed', async () => {
@@ -609,7 +726,7 @@ priority: medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Fixed: 1 issues');
@@ -628,7 +745,7 @@ dead_line: 2026-01-01
 `
       );
 
-      const result = await runCLI(['audit', 'task', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'task', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Migrated dead_line');
@@ -717,6 +834,13 @@ priority: medium
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('--fix is not compatible with --output json');
     });
+
+    it('should error when --execute is used with --dry-run', async () => {
+      const result = await runCLI(['audit', '--fix', '--dry-run', '--execute', '--all'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('--execute cannot be used with --dry-run');
+    });
   });
 
   describe('--fix interactive mode', () => {
@@ -753,7 +877,7 @@ priority: medium
       expect(result.stdout).toContain('No issues found');
     });
 
-    it('should skip issues when user provides no input in interactive mode', async () => {
+    it('should refuse interactive fix without TTY', async () => {
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Bad.md'),
         `---
@@ -763,13 +887,13 @@ priority: medium
 `
       );
 
-      // Interactive mode with 'n' input (decline fix) followed by newline
-      // This should decline the prompt and skip the issue
+
       const result = await runCLI(['audit', 'idea', '--fix'], tempVaultDir, 'n\n');
 
-      expect(result.stdout).toContain('Missing required field: status');
-      expect(result.stdout).toContain('Skipped');
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('audit --fix is interactive and requires a TTY');
     });
+
   });
 
   describe('vault-wide scanning', () => {
@@ -926,7 +1050,8 @@ priority: medium
       try {
         const result = await runCLI(['audit'], tempVaultDir);
 
-        expect(result.exitCode).toBe(0);
+        // The excluded file should not be scanned/reported. This test isn't meant to
+        // assert exit code behavior (which depends on whether any issues exist).
         expect(result.stdout).not.toContain('Old Note.md');
         expect(result.stdout).not.toContain('Archive');
       } finally {
@@ -1022,7 +1147,7 @@ Some content
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Auto-fixing');
       expect(result.stdout).toContain('type: idea');
@@ -1047,7 +1172,7 @@ Task content
 `
       );
 
-      const result = await runCLI(['audit', 'task', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'task', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Auto-fixing');
       // In the new inheritance model, we use a single 'type: task' field instead of 'type: objective' + 'objective-type: task'
@@ -1154,6 +1279,7 @@ customField2: value2
 `
       );
 
+
       const result = await runCLI(['audit', 'idea', '--allow-field', 'customField1', '--allow-field', 'customField2'], tempVaultDir);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).not.toContain('customField1');
@@ -1172,6 +1298,7 @@ otherField: value
 ---
 `
       );
+
 
       // Allow one field but not the other in strict mode
       const result = await runCLI(['audit', 'idea', '--strict', '--allow-field', 'customField'], tempVaultDir);
@@ -1247,7 +1374,7 @@ milestone: Q1 Release
 `
       );
 
-      const result = await runCLI(['audit', 'task', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'task', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Fixed');
       expect(result.stdout).toContain('milestone');
@@ -1308,7 +1435,6 @@ milestone: "[[Non Existent Milestone]]"
       );
 
       const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
-
       const output = JSON.parse(result.stdout);
       const taskFile = output.files.find((f: { path: string }) => f.path.includes('Stale Ref.md'));
       expect(taskFile).toBeDefined();
@@ -1332,6 +1458,7 @@ priority: medium
 This idea references [[Non Existent Note]] which doesn't exist.
 `
       );
+
 
       const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
 
@@ -1361,10 +1488,9 @@ type: idea
 status: raw
 priority: medium
 ---
-
-This links to [[Target Note]] which exists.
 `
       );
+
 
       const result = await runCLI(['audit', 'idea'], tempVaultDir);
 
@@ -1395,7 +1521,6 @@ milestone: "[[Q1 Relase]]"
       );
 
       const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
-
       const output = JSON.parse(result.stdout);
       const taskFile = output.files.find((f: { path: string }) => f.path.includes('Typo Ref.md'));
       expect(taskFile).toBeDefined();
@@ -1660,7 +1785,6 @@ milestone: "[[Non Existent]]"
       );
 
       const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
-
       const output = JSON.parse(result.stdout);
       const orphanFile = output.files.find((f: { path: string }) => f.path.includes('Orphan Ref.md'));
       expect(orphanFile).toBeDefined();
@@ -2242,7 +2366,9 @@ status: raw
       const result = await runCLI(['audit', '--fix'], vaultDir);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('No files selected. Use --type, --path, --where, --body, or --all.');
+      expect(result.stderr).toContain('No files selected.');
+      expect(result.stderr).toContain('can write changes');
+      expect(result.stderr).toContain('bwrb audit --all --fix');
     });
   });
 
@@ -2313,7 +2439,7 @@ priority: medium
       expect(wrongDirIssue.expectedDirectory).toBe('Ideas');
     });
 
-    it('should move file with --fix --auto (no --execute)', async () => {
+    it('should move file with --fix --auto --execute', async () => {
       // Create idea in wrong directory
       await writeFile(
         join(tempVaultDir, 'Objectives', 'Misplaced Idea.md'),
@@ -2326,7 +2452,7 @@ Content here
 `
       );
 
-      const result = await runCLI(['audit', '--fix', '--auto', '--all'], tempVaultDir);
+      const result = await runCLI(['audit', '--fix', '--auto', '--execute', '--all'], tempVaultDir);
 
       expect(result.stdout).toContain('Moved to Ideas/');
       expect(result.exitCode).toBe(0);
@@ -2343,13 +2469,14 @@ Content here
       expect(content).toContain('Content here');
     });
 
-    it('should update wikilinks when moving file', async () => {
+
+    it('should update wikilinks when moving file with --execute', async () => {
       // Create idea in wrong directory
       await writeFile(
         join(tempVaultDir, 'Objectives', 'Linked Idea.md'),
         `---
 type: idea
-status: raw
+status: raw  
 priority: medium
 ---
 `
@@ -2368,7 +2495,7 @@ See [[Linked Idea]] for more info.
 `
       );
 
-      const result = await runCLI(['audit', '--fix', '--auto', '--all'], tempVaultDir);
+      const result = await runCLI(['audit', '--fix', '--auto', '--execute', '--all'], tempVaultDir);
 
       expect(result.stdout).toContain('Moved to Ideas/');
       // Wikilinks should be updated (or stay the same if basename unique)
@@ -2377,6 +2504,7 @@ See [[Linked Idea]] for more info.
       const { readFile: rf, access } = await import('fs/promises');
       await expect(access(join(tempVaultDir, 'Ideas', 'Linked Idea.md'))).resolves.toBeUndefined();
     });
+
   });
 
   describe('parent-cycle detection', () => {
@@ -2597,7 +2725,6 @@ priority: medium
       );
 
       const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
-
       const output = JSON.parse(result.stdout);
       const file = output.files.find((f: { path: string }) => f.path.includes('Trailing Space.md'));
       expect(file).toBeDefined();
@@ -2619,7 +2746,6 @@ priority: medium
       );
 
       const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
-
       const output = JSON.parse(result.stdout);
       const file = output.files.find((f: { path: string }) => f.path.includes('Quoted Trailing Space.md'));
       expect(file).toBeDefined();
@@ -2641,7 +2767,6 @@ priority: medium
       );
 
       const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
-
       const output = JSON.parse(result.stdout);
       const file = output.files.find((f: { path: string }) => f.path.includes('Quoted Internal Space.md'));
       expect(file).toBeDefined();
@@ -2664,7 +2789,6 @@ priority: medium
       );
 
       const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
-
       const output = JSON.parse(result.stdout);
       const file = output.files.find((f: { path: string }) => f.path.includes('Block Scalar.md'));
       expect(file).toBeDefined();
@@ -2683,7 +2807,7 @@ priority: medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Trimmed whitespace');
       expect(result.stdout).toContain('Fixed: 1');
@@ -2694,31 +2818,41 @@ priority: medium
       expect(content).toContain('status: raw\n');
       expect(content).not.toContain('status: raw  ');
     });
+
+    it('should not write without --execute', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'No Execute.md'),
+        `---
+type: idea
+status: raw  
+priority: medium
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Would fix');
+      expect(result.stdout).toContain('Would skip');
+      expect(result.stdout).toContain('Re-run with');
+
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(join(tempVaultDir, 'Ideas', 'No Execute.md'), 'utf-8');
+      expect(content).toContain('status: raw  ');
+    });
+
   });
 
-  describe('invalid-boolean-coercion detection and fix', () => {
+  describe('scalar coercion detection and fix', () => {
     let tempVaultDir: string;
 
     beforeEach(async () => {
-      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-boolean-'));
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-coercion-'));
       await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
-      // Schema with a boolean field
-      const schemaWithBoolean = {
-        ...TEST_SCHEMA,
-        types: {
-          ...TEST_SCHEMA.types,
-          idea: {
-            ...TEST_SCHEMA.types.idea,
-            fields: {
-              ...TEST_SCHEMA.types.idea.fields,
-              archived: { prompt: 'boolean', required: false },
-            },
-          },
-        },
-      };
       await writeFile(
         join(tempVaultDir, '.bwrb', 'schema.json'),
-        JSON.stringify(schemaWithBoolean, null, 2)
+        JSON.stringify(TEST_SCHEMA, null, 2)
       );
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
     });
@@ -2727,14 +2861,15 @@ priority: medium
       await rm(tempVaultDir, { recursive: true, force: true });
     });
 
-    it('should detect string "true" in boolean field', async () => {
+    it('should detect string values in boolean and number fields', async () => {
       await writeFile(
-        join(tempVaultDir, 'Ideas', 'String Boolean.md'),
+        join(tempVaultDir, 'Ideas', 'String Scalars.md'),
         `---
 type: idea
 status: raw
 priority: medium
 archived: "true"
+effort: "3"
 ---
 `
       );
@@ -2742,36 +2877,85 @@ archived: "true"
       const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
 
       const output = JSON.parse(result.stdout);
-      const file = output.files.find((f: { path: string }) => f.path.includes('String Boolean.md'));
+      const file = output.files.find((f: { path: string }) => f.path.includes('String Scalars.md'));
       expect(file).toBeDefined();
-      const boolIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-boolean-coercion');
+      const boolIssue = file.issues.find((i: { code: string }) => i.code === 'wrong-scalar-type' && i.field === 'archived');
+      const numberIssue = file.issues.find((i: { code: string }) => i.code === 'wrong-scalar-type' && i.field === 'effort');
       expect(boolIssue).toBeDefined();
-      expect(boolIssue.field).toBe('archived');
+      expect(numberIssue).toBeDefined();
       expect(boolIssue.autoFixable).toBe(true);
+      expect(numberIssue.autoFixable).toBe(true);
     });
 
-    it('should auto-fix string "true" to boolean', async () => {
+    it('should flag invalid date formats for date prompts', async () => {
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
       await writeFile(
-        join(tempVaultDir, 'Ideas', 'Fix Boolean.md'),
+        join(tempVaultDir, 'Objectives/Tasks', 'Bad Date.md'),
+        `---
+type: task
+status: backlog
+deadline: 01/02/2026
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+
+      const file = output.files.find((f: { path: string }) => f.path.includes('Bad Date.md'));
+      expect(file).toBeDefined();
+      const dateIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-date-format');
+      expect(dateIssue).toBeDefined();
+      expect(dateIssue.suggestion).toBeUndefined();
+    });
+
+    it('should suggest unambiguous date normalization', async () => {
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Isoish Date.md'),
+        `---
+type: task
+status: backlog
+deadline: 2026/1/2
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Isoish Date.md'));
+      expect(file).toBeDefined();
+      const dateIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-date-format');
+      expect(dateIssue).toBeDefined();
+      expect(dateIssue.suggestion).toBe('Suggested: 2026-01-02');
+    });
+
+    it('should auto-fix string scalars in --auto mode', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Fix Scalars.md'),
         `---
 type: idea
 status: raw
 priority: medium
 archived: "true"
+effort: "3"
 ---
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
-      expect(result.stdout).toContain('Coerced');
-      expect(result.stdout).toContain('boolean');
+      expect(result.stdout).toContain('Coerced archived to boolean');
+      expect(result.stdout).toContain('Coerced effort to number');
 
-      // Verify the file was fixed
       const { readFile } = await import('fs/promises');
-      const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Boolean.md'), 'utf-8');
+      const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Scalars.md'), 'utf-8');
       expect(content).toContain('archived: true');
+      expect(content).toContain('effort: 3');
       expect(content).not.toContain('archived: "true"');
+      expect(content).not.toContain('effort: "3"');
     });
   });
 
@@ -2804,7 +2988,6 @@ priority: medium
       );
 
       const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
-
       const output = JSON.parse(result.stdout);
       const file = output.files.find((f: { path: string }) => f.path.includes('Wrong Case.md'));
       expect(file).toBeDefined();
@@ -2826,7 +3009,7 @@ priority: Medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Fixed');
       expect(result.stdout).toContain('casing');
@@ -2872,7 +3055,6 @@ tags:
       );
 
       const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
-
       const output = JSON.parse(result.stdout);
       const file = output.files.find((f: { path: string }) => f.path.includes('Duplicates.md'));
       expect(file).toBeDefined();
@@ -2897,7 +3079,7 @@ tags:
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Deduplicated');
 
@@ -2941,7 +3123,6 @@ priority: medium
       );
 
       const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
-
       const output = JSON.parse(result.stdout);
       const file = output.files.find((f: { path: string }) => f.path.includes('Wrong Key.md'));
       expect(file).toBeDefined();
@@ -2963,7 +3144,7 @@ Priority: medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Renamed');
 
@@ -2989,7 +3170,6 @@ priority: medium
       );
 
       const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
-
       const output = JSON.parse(result.stdout);
       const file = output.files.find((f: { path: string }) => f.path.includes('Conflict.md'));
       expect(file).toBeDefined();
@@ -3045,7 +3225,6 @@ tag: urgent
       );
 
       const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
-
       const output = JSON.parse(result.stdout);
       const file = output.files.find((f: { path: string }) => f.path.includes('Singular.md'));
       expect(file).toBeDefined();
@@ -3068,7 +3247,7 @@ tag: urgent
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Renamed');
       expect(result.stdout).toContain('tag');
