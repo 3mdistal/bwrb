@@ -138,6 +138,14 @@ describePty('template command PTY tests', () => {
           await proc.waitFor('labels', 5000);
           proc.write('\r'); // Just press Enter to skip (no selections)
 
+          // Skip effort default (text input)
+          await proc.waitFor('Default effort', 5000);
+          proc.write('\r');
+
+          // Skip archived default (boolean input)
+          await proc.waitFor('Default archived', 5000);
+          proc.write('\r');
+
           // Force prompt for fields
           await proc.waitFor('Force prompting', 5000);
           proc.write('n');

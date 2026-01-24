@@ -38,7 +38,7 @@ interface TestTypeDefinition {
 
 interface TestFieldDefinition {
   value?: string;
-  prompt?: 'text' | 'select' | 'relation' | 'list' | 'date';
+  prompt?: 'text' | 'select' | 'relation' | 'list' | 'date' | 'boolean' | 'number';
   options?: string[];
   default?: unknown;
   required?: boolean;
@@ -90,6 +90,7 @@ export const BASELINE_SCHEMA: TestSchema = {
     task: {
       extends: 'objective',
       output_dir: 'Objectives/Tasks',
+      recursive: true,
       fields: {
         type: { value: 'task' },
         status: {
@@ -104,15 +105,19 @@ export const BASELINE_SCHEMA: TestSchema = {
           filter: { status: { not_in: ['settled'] } },
           format: 'quoted-wikilink',
         },
+        parent: {
+          prompt: 'relation',
+          source: ['objective', 'task'],
+        },
         'creation-date': { value: '$NOW' },
-        deadline: { prompt: 'text', label: 'Deadline (YYYY-MM-DD)' },
+        deadline: { prompt: 'date', label: 'Deadline (YYYY-MM-DD)' },
         tags: {
           prompt: 'list',
           list_format: 'yaml-array',
           default: [],
         },
       },
-      field_order: ['type', 'status', 'milestone', 'creation-date', 'deadline', 'tags'],
+      field_order: ['type', 'status', 'milestone', 'parent', 'creation-date', 'deadline', 'tags'],
       body_sections: [
         { title: 'Steps', level: 2, content_type: 'checkboxes', prompt: 'list', prompt_label: 'Steps' },
         { title: 'Notes', level: 2, content_type: 'paragraphs' },
@@ -149,6 +154,8 @@ export const BASELINE_SCHEMA: TestSchema = {
           options: ['urgent', 'blocked', 'review', 'wip'],
           multiple: true,
         },
+        effort: { prompt: 'number' },
+        archived: { prompt: 'boolean' },
       },
       field_order: ['type', 'status', 'priority', 'labels'],
     },
@@ -283,8 +290,16 @@ export const AUDIT_SCHEMA: TestSchema = {
           default: 'raw',
           required: true,
         },
+        priority: { prompt: 'select', options: ['low', 'medium', 'high'] },
+        labels: {
+          prompt: 'select',
+          options: ['urgent', 'blocked', 'review', 'wip'],
+          multiple: true,
+        },
+        effort: { prompt: 'number' },
+        archived: { prompt: 'boolean' },
       },
-      field_order: ['type', 'status'],
+      field_order: ['type', 'status', 'priority', 'labels'],
     },
     objective: {
       output_dir: 'Objectives',
@@ -295,7 +310,7 @@ export const AUDIT_SCHEMA: TestSchema = {
     },
     task: {
       extends: 'objective',
-      output_dir: 'Tasks',
+      output_dir: 'Objectives/Tasks',
       fields: {
         type: { value: 'task' },
         status: {
@@ -304,8 +319,9 @@ export const AUDIT_SCHEMA: TestSchema = {
           default: 'raw',
           required: true,
         },
+        deadline: { prompt: 'date', label: 'Deadline (YYYY-MM-DD)' },
       },
-      field_order: ['type', 'status'],
+      field_order: ['type', 'status', 'deadline'],
     },
     milestone: {
       extends: 'objective',

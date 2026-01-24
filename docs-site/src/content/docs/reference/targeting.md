@@ -175,11 +175,11 @@ This two-gate model prevents accidental vault-wide mutations.
 
 ### Exception: `audit --fix`
 
-`bwrb audit --fix` is a remediation workflow. It still requires explicit targeting (at least one selector or `--all`), but **it writes by default**.
+`bwrb audit --fix` is a remediation workflow. It still requires explicit targeting (at least one selector or `--all`). Interactive fixes write by default; auto-fixes require `--execute` to apply.
 
 - **Targeting required:** No selectors = error. Must specify at least one selector OR explicit `--all`.
-- **Execution:** Writes by default. Use `--dry-run` to preview fixes without writing.
-- `--execute` is accepted for compatibility but is not required for audit fixes.
+- **Interactive preview:** Use `--dry-run` to preview guided fixes without writing.
+- **Non-interactive:** Use `--fix --auto --execute` for safe auto-fixes when stdin is not a TTY (omit `--execute` to preview).
 
 See also: [CLI Safety and Flags](/concepts/cli-safety-and-flags/)
 
@@ -204,10 +204,23 @@ bwrb list --type task --output tree      # Hierarchical display
 bwrb search "TODO" --output content      # Full file with matches
 ```
 
+## Pagination (interactive picker)
+
+When a command needs you to pick from multiple results, Bowerbird uses an interactive picker. The pagination keys below apply to the **numbered** picker (and `auto` when it falls back to numbered). If you use `--picker fzf`, fzf provides its own navigation.
+
+- Page size: 10 items (pagination appears when there are more than 10 options)
+- Keys: `-` previous page, `+`/`=` next page
+- `1-9` selects items 1-9 on the current page
+- `0` selects item 10 on the current page
+- `Up/Down` (or `j/k`) moves the highlight
+- `Enter` confirms the highlighted item
+- `Ctrl+C` / `Escape` cancels the picker
+
+`--output json` is never interactive and never paginates.
+
 ## See Also
 
 - [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — `--execute` vs `--force` semantics
 - [Expression syntax](/concepts/schema/) — Query expression details
 - [bwrb list](/reference/commands/list/) — List and filter notes
 - [bwrb bulk](/reference/commands/bulk/) — Batch operations
-

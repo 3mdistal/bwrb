@@ -33,6 +33,8 @@ describe('frontmatter', () => {
         type: 'idea',
         status: 'raw',
         priority: 'medium',
+        effort: 2,
+        archived: false,
       });
       expect(note.body).toBe('');
     });

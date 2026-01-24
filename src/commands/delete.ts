@@ -186,8 +186,7 @@ Note: Deletion is permanent. The file is removed from the filesystem.
     const hasHelpFlag = process.argv.some(arg => arg === '--help' || arg === '-h');
     if (query === '--help' || query === '-h' || hasHelpFlag) {
       cmd.outputHelp();
-      process.exitCode = ExitCodes.SUCCESS;
-      return;
+      process.exit(ExitCodes.SUCCESS);
     }
 
     try {
