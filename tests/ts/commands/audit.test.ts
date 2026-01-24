@@ -19,14 +19,14 @@ describe('audit command', () => {
     it('should report no issues for valid vault files', async () => {
       const result = await runCLI(['audit'], vaultDir);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('No issues found');
     });
 
     it('should audit specific type path', async () => {
       const result = await runCLI(['audit', 'idea'], vaultDir);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(1);
     });
 
     it('should audit child types', async () => {
@@ -74,7 +74,7 @@ parent: "[[Self Task]]"
 
       const result = await runCLI(['audit', 'task'], tempVaultDir);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(1);
       expect(result.stdout).toContain('Self-reference detected: parent points to itself');
     });
 
@@ -139,13 +139,13 @@ status: raw
       await writeFile(
         join(tempVaultDir, 'Objectives/Tasks', 'Bad List.md'),
         `---
- type: task
- status: backlog
- tags:
-   - good
-   - 42
- ---
- `
+type: task
+status: backlog
+tags:
+  - good
+  - 42
+---
+`
       );
 
       const result = await runCLI(['audit', 'task'], tempVaultDir);
@@ -201,7 +201,7 @@ priority: medium
 
       const result = await runCLI(['audit', 'idea'], tempVaultDir);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Missing required field: requiredNoDefault');
     });
   });
@@ -3431,7 +3431,7 @@ tags: later
 
       const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Issues requiring manual review');
       expect(result.stdout).toContain('Duplicate frontmatter key');
     });
