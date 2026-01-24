@@ -203,6 +203,13 @@ bwrb audit --type task
 # JSON output for parsing issues
 bwrb audit --output json
 
+# JSON issue metadata (for hygiene checks)
+# trailing-whitespace: line, before, after, trimmedCount
+# unknown-enum-casing: suggested, matchedBy, before, after
+# frontmatter-key-casing: fromKey, toKey, before, after (or hasConflict/conflictValue)
+# duplicate-list-values: duplicates, removedCount, before, after
+# invalid-boolean-coercion: coercedTo, before, after
+
 # Fix issues (writes by default; requires explicit targeting)
 # Apply guided fixes
 bwrb audit --path "Ideas/**" --fix
