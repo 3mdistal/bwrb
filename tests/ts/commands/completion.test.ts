@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import path from "path";
 
 const VAULT_DIR = path.join(__dirname, "../../fixtures/vault");
 const CLI_PATH = path.join(__dirname, "../../../dist/index.js");
 
-function runCli(args: string, cwd: string = VAULT_DIR): string {
+function runCli(args: string[], cwd: string = VAULT_DIR): string {
   try {
-    return execSync(`node ${CLI_PATH} ${args}`, {
+    return execFileSync("node", [CLI_PATH, ...args], {
       cwd,
       encoding: "utf-8",
       env: { ...process.env, NO_COLOR: "1", BWRB_VAULT: cwd },
@@ -23,7 +23,7 @@ function runCli(args: string, cwd: string = VAULT_DIR): string {
 describe("bwrb completion command", () => {
   beforeAll(() => {
     // Ensure the CLI is built
-    execSync("pnpm build", {
+    execFileSync("pnpm", ["build"], {
       cwd: path.join(__dirname, "../../.."),
       stdio: "ignore",
     });
@@ -31,7 +31,7 @@ describe("bwrb completion command", () => {
 
   describe("completion bash", () => {
     it("should output a valid bash completion script", () => {
-      const output = runCli("completion bash");
+      const output = runCli(["completion", "bash"]);
 
       // Should contain bash-specific completion setup
       expect(output).toContain("_bwrb_completions()");
@@ -41,17 +41,17 @@ describe("bwrb completion command", () => {
     });
 
     it("should be valid bash syntax", () => {
-      const script = runCli("completion bash");
+      const script = runCli(["completion", "bash"]);
       // Use bash -n to check syntax without executing
       expect(() => {
-        execSync(`bash -n`, { input: script, encoding: "utf-8" });
+        execFileSync("bash", ["-n"], { input: script, encoding: "utf-8" });
       }).not.toThrow();
     });
   });
 
   describe("completion zsh", () => {
     it("should output a valid zsh completion script", () => {
-      const output = runCli("completion zsh");
+      const output = runCli(["completion", "zsh"]);
 
       // Should contain zsh-specific completion setup
       expect(output).toContain("#compdef bwrb");
@@ -63,7 +63,7 @@ describe("bwrb completion command", () => {
 
   describe("completion fish", () => {
     it("should output a valid fish completion script", () => {
-      const output = runCli("completion fish");
+      const output = runCli(["completion", "fish"]);
 
       // Should contain fish-specific completion setup
       expect(output).toContain("complete -c bwrb");
@@ -73,7 +73,7 @@ describe("bwrb completion command", () => {
 
   describe("--completions flag", () => {
     it("should return type completions after --type", () => {
-      const output = runCli("--completions bwrb list --type ''");
+      const output = runCli(["--completions", "bwrb", "list", "--type", ""]);
       const completions = output.split("\n").filter((l) => l.trim());
 
       // Should include types from the test vault schema
@@ -82,7 +82,7 @@ describe("bwrb completion command", () => {
     });
 
     it("should filter type completions by prefix", () => {
-      const output = runCli("--completions bwrb list --type ta");
+      const output = runCli(["--completions", "bwrb", "list", "--type", "ta"]);
       const completions = output.split("\n").filter((l) => l.trim());
 
       expect(completions).toContain("task");
@@ -90,7 +90,7 @@ describe("bwrb completion command", () => {
     });
 
     it("should return path completions after --path", () => {
-      const output = runCli("--completions bwrb list --path ''");
+      const output = runCli(["--completions", "bwrb", "list", "--path", ""]);
       const completions = output.split("\n").filter((l) => l.trim());
 
       // Should include directories from the test vault
@@ -99,7 +99,7 @@ describe("bwrb completion command", () => {
     });
 
     it("should return command completions for bare bwrb", () => {
-      const output = runCli("--completions bwrb ''");
+      const output = runCli(["--completions", "bwrb", ""]);
       const completions = output.split("\n").filter((l) => l.trim());
 
       // Should include available commands
@@ -110,7 +110,7 @@ describe("bwrb completion command", () => {
     });
 
     it("should return option completions when current word starts with -", () => {
-      const output = runCli("--completions bwrb list --");
+      const output = runCli(["--completions", "bwrb", "list", "--"]);
       const completions = output.split("\n").filter((l) => l.trim());
 
       // Should include targeting options for list command
@@ -121,7 +121,7 @@ describe("bwrb completion command", () => {
 
     it("should fail silently outside a vault", () => {
       // Run from a non-vault directory
-      const output = runCli("--completions bwrb list --type ''", "/tmp");
+      const output = runCli(["--completions", "bwrb", "list", "--type", ""], "/tmp");
 
       // Should return empty or just not crash
       expect(output).toBeDefined();

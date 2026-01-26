@@ -86,6 +86,13 @@ All notable changes to Bowerbird are documented in this file.
   - Confirms when fixes are applied and avoids deprecated `--execute` guidance
   - Dry-run output now points to re-running without `--dry-run`
 
+### Fixed
+
+- **Audit --fix structural auto-fixes are more conservative and preserve line endings** (#374)
+  - Duplicate key conflicts are now queued for manual review in auto mode
+  - Singular/plural conflicts are no longer auto-fixed when both keys have values
+  - Frontmatter structural rewrites preserve existing CRLF/LF style
+
 ### Added
 
 - **Parent template instance scaffolding** (#75)

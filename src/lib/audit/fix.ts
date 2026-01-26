@@ -56,6 +56,7 @@ import {
   getLastPairForKey,
   getStringSequenceItem,
 } from './structural.js';
+import { extractYamlNodeValue, isEffectivelyEmpty } from './value-utils.js';
 import {
   getAutoUnknownFieldMigrationTarget,
   getSimilarFieldCandidates,
@@ -67,24 +68,30 @@ import {
 // Helpers
 // ============================================================================
 
-/**
- * Check if a value is empty (null, undefined, empty string, or empty array).
- */
-function isEmpty(value: unknown): boolean {
-  if (value === null || value === undefined) return true;
-  if (typeof value === 'string' && value.trim().length === 0) return true;
-  if (Array.isArray(value) && value.length === 0) return true;
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return Object.keys(value as Record<string, unknown>).length === 0;
-  }
-  return false;
-}
-
-
 const dryRunStorage = new AsyncLocalStorage<boolean>();
 
 function isDryRunEnabled(): boolean {
   return dryRunStorage.getStore() ?? false;
+}
+
+function registerManualReview(
+  list: { file: string; issue: AuditIssue }[],
+  file: string,
+  issue: AuditIssue
+): void {
+  if (
+    list.some(
+      (entry) =>
+        entry.file === file &&
+        entry.issue.code === issue.code &&
+        entry.issue.field === issue.field &&
+        entry.issue.message === issue.message
+    )
+  ) {
+    return;
+  }
+
+  list.push({ file, issue });
 }
 
 type RawLine = {
@@ -332,9 +339,9 @@ async function applyFix(
         const existingValue = frontmatter[newKey];
         
         // Handle merge logic
-        if (existingValue !== undefined && !isEmpty(existingValue)) {
+        if (existingValue !== undefined && !isEffectivelyEmpty(existingValue)) {
           // Both have values - cannot auto-fix unless old is empty
-          if (!isEmpty(oldValue)) {
+          if (!isEffectivelyEmpty(oldValue)) {
             return { file: filePath, issue, action: 'failed', message: 'Both keys have values, manual merge required' };
           }
           // Old is empty, just delete it
@@ -383,7 +390,7 @@ async function applyStructuralFix(
     case 'frontmatter-not-at-top': {
       const eligible =
         !structural.atTop &&
-        structural.blocks.length === 1 &&
+        structural.frontmatterBlocks.length === 1 &&
         !structural.unterminated &&
         structural.yamlErrors.length === 0;
 
@@ -425,18 +432,9 @@ async function applyStructuralFix(
         keepIndex = matches[matches.length - 1]!.index;
       } else {
         // Auto-merge only when values are effectively the same, or one side is empty.
-        const values = matches.map((m) => {
-          const valueNode = m.pair.value as unknown;
-          if (valueNode && typeof valueNode === 'object') {
-            const toJson = (valueNode as Record<string, unknown>)['toJSON'];
-            if (typeof toJson === 'function') {
-              return (toJson as () => unknown)();
-            }
-          }
-          return null;
-        });
+        const values = matches.map((m) => extractYamlNodeValue(m.pair.value as unknown));
         const nonEmptyLocalIndexes = values
-          .map((v, i) => (!isEmpty(v) ? i : -1))
+          .map((v, i) => (!isEffectivelyEmpty(v) ? i : -1))
           .filter((i) => i >= 0);
 
         if (nonEmptyLocalIndexes.length === 0) {
@@ -452,7 +450,12 @@ async function applyStructuralFix(
           }
 
           if (uniqueNonEmpty.length !== 1) {
-            return { file: filePath, issue, action: 'failed', message: 'Duplicate values differ; use interactive resolution' };
+            return {
+              file: filePath,
+              issue,
+              action: 'skipped',
+              message: 'Duplicate values differ; run interactive fix',
+            };
           }
 
           // Keep the last non-empty occurrence.
@@ -656,6 +659,7 @@ export async function runAutoFix(
   let skipped = 0;
   let failed = 0;
   const manualReviewNeeded: { file: string; issue: AuditIssue }[] = [];
+  const resolvedNonFixable = new Set<AuditIssue>();
 
   for (const result of results) {
     const fixableIssues = result.issues.filter(i => i.autoFixable);
@@ -811,6 +815,7 @@ export async function runAutoFix(
             console.log(chalk.cyan(`  ${result.relativePath}`));
             console.log(chalk.green(`    ✓ Fixed ${issue.field}: [[${issue.targetName}]] → ${replacement}`));
             fixed++;
+            resolvedNonFixable.add(issue);
             continue; // Don't add to manual review
           } else {
             console.log(chalk.cyan(`  ${result.relativePath}`));
@@ -828,6 +833,7 @@ export async function runAutoFix(
             i.field === issue.field
         );
         if (hasBetterAutoFix) {
+          resolvedNonFixable.add(issue);
           continue; // Defer to specialized auto-fix
         }
 
@@ -861,15 +867,19 @@ export async function runAutoFix(
             console.log(chalk.cyan(`  ${result.relativePath}`));
             console.log(chalk.green(`    ✓ Migrated ${issue.field} → ${targetField}`));
             fixed++;
+            resolvedNonFixable.add(issue);
             continue; // Don't add to manual review
           }
         } catch {
           // Fall through to manual review
         }
       }
+    }
 
-      // Queue for manual review if not auto-fixed
-      manualReviewNeeded.push({ file: result.relativePath, issue });
+    for (const issue of nonFixableIssues) {
+      if (!resolvedNonFixable.has(issue)) {
+        registerManualReview(manualReviewNeeded, result.relativePath, issue);
+      }
     }
 
     // Apply auto-fixes
@@ -889,6 +899,7 @@ export async function runAutoFix(
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
           skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
         } else {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.red(`    ✗ Failed to add type: ${fixResult.message}`));
@@ -908,6 +919,7 @@ export async function runAutoFix(
             console.log(chalk.cyan(`  ${result.relativePath}`));
             console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
             skipped++;
+            registerManualReview(manualReviewNeeded, result.relativePath, issue);
           } else {
             console.log(chalk.cyan(`  ${result.relativePath}`));
             console.log(chalk.red(`    ✗ Failed to fix ${issue.field}: ${fixResult.message}`));
@@ -915,7 +927,7 @@ export async function runAutoFix(
           }
         } else {
           skipped++;
-          manualReviewNeeded.push({ file: result.relativePath, issue });
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
         }
       } else if (issue.code === 'format-violation' && issue.field && issue.expectedFormat) {
         // Auto-fix format violations
@@ -939,6 +951,7 @@ export async function runAutoFix(
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
           skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
         } else {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.red(`    ✗ Failed to move frontmatter: ${fixResult.message}`));
@@ -954,6 +967,7 @@ export async function runAutoFix(
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
           skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
         } else {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.red(`    ✗ Failed to resolve duplicate keys: ${fixResult.message}`));
@@ -969,6 +983,7 @@ export async function runAutoFix(
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
           skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
         } else {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.red(`    ✗ Failed to fix malformed wikilink: ${fixResult.message}`));
@@ -985,6 +1000,7 @@ export async function runAutoFix(
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
           skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
         } else {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.red(`    ✗ Failed to trim ${issue.field}: ${fixResult.message}`));
@@ -1051,10 +1067,11 @@ export async function runAutoFix(
           fixed++;
         } else if (fixResult.action === 'skipped') {
           skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
         } else if (fixResult.action === 'failed' && fixResult.message?.includes('manual merge')) {
           // Conflict case - requires interactive resolution
           skipped++;
-          manualReviewNeeded.push({ file: result.relativePath, issue });
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
         } else {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.red(`    ✗ Failed to rename ${issue.field}: ${fixResult.message}`));
@@ -1482,7 +1499,7 @@ async function handleUnknownFieldFix(
 
   const { field: targetField, typeMismatch } = choice;
   const existingTarget = parsed.frontmatter[targetField];
-  const targetHasValue = !isEmpty(existingTarget);
+  const targetHasValue = !isEffectivelyEmpty(existingTarget);
 
   if (typeMismatch) {
     const actualShape = getValueShape(issue.value);
@@ -2708,7 +2725,7 @@ async function handleKeyCasingFix(
   }
 
   // Check if there's a conflict
-  if (issue.hasConflict && issue.conflictValue !== undefined && !isEmpty(issue.conflictValue)) {
+  if (issue.hasConflict && issue.conflictValue !== undefined && !isEffectivelyEmpty(issue.conflictValue)) {
     // Both keys have values - need user decision
     console.log(chalk.dim(`    Current '${issue.field}': ${JSON.stringify(issue.value)}`));
     console.log(chalk.dim(`    Existing '${issue.canonicalKey}': ${JSON.stringify(issue.conflictValue)}`));

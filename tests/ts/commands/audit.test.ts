@@ -139,18 +139,19 @@ status: raw
       await writeFile(
         join(tempVaultDir, 'Objectives/Tasks', 'Bad List.md'),
         `---
- type: task
- status: backlog
- tags:
-   - good
-   - 42
- ---
- `
+type: task
+status: backlog
+priority: medium
+tags:
+  - good
+  - 42
+---
+`
       );
 
       const result = await runCLI(['audit', 'task'], tempVaultDir);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Invalid list element in 'tags' at index 1");
     });
 
@@ -3258,6 +3259,182 @@ tag: urgent
       const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Plural.md'), 'utf-8');
       expect(content).toContain('tags: urgent');
       expect(content).not.toContain('tag:');
+    });
+
+    it('should mark singular/plural conflicts as non-auto-fixable', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Plural Conflict.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+tag: urgent
+tags: later
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Plural Conflict.md'));
+      expect(file).toBeDefined();
+      const pluralIssue = file.issues.find((i: { code: string }) => i.code === 'singular-plural-mismatch');
+      expect(pluralIssue).toBeDefined();
+      expect(pluralIssue.autoFixable).toBe(false);
+      expect(pluralIssue.hasConflict).toBe(true);
+    });
+  });
+
+  describe('frontmatter-not-at-top fixes', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-top-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect frontmatter not at top', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Misplaced.md'),
+        `Intro line\n---\ntype: idea\nstatus: raw\npriority: medium\n---\nBody\n`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Misplaced.md'));
+      expect(file).toBeDefined();
+      const issue = file.issues.find((i: { code: string }) => i.code === 'frontmatter-not-at-top');
+      expect(issue).toBeDefined();
+      expect(issue.autoFixable).toBe(true);
+    });
+
+    it('should ignore non-frontmatter delimiter blocks', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Body Rules.md'),
+        `Intro line\n---\nNot frontmatter\n---\nBody\n`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Body Rules.md'));
+      expect(file).toBeDefined();
+      const issue = file.issues.find((i: { code: string }) => i.code === 'frontmatter-not-at-top');
+      expect(issue).toBeUndefined();
+    });
+
+    it('should auto-fix frontmatter to the top', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Fix Misplaced.md'),
+        `Intro line\n---\ntype: idea\nstatus: raw\npriority: medium\n---\nBody\n`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.stdout).toContain('Moved frontmatter to top');
+
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Misplaced.md'), 'utf-8');
+      expect(content.startsWith('---')).toBe(true);
+      const frontmatterEnd = content.indexOf('---', 3);
+      expect(frontmatterEnd).toBeGreaterThan(0);
+      expect(content.indexOf('Intro line')).toBeGreaterThan(frontmatterEnd);
+    });
+  });
+
+  describe('duplicate frontmatter keys', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-duplicates-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('should detect duplicate frontmatter keys', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Duplicate Tags.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+tags: urgent
+tags: urgent
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Duplicate Tags.md'));
+      expect(file).toBeDefined();
+      const issue = file.issues.find((i: { code: string }) => i.code === 'duplicate-frontmatter-keys');
+      expect(issue).toBeDefined();
+      expect(issue.duplicateCount).toBe(2);
+      expect(issue.autoFixable).toBe(true);
+    });
+
+    it('should auto-fix duplicate keys when values match', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Fix Duplicate Tags.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+tags: urgent
+tags: urgent
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.stdout).toContain('Resolved duplicate key');
+
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Duplicate Tags.md'), 'utf-8');
+      const matches = content.match(/tags:/g) ?? [];
+      expect(matches.length).toBe(1);
+    });
+
+    it('should require manual review when duplicate values differ', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Duplicate Conflict.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+tags: urgent
+tags: later
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Issues requiring manual review');
+      expect(result.stdout).toContain('Duplicate frontmatter key');
     });
   });
 
