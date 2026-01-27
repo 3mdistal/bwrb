@@ -17,11 +17,11 @@ const DEFAULT_MAX_DEPTH = 6;
 const DEFAULT_MAX_CANDIDATES = 25;
 const DEFAULT_MAX_DIRS_VISITED = 5000;
 
-export function hasVaultSchema(vaultDir: string): boolean {
+function hasVaultSchema(vaultDir: string): boolean {
   return existsSync(join(vaultDir, SCHEMA_RELATIVE_PATH));
 }
 
-export function findUpVaultDir(startDir: string): string | null {
+function findUpVaultDir(startDir: string): string | null {
   let currentDir = resolve(startDir);
   while (true) {
     if (hasVaultSchema(currentDir)) {
@@ -61,7 +61,7 @@ export interface DiscoverVaultResult {
   truncated: boolean;
 }
 
-export async function discoverVaultRootsDown(
+async function discoverVaultRootsDown(
   startDir: string,
   options: DiscoverVaultOptions = {}
 ): Promise<DiscoverVaultResult> {
