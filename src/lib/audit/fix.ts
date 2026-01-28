@@ -35,6 +35,7 @@ import {
 } from '../bulk/move.js';
 import { formatValue } from '../vault.js';
 import { buildNoteTargetIndex, type NoteTargetIndex } from '../discovery.js';
+import { isBwrbBuiltinFrontmatterField } from '../frontmatter/systemFields.js';
 
 // Alias for backward compatibility
 const resolveTypePathFromFrontmatter = resolveTypeFromFrontmatter;
@@ -935,6 +936,10 @@ export async function runAutoFix(
       }
 
       if (issue.code === 'unknown-field' && issue.field) {
+        if (isBwrbBuiltinFrontmatterField(issue.field)) {
+          resolvedNonFixable.add(issue);
+          continue;
+        }
         const hasBetterAutoFix = fixableIssues.some(
           i =>
             (i.code === 'frontmatter-key-casing' || i.code === 'singular-plural-mismatch') &&
@@ -1553,6 +1558,11 @@ async function handleUnknownFieldFix(
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
   if (!issue.field) return 'skipped';
+
+  if (isBwrbBuiltinFrontmatterField(issue.field)) {
+    console.log(chalk.dim(`    → Skipped (system-managed field: ${issue.field})`));
+    return 'skipped';
+  }
 
   if (issue.suggestion) {
     console.log(chalk.dim(`    ${issue.suggestion}`));

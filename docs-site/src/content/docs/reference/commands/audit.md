@@ -62,6 +62,8 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `format-violation` | Field value doesn't match expected format (wikilink, etc.) |
 | `stale-reference` | Wikilink points to non-existent file |
 
+Note: built-in fields written by `bwrb new` (currently `id` and `name`) are always allowed and do not produce `unknown-field` issues.
+
 ## Examples
 
 ### Basic Auditing

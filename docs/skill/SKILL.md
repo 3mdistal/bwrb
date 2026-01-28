@@ -117,6 +117,13 @@ bwrb config edit date_format --json '"MM/DD/YYYY"'  # Non-interactive
 bwrb config edit excluded_directories --json '["Archive","Templates"]'
 ```
 
+## Built-in Frontmatter Fields
+
+Some fields are written by bwrb regardless of schema:
+
+- `id`: reserved/system-managed UUID created by `bwrb new` and should not be edited.
+- `name`: written by `bwrb new` as the note title; `bwrb audit` does not treat it as an unknown field even if the schema does not declare it.
+
 ## Core Commands for Agents
 
 ### Querying Notes
