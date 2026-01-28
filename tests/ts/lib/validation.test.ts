@@ -138,6 +138,22 @@ describe('validation', () => {
       expect(result.errors).toHaveLength(0);
     });
 
+    it('should allow system-managed name field in strict mode', () => {
+      const result = validateFrontmatter(
+        schema,
+        'idea',
+        {
+          type: 'idea',
+          name: 'Example',
+          status: 'raw',
+        },
+        { strictFields: true }
+      );
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
     it('should validate date format', () => {
       const result = validateFrontmatter(schema, 'task', {
         type: 'objective',

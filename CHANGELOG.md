@@ -24,6 +24,11 @@ All notable changes to Bowerbird are documented in this file.
 - **Vault auto-detection now uses nearest `.bwrb/schema.json` (find-up)** (#337)
   - Precedence: `--vault` > find-up > `BWRB_VAULT` > `cwd` (error if not a vault)
 
+### Changed
+
+- **Audit ignores built-in frontmatter fields written by `bwrb new`** (#395)
+  - `id` and `name` no longer emit `unknown-field` warnings
+
 ### Added
 
 - **Audit --fix Phase 5: Type coercion fixes** (#272)
