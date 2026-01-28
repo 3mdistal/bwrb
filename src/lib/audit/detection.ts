@@ -587,7 +587,18 @@ function filterCandidatesBySource(
 }
 
 function toArrayValue(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [value];
+  const values: unknown[] = [];
+  const visit = (item: unknown) => {
+    if (Array.isArray(item)) {
+      for (const entry of item) {
+        visit(entry);
+      }
+      return;
+    }
+    values.push(item);
+  };
+  visit(value);
+  return values;
 }
 
 function checkRelationFieldIssues(
@@ -613,7 +624,7 @@ function checkRelationFieldIssues(
     const rawValue = rawValues[index];
     if (typeof rawValue !== 'string') continue;
 
-    const rawTarget = extractLinkTarget(rawValue);
+    const rawTarget = extractLinkTarget(rawValue) ?? rawValue.trim();
     if (!rawTarget) continue;
 
     const resolvedTarget = resolveRelationTarget(noteTargetIndex, rawTarget);

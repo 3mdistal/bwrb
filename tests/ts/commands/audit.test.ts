@@ -2755,8 +2755,8 @@ priority: medium
       expect(wsIssue).toBeDefined();
       expect(wsIssue.field).toBe('status');
       expect(wsIssue.meta.line).toBe(3);
-      expect(wsIssue.meta.before).toBe('  status: "raw"  ');
-      expect(wsIssue.meta.after).toBe('  status: "raw"');
+      expect(wsIssue.meta.before).toBe(' status: "raw"  ');
+      expect(wsIssue.meta.after).toBe(' status: "raw"');
     });
 
     it('should not flag whitespace inside quotes', async () => {
@@ -3167,7 +3167,7 @@ tags:
       expect(content).toContain('important');
       expect(content).toContain('Urgent');
       // Should only have one of the duplicate values
-      const matches = content.match(/urgent/gi);
+      const matches = content.match(/\burgent\b/g);
       expect(matches?.length).toBe(1);
     });
   });

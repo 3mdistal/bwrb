@@ -2412,7 +2412,7 @@ async function handleSelfReferenceFix(
   }
 
   if (selected === '[clear field]') {
-    const fixResult = await applyFix(schema, result.path, issue, '');
+    const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option' }, '');
     if (fixResult.action === 'fixed') {
       console.log(chalk.green(`    ✓ Cleared ${issue.field}`));
       return 'fixed';
@@ -2421,7 +2421,7 @@ async function handleSelfReferenceFix(
     return 'failed';
   }
 
-  const fixResult = await applyFix(schema, result.path, issue, selected);
+  const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option' }, selected);
   if (fixResult.action === 'fixed') {
     console.log(chalk.green(`    ✓ Updated ${issue.field}: ${selected}`));
     return 'fixed';
@@ -2465,7 +2465,7 @@ async function handleAmbiguousLinkTargetFix(
   }
 
   if (selected === '[clear field]') {
-    const fixResult = await applyFix(schema, result.path, issue, '');
+    const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option' }, '');
     if (fixResult.action === 'fixed') {
       console.log(chalk.green(`    ✓ Cleared ${issue.field}`));
       return 'fixed';
@@ -2474,7 +2474,7 @@ async function handleAmbiguousLinkTargetFix(
     return 'failed';
   }
 
-  const fixResult = await applyFix(schema, result.path, issue, selected);
+  const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option' }, selected);
   if (fixResult.action === 'fixed') {
     console.log(chalk.green(`    ✓ Updated ${issue.field}: ${selected}`));
     return 'fixed';
