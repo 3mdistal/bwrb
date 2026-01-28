@@ -290,7 +290,7 @@ status: " "
           const content = await readVaultFile(vaultPath, 'Ideas/Empty Required.md');
           expect(content).toContain('status: raw');
         },
-        { files: [emptyRequired], schema: AUDIT_SCHEMA }
+        { files: [emptyRequired], schema: BASELINE_SCHEMA }
       );
     }, 30000);
 
@@ -406,7 +406,7 @@ deadline: 01/02/2026
           const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Bad Date.md');
           expect(content).toContain('deadline: 2026-02-01');
         },
-        { files: [invalidDate], schema: AUDIT_SCHEMA }
+        { files: [invalidDate], schema: BASELINE_SCHEMA }
       );
     }, 30000);
 
@@ -880,7 +880,7 @@ effort: "5"
           expect(content).toContain('archived: false');
           expect(content).toContain('effort: 5');
         },
-        { files: [scalarFile], schema: AUDIT_SCHEMA }
+        { files: [scalarFile], schema: BASELINE_SCHEMA }
       );
     }, 30000);
 

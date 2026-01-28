@@ -2694,9 +2694,7 @@ status: raw
   // Phase 2: Low-risk hygiene auto-fixes
   // ============================================================================
 
-  // NOTE: trailing-whitespace detection is NOT possible because YAML parsers
-  // (gray-matter) strip trailing whitespace during parsing. These tests are
-  // skipped until we implement raw string detection before YAML parsing.
+  // NOTE: trailing-whitespace detection uses raw frontmatter lines (not YAML parsing).
   describe('trailing-whitespace detection and fix', () => {
     let tempVaultDir: string;
 
@@ -2733,6 +2731,9 @@ priority: medium
       expect(wsIssue).toBeDefined();
       expect(wsIssue.field).toBe('status');
       expect(wsIssue.autoFixable).toBe(true);
+      expect(wsIssue.meta.before).toBe('status: raw  ');
+      expect(wsIssue.meta.after).toBe('status: raw');
+      expect(wsIssue.meta.line).toBe(3);
     });
 
     it('should detect trailing whitespace after closing quote', async () => {
@@ -2753,7 +2754,9 @@ priority: medium
       const wsIssue = file.issues.find((i: { code: string }) => i.code === 'trailing-whitespace');
       expect(wsIssue).toBeDefined();
       expect(wsIssue.field).toBe('status');
-      expect(wsIssue.lineNumber).toBe(3);
+      expect(wsIssue.meta.line).toBe(3);
+      expect(wsIssue.meta.before).toBe(' status: "raw"  ');
+      expect(wsIssue.meta.after).toBe(' status: "raw"');
     });
 
     it('should not flag whitespace inside quotes', async () => {
@@ -2888,6 +2891,27 @@ effort: "3"
       expect(numberIssue.autoFixable).toBe(true);
     });
 
+    it('should not flag non-boolean string values', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Non Boolean.md'),
+        `---
+ type: idea
+ status: raw
+ priority: medium
+ archived: "yes"
+ ---
+ `
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Non Boolean.md'));
+      expect(file).toBeDefined();
+      const boolIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-boolean-coercion');
+      expect(boolIssue).toBeUndefined();
+    });
+
     it('should flag invalid date formats for date prompts', async () => {
       await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
       await writeFile(
@@ -2997,6 +3021,54 @@ priority: medium
       expect(casingIssue.field).toBe('status');
       expect(casingIssue.canonicalValue).toBe('raw');
       expect(casingIssue.autoFixable).toBe(true);
+      expect(casingIssue.meta.suggested).toBe('raw');
+      expect(casingIssue.meta.matchedBy).toBe('case-insensitive');
+      expect(casingIssue.meta.before).toBe('Raw');
+      expect(casingIssue.meta.after).toBe('raw');
+    });
+
+    it('should not auto-fix when enum casing is ambiguous', async () => {
+      const schemaWithCollision = {
+        ...TEST_SCHEMA,
+        types: {
+          ...TEST_SCHEMA.types,
+          idea: {
+            ...TEST_SCHEMA.types.idea,
+            fields: {
+              ...(TEST_SCHEMA.types.idea.fields ?? {}),
+              status: {
+                ...((TEST_SCHEMA.types.idea.fields ?? {}).status ?? {}),
+                options: ['raw', 'RAW'],
+              },
+            },
+          },
+        },
+      };
+
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(schemaWithCollision, null, 2)
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Ambiguous Enum.md'),
+        `---
+type: idea
+status: Raw
+priority: medium
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Ambiguous Enum.md'));
+      expect(file).toBeDefined();
+      const casingIssue = file.issues.find((i: { code: string }) => i.code === 'unknown-enum-casing');
+      expect(casingIssue).toBeDefined();
+      expect(casingIssue.autoFixable).toBe(false);
+      expect(casingIssue.meta.candidates).toEqual(['raw', 'RAW']);
     });
 
     it('should auto-fix enum casing', async () => {
@@ -3040,7 +3112,7 @@ priority: Medium
       await rm(tempVaultDir, { recursive: true, force: true });
     });
 
-    it('should detect duplicate values in list (case-insensitive)', async () => {
+    it('should detect duplicate values in list (case-sensitive)', async () => {
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Duplicates.md'),
         `---
@@ -3048,6 +3120,7 @@ type: idea
 status: raw
 priority: medium
 tags:
+  - urgent
   - urgent
   - Urgent
   - important
@@ -3063,6 +3136,8 @@ tags:
       expect(dupIssue).toBeDefined();
       expect(dupIssue.field).toBe('tags');
       expect(dupIssue.autoFixable).toBe(true);
+      expect(dupIssue.meta.duplicates).toEqual(['urgent']);
+      expect(dupIssue.meta.removedCount).toBe(1);
     });
 
     it('should auto-fix duplicate list values', async () => {
@@ -3073,6 +3148,7 @@ type: idea
 status: raw
 priority: medium
 tags:
+  - urgent
   - urgent
   - Urgent
   - important
@@ -3089,8 +3165,9 @@ tags:
       const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Dups.md'), 'utf-8');
       expect(content).toContain('urgent');
       expect(content).toContain('important');
+      expect(content).toContain('Urgent');
       // Should only have one of the duplicate values
-      const matches = content.match(/urgent/gi);
+      const matches = content.match(/\burgent\b/g);
       expect(matches?.length).toBe(1);
     });
   });
@@ -3132,6 +3209,10 @@ priority: medium
       expect(keyIssue.field).toBe('Status');
       expect(keyIssue.canonicalKey).toBe('status');
       expect(keyIssue.autoFixable).toBe(true);
+      expect(keyIssue.meta.fromKey).toBe('Status');
+      expect(keyIssue.meta.toKey).toBe('status');
+      expect(keyIssue.meta.before).toBe('Status');
+      expect(keyIssue.meta.after).toBe('status');
     });
 
     it('should auto-fix key casing', async () => {
@@ -3179,6 +3260,8 @@ priority: medium
       expect(keyIssue.hasConflict).toBe(true);
       // Should not be auto-fixable when both have values
       expect(keyIssue.autoFixable).toBe(false);
+      expect(keyIssue.meta.fromKey).toBe('Status');
+      expect(keyIssue.meta.toKey).toBe('status');
     });
   });
 

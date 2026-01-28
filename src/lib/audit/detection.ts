@@ -16,6 +16,11 @@ import {
   getDescendants,
 } from '../schema.js';
 import { readStructuralFrontmatter } from './structural.js';
+import {
+  splitLinesPreserveEol,
+  parseSimpleYamlKeyValueLine,
+  isBlockScalarHeader,
+} from './raw.js';
 import { isEmptyRequiredValue } from './emptiness.js';
 import { coerceBooleanFromString, coerceNumberFromString } from './coercion.js';
 import { suggestIsoDate } from './date-suggest.js';
@@ -582,7 +587,18 @@ function filterCandidatesBySource(
 }
 
 function toArrayValue(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [value];
+  const values: unknown[] = [];
+  const visit = (item: unknown) => {
+    if (Array.isArray(item)) {
+      for (const entry of item) {
+        visit(entry);
+      }
+      return;
+    }
+    values.push(item);
+  };
+  visit(value);
+  return values;
 }
 
 function checkRelationFieldIssues(
@@ -608,7 +624,7 @@ function checkRelationFieldIssues(
     const rawValue = rawValues[index];
     if (typeof rawValue !== 'string') continue;
 
-    const rawTarget = extractLinkTarget(rawValue);
+    const rawTarget = extractLinkTarget(rawValue) ?? rawValue.trim();
     if (!rawTarget) continue;
 
     const resolvedTarget = resolveRelationTarget(noteTargetIndex, rawTarget);
@@ -1269,68 +1285,6 @@ function checkParentSelfReference(
 // Phase 2: Hygiene Issue Detection
 // ============================================================================
 
-type RawLine = {
-  text: string;
-  eol: string;
-  lineNumber: number;
-  startOffset: number;
-  endOffset: number;
-};
-
-function splitLinesPreserveEol(input: string): RawLine[] {
-  const lines: RawLine[] = [];
-  let start = 0;
-  let lineNumber = 1;
-
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (ch !== '\n' && ch !== '\r') continue;
-
-    const eolStart = i;
-    let eol = ch;
-    if (ch === '\r' && input[i + 1] === '\n') {
-      eol = '\r\n';
-      i++;
-    }
-
-    lines.push({
-      text: input.slice(start, eolStart),
-      eol,
-      lineNumber,
-      startOffset: start,
-      endOffset: eolStart,
-    });
-
-    start = i + 1;
-    lineNumber++;
-  }
-
-  lines.push({
-    text: input.slice(start),
-    eol: '',
-    lineNumber,
-    startOffset: start,
-    endOffset: input.length,
-  });
-
-  return lines;
-}
-
-function parseSimpleYamlKeyValueLine(line: string): { indent: number; key: string; rest: string } | null {
-  const match = line.match(/^([ \t]*)([A-Za-z0-9_-]+)\s*:\s*(.*)$/);
-  if (!match) return null;
-
-  return {
-    indent: match[1]!.length,
-    key: match[2]!,
-    rest: match[3]!,
-  };
-}
-
-function isBlockScalarHeader(restTrimStart: string): boolean {
-  // Handles: |, >, |-, |+, |2, |2-, >-, etc (optionally followed by a comment).
-  return /^[>|](?:[1-9])?(?:[+-])?\s*(#.*)?$/.test(restTrimStart);
-}
 
 function detectTrailingWhitespaceInRawFrontmatter(
   structural: Awaited<ReturnType<typeof readStructuralFrontmatter>>
@@ -1385,6 +1339,8 @@ function detectTrailingWhitespaceInRawFrontmatter(
 
     // Detect trailing spaces/tabs at end-of-line.
     if (/[ \t]+$/.test(text)) {
+      const trimmed = text.replace(/[ \t]+$/, '');
+      const trimmedCount = text.length - trimmed.length;
       issues.push({
         severity: 'warning',
         code: 'trailing-whitespace',
@@ -1393,6 +1349,12 @@ function detectTrailingWhitespaceInRawFrontmatter(
         value: restTrimStart,
         autoFixable: true,
         lineNumber: line.lineNumber,
+        meta: {
+          line: line.lineNumber,
+          before: text,
+          after: trimmed,
+          trimmedCount,
+        },
       });
     }
   }
@@ -1407,7 +1369,7 @@ function detectTrailingWhitespaceInRawFrontmatter(
  * - trailing-whitespace: String values with trailing whitespace
  * - frontmatter-key-casing: Keys that don't match schema casing
  * - unknown-enum-casing: Select field values with wrong case
- * - duplicate-list-values: Arrays with duplicate values (case-insensitive)
+ * - duplicate-list-values: Arrays with duplicate values (case-sensitive)
  * - invalid-boolean-coercion: "true"/"false" strings for boolean fields
  * - singular-plural-mismatch: Keys like 'tag' when schema has 'tags'
  */
@@ -1419,9 +1381,15 @@ function checkHygieneIssues(
   const issues: AuditIssue[] = [];
   
   // Build case-insensitive map of schema field names for key casing checks
-  const schemaKeyMap = new Map<string, string>();
+  const schemaKeyMap = new Map<string, string[]>();
   for (const key of schemaFieldNames) {
-    schemaKeyMap.set(key.toLowerCase(), key);
+    const lower = key.toLowerCase();
+    const existing = schemaKeyMap.get(lower);
+    if (existing) {
+      existing.push(key);
+    } else {
+      schemaKeyMap.set(lower, [key]);
+    }
   }
   
   for (const [fieldName, value] of Object.entries(frontmatter)) {
@@ -1449,7 +1417,7 @@ function checkHygieneIssues(
       }
     }
     
-    // Check for duplicate list values (case-insensitive)
+    // Check for duplicate list values (case-sensitive)
     if (Array.isArray(value)) {
       const dupIssue = checkDuplicateListValues(fieldName, value);
       if (dupIssue) {
@@ -1508,14 +1476,21 @@ function checkInvalidBooleanCoercion(
 
   const lower = value.trim().toLowerCase();
   if (lower === 'true' || lower === 'false') {
+    const coercedTo = lower === 'true';
     return {
       severity: 'warning',
       code: 'invalid-boolean-coercion',
       message: `String '${value}' should be boolean in '${fieldName}'`,
       field: fieldName,
       value: value,
-      expected: lower === 'true' ? 'true (boolean)' : 'false (boolean)',
+      expected: coercedTo ? 'true (boolean)' : 'false (boolean)',
       autoFixable: true,
+      meta: {
+        value,
+        coercedTo,
+        before: value,
+        after: coercedTo,
+      },
     };
   }
   
@@ -1531,16 +1506,18 @@ function checkUnknownEnumCasing(
   value: unknown,
   options: string[]
 ): AuditIssue | null {
-  const strValue = String(value);
-  
+  if (typeof value !== 'string') return null;
+  const strValue = value;
+
   // If exact match exists, no issue
   if (options.includes(strValue)) return null;
-  
+
   // Check for case-insensitive match
   const lowerValue = strValue.toLowerCase();
-  const matchingOption = options.find(opt => opt.toLowerCase() === lowerValue);
-  
-  if (matchingOption) {
+  const matchingOptions = options.filter(opt => opt.toLowerCase() === lowerValue);
+
+  if (matchingOptions.length === 1) {
+    const matchingOption = matchingOptions[0]!;
     return {
       severity: 'warning',
       code: 'unknown-enum-casing',
@@ -1550,6 +1527,28 @@ function checkUnknownEnumCasing(
       expected: matchingOption,
       canonicalValue: matchingOption,
       autoFixable: true,
+      meta: {
+        value: strValue,
+        suggested: matchingOption,
+        matchedBy: 'case-insensitive',
+        before: strValue,
+        after: matchingOption,
+      },
+    };
+  }
+
+  if (matchingOptions.length > 1) {
+    return {
+      severity: 'warning',
+      code: 'unknown-enum-casing',
+      message: `Ambiguous case for '${fieldName}': '${strValue}' matches multiple options`,
+      field: fieldName,
+      value: strValue,
+      autoFixable: false,
+      meta: {
+        value: strValue,
+        candidates: matchingOptions,
+      },
     };
   }
   
@@ -1557,25 +1556,27 @@ function checkUnknownEnumCasing(
 }
 
 /**
- * Check for duplicate values in arrays (case-insensitive).
+ * Check for duplicate values in arrays (case-sensitive).
  */
 function checkDuplicateListValues(
   fieldName: string,
   value: unknown[]
 ): AuditIssue | null {
-  // Convert all values to lowercase strings for comparison
+  if (!value.every(item => typeof item === 'string')) return null;
+
   const seen = new Set<string>();
   const duplicates: string[] = [];
-  
-  for (const item of value) {
-    const strItem = String(item).toLowerCase();
-    if (seen.has(strItem)) {
-      duplicates.push(String(item));
+  const deduped: string[] = [];
+
+  for (const item of value as string[]) {
+    if (seen.has(item)) {
+      duplicates.push(item);
     } else {
-      seen.add(strItem);
+      seen.add(item);
+      deduped.push(item);
     }
   }
-  
+
   if (duplicates.length > 0) {
     return {
       severity: 'warning',
@@ -1584,6 +1585,12 @@ function checkDuplicateListValues(
       field: fieldName,
       value: value,
       autoFixable: true,
+      meta: {
+        duplicates,
+        removedCount: duplicates.length,
+        before: value,
+        after: deduped,
+      },
     };
   }
   
@@ -1598,11 +1605,36 @@ function checkFrontmatterKeyCasing(
   fieldName: string,
   value: unknown,
   frontmatter: Record<string, unknown>,
-  schemaKeyMap: Map<string, string>
+  schemaKeyMap: Map<string, string[]>
 ): AuditIssue | null {
+  if (schemaKeyMap.has(fieldName.toLowerCase()) && schemaKeyMap.get(fieldName.toLowerCase())?.includes(fieldName)) {
+    return null;
+  }
+
   const lowerFieldName = fieldName.toLowerCase();
-  const canonicalKey = schemaKeyMap.get(lowerFieldName);
-  
+  const candidates = schemaKeyMap.get(lowerFieldName);
+
+  if (!candidates || candidates.length === 0) {
+    return null;
+  }
+
+  if (candidates.length > 1) {
+    return {
+      severity: 'warning',
+      code: 'frontmatter-key-casing',
+      message: `Key '${fieldName}' matches multiple schema keys`,
+      field: fieldName,
+      value: value,
+      autoFixable: false,
+      meta: {
+        fromKey: fieldName,
+        candidates: [...candidates],
+      },
+    };
+  }
+
+  const canonicalKey = candidates[0]!;
+
   // Only flag if:
   // 1. Current key doesn't match schema exactly
   // 2. But a case-insensitive match exists
@@ -1613,7 +1645,6 @@ function checkFrontmatterKeyCasing(
       canonicalKey in frontmatter &&
       !isEffectivelyEmpty(existingValue) &&
       !isEffectivelyEmpty(value);
-    
     return {
       severity: 'warning',
       code: 'frontmatter-key-casing',
@@ -1626,6 +1657,13 @@ function checkFrontmatterKeyCasing(
       autoFixable: !hasConflict,
       hasConflict: hasConflict,
       ...(hasConflict && { conflictValue: existingValue }),
+      meta: {
+        fromKey: fieldName,
+        toKey: canonicalKey,
+        ...(hasConflict
+          ? { conflictValue: existingValue }
+          : { before: fieldName, after: canonicalKey }),
+      },
     };
   }
   
