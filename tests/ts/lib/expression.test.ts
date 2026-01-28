@@ -9,6 +9,7 @@ import {
   buildEvalContext,
   type EvalContext,
 } from '../../../src/lib/expression.js';
+import { normalizeWhereExpression } from '../../../src/lib/where-normalize.js';
 import { createTestVault, cleanupTestVault } from '../fixtures/setup.js';
 
 describe('expression', () => {
@@ -48,6 +49,15 @@ describe('expression', () => {
       const ctx = makeContext({ status: 'done' });
       expect(matchesExpression("status == 'done'", ctx)).toBe(true);
       expect(matchesExpression("status == 'pending'", ctx)).toBe(false);
+    });
+
+    it('should evaluate hyphenated keys after normalization', () => {
+      const ctx = makeContext({ 'creation-date': '2026-01-28' });
+      const normalized = normalizeWhereExpression(
+        "creation-date == '2026-01-28'",
+        new Set(['creation-date'])
+      );
+      expect(matchesExpression(normalized, ctx)).toBe(true);
     });
 
     it('should evaluate inequality', () => {
@@ -104,6 +114,15 @@ describe('expression', () => {
       expect(matchesExpression("isEmpty(status)", makeContext({ status: '' }))).toBe(true);
       expect(matchesExpression("isEmpty(tags)", makeContext({ tags: [] }))).toBe(true);
       expect(matchesExpression("isEmpty(status)", makeContext({ status: 'done' }))).toBe(false);
+    });
+
+    it('should evaluate isEmpty for hyphenated keys after normalization', () => {
+      const ctx = makeContext({ 'creation-date': '' });
+      const normalized = normalizeWhereExpression(
+        'isEmpty(creation-date)',
+        new Set(['creation-date'])
+      );
+      expect(matchesExpression(normalized, ctx)).toBe(true);
     });
 
     it('should evaluate startsWith and endsWith', () => {

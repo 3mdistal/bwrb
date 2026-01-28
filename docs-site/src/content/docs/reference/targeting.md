@@ -60,6 +60,7 @@ bwrb audit --where "isEmpty(tags)"
 - Supports boolean operators: `&&`, `||`, `!`
 - Supports functions: `isEmpty()`, `contains()`, `startsWith()`
 - Multiple `--where` flags are ANDed together
+- Field names may include hyphens and are treated literally in `--where` (e.g., `creation-date == '2026-01-28'`).
 
 **Type-checking behavior:**
 - With `--type`: strict validation (error on unknown fields)

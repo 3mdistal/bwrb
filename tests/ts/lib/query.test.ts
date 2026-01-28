@@ -57,6 +57,23 @@ describe('query', () => {
       expect(result.map(f => f.frontmatter.status)).toEqual(['active', 'active']);
     });
 
+    it('should filter by hyphenated frontmatter keys', async () => {
+      const files = makeFiles([
+        { path: 'a.md', fm: { 'creation-date': '2026-01-28' } },
+        { path: 'b.md', fm: { 'creation-date': '2026-01-27' } },
+        { path: 'c.md', fm: { status: 'active' } },
+      ]);
+
+      const result = await applyFrontmatterFilters(files, {
+        whereExpressions: ["creation-date == '2026-01-28'"],
+        vaultDir,
+        silent: true,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]?.frontmatter['creation-date']).toBe('2026-01-28');
+    });
+
     it('should filter by where expression for inequality', async () => {
       const files = makeFiles([
         { path: 'a.md', fm: { status: 'active' } },

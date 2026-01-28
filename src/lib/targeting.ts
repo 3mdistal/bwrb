@@ -25,7 +25,7 @@ import {
 import { parseNote } from './frontmatter.js';
 import { applyFrontmatterFilters } from './query.js';
 import { searchContent } from './content-search.js';
-import { getTypeNames } from './schema.js';
+import { getTypeNames, getAllFieldsForType } from './schema.js';
 import { validateWhereExpressions, formatWhereValidationErrors } from './expression-validation.js';
 
 // ============================================================================
@@ -400,10 +400,14 @@ export async function resolveTargets(
 
     // Step 6: Filter by --where expressions
     if (options.where && options.where.length > 0) {
+      const knownKeys = options.type
+        ? getAllFieldsForType(schema, options.type)
+        : null;
       const filtered = await applyFrontmatterFilters(filteredFiles, {
         whereExpressions: options.where,
         vaultDir,
         silent: true,
+        ...(knownKeys ? { knownKeys } : {}),
       });
 
       return {

@@ -132,7 +132,8 @@ JSON output for templates with instances includes an `instances` object:
 2. **Template loading**: Loads matching template if available (unless `--no-template`)
 3. **Field prompts**: Prompts for each field defined in schema/template
 4. **File creation**: Creates file in the type's `output_dir`
-5. **Output**: Returns path to created file
+5. **System fields**: Writes `id` and `name` as bwrb-managed frontmatter fields
+6. **Output**: Returns path to created file
 
 ## Template Discovery
 

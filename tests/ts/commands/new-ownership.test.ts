@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, writeFile, rm } from 'fs/promises';
+import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
 import { ExitCodes } from '../../../src/lib/output.js';
+import { parseNote } from '../../../src/lib/frontmatter.js';
+import { extractWikilinkTarget } from '../../../src/lib/audit/types.js';
+import { BASELINE_SCHEMA } from '../fixtures/schemas.js';
 
 /**
  * Tests for JSON mode ownership flags (--owner and --standalone).
@@ -49,6 +52,66 @@ A test project for ownership testing.
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(true);
     expect(output.path).toContain('Projects/My Project/research/Project Research.md');
+
+    const { frontmatter } = await parseNote(join(vaultDir, output.path));
+    expect(extractWikilinkTarget(String(frontmatter.owner))).toBe('My Project');
+  });
+
+  it('should place owned notes under the owning field folder', async () => {
+    const customSchema = JSON.parse(JSON.stringify(BASELINE_SCHEMA));
+    customSchema.types.album = {
+      output_dir: 'Albums',
+      fields: {
+        type: { value: 'album' },
+        status: {
+          prompt: 'select',
+          options: ['raw', 'backlog', 'in-flight', 'settled'],
+          default: 'raw',
+          required: true,
+        },
+        songs: {
+          prompt: 'relation',
+          source: 'track',
+          owned: true,
+        },
+      },
+      field_order: ['type', 'status', 'songs'],
+    };
+    customSchema.types.track = {
+      output_dir: 'Tracks',
+      fields: {
+        type: { value: 'track' },
+      },
+      field_order: ['type'],
+    };
+
+    await writeFile(
+      join(vaultDir, '.bwrb', 'schema.json'),
+      JSON.stringify(customSchema, null, 2)
+    );
+
+    await mkdir(join(vaultDir, 'Albums/Best Album'), { recursive: true });
+    await writeFile(
+      join(vaultDir, 'Albums/Best Album', 'Best Album.md'),
+      `---
+type: album
+status: in-flight
+---
+
+Owned folder placement test.
+`
+    );
+
+    const result = await runCLI(
+      ['new', 'track', '--json', '{"name": "Opening Track"}', '--owner', '[[Best Album]]'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+    expect(result.stderr).toBe('');
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(true);
+    expect(output.path).toContain('Albums/Best Album/songs/Opening Track.md');
   });
 
   it('should create pooled note with --standalone flag', async () => {

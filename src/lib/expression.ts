@@ -1,6 +1,7 @@
 import jsep from 'jsep';
 import type { Expression, BinaryExpression, UnaryExpression, CallExpression, Identifier, Literal, MemberExpression } from 'jsep';
 import { formatLocalDate } from './local-date.js';
+import { FRONTMATTER_IDENTIFIER } from './where-constants.js';
 
 // Configure jsep for our expression language
 jsep.addBinaryOp('&&', 2);
@@ -211,6 +212,7 @@ function evaluateIdentifier(expr: Identifier, context: EvalContext): unknown {
 
   // Special 'file' object
   if (name === 'file') return context.file;
+  if (name === FRONTMATTER_IDENTIFIER) return context.frontmatter;
 
   // Look up in frontmatter
   return context.frontmatter[name];

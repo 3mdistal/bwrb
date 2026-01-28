@@ -46,6 +46,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Verify npm pack artifact
+        run: pnpm verify:pack
+
       - name: Typecheck
         run: pnpm typecheck
 

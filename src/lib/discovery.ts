@@ -20,6 +20,7 @@ import {
   getTypeFamilies,
 } from './schema.js';
 import { parseNote } from './frontmatter.js';
+import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
 import type { LoadedSchema, OwnedFieldInfo } from '../types/schema.js';
 
 // ============================================================================
@@ -680,25 +681,35 @@ async function collectOwnedFiles(
     if (shouldExcludePath(ownerNoteRel, excluded, ignoreMatcher)) continue;
     if (!existsSync(ownerNotePath)) continue;
 
-    // For each owned field, look for the child type subfolder
+    // For each owned field, look for the owned field subfolder
     for (const ownedField of ownedFields) {
-      const childTypeFolderRel = join(normalizedOwnerOutputDir, entry.name, ownedField.childType);
-      if (shouldExcludePath(childTypeFolderRel, excluded, ignoreMatcher, true)) continue;
+      const ownedFieldFolderRel = getOwnedChildFolderFromOwnerDir(
+        join(normalizedOwnerOutputDir, entry.name),
+        ownedField.fieldName
+      );
+      if (shouldExcludePath(ownedFieldFolderRel, excluded, ignoreMatcher, true)) continue;
 
-      const childTypeFolder = join(fullOwnerDir, entry.name, ownedField.childType);
-      if (!existsSync(childTypeFolder)) continue;
+      const ownedFieldFolder = getOwnedChildFolderFromOwnerDir(
+        join(fullOwnerDir, entry.name),
+        ownedField.fieldName
+      );
+      if (!existsSync(ownedFieldFolder)) continue;
 
-      const childEntries = await readdir(childTypeFolder, { withFileTypes: true });
+      const childEntries = await readdir(ownedFieldFolder, { withFileTypes: true });
 
       for (const childEntry of childEntries) {
         if (!childEntry.isFile() || !childEntry.name.endsWith('.md')) continue;
 
-        const relativePath = join(normalizedOwnerOutputDir, entry.name, ownedField.childType, childEntry.name);
-        if (shouldExcludePath(relativePath, excluded, ignoreMatcher)) continue;
+        const relativePath = getOwnedChildFolderFromOwnerDir(
+          join(normalizedOwnerOutputDir, entry.name),
+          ownedField.fieldName
+        );
+        const ownedRelativePath = join(relativePath, childEntry.name);
+        if (shouldExcludePath(ownedRelativePath, excluded, ignoreMatcher)) continue;
 
         files.push({
-          path: join(childTypeFolder, childEntry.name),
-          relativePath,
+          path: join(ownedFieldFolder, childEntry.name),
+          relativePath: ownedRelativePath,
           expectedType: ownedField.childType,
           ownership: {
             ownerPath: ownerNoteRel,

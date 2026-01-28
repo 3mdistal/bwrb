@@ -156,6 +156,15 @@ describe('expression-validation', () => {
       expect(result.errors[0]!.validOptions).toContain('backlog');
     });
 
+    it('passes for hyphenated field comparisons', () => {
+      const result = validateWhereExpressions(
+        ["creation-date == '2026-01-28'"],
+        schema,
+        'task'
+      );
+      expect(result.valid).toBe(true);
+    });
+
     it('suggests similar option for typo', () => {
       const result = validateWhereExpressions(
         ["status == 'bcklog'"],  // typo for 'backlog'
@@ -188,6 +197,7 @@ describe('expression-validation', () => {
       expect(result.errors[0]!.field).toBe('unknown_field');
       expect(result.errors[0]!.message).toContain('Unknown field');
     });
+
 
     it('suggests similar field names for typos in field names', () => {
       // statsu is a typo for 'status'

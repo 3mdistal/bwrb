@@ -1,5 +1,6 @@
 import type { LoadedSchema, Field } from '../types/schema.js';
 import { getFieldsForType, getDescendants, getType } from './schema.js';
+import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { queryByType } from './vault.js';
 import { extractWikilinkTarget } from './audit/types.js';
 import { expandStaticValue, parseDate } from './local-date.js';
@@ -161,11 +162,9 @@ export function validateFrontmatter(
     }
   }
 
-  const reservedFields = new Set(['type', 'id']);
-
   // Check for unknown fields
   for (const fieldName of providedFields) {
-    if (reservedFields.has(fieldName)) continue;
+    if (fieldName === 'type' || isBwrbBuiltinFrontmatterField(fieldName)) continue;
     if (!fieldNames.has(fieldName)) {
       const suggestion = suggestFieldName(fieldName, Array.from(fieldNames));
       const error: ValidationError = {

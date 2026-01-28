@@ -6,11 +6,13 @@
  * values match the allowed options for select fields.
  */
 
-import type { Expression, BinaryExpression, UnaryExpression, CallExpression, Identifier, Literal } from 'jsep';
+import type { Expression, BinaryExpression, UnaryExpression, CallExpression, Identifier, Literal, MemberExpression } from 'jsep';
 import { parseExpression } from './expression.js';
 import type { LoadedSchema, Field } from '../types/schema.js';
 import { getFieldsForType, getAllFieldsForType } from './schema.js';
 import { suggestOptionValue, suggestFieldName } from './validation.js';
+import { normalizeWhereExpression } from './where-normalize.js';
+import { FRONTMATTER_IDENTIFIER } from './where-constants.js';
 
 // ============================================================================
 // Types
@@ -121,13 +123,11 @@ function extractBinaryComparison(expr: BinaryExpression): FieldComparison | null
   let value: string | null = null;
 
   // Check if left is identifier and right is literal
-  if (expr.left.type === 'Identifier' && expr.right.type === 'Literal') {
-    field = (expr.left as Identifier).name;
+  if (expr.right.type === 'Literal') {
+    field = getFieldName(expr.left);
     value = getLiteralValue(expr.right as Literal);
-  }
-  // Check if right is identifier and left is literal
-  else if (expr.right.type === 'Identifier' && expr.left.type === 'Literal') {
-    field = (expr.right as Identifier).name;
+  } else if (expr.left.type === 'Literal') {
+    field = getFieldName(expr.right);
     value = getLiteralValue(expr.left as Literal);
   }
 
@@ -150,9 +150,10 @@ function extractCallComparison(expr: CallExpression): FieldComparison | null {
   // Handle contains(field, 'value') pattern
   if (fnName === 'contains' && expr.arguments.length >= 2) {
     const [arg1, arg2] = expr.arguments;
-    if (arg1?.type === 'Identifier' && arg2?.type === 'Literal') {
+    const fieldName = arg1 ? getFieldName(arg1) : null;
+    if (fieldName && arg2?.type === 'Literal') {
       return {
-        field: (arg1 as Identifier).name,
+        field: fieldName,
         operator: 'contains',
         value: getLiteralValue(arg2 as Literal),
       };
@@ -185,6 +186,37 @@ function getLiteralValue(literal: Literal): string | null {
   return null;
 }
 
+function getFieldName(node: Expression): string | null {
+  if (node.type === 'Identifier') {
+    return (node as Identifier).name;
+  }
+
+  if (node.type !== 'MemberExpression') {
+    return null;
+  }
+
+  const member = node as MemberExpression;
+  if (member.object.type !== 'Identifier') {
+    return null;
+  }
+
+  const objectName = (member.object as Identifier).name;
+  if (objectName !== FRONTMATTER_IDENTIFIER) {
+    return null;
+  }
+
+  if (member.computed && member.property.type === 'Literal') {
+    const literalValue = (member.property as Literal).value;
+    return typeof literalValue === 'string' ? literalValue : null;
+  }
+
+  if (!member.computed && member.property.type === 'Identifier') {
+    return (member.property as Identifier).name;
+  }
+
+  return null;
+}
+
 // ============================================================================
 // Validation
 // ============================================================================
@@ -212,7 +244,8 @@ export function validateWhereExpressions(
 
   for (const exprString of expressions) {
     try {
-      const expr = parseExpression(exprString);
+      const normalized = normalizeWhereExpression(exprString, allFieldNames);
+      const expr = parseExpression(normalized);
       const comparisons = extractFieldComparisons(expr);
 
       for (const comparison of comparisons) {

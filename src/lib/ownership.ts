@@ -14,6 +14,7 @@ import {
   getOwnedFields,
   getOutputDir,
 } from './schema.js';
+import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
 import type { LoadedSchema } from '../types/schema.js';
 import { extractLinkTargets } from './links.js';
 import { isWikilink } from './audit/types.js';
@@ -158,17 +159,17 @@ async function indexOwnerNote(
   // Check if there's a folder structure for this owner
   const ownerFolder = dirname(ownerNotePath);
   
-  // For each owned field, look for the child type subfolder
+  // For each owned field, look for the owned field subfolder
   for (const ownedField of ownedFields) {
-    const childTypeFolder = join(ownerFolder, ownedField.childType);
+    const ownedFieldFolder = getOwnedChildFolderFromOwnerDir(ownerFolder, ownedField.fieldName);
     
-    if (!existsSync(childTypeFolder)) continue;
+    if (!existsSync(ownedFieldFolder)) continue;
     
-    const childEntries = await readdir(childTypeFolder, { withFileTypes: true });
+    const childEntries = await readdir(ownedFieldFolder, { withFileTypes: true });
     
     for (const childEntry of childEntries) {
       if (childEntry.isFile() && childEntry.name.endsWith('.md')) {
-        const ownedNotePath = join(childTypeFolder, childEntry.name);
+        const ownedNotePath = join(ownedFieldFolder, childEntry.name);
         const relativeOwnedPath = relative(vaultDir, ownedNotePath);
         
         // Add to index
@@ -299,5 +300,3 @@ export function extractWikilinkReferences(value: unknown): string[] {
 
   return [];
 }
-
-

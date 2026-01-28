@@ -2,6 +2,7 @@ import { basename } from 'path';
 import type { LoadedSchema } from '../types/schema.js';
 import { getAllFieldsForType } from './schema.js';
 import { matchesExpression, buildEvalContext, type HierarchyData } from './expression.js';
+import { collectFrontmatterKeys, normalizeWhereExpressions } from './where-normalize.js';
 import { printError } from './prompt.js';
 import { extractWikilinkTarget } from './audit/types.js';
 
@@ -36,6 +37,8 @@ export interface FrontmatterFilterOptions {
   vaultDir: string;
   /** Whether to suppress error output (for JSON mode) */
   silent?: boolean;
+  /** Optional known frontmatter keys for normalization */
+  knownKeys?: Set<string>;
 }
 
 // ============================================================================
@@ -109,34 +112,52 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
   files: T[],
   options: FrontmatterFilterOptions
 ): Promise<T[]> {
-  const { whereExpressions, vaultDir, silent = false } = options;
+  const { whereExpressions, vaultDir, silent = false, knownKeys } = options;
   const result: T[] = [];
+  const effectiveKnownKeys =
+    knownKeys ?? collectFrontmatterKeys(files.map(file => file.frontmatter));
+  const normalizedExpressions = normalizeWhereExpressions(
+    whereExpressions,
+    effectiveKnownKeys
+  );
+  const expressionPairs = normalizedExpressions.map((normalized, index) => ({
+    normalized,
+    original: whereExpressions[index] ?? normalized,
+  }));
 
   // Build hierarchy data if any expression uses hierarchy functions
   // This is done once before the loop for efficiency
   let hierarchyData: HierarchyData | undefined;
-  if (whereExpressions.length > 0 && expressionsUseHierarchyFunctions(whereExpressions)) {
+  if (
+    normalizedExpressions.length > 0 &&
+    expressionsUseHierarchyFunctions(normalizedExpressions)
+  ) {
     hierarchyData = buildHierarchyDataFromFiles(files);
   }
 
   for (const file of files) {
     // Apply expression filters (--where style)
-    if (whereExpressions.length > 0) {
+    if (expressionPairs.length > 0) {
       const context = await buildEvalContext(file.path, vaultDir, file.frontmatter);
       // Add hierarchy data to context if available
       if (hierarchyData) {
         context.hierarchyData = hierarchyData;
       }
-      const allMatch = whereExpressions.every(expr => {
+      let allMatch = true;
+      for (const { normalized, original } of expressionPairs) {
         try {
-          return matchesExpression(expr, context);
+          if (!matchesExpression(normalized, context)) {
+            allMatch = false;
+            break;
+          }
         } catch (e) {
           if (!silent) {
-            printError(`Expression error in "${expr}": ${(e as Error).message}`);
+            printError(`Expression error in "${original}": ${(e as Error).message}`);
           }
-          return false;
+          allMatch = false;
+          break;
         }
-      });
+      }
 
       if (!allMatch) {
         continue;

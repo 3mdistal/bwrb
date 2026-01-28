@@ -117,6 +117,13 @@ bwrb config edit date_format --json '"MM/DD/YYYY"'  # Non-interactive
 bwrb config edit excluded_directories --json '["Archive","Templates"]'
 ```
 
+## Built-in Frontmatter Fields
+
+Some fields are written by bwrb regardless of schema:
+
+- `id`: reserved/system-managed UUID created by `bwrb new` and should not be edited.
+- `name`: written by `bwrb new` as the note title; `bwrb audit` does not treat it as an unknown field even if the schema does not declare it.
+
 ## Core Commands for Agents
 
 ### Querying Notes
@@ -202,6 +209,13 @@ bwrb audit --type task
 
 # JSON output for parsing issues
 bwrb audit --output json
+
+# JSON issue metadata (for hygiene checks, under `issue.meta`)
+# trailing-whitespace: line, before, after, trimmedCount
+# unknown-enum-casing: suggested, matchedBy, before, after
+# frontmatter-key-casing: fromKey, toKey, before, after (or conflictValue)
+# duplicate-list-values: duplicates, removedCount, before, after
+# invalid-boolean-coercion: coercedTo, before, after
 
 # Fix issues (interactive writes by default; explicit targeting required)
 # Apply guided fixes

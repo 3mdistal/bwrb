@@ -35,6 +35,7 @@ import {
 } from '../bulk/move.js';
 import { formatValue } from '../vault.js';
 import { buildNoteTargetIndex, type NoteTargetIndex } from '../discovery.js';
+import { isBwrbBuiltinFrontmatterField } from '../frontmatter/systemFields.js';
 
 // Alias for backward compatibility
 const resolveTypePathFromFrontmatter = resolveTypeFromFrontmatter;
@@ -56,6 +57,11 @@ import {
   getLastPairForKey,
   getStringSequenceItem,
 } from './structural.js';
+import {
+  splitLinesPreserveEol,
+  parseSimpleYamlKeyValueLine,
+  isBlockScalarHeader,
+} from './raw.js';
 import { extractYamlNodeValue, isEffectivelyEmpty } from './value-utils.js';
 import {
   getAutoUnknownFieldMigrationTarget,
@@ -94,41 +100,6 @@ function registerManualReview(
   list.push({ file, issue });
 }
 
-type RawLine = {
-  text: string;
-  eol: string;
-};
-
-function splitLinesPreserveEol(input: string): RawLine[] {
-  const lines: RawLine[] = [];
-  let start = 0;
-
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (ch !== '\n' && ch !== '\r') continue;
-
-    const eolStart = i;
-    let eol = ch;
-    if (ch === '\r' && input[i + 1] === '\n') {
-      eol = '\r\n';
-      i++;
-    }
-
-    lines.push({
-      text: input.slice(start, eolStart),
-      eol,
-    });
-
-    start = i + 1;
-  }
-
-  lines.push({
-    text: input.slice(start),
-    eol: '',
-  });
-
-  return lines;
-}
 
 async function applyTrailingWhitespaceFix(filePath: string, issue: AuditIssue): Promise<FixResult> {
   const lineNumber = issue.lineNumber;
@@ -163,6 +134,138 @@ async function applyTrailingWhitespaceFix(filePath: string, issue: AuditIssue): 
   return { file: filePath, issue, action: 'fixed' };
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getTopLevelIndent(
+  lines: Array<ReturnType<typeof splitLinesPreserveEol>[number]>,
+  yamlStart: number,
+  yamlEnd: number
+): number | null {
+  let inBlockScalar = false;
+  let blockScalarIndent = 0;
+  let minIndent: number | null = null;
+
+  for (const line of lines) {
+    if (line.startOffset < yamlStart || line.startOffset >= yamlEnd) continue;
+
+    const parsed = parseSimpleYamlKeyValueLine(line.text);
+
+    if (inBlockScalar) {
+      if (parsed && parsed.indent <= blockScalarIndent) {
+        inBlockScalar = false;
+      } else {
+        continue;
+      }
+    }
+
+    if (!parsed) continue;
+
+    const restTrimStart = parsed.rest.replace(/^[ \t]*/, '');
+    if (isBlockScalarHeader(restTrimStart)) {
+      inBlockScalar = true;
+      blockScalarIndent = parsed.indent;
+    }
+
+    minIndent = minIndent === null ? parsed.indent : Math.min(minIndent, parsed.indent);
+  }
+
+  return minIndent;
+}
+
+async function applyFrontmatterKeyRenameFix(
+  filePath: string,
+  issue: AuditIssue
+): Promise<FixResult> {
+  if (issue.hasConflict) {
+    return { file: filePath, issue, action: 'skipped', message: 'Key conflict detected' };
+  }
+
+  if (!issue.field || !issue.canonicalKey) {
+    return { file: filePath, issue, action: 'failed', message: 'Missing key metadata' };
+  }
+
+  const content = await readFile(filePath, 'utf-8');
+  const structural = readStructuralFrontmatterFromRaw(content);
+  if (!structural.primaryBlock || structural.yaml === null) {
+    return { file: filePath, issue, action: 'failed', message: 'No frontmatter block found' };
+  }
+
+  const { yamlStart, yamlEnd } = structural.primaryBlock;
+  const lines = splitLinesPreserveEol(content);
+
+  const topIndent = getTopLevelIndent(lines, yamlStart, yamlEnd);
+  if (topIndent === null) {
+    return { file: filePath, issue, action: 'failed', message: 'Could not determine frontmatter indentation' };
+  }
+
+  const fromKey = issue.field;
+  const toKey = issue.canonicalKey;
+  const targetIndexes: number[] = [];
+
+  let inBlockScalar = false;
+  let blockScalarIndent = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.startOffset < yamlStart || line.startOffset >= yamlEnd) continue;
+
+    const parsed = parseSimpleYamlKeyValueLine(line.text);
+
+    if (inBlockScalar) {
+      if (parsed && parsed.indent <= blockScalarIndent) {
+        inBlockScalar = false;
+      } else {
+        continue;
+      }
+    }
+
+    if (!parsed) continue;
+
+    const restTrimStart = parsed.rest.replace(/^[ \t]*/, '');
+    if (isBlockScalarHeader(restTrimStart)) {
+      inBlockScalar = true;
+      blockScalarIndent = parsed.indent;
+    }
+
+    if (parsed.indent !== topIndent) continue;
+    if (parsed.key !== fromKey) continue;
+
+    targetIndexes.push(i);
+  }
+
+  if (targetIndexes.length === 0) {
+    return { file: filePath, issue, action: 'skipped', message: `Key '${fromKey}' not found` };
+  }
+
+  if (targetIndexes.length > 1) {
+    return { file: filePath, issue, action: 'failed', message: `Multiple '${fromKey}' keys found` };
+  }
+
+  const targetIndex = targetIndexes[0]!;
+  const targetLine = lines[targetIndex]!;
+  const keyPattern = new RegExp(`^([ \t]*)${escapeRegExp(fromKey)}(\\s*:)`);
+  const match = targetLine.text.match(keyPattern);
+  if (!match) {
+    return { file: filePath, issue, action: 'failed', message: 'Unable to rewrite key line' };
+  }
+
+  const replacement = `${match[1]}${toKey}${match[2]}`;
+  lines[targetIndex] = {
+    ...targetLine,
+    text: replacement + targetLine.text.slice(match[0].length),
+  };
+
+  const updated = lines.map((line) => line.text + line.eol).join('');
+
+  if (!isDryRunEnabled()) {
+    await writeFile(filePath, updated, 'utf-8');
+  }
+
+  return { file: filePath, issue, action: 'fixed' };
+}
+
 // ============================================================================
 // Fix Application
 // ============================================================================
@@ -184,6 +287,10 @@ async function applyFix(
 
     if (issue.code === 'trailing-whitespace') {
       return await applyTrailingWhitespaceFix(filePath, issue);
+    }
+
+    if (issue.code === 'frontmatter-key-casing') {
+      return await applyFrontmatterKeyRenameFix(filePath, issue);
     }
 
     const parsed = await parseNote(filePath);
@@ -298,22 +405,25 @@ async function applyFix(
         break;
       }
       case 'unknown-enum-casing': {
-        if (issue.field && issue.canonicalValue) {
-          frontmatter[issue.field] = issue.canonicalValue;
+        const suggested = issue.canonicalValue ?? (issue.meta?.['suggested'] as string | undefined);
+        if (issue.field && suggested) {
+          frontmatter[issue.field] = suggested;
         } else {
           return { file: filePath, issue, action: 'failed', message: 'No canonical value provided' };
         }
         break;
       }
       case 'duplicate-list-values': {
-        if (issue.field && Array.isArray(frontmatter[issue.field])) {
-          // Case-insensitive deduplication preserving first occurrence
+        const currentValue = issue.field ? frontmatter[issue.field] : undefined;
+        if (issue.field && Array.isArray(currentValue)) {
+          if (!currentValue.every(item => typeof item === 'string')) {
+            return { file: filePath, issue, action: 'failed', message: 'Cannot dedupe non-string list values' };
+          }
           const seen = new Set<string>();
-          const deduped: unknown[] = [];
-          for (const item of frontmatter[issue.field] as unknown[]) {
-            const key = String(item).toLowerCase();
-            if (!seen.has(key)) {
-              seen.add(key);
+          const deduped: string[] = [];
+          for (const item of currentValue) {
+            if (!seen.has(item)) {
+              seen.add(item);
               deduped.push(item);
             }
           }
@@ -323,7 +433,6 @@ async function applyFix(
         }
         break;
       }
-      case 'frontmatter-key-casing':
       case 'singular-plural-mismatch': {
         if (!issue.field || !issue.canonicalKey) {
           return { file: filePath, issue, action: 'failed', message: 'No field or canonical key provided' };
@@ -827,6 +936,10 @@ export async function runAutoFix(
       }
 
       if (issue.code === 'unknown-field' && issue.field) {
+        if (isBwrbBuiltinFrontmatterField(issue.field)) {
+          resolvedNonFixable.add(issue);
+          continue;
+        }
         const hasBetterAutoFix = fixableIssues.some(
           i =>
             (i.code === 'frontmatter-key-casing' || i.code === 'singular-plural-mismatch') &&
@@ -1006,40 +1119,40 @@ export async function runAutoFix(
           console.log(chalk.red(`    ✗ Failed to trim ${issue.field}: ${fixResult.message}`));
           failed++;
         }
-       } else if (issue.code === 'invalid-boolean-coercion' && issue.field) {
-         // Auto-fix boolean coercion
-         const fixResult = await applyFix(schema, result.path, issue);
-         if (fixResult.action === 'fixed') {
-           console.log(chalk.cyan(`  ${result.relativePath}`));
-           console.log(chalk.green(`    ✓ Coerced ${issue.field} to boolean`));
-           fixed++;
-         } else {
-           console.log(chalk.cyan(`  ${result.relativePath}`));
-           console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
-           failed++;
-         }
-       } else if (issue.code === 'wrong-scalar-type' && issue.field) {
-         const fixResult = await applyFix(schema, result.path, issue);
-         if (fixResult.action === 'fixed') {
-           console.log(chalk.cyan(`  ${result.relativePath}`));
-           console.log(chalk.green(`    ✓ Coerced ${issue.field} to ${issue.expected}`));
-           fixed++;
-         } else if (fixResult.action === 'skipped') {
-           console.log(chalk.cyan(`  ${result.relativePath}`));
-           console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
-           skipped++;
-         } else {
-           console.log(chalk.cyan(`  ${result.relativePath}`));
-           console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
-           failed++;
-         }
-       } else if (issue.code === 'unknown-enum-casing' && issue.field && issue.canonicalValue) {
-
-        // Auto-fix enum casing
+      } else if (issue.code === 'invalid-boolean-coercion' && issue.field) {
+        // Auto-fix boolean coercion
         const fixResult = await applyFix(schema, result.path, issue);
         if (fixResult.action === 'fixed') {
           console.log(chalk.cyan(`  ${result.relativePath}`));
-          console.log(chalk.green(`    ✓ Fixed ${issue.field} casing: ${issue.value} → ${issue.canonicalValue}`));
+          console.log(chalk.green(`    ✓ Coerced ${issue.field} to boolean`));
+          fixed++;
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
+          failed++;
+        }
+      } else if (issue.code === 'wrong-scalar-type' && issue.field) {
+        const fixResult = await applyFix(schema, result.path, issue);
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Coerced ${issue.field} to ${issue.expected}`));
+          fixed++;
+        } else if (fixResult.action === 'skipped') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+          skipped++;
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
+          failed++;
+        }
+      } else if (issue.code === 'unknown-enum-casing' && issue.field && (issue.canonicalValue || issue.meta?.['suggested'])) {
+        // Auto-fix enum casing
+        const fixResult = await applyFix(schema, result.path, issue);
+        if (fixResult.action === 'fixed') {
+          const canonicalValue = issue.canonicalValue ?? (issue.meta?.['suggested'] as string | undefined) ?? '';
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Fixed ${issue.field} casing: ${issue.value} → ${canonicalValue}`));
           fixed++;
         } else {
           console.log(chalk.cyan(`  ${result.relativePath}`));
@@ -1445,6 +1558,11 @@ async function handleUnknownFieldFix(
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
   if (!issue.field) return 'skipped';
+
+  if (isBwrbBuiltinFrontmatterField(issue.field)) {
+    console.log(chalk.dim(`    → Skipped (system-managed field: ${issue.field})`));
+    return 'skipped';
+  }
 
   if (issue.suggestion) {
     console.log(chalk.dim(`    ${issue.suggestion}`));
@@ -2292,7 +2410,7 @@ async function handleSelfReferenceFix(
   }
 
   if (selected === '[clear field]') {
-    const fixResult = await applyFix(schema, result.path, issue, '');
+    const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option' }, '');
     if (fixResult.action === 'fixed') {
       console.log(chalk.green(`    ✓ Cleared ${issue.field}`));
       return 'fixed';
@@ -2301,7 +2419,7 @@ async function handleSelfReferenceFix(
     return 'failed';
   }
 
-  const fixResult = await applyFix(schema, result.path, issue, selected);
+  const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option' }, selected);
   if (fixResult.action === 'fixed') {
     console.log(chalk.green(`    ✓ Updated ${issue.field}: ${selected}`));
     return 'fixed';
@@ -2345,7 +2463,7 @@ async function handleAmbiguousLinkTargetFix(
   }
 
   if (selected === '[clear field]') {
-    const fixResult = await applyFix(schema, result.path, issue, '');
+    const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option' }, '');
     if (fixResult.action === 'fixed') {
       console.log(chalk.green(`    ✓ Cleared ${issue.field}`));
       return 'fixed';
@@ -2354,7 +2472,7 @@ async function handleAmbiguousLinkTargetFix(
     return 'failed';
   }
 
-  const fixResult = await applyFix(schema, result.path, issue, selected);
+  const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option' }, selected);
   if (fixResult.action === 'fixed') {
     console.log(chalk.green(`    ✓ Updated ${issue.field}: ${selected}`));
     return 'fixed';

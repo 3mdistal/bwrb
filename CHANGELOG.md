@@ -24,6 +24,15 @@ All notable changes to Bowerbird are documented in this file.
 - **Vault auto-detection now uses nearest `.bwrb/schema.json` (find-up)** (#337)
   - Precedence: `--vault` > find-up > `BWRB_VAULT` > `cwd` (error if not a vault)
 
+### Changed
+
+- **Audit ignores built-in frontmatter fields written by `bwrb new`** (#395)
+  - `id` and `name` no longer emit `unknown-field` warnings
+
+### Fixed
+
+- **Owned note creation now writes `owner` frontmatter and uses the owning field folder** (#394)
+
 ### Added
 
 - **Phase 2 vault auto-detection with downward discovery and picker** (#338)
@@ -75,6 +84,9 @@ All notable changes to Bowerbird are documented in this file.
   - `malformed-wikilink`: deterministic bracket repairs for near-wikilinks in frontmatter only (scalars and list items)
 
 ### Changed
+
+- **`--where` now supports hyphenated frontmatter keys** (#410)
+  - Example: `--where "creation-date == '2026-01-28'"`
 
 - **Consolidated CLI reference documentation** (#257)
   - Each top-level command (`config`, `schema`, `template`) now has a single comprehensive page
@@ -130,6 +142,9 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Fixed
 
+- **Ensure npm publish artifacts include built CLI output** (#408)
+  - Add prepack build and pack verification to prevent missing `dist/index.js`
+- **Report packaged version in `bwrb --version` output** (#379)
 - **Handle malformed frontmatter wikilink scalars without crashing audit fixes** (#354)
 - **Ignore slashes in note names when creating files** (#353)
 

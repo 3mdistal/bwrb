@@ -122,9 +122,9 @@ status: raw
           task: {
             ...TEST_SCHEMA.types.task,
             fields: {
-              ...TEST_SCHEMA.types.task.fields,
+              ...(TEST_SCHEMA.types.task.fields ?? {}),
               tags: {
-                ...TEST_SCHEMA.types.task.fields.tags,
+                ...(TEST_SCHEMA.types.task.fields?.tags ?? {}),
                 prompt: 'select',
                 options: ['good', 'bad'],
                 multiple: true,
@@ -311,6 +311,70 @@ customField: value
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toContain('Unknown field: customField');
+    });
+
+    it('should ignore built-in id and name fields', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Builtins.md'),
+        `---
+type: idea
+id: 123e4567-e89b-12d3-a456-426614174000
+name: Example
+status: raw
+priority: medium
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain('Unknown field: id');
+      expect(result.stdout).not.toContain('Unknown field: name');
+    });
+
+    it('should not warn on id/name for notes created by bwrb new', async () => {
+      const createResult = await runCLI(
+        [
+          'new',
+          'idea',
+          '--no-template',
+          '--json',
+          JSON.stringify({ name: 'Example', status: 'raw' }),
+        ],
+        tempVaultDir
+      );
+
+      const createJson = JSON.parse(createResult.stdout) as { success: boolean; path: string };
+      expect(createJson.success).toBe(true);
+
+      const auditResult = await runCLI(['audit', createJson.path], tempVaultDir);
+
+      expect(auditResult.exitCode).toBe(0);
+      expect(auditResult.stdout).not.toContain('Unknown field: id');
+      expect(auditResult.stdout).not.toContain('Unknown field: name');
+    });
+
+    it('should keep strict mode errors for real unknown fields', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Builtins With Extra.md'),
+        `---
+type: idea
+id: 123e4567-e89b-12d3-a456-426614174000
+name: Example
+status: raw
+priority: medium
+customField: value
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--strict'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Unknown field: customField');
+      expect(result.stdout).not.toContain('Unknown field: id');
+      expect(result.stdout).not.toContain('Unknown field: name');
     });
 
     it('should allow Obsidian native fields like tags', async () => {
@@ -556,6 +620,34 @@ priority: medium
       expect(issue.field).toBe('status');
       expect(issue.value).toBe('wip');
       expect(issue.expected).toContain('raw');
+    });
+
+    it('should exclude built-in fields from unknown-field issues', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Builtins.json.md'),
+        `---
+type: idea
+id: 123e4567-e89b-12d3-a456-426614174000
+name: Example
+status: raw
+priority: medium
+customField: value
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      type AuditIssue = { code: string; field?: string };
+      const json = JSON.parse(result.stdout) as { files: Array<{ issues: AuditIssue[] }> };
+      const unknownIssues = json.files
+        .flatMap(file => file.issues)
+        .filter((issue): issue is AuditIssue => issue.code === 'unknown-field');
+      const unknownFields = unknownIssues.map(issue => issue.field);
+      expect(unknownFields).toContain('customField');
+      expect(unknownFields).not.toContain('id');
+      expect(unknownFields).not.toContain('name');
     });
   });
 
@@ -2694,9 +2786,7 @@ status: raw
   // Phase 2: Low-risk hygiene auto-fixes
   // ============================================================================
 
-  // NOTE: trailing-whitespace detection is NOT possible because YAML parsers
-  // (gray-matter) strip trailing whitespace during parsing. These tests are
-  // skipped until we implement raw string detection before YAML parsing.
+  // NOTE: trailing-whitespace detection uses raw frontmatter lines (not YAML parsing).
   describe('trailing-whitespace detection and fix', () => {
     let tempVaultDir: string;
 
@@ -2733,6 +2823,9 @@ priority: medium
       expect(wsIssue).toBeDefined();
       expect(wsIssue.field).toBe('status');
       expect(wsIssue.autoFixable).toBe(true);
+      expect(wsIssue.meta.before).toBe('status: raw  ');
+      expect(wsIssue.meta.after).toBe('status: raw');
+      expect(wsIssue.meta.line).toBe(3);
     });
 
     it('should detect trailing whitespace after closing quote', async () => {
@@ -2753,7 +2846,9 @@ priority: medium
       const wsIssue = file.issues.find((i: { code: string }) => i.code === 'trailing-whitespace');
       expect(wsIssue).toBeDefined();
       expect(wsIssue.field).toBe('status');
-      expect(wsIssue.lineNumber).toBe(3);
+      expect(wsIssue.meta.line).toBe(3);
+      expect(wsIssue.meta.before).toBe(' status: "raw"  ');
+      expect(wsIssue.meta.after).toBe(' status: "raw"');
     });
 
     it('should not flag whitespace inside quotes', async () => {
@@ -2880,12 +2975,33 @@ effort: "3"
       const output = JSON.parse(result.stdout);
       const file = output.files.find((f: { path: string }) => f.path.includes('String Scalars.md'));
       expect(file).toBeDefined();
-      const boolIssue = file.issues.find((i: { code: string }) => i.code === 'wrong-scalar-type' && i.field === 'archived');
-      const numberIssue = file.issues.find((i: { code: string }) => i.code === 'wrong-scalar-type' && i.field === 'effort');
+      const boolIssue = file.issues.find((i: { code: string; field?: string }) => i.code === 'wrong-scalar-type' && i.field === 'archived');
+      const numberIssue = file.issues.find((i: { code: string; field?: string }) => i.code === 'wrong-scalar-type' && i.field === 'effort');
       expect(boolIssue).toBeDefined();
       expect(numberIssue).toBeDefined();
       expect(boolIssue.autoFixable).toBe(true);
       expect(numberIssue.autoFixable).toBe(true);
+    });
+
+    it('should not flag non-boolean string values', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Non Boolean.md'),
+        `---
+ type: idea
+ status: raw
+ priority: medium
+ archived: "yes"
+ ---
+ `
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Non Boolean.md'));
+      expect(file).toBeDefined();
+      const boolIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-boolean-coercion');
+      expect(boolIssue).toBeUndefined();
     });
 
     it('should flag invalid date formats for date prompts', async () => {
@@ -2997,6 +3113,54 @@ priority: medium
       expect(casingIssue.field).toBe('status');
       expect(casingIssue.canonicalValue).toBe('raw');
       expect(casingIssue.autoFixable).toBe(true);
+      expect(casingIssue.meta.suggested).toBe('raw');
+      expect(casingIssue.meta.matchedBy).toBe('case-insensitive');
+      expect(casingIssue.meta.before).toBe('Raw');
+      expect(casingIssue.meta.after).toBe('raw');
+    });
+
+    it('should not auto-fix when enum casing is ambiguous', async () => {
+      const schemaWithCollision = {
+        ...TEST_SCHEMA,
+        types: {
+          ...TEST_SCHEMA.types,
+          idea: {
+            ...TEST_SCHEMA.types.idea,
+            fields: {
+              ...(TEST_SCHEMA.types.idea.fields ?? {}),
+              status: {
+                ...((TEST_SCHEMA.types.idea.fields ?? {}).status ?? {}),
+                options: ['raw', 'RAW'],
+              },
+            },
+          },
+        },
+      };
+
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(schemaWithCollision, null, 2)
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Ambiguous Enum.md'),
+        `---
+type: idea
+status: Raw
+priority: medium
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Ambiguous Enum.md'));
+      expect(file).toBeDefined();
+      const casingIssue = file.issues.find((i: { code: string }) => i.code === 'unknown-enum-casing');
+      expect(casingIssue).toBeDefined();
+      expect(casingIssue.autoFixable).toBe(false);
+      expect(casingIssue.meta.candidates).toEqual(['raw', 'RAW']);
     });
 
     it('should auto-fix enum casing', async () => {
@@ -3040,7 +3204,7 @@ priority: Medium
       await rm(tempVaultDir, { recursive: true, force: true });
     });
 
-    it('should detect duplicate values in list (case-insensitive)', async () => {
+    it('should detect duplicate values in list (case-sensitive)', async () => {
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Duplicates.md'),
         `---
@@ -3048,6 +3212,7 @@ type: idea
 status: raw
 priority: medium
 tags:
+  - urgent
   - urgent
   - Urgent
   - important
@@ -3063,6 +3228,8 @@ tags:
       expect(dupIssue).toBeDefined();
       expect(dupIssue.field).toBe('tags');
       expect(dupIssue.autoFixable).toBe(true);
+      expect(dupIssue.meta.duplicates).toEqual(['urgent']);
+      expect(dupIssue.meta.removedCount).toBe(1);
     });
 
     it('should auto-fix duplicate list values', async () => {
@@ -3073,6 +3240,7 @@ type: idea
 status: raw
 priority: medium
 tags:
+  - urgent
   - urgent
   - Urgent
   - important
@@ -3089,8 +3257,9 @@ tags:
       const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Dups.md'), 'utf-8');
       expect(content).toContain('urgent');
       expect(content).toContain('important');
+      expect(content).toContain('Urgent');
       // Should only have one of the duplicate values
-      const matches = content.match(/urgent/gi);
+      const matches = content.match(/\burgent\b/g);
       expect(matches?.length).toBe(1);
     });
   });
@@ -3132,6 +3301,10 @@ priority: medium
       expect(keyIssue.field).toBe('Status');
       expect(keyIssue.canonicalKey).toBe('status');
       expect(keyIssue.autoFixable).toBe(true);
+      expect(keyIssue.meta.fromKey).toBe('Status');
+      expect(keyIssue.meta.toKey).toBe('status');
+      expect(keyIssue.meta.before).toBe('Status');
+      expect(keyIssue.meta.after).toBe('status');
     });
 
     it('should auto-fix key casing', async () => {
@@ -3179,6 +3352,8 @@ priority: medium
       expect(keyIssue.hasConflict).toBe(true);
       // Should not be auto-fixable when both have values
       expect(keyIssue.autoFixable).toBe(false);
+      expect(keyIssue.meta.fromKey).toBe('Status');
+      expect(keyIssue.meta.toKey).toBe('status');
     });
   });
 

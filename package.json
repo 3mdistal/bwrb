@@ -1,15 +1,22 @@
 {
   "name": "bwrb",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Schema-driven note management for markdown vaults",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "bwrb": "./dist/index.js"
   },
+  "files": [
+    "dist/**",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "sh -c 'shift $([ \"$1\" = \"--\" ] && echo 1 || echo 0); exec tsx src/index.ts \"$@\"' --",
-    "build": "tsup src/index.ts --format esm --dts --clean",
+    "build": "tsup --config tsup.config.ts",
+    "prepack": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -18,6 +25,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "qa": "pnpm typecheck && pnpm lint && pnpm build && pnpm test",
+    "verify:pack": "node scripts/verify-pack.mjs",
     "knip": "knip",
     "knip:prod": "knip --production",
     "postinstall": "chmod +x node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true"

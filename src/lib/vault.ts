@@ -2,6 +2,7 @@ import { readdir, stat, mkdir } from 'fs/promises';
 import { join, basename, dirname, resolve } from 'path';
 import { existsSync } from 'fs';
 import { parseNote } from './frontmatter.js';
+import { getOwnedChildFolder } from './ownership-paths.js';
 import type { LoadedSchema, FilterCondition, OwnerInfo } from '../types/schema.js';
 import {
   getOutputDir as getOutputDirFromSchema,
@@ -526,29 +527,13 @@ async function isNoteOfType(
 }
 
 /**
- * Compute the output directory for an owned note.
- * Owned notes live in: {owner_folder}/{child_type}/
- * 
- * @param ownerPath - Absolute path to the owner note file
- * @param childTypeName - The type name of the owned child (e.g., "research")
- * @returns The absolute path to the directory where owned notes should live
- */
-function computeOwnedOutputDir(
-  ownerPath: string,
-  childTypeName: string
-): string {
-  const ownerDir = join(ownerPath, '..');
-  return join(ownerDir, childTypeName);
-}
-
-/**
  * Ensure the owned output directory exists, creating it if necessary.
  */
 export async function ensureOwnedOutputDir(
   ownerPath: string,
-  childTypeName: string
+  ownedFieldName: string
 ): Promise<string> {
-  const dir = computeOwnedOutputDir(ownerPath, childTypeName);
+  const dir = getOwnedChildFolder(ownerPath, ownedFieldName);
   await mkdir(dir, { recursive: true });
   return dir;
 }

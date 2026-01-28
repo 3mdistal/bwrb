@@ -255,6 +255,9 @@ related-research: ["[[General Fantasy Tropes]]"]
 4. **`owned: true` works with `multiple: true`** — A parent can own multiple children
 5. **Body wikilinks are unrestricted** — You can always link to any note in body text
 
+When creating owned notes via `bwrb new --owner`, the CLI also writes an `owner` frontmatter field
+to the child note (as a wikilink) for traceability. Ownership is still declared by the parent field.
+
 ### Folder Structure Examples
 
 **Without ownership (flat by type):**

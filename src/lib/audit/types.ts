@@ -62,6 +62,8 @@ export interface AuditIssue {
   expected?: string[] | string | undefined;
   suggestion?: string | undefined;
   autoFixable: boolean;
+  /** Per-issue metadata for JSON output (flattened in audit JSON). */
+  meta?: Record<string, unknown>;
   /** For orphan-file issues: the expected type path inferred from directory location */
   inferredType?: string | undefined;
   /** For format-violation: the expected format */

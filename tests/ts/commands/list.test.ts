@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
 
 describe('list command', () => {
@@ -26,6 +28,33 @@ describe('list command', () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Sample Task');
+    });
+
+    it('should match hyphenated frontmatter keys in --where', async () => {
+      const taskDir = join(vaultDir, 'Objectives', 'Tasks');
+      await mkdir(taskDir, { recursive: true });
+      const notePath = join(taskDir, 'Hyphen Task.md');
+      await writeFile(
+        notePath,
+        [
+          '---',
+          'type: task',
+          'status: backlog',
+          'creation-date: 2026-01-28',
+          '---',
+          '',
+          'Test note',
+          '',
+        ].join('\n')
+      );
+
+      const result = await runCLI(
+        ['list', 'task', '--where', "creation-date == '2026-01-28'"],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Hyphen Task');
     });
 
     it('should not show deprecation warning for positional type argument', async () => {
