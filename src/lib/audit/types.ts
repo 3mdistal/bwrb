@@ -5,6 +5,7 @@
  */
 
 import type { LoadedSchema } from '../../types/schema.js';
+import type { NoteTargetIndex } from '../discovery.js';
 
 // ============================================================================
 // Issue Types
@@ -22,6 +23,7 @@ export type IssueCode =
   | 'orphan-file'
   | 'invalid-type'
   | 'missing-required'
+  | 'empty-string-required'
   | 'invalid-option'
   | 'unknown-field'
   | 'wrong-directory'
@@ -217,6 +219,8 @@ export interface FixContext {
   vaultDir: string;
   /** When true, fixes are previewed (no writes). */
   dryRun: boolean;
+  /** Precomputed note target index for relation fixes. */
+  noteTargetIndex?: NoteTargetIndex;
 }
 
 // ============================================================================

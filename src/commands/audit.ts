@@ -74,6 +74,7 @@ Issue Types:
   orphan-file           File in managed directory but no 'type' field
   invalid-type          Type field value not recognized
   missing-required      Required field is missing
+  empty-string-required Required field is empty/whitespace/empty list
   invalid-option        Field value not in allowed option values
   unknown-field         Field not defined in schema (warning by default)
   wrong-directory       File location doesn't match its type
@@ -82,6 +83,8 @@ Issue Types:
   self-reference        Relation field references the same note
   ambiguous-link-target Relation target matches multiple files
   invalid-list-element  List field contains non-string values
+  wrong-scalar-type     Scalar value has wrong type for schema
+  invalid-date-format   Date value is not in YYYY-MM-DD format
   format-violation      Field value doesn't match expected format (wikilink, etc.)
   stale-reference       Wikilink points to non-existent file
   frontmatter-not-at-top Frontmatter block is not at top

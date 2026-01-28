@@ -212,7 +212,7 @@ tags:
           await proc.waitFor('Invalid list element', 10000);
           await proc.waitFor('Fix list value for tags', 10000);
 
-          proc.write('1');
+          proc.write('2');
           proc.write(Keys.ENTER);
 
           await proc.waitFor('Removed invalid element', 5000);
@@ -223,6 +223,102 @@ tags:
           expect(content).not.toContain('- 42');
         },
         { files: [taskFile], schema: BASELINE_SCHEMA }
+      );
+    }, 30000);
+
+    it('should require replacement for required self-reference', async () => {
+      const baseTask = BASELINE_SCHEMA.types.task;
+      const baseTaskFields = baseTask?.fields ?? {};
+      const requiredSchema = {
+        ...BASELINE_SCHEMA,
+        types: {
+          ...BASELINE_SCHEMA.types,
+          task: {
+            ...baseTask,
+            recursive: false,
+            fields: {
+              ...baseTaskFields,
+              parent: {
+                ...baseTaskFields.parent,
+                required: true,
+              },
+            },
+          },
+        },
+      };
+
+      const taskFile: TempVaultFile = {
+        path: 'Objectives/Tasks/Self Task.md',
+        content: `---
+type: task
+status: backlog
+parent: "[[Self Task]]"
+---
+`,
+      };
+
+      const otherTask: TempVaultFile = {
+        path: 'Objectives/Tasks/Other Task.md',
+        content: `---
+type: task
+status: backlog
+parent: "[[Self Task]]"
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'task', '--fix'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Self Task.md', 10000);
+          await proc.waitFor('Self-reference detected', 10000);
+          await proc.waitFor('Action for self-reference', 10000);
+
+          proc.write('1');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Updated parent', 5000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Objectives/Tasks/Self Task.md');
+          expect(content).toContain('parent:');
+          expect(content).toContain('Other Task');
+          expect(content).not.toContain('Self Task]]');
+        },
+        { files: [taskFile, otherTask], schema: requiredSchema }
+      );
+    }, 30000);
+  });
+
+  describe('scalar coercion fixes', () => {
+    it('should prompt to fix wrong scalar type', async () => {
+      const ideaFile: TempVaultFile = {
+        path: 'Ideas/Wrong Scalar.md',
+        content: `---
+type: idea
+status: raw
+effort: "not-a-number"
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'idea', '--fix'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Wrong Scalar.md', 10000);
+          await proc.waitFor('Invalid number for effort', 10000);
+          await proc.waitFor('Enter number for effort', 10000);
+
+          proc.write('3');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Updated effort: 3', 5000);
+          await proc.waitForStable(500);
+
+          const content = await readVaultFile(vaultPath, 'Ideas/Wrong Scalar.md');
+          expect(content).toContain('effort: 3');
+        },
+        { files: [ideaFile], schema: BASELINE_SCHEMA }
       );
     }, 30000);
   });
@@ -264,7 +360,7 @@ type: idea
       );
     }, 30000);
 
-    it('should treat empty required values as missing', async () => {
+    it('should treat empty required values as empty-string-required', async () => {
       const emptyRequired: TempVaultFile = {
         path: 'Ideas/Empty Required.md',
         content: `---
@@ -278,13 +374,13 @@ status: " "
         ['audit', 'idea', '--fix'],
         async (proc, vaultPath) => {
           await proc.waitFor('Empty Required.md', 10000);
-          await proc.waitFor('Missing required field: status', 10000);
-          await proc.waitFor('Add with default', 10000);
+          await proc.waitFor("Required field 'status' is empty", 10000);
+          await proc.waitFor('Replace with default', 10000);
 
           proc.write('y');
           proc.write(Keys.ENTER);
 
-          await proc.waitFor('Added status', 5000);
+          await proc.waitFor('Updated status', 5000);
           await proc.waitForStable(500);
 
           const content = await readVaultFile(vaultPath, 'Ideas/Empty Required.md');

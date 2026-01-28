@@ -4,20 +4,24 @@ This document defines product policy for `bwrb audit --fix` behaviors. The goal 
 
 ## Required Field Emptiness
 
-Required fields are considered missing when the value is:
+Required fields are considered empty when the value is:
 
 - `null` or `undefined`
 - an empty string (`""`) or whitespace-only string
 - an empty array (`[]`)
 
-These are reported as `missing-required`. There is no separate issue code for empty-required values.
+If the field is present but empty, report `empty-string-required`.
+If the field is absent entirely, report `missing-required`.
 
 ## Auto-Coercion Policy (Unambiguous Only)
 
-`audit --fix --auto` may coerce string scalars only when the conversion is unambiguous:
+`audit --fix --auto` may coerce scalars only when the conversion is unambiguous:
 
-- **Boolean**: only `true` or `false` (case-insensitive, trimmed)
-- **Number**: only strict numeric literals (no partial parsing)
+- **String → Boolean**: only `true` or `false` (case-insensitive, trimmed)
+- **String → Number**: only strict numeric literals (no partial parsing)
+- **Number/Boolean → String**: always safe
+- **Scalar → List**: wrap scalar when schema has `multiple: true`
+- **List → Scalar**: only when list length is `1` and value can be safely coerced
 
 Disallowed examples for auto-coercion:
 
@@ -32,3 +36,11 @@ If coercion is not unambiguous, `audit --fix` prompts the user interactively for
 - Invalid dates prompt the user for `YYYY-MM-DD`.
 - A `Suggested: YYYY-MM-DD` hint is shown only when the input can be normalized unambiguously.
 - Ambiguous inputs (e.g., `01/02/2026`) never receive a suggestion.
+
+## Invalid List Elements
+
+For list fields, `invalid-list-element` may auto-fix only when deterministic:
+
+- Remove `null` / empty-string elements if the list remains valid
+- Flatten a single nested list only when exactly one level deep and all elements are valid
+- Apply safe scalar coercions per `wrong-scalar-type` when unambiguous

@@ -44,6 +44,13 @@ All notable changes to Bowerbird are documented in this file.
   - `invalid-date-format`: interactive prompts with ISO-ish suggestions for date fields
   - `empty-string-required`: whitespace-only or empty list values now treated as missing required fields
 
+- **Audit --fix interactive detections and fixes for list/type/date/link edge cases** (#375)
+  - `empty-string-required` now reports empty required values as a distinct issue
+  - `wrong-scalar-type` handles scalar/list mismatches and safe stringification
+  - `invalid-date-format` supports unambiguous normalization in auto-fix
+  - `invalid-list-element` supports deterministic removal/flatten/coercion
+  - `ambiguous-link-target` emits structured JSON metadata for candidates
+
 - **Stable system-managed note IDs** (#334)
   - `bwrb new` writes an `id` (UUIDv4) to frontmatter
 - IDs are never reused (append-only registry in `.bwrb/ids.jsonl`)

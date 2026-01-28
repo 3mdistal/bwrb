@@ -3034,6 +3034,51 @@ effort: "3"
       expect(numberIssue.autoFixable).toBe(true);
     });
 
+    it('should detect scalar-to-list mismatch for multi-select fields', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Scalar Labels.md'),
+        `---
+type: idea
+status: raw
+labels: urgent
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Scalar Labels.md'));
+      expect(file).toBeDefined();
+      const listIssue = file.issues.find((i: { code: string; field?: string }) => i.code === 'wrong-scalar-type' && i.field === 'labels');
+      expect(listIssue).toBeDefined();
+      expect(listIssue.expected).toBe('list');
+      expect(listIssue.autoFixable).toBe(true);
+    });
+
+    it('should detect list-to-scalar mismatch for scalar fields', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'List Priority.md'),
+        `---
+type: idea
+status: raw
+priority:
+  - high
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('List Priority.md'));
+      expect(file).toBeDefined();
+      const listIssue = file.issues.find((i: { code: string; field?: string }) => i.code === 'wrong-scalar-type' && i.field === 'priority');
+      expect(listIssue).toBeDefined();
+      expect(listIssue.expected).toBe('string');
+      expect(listIssue.autoFixable).toBe(true);
+    });
+
     it('should not flag non-boolean string values', async () => {
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Non Boolean.md'),
@@ -3098,6 +3143,52 @@ deadline: 2026/1/2
       const dateIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-date-format');
       expect(dateIssue).toBeDefined();
       expect(dateIssue.suggestion).toBe('Suggested: 2026-01-02');
+      expect(dateIssue.autoFixable).toBe(true);
+      expect(dateIssue.meta).toMatchObject({ normalized: '2026-01-02' });
+    });
+
+    it('should detect empty required values as empty-string-required', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Empty Status.md'),
+        `---
+type: idea
+status: " "
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Empty Status.md'));
+      expect(file).toBeDefined();
+      const emptyIssue = file.issues.find((i: { code: string }) => i.code === 'empty-string-required');
+      expect(emptyIssue).toBeDefined();
+      expect(emptyIssue.autoFixable).toBe(true);
+    });
+
+    it('should annotate invalid list elements with metadata', async () => {
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Bad Tags.md'),
+        `---
+type: task
+status: backlog
+tags:
+  - good
+  - 42
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Bad Tags.md'));
+      expect(file).toBeDefined();
+      const listIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-list-element');
+      expect(listIssue).toBeDefined();
+      expect(listIssue.meta).toMatchObject({ reason: 'wrong-type', action: 'coerce' });
+      expect(listIssue.autoFixable).toBe(true);
     });
 
     it('should auto-fix string scalars in --auto mode', async () => {
