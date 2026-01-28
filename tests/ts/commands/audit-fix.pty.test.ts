@@ -16,7 +16,7 @@ import {
 import { existsSync } from 'fs';
 
 // Import shared schema for audit tests
-import { BASELINE_SCHEMA } from '../fixtures/schemas.js';
+import { AUDIT_SCHEMA, BASELINE_SCHEMA } from '../fixtures/schemas.js';
 
 // Skip PTY tests if running in CI without TTY support or node-pty is incompatible
 const describePty = shouldSkipPtyTests()
@@ -115,7 +115,7 @@ some-field: value
         content: `---
 type: task
 status: backlog
-parent: [[Self Task]]
+parent: "[[Self Task]]"
 ---
 `,
       };
@@ -147,7 +147,7 @@ parent: [[Self Task]]
         content: `---
 type: task
 status: backlog
-milestone: [[Shared]]
+milestone: "[[Shared]]"
 ---
 `,
       };

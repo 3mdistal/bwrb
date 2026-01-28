@@ -216,6 +216,14 @@ async function applyFix(
         }
         break;
       }
+      case 'ambiguous-link-target': {
+        if (issue.field && newValue !== undefined) {
+          frontmatter[issue.field] = newValue;
+        } else {
+          return { file: filePath, issue, action: 'failed', message: 'No value provided' };
+        }
+        break;
+      }
       case 'format-violation': {
         if (issue.field && issue.expectedFormat) {
           const currentValue = frontmatter[issue.field];
