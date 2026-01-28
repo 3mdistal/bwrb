@@ -74,6 +74,20 @@ import {
 // Helpers
 // ============================================================================
 
+function maybeUnquoteFormattedLink(value: string): string {
+  const trimmed = value.trim();
+  if (
+    trimmed.length >= 2 &&
+    trimmed.startsWith('"') &&
+    trimmed.endsWith('"') &&
+    trimmed.includes('[[') &&
+    trimmed.includes(']]')
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return value;
+}
+
 const dryRunStorage = new AsyncLocalStorage<boolean>();
 
 function isDryRunEnabled(): boolean {
@@ -323,14 +337,6 @@ async function applyFix(
         }
         break;
       }
-      case 'ambiguous-link-target': {
-        if (issue.field && newValue !== undefined) {
-          frontmatter[issue.field] = newValue;
-        } else {
-          return { file: filePath, issue, action: 'failed', message: 'No value provided' };
-        }
-        break;
-      }
       case 'format-violation': {
         if (issue.field && issue.expectedFormat) {
           const currentValue = frontmatter[issue.field];
@@ -358,6 +364,20 @@ async function applyFix(
           frontmatter[issue.field] = newValue;
         } else {
           return { file: filePath, issue, action: 'failed', message: 'No value provided' };
+        }
+        break;
+      }
+
+      case 'self-reference':
+      case 'ambiguous-link-target': {
+        if (!issue.field || typeof newValue !== 'string') {
+          return { file: filePath, issue, action: 'failed', message: 'No field or value provided' };
+        }
+
+        if (newValue.length === 0) {
+          delete frontmatter[issue.field];
+        } else {
+          frontmatter[issue.field] = maybeUnquoteFormattedLink(newValue);
         }
         break;
       }

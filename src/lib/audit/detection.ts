@@ -157,7 +157,7 @@ export async function runAudit(
   const noteTargetIndex = await buildNoteTargetIndex(schema, vaultDir);
 
   // Build parent map for cycle detection on recursive types
-  const parentMap = await buildParentMap(schema, vaultDir, filteredFiles);
+  const parentMap = await buildParentMap(schema, vaultDir, filteredFiles, noteTargetIndex);
 
   // Audit each file
   const results: FileAuditResult[] = [];
@@ -458,10 +458,7 @@ export async function auditFile(
         i.code === 'self-reference' || i.code === 'ambiguous-link-target'
       );
 
-      const hasParentSelfReferenceIssue =
-        fieldName === 'parent' && issues.some((i) => i.code === 'self-reference' && i.field === 'parent');
-
-      if (!hasRelationIntegrityIssue && !hasParentSelfReferenceIssue && value) {
+      if (!hasRelationIntegrityIssue && value) {
         // In practice, YAML parsers may interpret bare wikilinks like `parent: [[Foo]]`
         // as a YAML array ("flow sequence") rather than a string. That is a YAML concern,
         // not a user-facing "format violation".
@@ -521,11 +518,6 @@ export async function auditFile(
     if (cycleIssue) {
       issues.push(cycleIssue);
     }
-  }
-
-  const selfReferenceIssue = checkParentSelfReference(file, frontmatter);
-  if (selfReferenceIssue) {
-    issues.push(selfReferenceIssue);
   }
 
   // ============================================================================
@@ -607,6 +599,25 @@ function toArrayValue(value: unknown): unknown[] {
   return values;
 }
 
+function normalizeWikilinkFlowSequence(value: unknown): string | null {
+  // YAML parses `[[Foo]]` as a flow sequence containing another flow sequence.
+  // When we reach the relation checker, we may see either:
+  // - the outer array: [ [ 'Foo' ] ] (frontmatter field value)
+  // - the inner array: [ 'Foo' ] (a single element of that outer array)
+  // Treat both as an Obsidian wikilink.
+  if (Array.isArray(value) && value.length === 1) {
+    if (typeof value[0] === 'string') {
+      return `[[${value[0]}]]`;
+    }
+
+    if (Array.isArray(value[0]) && value[0].length === 1 && typeof value[0][0] === 'string') {
+      return `[[${value[0][0]}]]`;
+    }
+  }
+
+  return null;
+}
+
 function checkRelationFieldIssues(
   schema: LoadedSchema,
   fieldName: string,
@@ -628,9 +639,10 @@ function checkRelationFieldIssues(
 
   for (let index = 0; index < rawValues.length; index++) {
     const rawValue = rawValues[index];
-    if (typeof rawValue !== 'string') continue;
+    const rawString = typeof rawValue === 'string' ? rawValue : normalizeWikilinkFlowSequence(rawValue);
+    if (!rawString) continue;
 
-    const rawTarget = extractLinkTarget(rawValue) ?? rawValue.trim();
+    const rawTarget = extractLinkTarget(rawString) ?? rawString.trim();
     if (!rawTarget) continue;
 
     const resolvedTarget = resolveRelationTarget(noteTargetIndex, rawTarget);
@@ -642,7 +654,7 @@ function checkRelationFieldIssues(
         for (const path of allPaths) {
           allTargets.add(path.replace(/\.md$/, ''));
         }
-        const staleIssue = checkStaleReference(fieldName, rawValue, allTargets, false);
+        const staleIssue = checkStaleReference(fieldName, rawString, allTargets, false);
         if (staleIssue) {
           issues.push(staleIssue);
         }
@@ -668,7 +680,7 @@ function checkRelationFieldIssues(
         code: 'self-reference',
         message: `Self-reference detected: ${fieldName} points to itself`,
         field: fieldName,
-        value: rawValue,
+        value: rawString,
         listIndex: Array.isArray(value) ? index : undefined,
         autoFixable: false,
       });
@@ -681,7 +693,7 @@ function checkRelationFieldIssues(
         code: 'ambiguous-link-target',
         message: `Ambiguous link target for ${fieldName}: '${rawTarget}' matches multiple files`,
         field: fieldName,
-        value: rawValue,
+        value: rawString,
         candidates: filteredCandidates,
         listIndex: Array.isArray(value) ? index : undefined,
         autoFixable: false,
@@ -697,7 +709,7 @@ function checkRelationFieldIssues(
       const pathKey = resolvedPath.replace(/\.md$/, '');
       const resolvedType = noteTypeMap.get(pathKey) ?? noteTypeMap.get(rawTarget);
       if (resolvedType) {
-        const sourceIssues = checkContextFieldSource(schema, fieldName, rawValue, field.source, noteTypeMap);
+        const sourceIssues = checkContextFieldSource(schema, fieldName, rawString, field.source, noteTypeMap);
         issues.push(...sourceIssues);
       }
     }
@@ -1191,7 +1203,8 @@ async function checkOwnershipViolations(
 async function buildParentMap(
   schema: LoadedSchema,
   _vaultDir: string,
-  files: ManagedFile[]
+  files: ManagedFile[],
+  noteTargetIndex: import('../discovery.js').NoteTargetIndex | undefined
 ): Promise<Map<string, string>> {
   const parentMap = new Map<string, string>();
   
@@ -1208,12 +1221,25 @@ async function buildParentMap(
       const parentValue = frontmatter['parent'];
       if (!parentValue) continue;
       
-      // Extract the parent note name from the wikilink
-      const parentTarget = extractLinkTarget(String(parentValue));
-      if (parentTarget) {
-        const noteName = basename(file.path, '.md');
-        parentMap.set(noteName, parentTarget);
+      const parentString = typeof parentValue === 'string' ? parentValue : normalizeWikilinkFlowSequence(parentValue);
+      if (!parentString) continue;
+
+      const parentTarget = extractLinkTarget(parentString);
+      if (!parentTarget) continue;
+
+      const resolvedTarget = resolveRelationTarget(noteTargetIndex, parentTarget);
+      if (resolvedTarget.candidates.length !== 1 || !resolvedTarget.resolvedPath) continue;
+
+      // Only consider parent chains within the same recursive type.
+      if (noteTargetIndex) {
+        const parentKey = resolvedTarget.resolvedPath.replace(/\.md$/, '');
+        const parentType = noteTargetIndex.pathNoExtToType.get(parentKey);
+        if (parentType !== typePath) continue;
       }
+
+      const childKey = file.relativePath.replace(/\.md$/, '');
+      const parentKey = resolvedTarget.resolvedPath.replace(/\.md$/, '');
+      parentMap.set(childKey, parentKey);
     } catch {
       // Skip files that can't be parsed
     }
@@ -1230,14 +1256,14 @@ function checkParentCycle(
   file: ManagedFile,
   parentMap: Map<string, string>
 ): AuditIssue | null {
-  const noteName = basename(file.path, '.md');
+  const startKey = file.relativePath.replace(/\.md$/, '');
   const visited = new Set<string>();
-  const path: string[] = [noteName];
-  
-  // Add the starting note to visited
-  visited.add(noteName);
-  
-  let current = parentMap.get(noteName);
+  const pathKeys: string[] = [startKey];
+  const pathDisplay: string[] = [basename(startKey)];
+
+  visited.add(startKey);
+
+  let current = parentMap.get(startKey);
   
   while (current) {
     if (visited.has(current)) {
@@ -1245,46 +1271,20 @@ function checkParentCycle(
       return {
         severity: 'error',
         code: 'parent-cycle',
-        message: `Parent cycle detected: ${path.join(' → ')} → ${current}`,
+        message: `Parent cycle detected: ${pathDisplay.join(' → ')} → ${basename(current)}`,
         field: 'parent',
         autoFixable: false,
-        cyclePath: [...path, current],
+        cyclePath: [...pathDisplay, basename(current)],
       };
     }
     
     visited.add(current);
-    path.push(current);
+    pathKeys.push(current);
+    pathDisplay.push(basename(current));
     current = parentMap.get(current);
   }
   
   return null;
-}
-
-function checkParentSelfReference(
-  file: ManagedFile,
-  frontmatter: Record<string, unknown>
-): AuditIssue | null {
-  const parentValue = frontmatter['parent'];
-  if (!parentValue) return null;
-
-  const parentTarget = extractLinkTarget(String(parentValue));
-  if (!parentTarget) return null;
-
-  const noteName = basename(file.path, '.md');
-  const pathKey = file.relativePath.replace(/\.md$/, '');
-
-  if (parentTarget !== noteName && parentTarget !== pathKey) {
-    return null;
-  }
-
-  return {
-    severity: 'error',
-    code: 'self-reference',
-    message: 'Self-reference detected: parent points to itself',
-    field: 'parent',
-    value: parentValue,
-    autoFixable: false,
-  };
 }
 
 // ============================================================================

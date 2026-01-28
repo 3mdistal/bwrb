@@ -78,6 +78,35 @@ parent: "[[Self Task]]"
       expect(result.stdout).toContain('Self-reference detected: parent points to itself');
     });
 
+    it('should prefer ambiguous-link-target over self-reference when target is ambiguous', async () => {
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks/Sub'), { recursive: true });
+
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Self Task.md'),
+`---
+type: task
+status: backlog
+parent: "[[Self Task]]"
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks/Sub', 'Self Task.md'),
+`---
+type: task
+status: backlog
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Ambiguous link target for parent: 'Self Task'");
+      expect(result.stdout).not.toContain('Self-reference detected');
+    });
+
     it('should detect ambiguous relation target', async () => {
       await mkdir(join(tempVaultDir, 'Objectives/Tasks/Sub'), { recursive: true });
       await writeFile(
