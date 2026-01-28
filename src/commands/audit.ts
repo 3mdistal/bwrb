@@ -17,6 +17,7 @@ import {
   printJson,
   jsonError,
   ExitCodes,
+  type ExitCode,
 } from '../lib/output.js';
 import {
   parsePositionalArg,
@@ -49,13 +50,16 @@ import {
   showAvailableTypes,
 } from '../lib/audit/output.js';
 
+const FIX_TARGETING_ERROR_SUMMARY =
+  'No files selected. Use --type, --path, --where, --body, or --all.';
 const FIX_TARGETING_ERROR_MESSAGE = [
-  'No files selected. Use --type, --path, --where, --body, or --all.',
-  'Audit without --fix is read-only and defaults to all files.',
-  '--fix requires explicit targeting for safety (use selectors or --all).',
+  FIX_TARGETING_ERROR_SUMMARY,
+  'bwrb audit is read-only and defaults to all files.',
+  'bwrb audit --fix writes by default and requires explicit targeting (use selectors or --all).',
   'Examples:',
+  '  bwrb audit --path "Ideas/**" --fix',
   '  bwrb audit --all --fix',
-  '  bwrb audit --all --fix --dry-run --auto',
+  '  bwrb audit --path "Ideas/**" --fix --dry-run --auto',
 ].join('\n');
 
 // ============================================================================
@@ -144,34 +148,67 @@ Examples:
     const autoMode = options.auto ?? false;
     const dryRunMode = options.dryRun ?? false;
     const executeMode = options.execute ?? false;
+    const exitWithValidationError = (
+      message: string,
+      {
+        code = ExitCodes.VALIDATION_ERROR,
+        jsonMessage,
+        stderrMessage,
+      }: {
+        code?: ExitCode;
+        jsonMessage?: string;
+        stderrMessage?: string;
+      } = {}
+    ): never => {
+      if (jsonMode) {
+        printJson(jsonError(jsonMessage ?? message, { code }));
+        printError(stderrMessage ?? message);
+      } else {
+        printError(message);
+      }
+      process.exit(code);
+    };
 
     // --auto requires --fix
     if (autoMode && !fixMode) {
-      printError('--auto requires --fix');
-      process.exit(1);
+      exitWithValidationError('--auto requires --fix');
     }
 
     // --dry-run requires --fix
     if (dryRunMode && !fixMode) {
-      printError('--dry-run requires --fix');
-      process.exit(1);
+      exitWithValidationError('--dry-run requires --fix');
     }
 
     // --execute requires --fix
     if (executeMode && !fixMode) {
-      printError('--execute requires --fix');
-      process.exit(1);
+      exitWithValidationError('--execute requires --fix');
     }
 
     // --fix is not compatible with JSON output
     if (fixMode && jsonMode) {
-      printError('--fix is not compatible with --output json');
-      process.exit(1);
+      exitWithValidationError('--fix is not compatible with --output json');
     }
 
     if (executeMode && dryRunMode) {
-      printError('--execute cannot be used with --dry-run');
-      process.exit(1);
+      exitWithValidationError('--execute cannot be used with --dry-run');
+    }
+
+    if (fixMode && !target) {
+      const hasInitialTargeting = hasAnyTargeting({
+        ...(options.type && { type: options.type }),
+        ...(options.path && { path: options.path }),
+        ...(options.where && options.where.length > 0 && { where: options.where }),
+        ...(options.body && { body: options.body }),
+        ...(options.text && { text: options.text }),
+        ...(options.all && { all: options.all }),
+      });
+
+      if (!hasInitialTargeting) {
+        exitWithValidationError(FIX_TARGETING_ERROR_MESSAGE, {
+          jsonMessage: FIX_TARGETING_ERROR_SUMMARY,
+          stderrMessage: FIX_TARGETING_ERROR_MESSAGE,
+        });
+      }
     }
 
     try {
@@ -197,12 +234,7 @@ Examples:
         if (whereExprs) existingOpts.where = whereExprs;
         const parsed = parsePositionalArg(target, schema, existingOpts as import('../lib/targeting.js').TargetingOptions);
         if (parsed.error) {
-          if (jsonMode) {
-            printJson(jsonError(parsed.error));
-            process.exit(ExitCodes.VALIDATION_ERROR);
-          }
-          printError(parsed.error);
-          process.exit(1);
+          exitWithValidationError(parsed.error);
         }
         
         // Apply parsed positional to appropriate option
@@ -228,8 +260,10 @@ Examples:
         });
 
         if (!hasTargetingForFix) {
-          printError(FIX_TARGETING_ERROR_MESSAGE);
-          process.exit(1);
+          exitWithValidationError(FIX_TARGETING_ERROR_MESSAGE, {
+            jsonMessage: FIX_TARGETING_ERROR_SUMMARY,
+            stderrMessage: FIX_TARGETING_ERROR_MESSAGE,
+          });
         }
       }
 
@@ -245,12 +279,13 @@ Examples:
         if (!typeDef) {
           const error = `Unknown type: ${typePath}`;
           if (jsonMode) {
-            printJson(jsonError(error));
+            printJson(jsonError(error, { code: ExitCodes.VALIDATION_ERROR }));
+            printError(error);
             process.exit(ExitCodes.VALIDATION_ERROR);
           }
           printError(error);
           await showAvailableTypes(schema);
-          process.exit(1);
+          process.exit(ExitCodes.VALIDATION_ERROR);
         }
       }
 
@@ -276,8 +311,7 @@ Examples:
       // Handle fix mode
       if (fixMode) {
         if (!autoMode && !process.stdin.isTTY && results.length > 0) {
-          printError('audit --fix is interactive and requires a TTY; use --fix --auto or --output json');
-          process.exit(1);
+          exitWithValidationError('audit --fix is interactive and requires a TTY; use --fix --auto or --output json');
         }
 
         const executeRequiredIssueCodes = new Set<IssueCode>(['trailing-whitespace']);
@@ -320,7 +354,8 @@ Examples:
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (jsonMode) {
-        printJson(jsonError(message));
+        printJson(jsonError(message, { code: ExitCodes.VALIDATION_ERROR }));
+        printError(message);
         process.exit(ExitCodes.VALIDATION_ERROR);
       }
       printError(message);

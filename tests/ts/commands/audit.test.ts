@@ -834,6 +834,9 @@ priority: medium
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('--fix is not compatible with --output json');
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('--fix is not compatible with --output json');
     });
 
     it('should error when --execute is used with --dry-run', async () => {
@@ -2368,7 +2371,9 @@ status: raw
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('No files selected. Use --type, --path, --where, --body, or --all.');
-      expect(result.stderr).toContain('Audit without --fix is read-only');
+      expect(result.stderr).toContain('bwrb audit is read-only');
+      expect(result.stderr).toContain('writes by default');
+      expect(result.stderr).toContain('bwrb audit --path "Ideas/**" --fix');
       expect(result.stderr).toContain('bwrb audit --all --fix');
       expect(result.stderr).toContain('--dry-run');
     });
