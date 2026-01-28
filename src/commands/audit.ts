@@ -65,6 +65,9 @@ Issue Types:
   wrong-directory       File location doesn't match its type
   owned-wrong-location  Owned note not in expected location
   parent-cycle          Cycle detected in parent references
+  self-reference        Relation field references the same note
+  ambiguous-link-target Relation target matches multiple files
+  invalid-list-element  List field contains non-string values
   format-violation      Field value doesn't match expected format (wikilink, etc.)
   stale-reference       Wikilink points to non-existent file
   frontmatter-not-at-top Frontmatter block is not at top
@@ -82,6 +85,7 @@ Targeting Options:
   --path <glob>     Filter by file path pattern
   --where <expr>    Filter by frontmatter expression
   --body <query>    Filter by body content
+  --all             Target all files (explicit vault-wide selector)
 
 Examples:
   bwrb audit                      # Check all files (report only)
@@ -94,25 +98,26 @@ Examples:
   bwrb audit --ignore unknown-field
   bwrb audit --output json        # JSON output for CI
   bwrb audit --allow-field custom # Allow specific extra field
-  bwrb audit --fix --path "Ideas/**"             # Interactive guided fixes (writes)
+  bwrb audit --all --fix                  # Interactive guided fixes across vault (writes)
+  bwrb audit --fix --path "Ideas/**"      # Interactive guided fixes (writes)
   bwrb audit --fix --dry-run --path "Ideas/**"    # Preview guided fixes (no writes)
-  bwrb audit --fix --auto --path "Ideas/**"       # Auto-fix unambiguous issues (writes)
-  bwrb audit --fix --auto --dry-run --path "Ideas/**"  # Preview auto-fixes (no writes)`)
+  bwrb audit --fix --auto --path "Ideas/**"      # Auto-fix unambiguous issues (writes)
+  bwrb audit --fix --auto --dry-run --path "Ideas/**" # Preview auto-fixes (no writes)`)
   .argument('[target]', 'Type, path, or where expression (auto-detected)')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path pattern')
   .option('-w, --where <expr...>', 'Filter by frontmatter expression')
   .option('-b, --body <query>', 'Filter by body content')
   .option('--text <query>', 'Filter by body content (deprecated: use --body)', undefined)
-  .option('-a, --all', 'Target all files (required for --fix without other targeting)')
+  .option('-a, --all', 'Target all files (explicit vault-wide selector)')
   .option('--strict', 'Treat unknown fields as errors instead of warnings')
   .option('--only <issue-type>', 'Only report specific issue type')
   .option('--ignore <issue-type>', 'Ignore specific issue type')
   .option('--output <format>', 'Output format: text (default) or json')
-  .option('--fix', 'Interactive repair mode')
+  .option('--fix', 'Interactive repair mode (writes by default; requires explicit targeting)')
   .option('--auto', 'With --fix: automatically apply unambiguous fixes')
   .option('--dry-run', 'With --fix: preview fixes without writing')
-  .option('--execute', 'With --fix: deprecated (no longer required)')
+  .option('--execute', 'Deprecated (auto-fixes write by default; use --dry-run to preview)')
   .option('--allow-field <fields...>', 'Allow additional fields beyond schema (repeatable)')
   .action(async (target: string | undefined, options: AuditOptions & {
     type?: string;
@@ -150,11 +155,9 @@ Examples:
       process.exit(1);
     }
 
-    if (executeMode) {
-      const message = dryRunMode
-        ? 'Warning: --execute is deprecated for audit fixes; running in --dry-run mode (no changes will be made).'
-        : 'Warning: --execute is deprecated for audit fixes; audit --fix writes by default. Use --dry-run to preview.';
-      printWarning(message);
+    if (executeMode && dryRunMode) {
+      printError('--execute cannot be used with --dry-run');
+      process.exit(1);
     }
 
     try {
@@ -211,9 +214,15 @@ Examples:
         });
 
         if (!hasTargetingForFix) {
-          printError('No files selected. Use --type, --path, --where, --body, or --all.');
+          printError('No files selected. Refusing to run --fix without explicit targeting because it can write changes; use --all (vault-wide) or --type/--path/--where/--body. Example: bwrb audit --all --fix');
           process.exit(1);
         }
+      }
+
+      if (executeMode && autoMode) {
+        printWarning('Warning: --execute is deprecated; auto-fixes write by default. Use --dry-run to preview changes.');
+      } else if (executeMode) {
+        printWarning('Warning: --execute is deprecated and has no effect without --auto; interactive --fix writes by default.');
       }
 
       // Validate type if specified
@@ -252,14 +261,30 @@ Examples:
 
       // Handle fix mode
       if (fixMode) {
+        if (!autoMode && !process.stdin.isTTY && results.length > 0) {
+          printError('audit --fix is interactive and requires a TTY; use --fix --auto or --output json');
+          process.exit(1);
+        }
+
+        const executeRequiredIssueCodes = new Set<IssueCode>(['trailing-whitespace']);
+        const hasExecuteRequiredIssues = autoMode && !executeMode && results.some(result =>
+          result.issues.some(issue => issue.autoFixable && executeRequiredIssueCodes.has(issue.code))
+        );
+        const autoFixDryRun = dryRunMode || hasExecuteRequiredIssues;
+        const autoFixDryRunReason = dryRunMode
+          ? 'explicit'
+          : hasExecuteRequiredIssues
+            ? 'execute-required'
+            : undefined;
+
         const fixSummary = autoMode
-          ? await runAutoFix(results, schema, vaultDir, { dryRun: dryRunMode })
+          ? await runAutoFix(results, schema, vaultDir, { dryRun: autoFixDryRun, dryRunReason: autoFixDryRunReason })
           : await runInteractiveFix(results, schema, vaultDir, { dryRun: dryRunMode });
 
         outputFixResults(fixSummary, autoMode);
 
-        // Exit with error if there are remaining issues
-        if (fixSummary.remaining > 0) {
+        // Exit with error if there are remaining issues (interactive only)
+        if (fixSummary.remaining > 0 && !autoMode) {
           process.exit(ExitCodes.VALIDATION_ERROR);
         }
         return;

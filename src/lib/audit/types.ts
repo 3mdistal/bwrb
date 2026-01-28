@@ -32,6 +32,9 @@ export type IssueCode =
   | 'owned-note-referenced'
   | 'owned-wrong-location'
   | 'parent-cycle'
+  | 'self-reference'
+  | 'ambiguous-link-target'
+  | 'invalid-list-element'
   // Phase 2: Low-risk hygiene auto-fixes
   | 'trailing-whitespace' // NOTE: Not currently detectable (YAML parser strips whitespace)
   | 'frontmatter-key-casing'
@@ -39,6 +42,9 @@ export type IssueCode =
   | 'duplicate-list-values'
   | 'invalid-boolean-coercion'
   | 'singular-plural-mismatch'
+  // Phase 5: Type coercion fixes
+  | 'wrong-scalar-type'
+  | 'invalid-date-format'
   // Phase 4: Structural integrity fixes
   | 'frontmatter-not-at-top'
   | 'duplicate-frontmatter-keys'
@@ -56,6 +62,8 @@ export interface AuditIssue {
   expected?: string[] | string | undefined;
   suggestion?: string | undefined;
   autoFixable: boolean;
+  /** Per-issue metadata for JSON output (flattened in audit JSON). */
+  meta?: Record<string, unknown>;
   /** For orphan-file issues: the expected type path inferred from directory location */
   inferredType?: string | undefined;
   /** For format-violation: the expected format */
@@ -101,6 +109,8 @@ export interface AuditIssue {
   listIndex?: number | undefined;
   /** For malformed-wikilink: deterministic fixed value */
   fixedValue?: string | undefined;
+  /** For ambiguous-link-target: candidate paths */
+  candidates?: string[] | undefined;
 }
 
 /**
@@ -145,6 +155,8 @@ export interface FixResult {
 export interface FixSummary {
   /** When true, fixes are previewed (no writes). */
   dryRun: boolean;
+  /** Why the run was treated as dry-run. */
+  dryRunReason?: 'explicit' | 'execute-required';
   fixed: number;
   skipped: number;
   failed: number;
@@ -171,7 +183,7 @@ export interface AuditOptions {
   auto?: boolean;
   /** Preview fixes without writing. */
   dryRun?: boolean;
-  /** Deprecated for audit fixes (kept for compatibility). */
+  /** Apply auto-fixes; deprecated in favor of --dry-run. */
   execute?: boolean;
   all?: boolean;
   allowField?: string[];
@@ -232,7 +244,7 @@ export function isWikilink(value: string): boolean {
 /**
  * Check if a value is formatted as a quoted wikilink.
  */
-function isQuotedWikilink(value: string): boolean {
+export function isQuotedWikilink(value: string): boolean {
   return /^"\[\[.+\]\]"$/.test(value);
 }
 
@@ -280,6 +292,7 @@ export function extractWikilinkTarget(value: string): string | null {
   const match = v.match(/^\[\[([^\]|#]+)/);
   return match ? match[1]! : null;
 }
+
 
 /**
  * Convert a value to wikilink format.

@@ -50,7 +50,7 @@ bwrb delete --type task --execute
 
 ### Exception: `audit --fix`
 
-`bwrb audit --fix` is a remediation workflow. It still requires explicit targeting, but it **writes by default**.
+`bwrb audit --fix` is a remediation workflow. It still requires explicit targeting. Interactive fixes write by default; use `--dry-run` to preview, and use `--execute` for auto-fixes.
 
 ```bash
 # Apply guided fixes

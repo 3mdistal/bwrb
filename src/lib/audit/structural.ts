@@ -1,6 +1,7 @@
 import { readFile } from 'fs/promises';
 import { parseDocument, isMap, isSeq } from 'yaml';
 import type { Document, ParsedNode, YAMLMap, Pair, YAMLSeq, Scalar } from 'yaml';
+import { detectEol, normalizeYamlValue } from './value-utils.js';
 
 export interface FrontmatterBlock {
   /** Index of the opening delimiter line start */
@@ -16,6 +17,7 @@ export interface FrontmatterBlock {
 export interface StructuralFrontmatterInfo {
   raw: string;
   blocks: FrontmatterBlock[];
+  frontmatterBlocks: FrontmatterBlock[];
   unterminated: boolean;
   primaryBlock: FrontmatterBlock | null;
   /** YAML content for the primary block (no delimiters) */
@@ -34,31 +36,9 @@ function stripBom(value: string): string {
   return value.startsWith('\uFEFF') ? value.slice(1) : value;
 }
 
-function formatYamlDate(date: Date): string {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function normalizeYamlValue(value: unknown): unknown {
-  if (value instanceof Date) {
-    return formatYamlDate(value);
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((item) => normalizeYamlValue(item));
-  }
-
-  if (value && typeof value === 'object') {
-    const result: Record<string, unknown> = {};
-    for (const [key, inner] of Object.entries(value as Record<string, unknown>)) {
-      result[key] = normalizeYamlValue(inner);
-    }
-    return result;
-  }
-
-  return value;
+function isBlockAtTop(raw: string, block: FrontmatterBlock): boolean {
+  const prefix = stripBom(raw.slice(0, block.blockStart));
+  return prefix.trim().length === 0;
 }
 
 function isDelimiterLine(line: string): boolean {
@@ -114,78 +94,82 @@ function findFrontmatterBlocks(raw: string): { blocks: FrontmatterBlock[]; unter
 
 export function readStructuralFrontmatterFromRaw(raw: string): StructuralFrontmatterInfo {
   const { blocks, unterminated } = findFrontmatterBlocks(raw);
-  const primaryBlock = blocks.length > 0 ? blocks[0]! : null;
-
-  const yaml = primaryBlock ? raw.slice(primaryBlock.yamlStart, primaryBlock.yamlEnd) : null;
-
+  const frontmatterBlocks: FrontmatterBlock[] = [];
+  let primaryBlock: FrontmatterBlock | null = null;
+  let yaml: string | null = null;
   let doc: Document.Parsed | null = null;
   let frontmatter: Record<string, unknown> = {};
   let yamlErrors: string[] = [];
+  let atTop = true;
 
-  if (yaml !== null) {
-    doc = parseDocument(yaml);
-    yamlErrors = doc.errors.map((e) => e.message);
+  for (const block of blocks) {
+    const candidateYaml = raw.slice(block.yamlStart, block.yamlEnd);
+    const candidateDoc = parseDocument(candidateYaml);
+    const contents = candidateDoc.contents as ParsedNode | null;
+    const blockAtTop = isBlockAtTop(raw, block);
+    const isMapLike = contents === null || isMap(contents);
+    const isFrontmatter = isMapLike && (contents !== null || blockAtTop);
 
-    // Only treat map/null docs as usable frontmatter; otherwise ignore.
-    const contents = doc.contents as ParsedNode | null;
-    if (contents === null || isMap(contents)) {
-      try {
-        const json = doc.toJSON() as unknown;
-        if (json && typeof json === 'object' && !Array.isArray(json)) {
-          frontmatter = normalizeYamlValue(json) as Record<string, unknown>;
-        } else {
-          frontmatter = {};
-        }
-      } catch {
-        // Fall back to a best-effort parse so we can still inspect frontmatter,
-        // even when the YAML library can't convert (e.g., duplicate keys).
+    if (!isFrontmatter) {
+      continue;
+    }
+
+    frontmatterBlocks.push(block);
+
+    if (primaryBlock) {
+      continue;
+    }
+
+    primaryBlock = block;
+    yaml = candidateYaml;
+    doc = candidateDoc;
+    yamlErrors = candidateDoc.errors.map((e: { message: string }) => e.message);
+    atTop = blockAtTop;
+
+    try {
+      const json = candidateDoc.toJSON() as unknown;
+      if (json && typeof json === 'object' && !Array.isArray(json)) {
+        frontmatter = normalizeYamlValue(json) as Record<string, unknown>;
+      } else {
         frontmatter = {};
+      }
+    } catch {
+      frontmatter = {};
 
-        if (contents && isMap(contents)) {
-          const map = contents as YAMLMap;
-          for (const pair of map.items as Pair[]) {
-            const key = String((pair.key as Scalar | null | undefined)?.value ?? '');
-            if (!key) continue;
+      if (contents && isMap(contents)) {
+        const map = contents as YAMLMap;
+        for (const pair of map.items as Pair[]) {
+          const key = String((pair.key as Scalar | null | undefined)?.value ?? '');
+          if (!key) continue;
 
-            const valueNode = (pair as { value?: unknown }).value;
-            if (valueNode && typeof valueNode === 'object') {
-              const toJson = (valueNode as Record<string, unknown>)['toJSON'];
-              if (typeof toJson === 'function') {
-                try {
-                  frontmatter[key] = normalizeYamlValue((toJson as () => unknown)());
-                  continue;
-                } catch {
-                  // Fall through
-                }
-              }
-
-              if ('value' in (valueNode as Record<string, unknown>)) {
-                frontmatter[key] = normalizeYamlValue((valueNode as Record<string, unknown>)['value']);
+          const valueNode = (pair as { value?: unknown }).value;
+          if (valueNode && typeof valueNode === 'object') {
+            const toJson = (valueNode as Record<string, unknown>)['toJSON'];
+            if (typeof toJson === 'function') {
+              try {
+                frontmatter[key] = normalizeYamlValue((toJson as () => unknown)());
                 continue;
+              } catch {
+                // Fall through
               }
             }
 
-            frontmatter[key] = normalizeYamlValue(valueNode ?? null);
+            if ('value' in (valueNode as Record<string, unknown>)) {
+              frontmatter[key] = normalizeYamlValue((valueNode as Record<string, unknown>)['value']);
+              continue;
+            }
           }
+
+          frontmatter[key] = normalizeYamlValue(valueNode ?? null);
         }
       }
-    } else {
-      // Not a mapping frontmatter; ignore.
-      doc = null;
-      yamlErrors = [];
-      frontmatter = {};
     }
-  }
-
-  let atTop = true;
-  if (primaryBlock) {
-    const prefix = stripBom(raw.slice(0, primaryBlock.blockStart));
-    atTop = prefix.trim().length === 0;
   }
 
   return {
     raw,
     blocks,
+    frontmatterBlocks,
     unterminated,
     primaryBlock,
     yaml,
@@ -206,7 +190,9 @@ export function replacePrimaryYaml(
   block: FrontmatterBlock,
   newYaml: string
 ): string {
-  const yamlBody = newYaml.trimEnd() + '\n';
+  const eol = detectEol(raw);
+  const normalizedYaml = newYaml.replace(/\r\n/g, '\n').trimEnd();
+  const yamlBody = normalizedYaml.replace(/\n/g, eol) + eol;
   return raw.slice(0, block.yamlStart) + yamlBody + raw.slice(block.yamlEnd);
 }
 

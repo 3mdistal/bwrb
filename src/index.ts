@@ -16,6 +16,7 @@ import { configCommand } from './commands/config.js';
 import { dashboardCommand } from './commands/dashboard.js';
 import { initCommand } from './commands/init.js';
 import { handleCompletionRequest } from './lib/completion.js';
+import { BWRB_VERSION } from './version.js';
 
 const program = new Command();
 
@@ -45,7 +46,7 @@ if (completionsIndex !== -1) {
   program
     .name('bwrb')
     .description('Schema-driven note management for markdown vaults')
-    .version('0.2.0')
+    .version(BWRB_VERSION)
     .option('-v, --vault <path>', 'Path to the vault directory')
     .enablePositionalOptions();
 
