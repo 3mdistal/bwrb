@@ -13,3 +13,11 @@ export const BWRB_BUILTIN_FRONTMATTER_FIELDS = new Set(['id', 'name']);
  * Fields that are reserved/system-managed (immutability semantics).
  */
 export const BWRB_RESERVED_FRONTMATTER_FIELDS = new Set(['id']);
+
+export function isBwrbBuiltinFrontmatterField(fieldName: string): boolean {
+  return BWRB_BUILTIN_FRONTMATTER_FIELDS.has(fieldName);
+}
+
+export function isBwrbReservedFrontmatterField(fieldName: string): boolean {
+  return BWRB_RESERVED_FRONTMATTER_FIELDS.has(fieldName);
+}

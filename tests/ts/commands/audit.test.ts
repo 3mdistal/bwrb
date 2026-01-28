@@ -122,9 +122,9 @@ status: raw
           task: {
             ...TEST_SCHEMA.types.task,
             fields: {
-              ...TEST_SCHEMA.types.task.fields,
+              ...(TEST_SCHEMA.types.task.fields ?? {}),
               tags: {
-                ...TEST_SCHEMA.types.task.fields.tags,
+                ...(TEST_SCHEMA.types.task.fields?.tags ?? {}),
                 prompt: 'select',
                 options: ['good', 'bad'],
                 multiple: true,
@@ -331,6 +331,28 @@ priority: medium
       expect(result.exitCode).toBe(0);
       expect(result.stdout).not.toContain('Unknown field: id');
       expect(result.stdout).not.toContain('Unknown field: name');
+    });
+
+    it('should not warn on id/name for notes created by bwrb new', async () => {
+      const createResult = await runCLI(
+        [
+          'new',
+          'idea',
+          '--no-template',
+          '--json',
+          JSON.stringify({ name: 'Example', status: 'raw' }),
+        ],
+        tempVaultDir
+      );
+
+      const createJson = JSON.parse(createResult.stdout) as { success: boolean; path: string };
+      expect(createJson.success).toBe(true);
+
+      const auditResult = await runCLI(['audit', createJson.path], tempVaultDir);
+
+      expect(auditResult.exitCode).toBe(0);
+      expect(auditResult.stdout).not.toContain('Unknown field: id');
+      expect(auditResult.stdout).not.toContain('Unknown field: name');
     });
 
     it('should keep strict mode errors for real unknown fields', async () => {
@@ -2953,8 +2975,8 @@ effort: "3"
       const output = JSON.parse(result.stdout);
       const file = output.files.find((f: { path: string }) => f.path.includes('String Scalars.md'));
       expect(file).toBeDefined();
-      const boolIssue = file.issues.find((i: { code: string }) => i.code === 'wrong-scalar-type' && i.field === 'archived');
-      const numberIssue = file.issues.find((i: { code: string }) => i.code === 'wrong-scalar-type' && i.field === 'effort');
+      const boolIssue = file.issues.find((i: { code: string; field?: string }) => i.code === 'wrong-scalar-type' && i.field === 'archived');
+      const numberIssue = file.issues.find((i: { code: string; field?: string }) => i.code === 'wrong-scalar-type' && i.field === 'effort');
       expect(boolIssue).toBeDefined();
       expect(numberIssue).toBeDefined();
       expect(boolIssue.autoFixable).toBe(true);

@@ -42,7 +42,7 @@ import {
   isMarkdownLink,
   extractWikilinkTarget,
 } from './types.js';
-import { BWRB_BUILTIN_FRONTMATTER_FIELDS } from '../frontmatter/systemFields.js';
+import { isBwrbBuiltinFrontmatterField } from '../frontmatter/systemFields.js';
 import { extractLinkTarget } from '../links.js';
 
 // Import file discovery functions from shared module
@@ -307,7 +307,6 @@ export async function auditFile(
   // Combine allowed fields from different sources
   const allowedFields = new Set([
     ...ALLOWED_NATIVE_FIELDS,
-    ...BWRB_BUILTIN_FRONTMATTER_FIELDS,
     ...(options.allowedFields ?? []),
     ...(schema.raw.audit?.allowed_extra_fields ?? []),
   ]);
@@ -477,7 +476,7 @@ export async function auditFile(
     if (fieldName === 'type' || fieldName.endsWith('-type')) continue;
     
     // Skip allowed native fields and user-allowed fields
-    if (allowedFields.has(fieldName)) continue;
+    if (allowedFields.has(fieldName) || isBwrbBuiltinFrontmatterField(fieldName)) continue;
 
     if (!fieldNames.has(fieldName)) {
       const suggestion = suggestFieldName(fieldName, Array.from(fieldNames));

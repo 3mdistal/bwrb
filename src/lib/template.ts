@@ -4,6 +4,7 @@ import { existsSync } from 'fs';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
 import { TemplateFrontmatterSchema, type Template, type LoadedSchema, type Field, type Constraint, type InstanceScaffold, type ResolvedType } from '../types/schema.js';
 import { getType, getFieldsForType, getFieldOptions } from './schema.js';
+import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
 import { evaluateTemplateDefault, validateDateExpression, isDateExpression } from './date-expression.js';
@@ -1117,12 +1118,14 @@ export async function validateTemplate(
   // Get all fields for this type
   const fields = getFieldsForType(schema, template.templateFor);
   const validFieldNames = Object.keys(fields);
+  const isKnownField = (fieldName: string): boolean =>
+    validFieldNames.includes(fieldName) || isBwrbBuiltinFrontmatterField(fieldName);
   
   // 2. Validate defaults
   if (template.defaults) {
     for (const [fieldName, value] of Object.entries(template.defaults)) {
       // Check field exists
-      if (!validFieldNames.includes(fieldName)) {
+      if (!isKnownField(fieldName)) {
         const suggestion = findClosestMatch(fieldName, validFieldNames);
         const issue: TemplateValidationIssue = {
           severity: 'error',
@@ -1161,7 +1164,7 @@ export async function validateTemplate(
   // 3. Validate prompt-fields
   if (template.promptFields) {
     for (const fieldName of template.promptFields) {
-      if (!validFieldNames.includes(fieldName)) {
+      if (!isKnownField(fieldName)) {
         const suggestion = findClosestMatch(fieldName, validFieldNames);
         const issue: TemplateValidationIssue = {
           severity: 'error',
@@ -1189,7 +1192,7 @@ export async function validateTemplate(
         // Skip special fields
         if (fieldName === 'date' || fieldName === 'title') continue;
         
-        if (fieldName && !validFieldNames.includes(fieldName)) {
+        if (fieldName && !isKnownField(fieldName)) {
           const suggestion = findClosestMatch(fieldName, validFieldNames);
           const issue: TemplateValidationIssue = {
             severity: 'warning',
@@ -1215,7 +1218,7 @@ export async function validateTemplate(
       // Skip special fields
       if (fieldName === 'date' || fieldName === 'title') continue;
       
-      if (fieldName && !validFieldNames.includes(fieldName)) {
+      if (fieldName && !isKnownField(fieldName)) {
         const suggestion = findClosestMatch(fieldName, validFieldNames);
         const issue: TemplateValidationIssue = {
           severity: 'warning',
@@ -1234,7 +1237,7 @@ export async function validateTemplate(
   if (template.constraints) {
     for (const [fieldName, constraint] of Object.entries(template.constraints)) {
       // Check field exists
-      if (!validFieldNames.includes(fieldName)) {
+      if (!isKnownField(fieldName)) {
         const suggestion = findClosestMatch(fieldName, validFieldNames);
         const issue: TemplateValidationIssue = {
           severity: 'error',
@@ -1300,9 +1303,11 @@ export async function validateTemplate(
       if (instance.defaults) {
         const instanceFields = getFieldsForType(schema, instance.type);
         const instanceFieldNames = Object.keys(instanceFields);
+        const isKnownInstanceField = (fieldName: string): boolean =>
+          instanceFieldNames.includes(fieldName) || isBwrbBuiltinFrontmatterField(fieldName);
         
         for (const fieldName of Object.keys(instance.defaults)) {
-          if (!instanceFieldNames.includes(fieldName)) {
+          if (!isKnownInstanceField(fieldName)) {
             const suggestion = findClosestMatch(fieldName, instanceFieldNames);
             const issue: TemplateValidationIssue = {
               severity: 'warning',
