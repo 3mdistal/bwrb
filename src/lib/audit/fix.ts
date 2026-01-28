@@ -1126,34 +1126,22 @@ export async function runAutoFix(
           console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
           failed++;
         }
-       } else if (issue.code === 'invalid-boolean-coercion' && issue.field) {
-         // Auto-fix boolean coercion
-         const fixResult = await applyFix(schema, result.path, issue);
-         if (fixResult.action === 'fixed') {
-           console.log(chalk.cyan(`  ${result.relativePath}`));
-           console.log(chalk.green(`    ✓ Coerced ${issue.field} to boolean`));
-           fixed++;
-         } else {
-           console.log(chalk.cyan(`  ${result.relativePath}`));
-           console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
-           failed++;
-         }
-       } else if (issue.code === 'wrong-scalar-type' && issue.field) {
-         const fixResult = await applyFix(schema, result.path, issue);
-         if (fixResult.action === 'fixed') {
-           console.log(chalk.cyan(`  ${result.relativePath}`));
-           console.log(chalk.green(`    ✓ Coerced ${issue.field} to ${issue.expected}`));
-           fixed++;
-         } else if (fixResult.action === 'skipped') {
-           console.log(chalk.cyan(`  ${result.relativePath}`));
-           console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
-           skipped++;
-         } else {
-           console.log(chalk.cyan(`  ${result.relativePath}`));
-           console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
-           failed++;
-         }
-        } else if (issue.code === 'unknown-enum-casing' && issue.field && (issue.canonicalValue || issue.meta?.['suggested'])) {
+      } else if (issue.code === 'wrong-scalar-type' && issue.field) {
+        const fixResult = await applyFix(schema, result.path, issue);
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Coerced ${issue.field} to ${issue.expected}`));
+          fixed++;
+        } else if (fixResult.action === 'skipped') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+          skipped++;
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
+          failed++;
+        }
+      } else if (issue.code === 'unknown-enum-casing' && issue.field && (issue.canonicalValue || issue.meta?.['suggested'])) {
         // Auto-fix enum casing
         const fixResult = await applyFix(schema, result.path, issue);
         if (fixResult.action === 'fixed') {
