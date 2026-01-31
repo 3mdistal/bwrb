@@ -59,11 +59,15 @@ Use `--dry-run` to preview fixes without writing.
 | `orphan-file` | File in managed directory but no `type` field |
 | `invalid-type` | Type field value not recognized in schema |
 | `missing-required` | Required field is missing |
+| `empty-string-required` | Required field is empty/whitespace/empty list |
 | `invalid-option` | Field value not in allowed option values |
 | `unknown-field` | Field not defined in schema (warning by default) |
 | `wrong-directory` | File location doesn't match its type's output_dir |
 | `format-violation` | Field value doesn't match expected format (wikilink, etc.) |
 | `stale-reference` | Wikilink points to non-existent file |
+| `wrong-scalar-type` | Scalar value has wrong type for schema |
+| `invalid-date-format` | Date value is not in `YYYY-MM-DD` format |
+| `invalid-list-element` | List field contains invalid element |
 
 Note: built-in fields written by `bwrb new` (currently `id` and `name`) are always allowed and do not produce `unknown-field` issues.
 
@@ -150,7 +154,7 @@ bwrb audit --only wrong-scalar-type --fix --auto --execute --all
 bwrb audit --only invalid-date-format --fix --all
 ```
 
-Empty required values ("", whitespace-only strings, or empty lists) are treated like missing required fields during fixes.
+Empty required values ("", whitespace-only strings, or empty lists) are reported as `empty-string-required` and repaired interactively (or auto-filled when a default exists).
 
 
 ### CI Integration

@@ -23,13 +23,20 @@ import {
   isBlockScalarHeader,
 } from './raw.js';
 import { isEmptyRequiredValue } from './emptiness.js';
-import { coerceBooleanFromString, coerceNumberFromString } from './coercion.js';
-import { suggestIsoDate } from './date-suggest.js';
+import {
+  getExpectedScalarType,
+  getScalarCoercion,
+  getScalarFromList,
+  getScalarToList,
+  getUnambiguousDateNormalization,
+  getValueShape,
+  isCanonicalIsoDate,
+} from './fix-policy.js';
 import { extractYamlNodeValue, isEffectivelyEmpty } from './value-utils.js';
 import { isMap } from 'yaml';
 import type { Pair, Scalar, YAMLMap } from 'yaml';
 import { isDeepStrictEqual } from 'node:util';
-import { normalizeToIsoDate, suggestOptionValue, suggestFieldName } from '../validation.js';
+import { suggestOptionValue, suggestFieldName } from '../validation.js';
 import { applyFrontmatterFilters } from '../query.js';
 import { searchContent } from '../content-search.js';
 import type { LoadedSchema, Field } from '../../types/schema.js';
@@ -324,9 +331,10 @@ export async function auditFile(
   
   for (const [fieldName, field] of Object.entries(fields)) {
     const value = frontmatter[fieldName];
-    const hasValue = !isEmptyRequiredValue(value);
+    const hasKey = Object.prototype.hasOwnProperty.call(frontmatter, fieldName);
+    const isEmptyValue = isEmptyRequiredValue(value);
 
-    if (field.required && !hasValue) {
+    if (field.required && (!hasKey || isEmptyValue)) {
       // Check if a case-variant of this field exists in frontmatter
       // If so, it will be caught by frontmatter-key-casing, not missing-required
       const hasCaseVariant = frontmatterKeysLower.has(fieldName.toLowerCase()) &&
@@ -338,13 +346,25 @@ export async function auditFile(
       }
       
       const hasDefault = field.default !== undefined;
-      issues.push({
-        severity: 'error',
-        code: 'missing-required',
-        message: `Missing required field: ${fieldName}`,
-        field: fieldName,
-        autoFixable: hasDefault,
-      });
+
+      if (!hasKey) {
+        issues.push({
+          severity: 'error',
+          code: 'missing-required',
+          message: `Missing required field: ${fieldName}`,
+          field: fieldName,
+          autoFixable: hasDefault,
+        });
+      } else if (isEmptyValue) {
+        issues.push({
+          severity: 'error',
+          code: 'empty-string-required',
+          message: `Required field '${fieldName}' is empty`,
+          field: fieldName,
+          value,
+          autoFixable: hasDefault,
+        });
+      }
     }
   }
 
@@ -353,49 +373,97 @@ export async function auditFile(
     const field = fields[fieldName];
     if (!field) continue;
 
-    if (field.prompt === 'number' && typeof value === 'string') {
-      const numberCoercion = coerceNumberFromString(value);
-      issues.push({
-        severity: 'error',
-        code: 'wrong-scalar-type',
-        message: numberCoercion.ok
-          ? `String value for ${fieldName} should be a number`
-          : `Invalid number for ${fieldName}: '${value}'`,
-        field: fieldName,
-        value,
-        expected: 'number',
-        autoFixable: numberCoercion.ok,
-      });
-    }
+    const expectsList = field.prompt === 'list' || field.multiple === true;
+    const expectedScalarType = getExpectedScalarType(field);
+    const valueShape = getValueShape(value);
 
-    if (field.prompt === 'boolean' && typeof value === 'string') {
-      const booleanCoercion = coerceBooleanFromString(value);
-      issues.push({
-        severity: 'error',
-        code: 'wrong-scalar-type',
-        message: booleanCoercion.ok
-          ? `String value for ${fieldName} should be a boolean`
-          : `Invalid boolean for ${fieldName}: '${value}'`,
-        field: fieldName,
-        value,
-        expected: 'boolean',
-        autoFixable: booleanCoercion.ok,
-      });
+    if (expectsList) {
+      if (value !== null && value !== undefined && !Array.isArray(value)) {
+        const wrapped = getScalarToList(value);
+        issues.push({
+          severity: 'error',
+          code: 'wrong-scalar-type',
+          message: `Expected list for ${fieldName}`,
+          field: fieldName,
+          value,
+          expected: 'list',
+          autoFixable: wrapped.ok,
+        });
+      }
+    } else {
+      if (Array.isArray(value)) {
+        const listCoercion = getScalarFromList(value, expectedScalarType);
+        issues.push({
+          severity: 'error',
+          code: 'wrong-scalar-type',
+          message: `List value for ${fieldName} should be a ${expectedScalarType}`,
+          field: fieldName,
+          value,
+          expected: expectedScalarType,
+          autoFixable: listCoercion.ok,
+        });
+      } else if (expectedScalarType === 'number' && typeof value === 'string') {
+        const numberCoercion = getScalarCoercion(value, 'number');
+        issues.push({
+          severity: 'error',
+          code: 'wrong-scalar-type',
+          message: numberCoercion.ok
+            ? `String value for ${fieldName} should be a number`
+            : `Invalid number for ${fieldName}: '${value}'`,
+          field: fieldName,
+          value,
+          expected: 'number',
+          autoFixable: numberCoercion.ok,
+        });
+      } else if (expectedScalarType === 'boolean' && typeof value === 'string') {
+        const booleanCoercion = getScalarCoercion(value, 'boolean');
+        issues.push({
+          severity: 'error',
+          code: 'wrong-scalar-type',
+          message: booleanCoercion.ok
+            ? `String value for ${fieldName} should be a boolean`
+            : `Invalid boolean for ${fieldName}: '${value}'`,
+          field: fieldName,
+          value,
+          expected: 'boolean',
+          autoFixable: booleanCoercion.ok,
+        });
+      } else if (expectedScalarType === 'string' && (valueShape === 'number' || valueShape === 'boolean')) {
+        issues.push({
+          severity: 'error',
+          code: 'wrong-scalar-type',
+          message: `Non-string value for ${fieldName} should be a string`,
+          field: fieldName,
+          value,
+          expected: 'string',
+          autoFixable: true,
+        });
+      } else if (expectedScalarType !== 'string' && value !== null && value !== undefined && valueShape !== expectedScalarType) {
+        issues.push({
+          severity: 'error',
+          code: 'wrong-scalar-type',
+          message: `Invalid type for ${fieldName}: expected ${expectedScalarType}`,
+          field: fieldName,
+          value,
+          expected: expectedScalarType,
+          autoFixable: false,
+        });
+      }
     }
 
     if (field.prompt === 'date' && typeof value === 'string') {
-      const suggestion = suggestIsoDate(value);
-      const normalized = normalizeToIsoDate(value);
-      if (!normalized.valid) {
+      if (!isCanonicalIsoDate(value)) {
+        const normalization = getUnambiguousDateNormalization(value);
         issues.push({
           severity: 'error',
           code: 'invalid-date-format',
-          message: `Invalid date for ${fieldName}: ${normalized.error}`,
+          message: `Invalid date for ${fieldName}: must be YYYY-MM-DD`,
           field: fieldName,
           value,
           expected: 'YYYY-MM-DD',
-          ...(suggestion && { suggestion: `Suggested: ${suggestion}` }),
-          autoFixable: false,
+          ...(normalization && { suggestion: `Suggested: ${normalization.normalized}` }),
+          ...(normalization && { meta: { normalized: normalization.normalized, normalizationKind: normalization.kind } }),
+          autoFixable: Boolean(normalization),
         });
       }
     }
@@ -406,6 +474,7 @@ export async function auditFile(
       if (Array.isArray(value)) {
         value.forEach((item, index) => {
           if (typeof item !== 'string') return;
+          if (item.trim().length === 0) return;
           if (!validOptions.includes(item)) {
             const suggestion = suggestOptionValue(item, validOptions);
             issues.push({
@@ -422,6 +491,9 @@ export async function auditFile(
           }
         });
       } else {
+        if (typeof value === 'string' && value.trim().length === 0) {
+          continue;
+        }
         const strValue = String(value);
         if (!validOptions.includes(strValue)) {
           const suggestion = suggestOptionValue(strValue, validOptions);
@@ -688,6 +760,10 @@ function checkRelationFieldIssues(
     }
 
     if (filteredCandidates.length > 1) {
+      const candidateMeta = filteredCandidates.map((candidate) => ({
+        basename: candidate.replace(/.*\//, '').replace(/\.md$/, ''),
+        path: candidate,
+      }));
       issues.push({
         severity: 'warning',
         code: 'ambiguous-link-target',
@@ -695,6 +771,11 @@ function checkRelationFieldIssues(
         field: fieldName,
         value: rawString,
         candidates: filteredCandidates,
+        meta: {
+          originalToken: rawString,
+          candidates: candidateMeta,
+          chosen: null,
+        },
         listIndex: Array.isArray(value) ? index : undefined,
         autoFixable: false,
       });
@@ -731,20 +812,17 @@ function checkListElementIntegrity(
     const value = frontmatter[fieldName];
     if (value === null || value === undefined) continue;
 
-    if (!Array.isArray(value)) {
-      issues.push({
-        severity: 'warning',
-        code: 'invalid-list-element',
-        message: `Invalid list value for '${fieldName}' (expected array)`,
-        field: fieldName,
-        value,
-        autoFixable: false,
-      });
-      continue;
-    }
+    if (!Array.isArray(value)) continue;
+
+    const nonEmptyCount = value.filter((item) => {
+      if (item === null || item === undefined) return false;
+      if (typeof item === 'string' && item.trim().length === 0) return false;
+      return true;
+    }).length;
 
     value.forEach((item, index) => {
-      if (typeof item !== 'string') {
+      if (item === null || item === undefined) {
+        const canRemove = !field.required || nonEmptyCount > 0;
         issues.push({
           severity: 'warning',
           code: 'invalid-list-element',
@@ -752,7 +830,66 @@ function checkListElementIntegrity(
           field: fieldName,
           value: item,
           listIndex: index,
-          autoFixable: false,
+          autoFixable: canRemove,
+          meta: {
+            reason: 'null',
+            action: 'remove',
+          },
+        });
+        return;
+      }
+
+      if (typeof item === 'string' && item.trim().length === 0) {
+        const canRemove = !field.required || nonEmptyCount > 0;
+        issues.push({
+          severity: 'warning',
+          code: 'invalid-list-element',
+          message: `Invalid list element in '${fieldName}' at index ${index}`,
+          field: fieldName,
+          value: item,
+          listIndex: index,
+          autoFixable: canRemove,
+          meta: {
+            reason: 'empty-string',
+            action: 'remove',
+          },
+        });
+        return;
+      }
+
+      if (Array.isArray(item)) {
+        const canFlatten = value.length === 1 && item.every((entry) => typeof entry === 'string');
+        issues.push({
+          severity: 'warning',
+          code: 'invalid-list-element',
+          message: `Invalid list element in '${fieldName}' at index ${index}`,
+          field: fieldName,
+          value: item,
+          listIndex: index,
+          autoFixable: canFlatten,
+          meta: {
+            reason: 'nested-list',
+            action: canFlatten ? 'flatten' : 'manual',
+          },
+        });
+        return;
+      }
+
+      if (typeof item !== 'string') {
+        const canCoerce = typeof item === 'number' || typeof item === 'boolean';
+        issues.push({
+          severity: 'warning',
+          code: 'invalid-list-element',
+          message: `Invalid list element in '${fieldName}' at index ${index}`,
+          field: fieldName,
+          value: item,
+          listIndex: index,
+          autoFixable: canCoerce,
+          meta: {
+            reason: 'wrong-type',
+            action: canCoerce ? 'coerce' : 'manual',
+            expectedType: 'string',
+          },
         });
       }
     });

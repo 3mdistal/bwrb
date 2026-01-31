@@ -23,11 +23,18 @@ import {
 } from '../schema.js';
 import { coerceBooleanFromString, coerceNumberFromString } from './coercion.js';
 import { suggestIsoDate } from './date-suggest.js';
+import {
+  getExpectedScalarType,
+  getScalarCoercion,
+  getScalarFromList,
+  getScalarToList,
+  getUnambiguousDateNormalization,
+  isCanonicalIsoDate,
+} from './fix-policy.js';
 import { parseNote, writeNote } from '../frontmatter.js';
 import { levenshteinDistance } from '../discovery.js';
 import { promptSelection, promptConfirm, promptInput } from '../prompt.js';
 import type { LoadedSchema, Field } from '../../types/schema.js';
-import { normalizeToIsoDate } from '../validation.js';
 import {
   findAllMarkdownFiles,
   findWikilinksToFile,
@@ -803,39 +810,6 @@ export async function runAutoFix(
     const nonFixableIssues = result.issues.filter(i => !i.autoFixable);
 
 
-    const coercedIssues = new Set<AuditIssue>();
-    for (const issue of fixableIssues) {
-      if (issue.code !== 'wrong-scalar-type' || !issue.field || typeof issue.value !== 'string') {
-        continue;
-      }
-
-      if (isDryRunEnabled()) {
-        console.log(chalk.cyan(`  ${result.relativePath}`));
-        console.log(chalk.yellow(`    ⚠ Would coerce ${issue.field} to ${issue.expected}`));
-        skipped++;
-        coercedIssues.add(issue);
-        continue;
-      }
-
-      const fixResult = await applyFix(schema, result.path, issue);
-      if (fixResult.action === 'fixed') {
-        console.log(chalk.cyan(`  ${result.relativePath}`));
-        console.log(chalk.green(`    ✓ Coerced ${issue.field} to ${issue.expected}`));
-        fixed++;
-        coercedIssues.add(issue);
-      } else if (fixResult.action === 'skipped') {
-        console.log(chalk.cyan(`  ${result.relativePath}`));
-        console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
-        skipped++;
-        coercedIssues.add(issue);
-      } else {
-        console.log(chalk.cyan(`  ${result.relativePath}`));
-        console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
-        failed++;
-        coercedIssues.add(issue);
-      }
-    }
-
     // Handle wrong-directory issues
     for (const issue of [...fixableIssues]) {
 
@@ -1070,6 +1044,180 @@ export async function runAutoFix(
           skipped++;
           registerManualReview(manualReviewNeeded, result.relativePath, issue);
         }
+      } else if (issue.code === 'empty-string-required' && issue.field) {
+        const parsed = await parseNote(result.path);
+        const defaultValue = getDefaultValue(schema, parsed.frontmatter, issue.field);
+        if (defaultValue !== undefined) {
+          if (dryRun) {
+            console.log(chalk.cyan(`  ${result.relativePath}`));
+            console.log(chalk.yellow(`    ⚠ Would fill ${issue.field} with default ${JSON.stringify(defaultValue)}`));
+            skipped++;
+            continue;
+          }
+
+          const fixResult = await setFrontmatterField(schema, result, issue.field, defaultValue);
+          if (fixResult.action === 'fixed') {
+            console.log(chalk.cyan(`  ${result.relativePath}`));
+            console.log(chalk.green(`    ✓ Filled ${issue.field}: ${JSON.stringify(defaultValue)} (default)`));
+            fixed++;
+          } else if (fixResult.action === 'skipped') {
+            console.log(chalk.cyan(`  ${result.relativePath}`));
+            console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+            skipped++;
+            registerManualReview(manualReviewNeeded, result.relativePath, issue);
+          } else {
+            console.log(chalk.cyan(`  ${result.relativePath}`));
+            console.log(chalk.red(`    ✗ Failed to fix ${issue.field}: ${fixResult.message}`));
+            failed++;
+          }
+        } else {
+          skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
+        }
+      } else if (issue.code === 'wrong-scalar-type' && issue.field) {
+        const parsed = await parseNote(result.path);
+        const currentValue = parsed.frontmatter[issue.field];
+        const expected = typeof issue.expected === 'string' ? issue.expected : undefined;
+        let nextValue: unknown | null = null;
+
+        if (expected === 'list') {
+          const wrapped = getScalarToList(currentValue);
+          if (wrapped.ok) {
+            nextValue = wrapped.value;
+          }
+        } else if (expected === 'string' || expected === 'number' || expected === 'boolean') {
+          if (Array.isArray(currentValue)) {
+            const coerced = getScalarFromList(currentValue, expected);
+            if (coerced.ok) {
+              nextValue = coerced.value;
+            }
+          } else {
+            const coerced = getScalarCoercion(currentValue, expected);
+            if (coerced.ok) {
+              nextValue = coerced.value;
+            }
+          }
+        }
+
+        if (nextValue === null) {
+          skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
+          continue;
+        }
+
+        if (dryRun) {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ Would coerce ${issue.field} to ${expected}`));
+          skipped++;
+          continue;
+        }
+
+        const fixResult = await setFrontmatterField(schema, result, issue.field, nextValue);
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Coerced ${issue.field} to ${expected}`));
+          fixed++;
+        } else if (fixResult.action === 'skipped') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+          skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
+          failed++;
+        }
+      } else if (issue.code === 'invalid-date-format' && issue.field) {
+        const normalized = typeof issue.meta?.['normalized'] === 'string'
+          ? issue.meta['normalized']
+          : undefined;
+        if (!normalized) {
+          skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
+          continue;
+        }
+
+        if (dryRun) {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ Would normalize ${issue.field} to ${normalized}`));
+          skipped++;
+          continue;
+        }
+
+        const fixResult = await setFrontmatterField(schema, result, issue.field, normalized);
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Normalized ${issue.field} to ${normalized}`));
+          fixed++;
+        } else if (fixResult.action === 'skipped') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+          skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to normalize ${issue.field}: ${fixResult.message}`));
+          failed++;
+        }
+      } else if (issue.code === 'invalid-list-element' && issue.field) {
+        const listIndex = issue.listIndex;
+        const action = typeof issue.meta?.['action'] === 'string' ? issue.meta['action'] : undefined;
+
+        if (listIndex === undefined || !action) {
+          skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
+          continue;
+        }
+
+        if (dryRun) {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ Would ${action} element ${issue.field}[${listIndex}]`));
+          skipped++;
+          continue;
+        }
+
+        const fixResult = await updateFrontmatterValue(schema, result, (frontmatter) => {
+          const current = frontmatter[issue.field!];
+          if (!Array.isArray(current)) return false;
+          if (listIndex < 0 || listIndex >= current.length) return false;
+
+          if (action === 'remove') {
+            current.splice(listIndex, 1);
+            frontmatter[issue.field!] = current;
+            return true;
+          }
+
+          if (action === 'coerce') {
+            current[listIndex] = String(current[listIndex]);
+            frontmatter[issue.field!] = current;
+            return true;
+          }
+
+          if (action === 'flatten') {
+            if (current.length !== 1 || !Array.isArray(current[0])) return false;
+            const nested = current[0];
+            if (!nested.every((entry) => typeof entry === 'string')) return false;
+            frontmatter[issue.field!] = nested;
+            return true;
+          }
+
+          return false;
+        });
+
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Fixed ${issue.field}[${listIndex}] (${action})`));
+          fixed++;
+        } else if (fixResult.action === 'skipped') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+          skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to fix ${issue.field}[${listIndex}]: ${fixResult.message}`));
+          failed++;
+        }
       } else if (issue.code === 'format-violation' && issue.field && issue.expectedFormat) {
         // Auto-fix format violations
         const fixResult = await applyFix(schema, result.path, issue);
@@ -1154,21 +1302,6 @@ export async function runAutoFix(
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.green(`    ✓ Coerced ${issue.field} to boolean`));
           fixed++;
-        } else {
-          console.log(chalk.cyan(`  ${result.relativePath}`));
-          console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
-          failed++;
-        }
-      } else if (issue.code === 'wrong-scalar-type' && issue.field) {
-        const fixResult = await applyFix(schema, result.path, issue);
-        if (fixResult.action === 'fixed') {
-          console.log(chalk.cyan(`  ${result.relativePath}`));
-          console.log(chalk.green(`    ✓ Coerced ${issue.field} to ${issue.expected}`));
-          fixed++;
-        } else if (fixResult.action === 'skipped') {
-          console.log(chalk.cyan(`  ${result.relativePath}`));
-          console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
-          skipped++;
         } else {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.red(`    ✗ Failed to coerce ${issue.field}: ${fixResult.message}`));
@@ -1265,7 +1398,8 @@ export async function runInteractiveFix(
   const dryRun = options?.dryRun ?? false;
   const dryRunReason = dryRun ? 'explicit' : undefined;
   dryRunStorage.enterWith(dryRun);
-  const context: FixContext = { schema, vaultDir, dryRun };
+  const noteTargetIndex = await buildNoteTargetIndex(schema, vaultDir);
+  const context: FixContext = { schema, vaultDir, dryRun, noteTargetIndex };
   
   console.log(chalk.bold('Auditing vault...\n'));
 
@@ -1348,6 +1482,8 @@ async function handleInteractiveFix(
       return handleOrphanFileFix(schema, result, issue);
     case 'missing-required':
       return handleMissingRequiredFix(schema, result, issue);
+    case 'empty-string-required':
+      return handleEmptyStringRequiredFix(schema, result, issue);
     case 'invalid-option':
       return handleInvalidOptionFix(schema, result, issue);
     case 'invalid-type':
@@ -1545,6 +1681,77 @@ async function handleMissingRequiredFix(
 
   console.log(chalk.dim('    → Skipped'));
   return 'skipped';
+}
+
+async function handleEmptyStringRequiredFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field) return 'skipped';
+
+  const parsed = await parseNote(result.path);
+  const defaultValue = getDefaultValue(schema, parsed.frontmatter, issue.field);
+
+  if (defaultValue !== undefined) {
+    const confirm = await promptConfirm(`    → Replace with default '${JSON.stringify(defaultValue)}'?`);
+    if (confirm === null) {
+      return 'quit';
+    }
+    if (confirm) {
+      const fixResult = await setFrontmatterField(schema, result, issue.field, defaultValue);
+      if (fixResult.action === 'fixed') {
+        console.log(chalk.green(`    ✓ Updated ${issue.field}: ${JSON.stringify(defaultValue)}`));
+        return 'fixed';
+      }
+      console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+      return 'failed';
+    }
+  }
+
+  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const fieldOptions = typePath ? getOptionsForField(schema, typePath, issue.field) : [];
+
+  if (fieldOptions.length > 0) {
+    const options = [...fieldOptions, '[quit]'];
+    const selected = await promptSelection(
+      `    Select value for ${issue.field}:`,
+      options
+    );
+
+    if (selected === null || selected === '[quit]') {
+      return 'quit';
+    }
+
+    const fixResult = await setFrontmatterField(schema, result, issue.field, selected);
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Updated ${issue.field}: ${selected}`));
+      return 'fixed';
+    }
+
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+
+  while (true) {
+    const value = await promptInput(`    Enter value for ${issue.field}:`);
+    if (value === null) {
+      return 'quit';
+    }
+    if (!value.trim()) {
+      console.log(chalk.yellow('    ⚠ Required field cannot be empty.'));
+      continue;
+    }
+
+    const fixResult = await setFrontmatterField(schema, result, issue.field, value);
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Updated ${issue.field}: ${value}`));
+      return 'fixed';
+    }
+
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
 }
 
 async function handleInvalidOptionFix(
@@ -2386,6 +2593,58 @@ async function updateFrontmatterValue(
   }
 }
 
+async function setFrontmatterField(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  field: string,
+  value: unknown
+): Promise<FixResult> {
+  return updateFrontmatterValue(schema, result, (frontmatter) => {
+    if (!(field in frontmatter)) return false;
+    frontmatter[field] = value;
+    return true;
+  });
+}
+
+async function clearFrontmatterField(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  field: string
+): Promise<FixResult> {
+  return updateFrontmatterValue(schema, result, (frontmatter) => {
+    if (!(field in frontmatter)) return false;
+    delete frontmatter[field];
+    return true;
+  });
+}
+
+function formatMarkdownLinkValue(label: string, path: string): string {
+  return `"[${label}](${path})"`;
+}
+
+function getShortestLinkTarget(candidatePath: string, targetIndex?: NoteTargetIndex): string {
+  const basenameTarget = basename(candidatePath, '.md');
+  const matches = targetIndex?.targetToPaths.get(basenameTarget) ?? [];
+  if (matches.length === 1) {
+    return basenameTarget;
+  }
+  return candidatePath.replace(/\.md$/, '');
+}
+
+function formatRelationTarget(
+  candidatePath: string,
+  linkFormat: 'wikilink' | 'markdown',
+  targetIndex?: NoteTargetIndex
+): string {
+  if (linkFormat === 'wikilink') {
+    const target = getShortestLinkTarget(candidatePath, targetIndex);
+    return formatValue(target, 'wikilink');
+  }
+
+  const label = basename(candidatePath, '.md');
+  return formatMarkdownLinkValue(label, candidatePath);
+}
+
 async function handleSelfReferenceFix(
   context: FixContext,
   result: FileAuditResult,
@@ -2396,17 +2655,23 @@ async function handleSelfReferenceFix(
     return 'skipped';
   }
 
-  const { schema, vaultDir } = context;
+  const { schema, noteTargetIndex } = context;
   const parsed = await parseNote(result.path);
   const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
   const fields = typePath ? getFieldsForType(schema, typePath) : {};
   const field = fields[issue.field];
+  const linkFormat = schema.config.linkFormat ?? 'wikilink';
+  const isRequired = field?.required === true;
 
-  const options = ['[clear field]'];
+  const options: string[] = [];
+  const labelToTarget = new Map<string, string>();
 
-  if (field?.source) {
-    const targetIndex = await buildNoteTargetIndex(schema, vaultDir);
-    const validTargets = collectTargetsBySource(schema, field.source, targetIndex);
+  if (!isRequired) {
+    options.push('[clear field]');
+  }
+
+  if (field?.source && noteTargetIndex) {
+    const validTargets = collectTargetsBySource(schema, field.source, noteTargetIndex);
     const noteName = basename(result.path, '.md');
     const notePathKey = result.relativePath.replace(/\.md$/, '');
     const filteredTargets = validTargets.filter(
@@ -2414,7 +2679,13 @@ async function handleSelfReferenceFix(
     );
 
     if (filteredTargets.length > 0) {
-      options.push(...filteredTargets.slice(0, 20).map((target) => `[[${target}]]`));
+      for (const target of filteredTargets.slice(0, 20)) {
+        const label = linkFormat === 'markdown'
+          ? formatMarkdownLinkValue(basename(target), `${target}.md`)
+          : formatValue(target, linkFormat);
+        options.push(label);
+        labelToTarget.set(label, target);
+      }
       if (filteredTargets.length > 20) {
         options.push(`... (${filteredTargets.length - 20} more)`);
       }
@@ -2438,7 +2709,7 @@ async function handleSelfReferenceFix(
   }
 
   if (selected === '[clear field]') {
-    const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option' }, '');
+    const fixResult = await clearFrontmatterField(schema, result, issue.field);
     if (fixResult.action === 'fixed') {
       console.log(chalk.green(`    ✓ Cleared ${issue.field}`));
       return 'fixed';
@@ -2447,9 +2718,13 @@ async function handleSelfReferenceFix(
     return 'failed';
   }
 
-  const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option' }, selected);
+  const target = labelToTarget.get(selected) ?? selected;
+  const formatted = linkFormat === 'markdown'
+    ? formatMarkdownLinkValue(basename(target), `${target}.md`)
+    : formatValue(target.replace(/^"|"$/g, ''), linkFormat);
+  const fixResult = await setFrontmatterField(schema, result, issue.field, formatted);
   if (fixResult.action === 'fixed') {
-    console.log(chalk.green(`    ✓ Updated ${issue.field}: ${selected}`));
+    console.log(chalk.green(`    ✓ Updated ${issue.field}: ${formatted}`));
     return 'fixed';
   }
   console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
@@ -2466,15 +2741,28 @@ async function handleAmbiguousLinkTargetFix(
     return 'skipped';
   }
 
-  const { schema } = context;
+  const { schema, noteTargetIndex } = context;
   const linkFormat = schema.config.linkFormat ?? 'wikilink';
 
+  const parsed = await parseNote(result.path);
+  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const fields = typePath ? getFieldsForType(schema, typePath) : {};
+  const field = fields[issue.field];
+  const isRequired = field?.required === true;
+
+  const labelToCandidate = new Map<string, string>();
   const candidateOptions = issue.candidates.map((candidate) => {
-    const target = candidate.replace(/\.md$/, '');
-    return formatValue(target, linkFormat);
+    const label = `${basename(candidate, '.md')} (${candidate})`;
+    labelToCandidate.set(label, candidate);
+    return label;
   });
 
-  const options = [...candidateOptions, '[clear field]', '[skip]', '[quit]'];
+  const options = [
+    ...candidateOptions,
+    ...(isRequired ? [] : ['[clear field]']),
+    '[skip]',
+    '[quit]',
+  ];
 
   const selected = await promptSelection(
     `    Select target for ${issue.field}:`,
@@ -2491,7 +2779,7 @@ async function handleAmbiguousLinkTargetFix(
   }
 
   if (selected === '[clear field]') {
-    const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option' }, '');
+    const fixResult = await clearFrontmatterField(schema, result, issue.field);
     if (fixResult.action === 'fixed') {
       console.log(chalk.green(`    ✓ Cleared ${issue.field}`));
       return 'fixed';
@@ -2500,9 +2788,11 @@ async function handleAmbiguousLinkTargetFix(
     return 'failed';
   }
 
-  const fixResult = await applyFix(schema, result.path, { ...issue, code: 'invalid-option' }, selected);
+  const candidatePath = labelToCandidate.get(selected) ?? selected;
+  const formatted = formatRelationTarget(candidatePath, linkFormat, noteTargetIndex);
+  const fixResult = await setFrontmatterField(schema, result, issue.field, formatted);
   if (fixResult.action === 'fixed') {
-    console.log(chalk.green(`    ✓ Updated ${issue.field}: ${selected}`));
+    console.log(chalk.green(`    ✓ Updated ${issue.field}: ${formatted}`));
     return 'fixed';
   }
   console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
@@ -2523,15 +2813,38 @@ async function handleInvalidListElementFix(
   const fieldName = issue.field;
   const listIndex = issue.listIndex;
 
-  const options: string[] = [];
-
   if (listIndex === undefined) {
-    options.push('[wrap into list]', '[clear field]');
-  } else {
-    options.push('[remove element]', '[edit element]', '[clear field]');
+    console.log(chalk.dim('    (Cannot fix - no list index)'));
+    return 'skipped';
   }
 
-  options.push('[skip]', '[quit]');
+  const parsed = await parseNote(result.path);
+  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const fields = typePath ? getFieldsForType(schema, typePath) : {};
+  const field = fields[fieldName];
+  const isRequired = field?.required === true;
+
+  const current = parsed.frontmatter[fieldName];
+  if (!Array.isArray(current)) {
+    console.log(chalk.dim('    (Cannot fix - value is not a list)'));
+    return 'skipped';
+  }
+  if (listIndex < 0 || listIndex >= current.length) {
+    console.log(chalk.dim('    (Cannot fix - index out of range)'));
+    return 'skipped';
+  }
+
+  const element = current[listIndex];
+  const reason = typeof issue.meta?.['reason'] === 'string' ? issue.meta['reason'] : undefined;
+  const canRemove = !isRequired || current.length > 1;
+  const canCoerce = typeof element === 'number' || typeof element === 'boolean';
+  const canFlatten = Array.isArray(element) && current.length === 1 && element.every((entry) => typeof entry === 'string');
+
+  const options: string[] = [];
+  if (canFlatten) options.push('[flatten list]');
+  if (canCoerce) options.push('[coerce element]');
+  if (canRemove) options.push('[remove element]');
+  options.push('[edit element]', '[skip]', '[quit]');
 
   const selected = await promptSelection(
     `    Fix list value for ${fieldName}:`,
@@ -2547,47 +2860,49 @@ async function handleInvalidListElementFix(
     return 'skipped';
   }
 
-  if (selected === '[clear field]') {
+  if (selected === '[flatten list]' && canFlatten) {
     const fixResult = await updateFrontmatterValue(schema, result, (frontmatter) => {
-      if (!(fieldName in frontmatter)) return false;
-      delete frontmatter[fieldName];
+      const list = frontmatter[fieldName];
+      if (!Array.isArray(list) || list.length !== 1) return false;
+      const nested = list[0];
+      if (!Array.isArray(nested) || !nested.every((entry) => typeof entry === 'string')) return false;
+      frontmatter[fieldName] = nested;
       return true;
     });
 
     if (fixResult.action === 'fixed') {
-      console.log(chalk.green(`    ✓ Cleared ${fieldName}`));
+      console.log(chalk.green(`    ✓ Flattened ${fieldName}`));
       return 'fixed';
     }
-
     console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
     return 'failed';
   }
 
-  if (selected === '[wrap into list]') {
+  if (selected === '[coerce element]' && canCoerce) {
     const fixResult = await updateFrontmatterValue(schema, result, (frontmatter) => {
-      const current = frontmatter[fieldName];
-      if (current === undefined || current === null) return false;
-      const wrapped = typeof current === 'string' ? [current] : [String(current)];
-      frontmatter[fieldName] = wrapped;
+      const list = frontmatter[fieldName];
+      if (!Array.isArray(list)) return false;
+      if (listIndex < 0 || listIndex >= list.length) return false;
+      list[listIndex] = String(list[listIndex]);
+      frontmatter[fieldName] = list;
       return true;
     });
 
     if (fixResult.action === 'fixed') {
-      console.log(chalk.green(`    ✓ Wrapped ${fieldName} into list`));
+      console.log(chalk.green(`    ✓ Coerced ${fieldName}[${listIndex}] to string`));
       return 'fixed';
     }
-
     console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
     return 'failed';
   }
 
-  if (selected === '[remove element]' && listIndex !== undefined) {
+  if (selected === '[remove element]' && canRemove) {
     const fixResult = await updateFrontmatterValue(schema, result, (frontmatter) => {
-      const current = frontmatter[fieldName];
-      if (!Array.isArray(current)) return false;
-      if (listIndex < 0 || listIndex >= current.length) return false;
-      current.splice(listIndex, 1);
-      frontmatter[fieldName] = current;
+      const list = frontmatter[fieldName];
+      if (!Array.isArray(list)) return false;
+      if (listIndex < 0 || listIndex >= list.length) return false;
+      list.splice(listIndex, 1);
+      frontmatter[fieldName] = list;
       return true;
     });
 
@@ -2595,12 +2910,11 @@ async function handleInvalidListElementFix(
       console.log(chalk.green(`    ✓ Removed invalid element from ${fieldName}`));
       return 'fixed';
     }
-
     console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
     return 'failed';
   }
 
-  if (selected === '[edit element]' && listIndex !== undefined) {
+  if (selected === '[edit element]') {
     const value = await promptInput(`    Enter value for ${fieldName}[${listIndex}]:`);
     if (value === null) return 'quit';
     if (!value) {
@@ -2609,11 +2923,11 @@ async function handleInvalidListElementFix(
     }
 
     const fixResult = await updateFrontmatterValue(schema, result, (frontmatter) => {
-      const current = frontmatter[fieldName];
-      if (!Array.isArray(current)) return false;
-      if (listIndex < 0 || listIndex >= current.length) return false;
-      current[listIndex] = value;
-      frontmatter[fieldName] = current;
+      const list = frontmatter[fieldName];
+      if (!Array.isArray(list)) return false;
+      if (listIndex < 0 || listIndex >= list.length) return false;
+      list[listIndex] = value;
+      frontmatter[fieldName] = list;
       return true;
     });
 
@@ -2621,11 +2935,13 @@ async function handleInvalidListElementFix(
       console.log(chalk.green(`    ✓ Updated ${fieldName}[${listIndex}]`));
       return 'fixed';
     }
-
     console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
     return 'failed';
   }
 
+  if (reason) {
+    console.log(chalk.dim(`    (Cannot fix ${reason} - skipping)`));
+  }
   console.log(chalk.dim('    → Skipped'));
   return 'skipped';
 }
@@ -2702,38 +3018,115 @@ async function handleWrongScalarTypeFix(
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
-  if (!issue.field || typeof issue.value !== 'string') return 'skipped';
+  if (!issue.field) return 'skipped';
 
-  const canAutoCoerce = issue.expected === 'number'
-    ? coerceNumberFromString(issue.value).ok
-    : issue.expected === 'boolean'
-      ? coerceBooleanFromString(issue.value).ok
-      : false;
+  const parsed = await parseNote(result.path);
+  const currentValue = parsed.frontmatter[issue.field];
+  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const fields = typePath ? getFieldsForType(schema, typePath) : {};
+  const field = fields[issue.field];
+  const expectsList = field?.prompt === 'list' || field?.multiple === true;
+  const expectedScalar = field ? getExpectedScalarType(field) : (issue.expected as 'string' | 'number' | 'boolean' | undefined) ?? 'string';
 
-  if (canAutoCoerce) {
-    const fixResult = await applyFix(schema, result.path, issue);
+  if (expectsList) {
+    const wrapped = getScalarToList(currentValue);
+    if (!wrapped.ok) {
+      console.log(chalk.dim('    (Cannot wrap into list - skipping)'));
+      return 'skipped';
+    }
+
+    const confirm = await promptConfirm(`    → Wrap ${issue.field} into a list?`);
+    if (confirm === null) return 'quit';
+    if (!confirm) {
+      console.log(chalk.dim('    → Skipped'));
+      return 'skipped';
+    }
+
+    const fixResult = await setFrontmatterField(schema, result, issue.field, wrapped.value);
     if (fixResult.action === 'fixed') {
-      console.log(chalk.green(`    ✓ Coerced ${issue.field} to ${issue.expected}`));
+      console.log(chalk.green(`    ✓ Wrapped ${issue.field} into list`));
       return 'fixed';
     }
     console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
     return 'failed';
   }
 
-  const value = await promptInput(`    Enter ${issue.expected ?? 'value'} for ${issue.field}:`);
+  if (Array.isArray(currentValue)) {
+    if (currentValue.length === 1) {
+      const coerced = getScalarFromList(currentValue, expectedScalar);
+      if (coerced.ok) {
+        const confirm = await promptConfirm(`    → Use ${JSON.stringify(coerced.value)} for ${issue.field}?`);
+        if (confirm === null) return 'quit';
+        if (!confirm) {
+          console.log(chalk.dim('    → Skipped'));
+          return 'skipped';
+        }
+        const fixResult = await setFrontmatterField(schema, result, issue.field, coerced.value);
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.green(`    ✓ Updated ${issue.field}: ${JSON.stringify(coerced.value)}`));
+          return 'fixed';
+        }
+        console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+        return 'failed';
+      }
+    }
+
+    const options = currentValue.map((item) => JSON.stringify(item));
+    const selected = await promptSelection(
+      `    Select value for ${issue.field}:`,
+      [...options, '[skip]', '[quit]']
+    );
+    if (selected === null || selected === '[quit]') return 'quit';
+    if (selected === '[skip]') {
+      console.log(chalk.dim('    → Skipped'));
+      return 'skipped';
+    }
+
+    const index = options.indexOf(selected);
+    const chosen = currentValue[index];
+    const coerced = getScalarCoercion(chosen, expectedScalar);
+    if (!coerced.ok) {
+      console.log(chalk.yellow('    ⚠ Selected value cannot be coerced.'));
+      return 'skipped';
+    }
+    const fixResult = await setFrontmatterField(schema, result, issue.field, coerced.value);
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Updated ${issue.field}: ${JSON.stringify(coerced.value)}`));
+      return 'fixed';
+    }
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+
+  const coercion = getScalarCoercion(currentValue, expectedScalar);
+  if (coercion.ok && coercion.kind !== 'identity') {
+    const confirm = await promptConfirm(`    → Coerce ${issue.field} to ${expectedScalar} (${JSON.stringify(coercion.value)})?`);
+    if (confirm === null) return 'quit';
+    if (confirm) {
+      const fixResult = await setFrontmatterField(schema, result, issue.field, coercion.value);
+      if (fixResult.action === 'fixed') {
+        console.log(chalk.green(`    ✓ Updated ${issue.field}: ${JSON.stringify(coercion.value)}`));
+        return 'fixed';
+      }
+      console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+      return 'failed';
+    }
+  }
+
+  const value = await promptInput(`    Enter ${expectedScalar} for ${issue.field}:`);
   if (value === null) return 'quit';
   if (!value.trim()) {
     console.log(chalk.dim('    → Skipped'));
     return 'skipped';
   }
 
-  if (issue.expected === 'number') {
+  if (expectedScalar === 'number') {
     const resultValue = coerceNumberFromString(value);
     if (!resultValue.ok) {
       console.log(chalk.yellow('    ⚠ Invalid number format.'));
       return 'skipped';
     }
-    const fixResult = await applyFix(schema, result.path, issue, resultValue.value);
+    const fixResult = await setFrontmatterField(schema, result, issue.field, resultValue.value);
     if (fixResult.action === 'fixed') {
       console.log(chalk.green(`    ✓ Updated ${issue.field}: ${resultValue.value}`));
       return 'fixed';
@@ -2742,13 +3135,13 @@ async function handleWrongScalarTypeFix(
     return 'failed';
   }
 
-  if (issue.expected === 'boolean') {
+  if (expectedScalar === 'boolean') {
     const resultValue = coerceBooleanFromString(value);
     if (!resultValue.ok) {
       console.log(chalk.yellow('    ⚠ Invalid boolean. Use true/false.'));
       return 'skipped';
     }
-    const fixResult = await applyFix(schema, result.path, issue, resultValue.value);
+    const fixResult = await setFrontmatterField(schema, result, issue.field, resultValue.value);
     if (fixResult.action === 'fixed') {
       console.log(chalk.green(`    ✓ Updated ${issue.field}: ${resultValue.value}`));
       return 'fixed';
@@ -2757,8 +3150,13 @@ async function handleWrongScalarTypeFix(
     return 'failed';
   }
 
-  console.log(chalk.dim('    (Unsupported coercion - skipping)'));
-  return 'skipped';
+  const fixResult = await setFrontmatterField(schema, result, issue.field, value);
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Updated ${issue.field}: ${value}`));
+    return 'fixed';
+  }
+  console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+  return 'failed';
 }
 
 async function handleInvalidDateFormatFix(
@@ -2780,15 +3178,24 @@ async function handleInvalidDateFormatFix(
     return 'skipped';
   }
 
-  const normalized = normalizeToIsoDate(value);
-  if (!normalized.valid) {
-    console.log(chalk.yellow(`    ⚠ ${normalized.error}`));
+  const trimmed = value.trim();
+  let normalizedValue: string | null = null;
+
+  if (isCanonicalIsoDate(trimmed)) {
+    normalizedValue = trimmed;
+  } else {
+    const normalization = getUnambiguousDateNormalization(trimmed);
+    normalizedValue = normalization ? normalization.normalized : null;
+  }
+
+  if (!normalizedValue) {
+    console.log(chalk.yellow('    ⚠ Invalid date format. Use YYYY-MM-DD.'));
     return 'skipped';
   }
 
-  const fixResult = await applyFix(schema, result.path, issue, normalized.value);
+  const fixResult = await setFrontmatterField(schema, result, issue.field, normalizedValue);
   if (fixResult.action === 'fixed') {
-    console.log(chalk.green(`    ✓ Updated ${issue.field}: ${normalized.value}`));
+    console.log(chalk.green(`    ✓ Updated ${issue.field}: ${normalizedValue}`));
     return 'fixed';
   }
   console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
