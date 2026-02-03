@@ -8,6 +8,7 @@ jsep.addBinaryOp('&&', 2);
 jsep.addBinaryOp('||', 1);
 jsep.addBinaryOp('==', 6);
 jsep.addBinaryOp('!=', 6);
+jsep.addBinaryOp('=~', 6);
 jsep.addBinaryOp('<', 7);
 jsep.addBinaryOp('>', 7);
 jsep.addBinaryOp('<=', 7);
@@ -151,6 +152,8 @@ function evaluateBinary(expr: BinaryExpression, context: EvalContext): unknown {
       return compareValues(left, right) === 0;
     case '!=':
       return compareValues(left, right) !== 0;
+    case '=~':
+      return matchesRegex(left, right);
     case '<':
       return compareValues(left, right) < 0;
     case '>':
@@ -213,6 +216,10 @@ function evaluateIdentifier(expr: Identifier, context: EvalContext): unknown {
   // Special 'file' object
   if (name === 'file') return context.file;
   if (name === FRONTMATTER_IDENTIFIER) return context.frontmatter;
+
+  if (name === 'name' && context.frontmatter['name'] === undefined) {
+    return context.file?.name;
+  }
 
   // Look up in frontmatter
   return context.frontmatter[name];
@@ -440,6 +447,23 @@ function compareValues(a: unknown, b: unknown): number {
 
   // Regular string comparison
   return strA.localeCompare(strB);
+}
+
+function matchesRegex(value: unknown, pattern: unknown): boolean {
+  const raw = String(pattern ?? '');
+  if (!raw) return false;
+
+  let regex: RegExp;
+  if (raw.startsWith('/') && raw.lastIndexOf('/') > 0) {
+    const lastSlash = raw.lastIndexOf('/');
+    const body = raw.slice(1, lastSlash);
+    const flags = raw.slice(lastSlash + 1);
+    regex = new RegExp(body, flags);
+  } else {
+    regex = new RegExp(raw);
+  }
+
+  return regex.test(String(value ?? ''));
 }
 
 /**

@@ -241,6 +241,7 @@ export function validateWhereExpressions(
   const errors: WhereValidationError[] = [];
   const fields = getFieldsForType(schema, typeName);
   const allFieldNames = getAllFieldsForType(schema, typeName);
+  const allowedFields = new Set<string>([...allFieldNames, 'id', 'name', 'type']);
 
   for (const exprString of expressions) {
     try {
@@ -253,8 +254,8 @@ export function validateWhereExpressions(
         if (comparison.value === null) continue;
 
         // Error if field is not in this type's schema (strict mode when type is specified)
-        if (!allFieldNames.has(comparison.field)) {
-          const fieldList = Array.from(allFieldNames);
+        if (!allowedFields.has(comparison.field)) {
+          const fieldList = Array.from(allowedFields);
           const suggestion = suggestFieldName(comparison.field, fieldList);
           errors.push({
             expression: exprString,
