@@ -13,10 +13,11 @@ bwrb delete [options] [query]
 
 ## Modes
 
-Delete operates in two modes:
+Delete operates in three modes:
 
 - **Single-file mode** (default): Delete a specific note by name/query
 - **Bulk mode**: Delete multiple notes matching targeting selectors
+- **Scoped mode**: Use a query with targeting selectors to narrow the selection
 
 ## Options
 
@@ -28,6 +29,7 @@ Delete operates in two modes:
 | `-p, --path <glob>` | Filter by path glob |
 | `-w, --where <expr>` | Filter by frontmatter expression (repeatable) |
 | `-b, --body <query>` | Filter by body content search |
+| `--id <uuid>` | Filter by stable note id |
 | `-a, --all` | Select all notes (required for bulk delete without other targeting) |
 
 ### Execution
@@ -35,7 +37,8 @@ Delete operates in two modes:
 | Option | Description |
 |--------|-------------|
 | `-x, --execute` | Actually delete files (default is dry-run for bulk) |
-| `-f, --force` | Skip confirmation prompt (single-file mode) |
+| `--dry-run` | Preview deletions without removing files |
+| `-f, --force` | Skip confirmation prompt (single-file or multi-delete) |
 | `--picker <mode>` | Selection mode: `auto`, `fzf`, `numbered`, `none` |
 | `--output <format>` | Output format: `text`, `json` |
 
@@ -45,6 +48,7 @@ Bulk delete requires **two explicit gates** to prevent accidents:
 
 1. **Targeting gate**: Must specify at least one selector (`--type`, `--path`, `--where`, `--body`) OR use `--all`
 2. **Execution gate**: Must use `--execute` to actually delete (dry-run by default)
+3. **Confirmation**: Deleting more than one file requires explicit confirmation (or `--force`)
 
 ```bash
 # Error: no targeting specified
@@ -56,6 +60,9 @@ bwrb delete --type task
 
 # Actually deletes
 bwrb delete --type task --execute
+
+# Query scoped to targeting (still requires --execute)
+bwrb delete --type idea "Specific Name" --execute
 ```
 
 ## Examples
@@ -71,6 +78,9 @@ bwrb delete "My Note" --force
 
 # Scripting mode
 bwrb delete "My Note" --output json --force
+
+# Preview delete without removing
+bwrb delete "My Note" --dry-run
 ```
 
 ### Bulk Mode
@@ -81,6 +91,9 @@ bwrb delete --type task
 
 # Actually delete all tasks
 bwrb delete --type task --execute
+
+# Explicit dry-run preview
+bwrb delete --type task --dry-run
 
 # Delete all notes in Archive
 bwrb delete --path "Archive/**" -x
@@ -93,6 +106,9 @@ bwrb delete --where "status=archived" --execute
 
 # Delete ALL notes (dangerous!)
 bwrb delete --all --execute
+
+# Scoped delete (query + targeting)
+bwrb delete --type idea "Sample Idea" --execute
 ```
 
 ## Picker Modes
@@ -115,4 +131,3 @@ Deletion is permanent. Use version control (git) to recover deleted notes if nee
 - [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — `--execute` vs `--force` semantics
 - [bwrb bulk](/reference/commands/bulk/) — Batch operations (non-destructive)
 - [Targeting Model](/reference/targeting/) — Selector reference
-
