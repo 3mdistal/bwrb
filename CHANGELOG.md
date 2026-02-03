@@ -4,6 +4,32 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.5-rc.0] - 2026-02-03
+
+Changes since `v0.1.4`.
+
+### Added
+
+- **Phase 2 vault auto-detection with downward discovery and picker** (#338)
+- **Audit --fix interactive detections and fixes for list/type/date/link edge cases** (#375)
+
+### Changed
+
+- **Audit ignores built-in frontmatter fields written by `bwrb new`** (#395)
+- **`--where` now supports hyphenated frontmatter keys** (#410)
+- **Clarify `audit --fix` targeting requirements and guidance** (#378)
+
+### Fixed
+
+- **Owned note creation now writes `owner` frontmatter and uses the owning field folder** (#394)
+- **Report packaged version in `bwrb --version` output** (#379)
+- **Ensure npm publish artifacts include built CLI output** (#408)
+- **Audit --fix structural auto-fixes are more conservative and preserve line endings** (#374)
+
+### Changed (Internal)
+
+- **Remove beads artifacts/backups from the repo** (#415)
+
 ### Changed (Breaking)
 
 - **Standardized `-o` flag to mean `--open` across all commands** (#239)
