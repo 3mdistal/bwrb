@@ -4,7 +4,7 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
-## [0.1.5-rc.0] - 2026-02-03
+## [0.1.5] - 2026-02-03
 
 Changes since `v0.1.4`.
 
