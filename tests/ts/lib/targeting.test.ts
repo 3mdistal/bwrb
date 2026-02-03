@@ -356,6 +356,18 @@ describe('targeting', () => {
       expect(result.files.every(f => f.frontmatter.status === 'in-flight')).toBe(true);
     });
 
+    it('supports regex matching on name with where filters', async () => {
+      const result = await resolveTargets(
+        { type: 'idea', where: ["name =~ '^Sample'"] },
+        schema,
+        vaultDir
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0]?.relativePath).toBe('Ideas/Sample Idea.md');
+    });
+
     it('returns empty for no matches', async () => {
       const result = await resolveTargets(
         { path: 'NonexistentDir' },
