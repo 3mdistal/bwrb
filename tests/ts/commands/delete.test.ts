@@ -62,6 +62,42 @@ describe('delete command', () => {
     });
   });
 
+  describe('scoped delete (query + targeting)', () => {
+    it('should delete only the matching note within targeting scope', async () => {
+      const targetPath = join(vaultDir, 'Ideas', 'Sample Idea.md');
+      const otherPath = join(vaultDir, 'Ideas', 'Another Idea.md');
+      expect(existsSync(targetPath)).toBe(true);
+      expect(existsSync(otherPath)).toBe(true);
+
+      const result = await runCLI([
+        'delete',
+        '--type', 'idea',
+        'Sample Idea',
+        '--execute',
+        '--force',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(targetPath)).toBe(false);
+      expect(existsSync(otherPath)).toBe(true);
+    });
+
+    it('should preview deletions in scoped dry-run', async () => {
+      const targetPath = join(vaultDir, 'Ideas', 'Sample Idea.md');
+      expect(existsSync(targetPath)).toBe(true);
+
+      const result = await runCLI([
+        'delete',
+        '--type', 'idea',
+        'Sample Idea',
+        '--dry-run',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(targetPath)).toBe(true);
+    });
+  });
+
   describe('error handling', () => {
     it('should error on no matching notes', async () => {
       const result = await runCLI(['delete', 'nonexistent-note-xyz', '--force', '--picker', 'none'], vaultDir);
@@ -130,6 +166,20 @@ describe('delete command', () => {
       expect(json.errors).toBeDefined();
       expect(json.errors.length).toBeGreaterThan(0);
     });
+
+    it('should require --force when deleting multiple files in execute mode', async () => {
+      const result = await runCLI([
+        'delete',
+        '--type', 'idea',
+        '--execute',
+        '--output', 'json',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('--force');
+    });
   });
 
   describe('help and usage', () => {
@@ -140,6 +190,7 @@ describe('delete command', () => {
       expect(result.stdout).toContain('Delete notes from the vault');
       expect(result.stdout).toContain('--force');
       expect(result.stdout).toContain('--execute');
+      expect(result.stdout).toContain('--dry-run');
       expect(result.stdout).toContain('Examples');
     });
   });

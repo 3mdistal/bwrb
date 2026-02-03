@@ -58,10 +58,13 @@ Changes since `v0.1.4`.
 ### Fixed
 
 - **Owned note creation now writes `owner` frontmatter and uses the owning field folder** (#394)
+- **Delete now scopes query resolution within targeting selectors instead of deleting all matches** (#435)
+- **`--where` now supports regex matching and filename-based `name` filters** (#436)
 
 ### Added
 
 - **Phase 2 vault auto-detection with downward discovery and picker** (#338)
+- **`bwrb delete --dry-run` for explicit previewing of deletions** (#435)
   - When not inside a vault and `--vault` is missing, bwrb now discovers vaults below `cwd`
   - Auto-selects the only match, prompts in TTY when multiple matches
   - Non-interactive or `--output json` now errors with candidate list

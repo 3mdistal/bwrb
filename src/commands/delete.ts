@@ -31,7 +31,7 @@ import {
   jsonError,
   ExitCodes,
 } from '../lib/output.js';
-import { buildNoteIndex } from '../lib/navigation.js';
+import { buildNoteIndex, type NoteIndex, type ManagedFile } from '../lib/navigation.js';
 import { parsePickerMode, resolveAndPick, type PickerMode } from '../lib/picker.js';
 import { UserCancelledError } from '../lib/errors.js';
 import {
@@ -48,6 +48,7 @@ interface DeleteOptions {
   force?: boolean;
   picker?: string;
   output?: string;
+  dryRun?: boolean;
   // Unified targeting selectors
   type?: string;
   path?: string;
@@ -140,6 +141,7 @@ export const deleteCommand = new Command('delete')
   .option('--text <query>', 'Filter by body content search (deprecated: use --body)', undefined)
   .option('-a, --all', 'Select all notes (required for bulk delete without other targeting)')
   .option('-x, --execute', 'Actually delete files (default is dry-run for bulk operations)')
+  .option('--dry-run', 'Preview deletions without removing files')
   // Original options
   .option('-f, --force', 'Skip confirmation prompt (single-file mode)')
   .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
@@ -157,6 +159,10 @@ Modes:
     bwrb delete --body "DELETE ME" --execute
     bwrb delete --all --execute     Delete ALL notes (dangerous!)
 
+  Scoped delete (query + targeting):
+    bwrb delete --type idea "My Idea" --execute
+    bwrb delete --type idea "My Idea" --dry-run
+
 Safety:
   Bulk delete requires TWO gates:
   1. Explicit targeting (--type, --path, --where, --body) or --all
@@ -173,8 +179,10 @@ Examples:
   bwrb delete "My Note" --force           # Skip confirmation
   bwrb delete --type task                 # Dry-run: preview deletions
   bwrb delete --type task --execute       # Actually delete all tasks
+  bwrb delete --type task --dry-run        # Explicit dry-run preview
+  bwrb delete --type idea "My Idea" -x     # Targeted delete within type
   bwrb delete --path "Archive/**" -x      # Delete all notes in Archive
-  bwrb delete -o json --force "My Note"   # Scripting mode (single file)
+  bwrb delete --output json --force "My Note"   # Scripting mode (single file)
 
 Note: Deletion is permanent. The file is removed from the filesystem.
       Use version control (git) to recover deleted notes if needed.`)
@@ -215,9 +223,12 @@ Note: Deletion is permanent. The file is removed from the filesystem.
 
       const hasBulkTargeting = hasAnyTargeting(targetingOpts);
 
-      // If query is provided without bulk targeting, use single-file mode
-      // If bulk targeting is provided, use bulk mode
-      if (hasBulkTargeting) {
+      const hasQuery = typeof query === 'string' && query.trim().length > 0;
+
+      // If bulk targeting is provided, treat query as scoped resolution
+      if (hasBulkTargeting && hasQuery) {
+        await handleScopedDelete(query, vaultDir, schema, targetingOpts, options, jsonMode, pickerMode);
+      } else if (hasBulkTargeting) {
         await handleBulkDelete(vaultDir, schema, targetingOpts, options, jsonMode);
       } else {
         await handleSingleDelete(query, vaultDir, schema, options, jsonMode, pickerMode);
@@ -344,75 +355,132 @@ async function handleSingleDelete(
     return;
   }
 
-  const targetFile = result.file;
-  const fullPath = targetFile.path;
-  const relativePath = targetFile.relativePath;
+  await deleteResolvedFile({
+    file: result.file,
+    vaultDir,
+    options,
+    jsonMode,
+    dryRun: !!options.dryRun,
+  });
+}
 
-  // Verify file exists
-  if (!(await isFile(fullPath))) {
-    const error = `File not found: ${relativePath}`;
-    if (jsonMode) {
-      printJson(jsonError(error, { code: ExitCodes.IO_ERROR }));
-      process.exitCode = ExitCodes.IO_ERROR;
-      return;
-    }
-    printError(error);
+// ============================================================================
+// Scoped Delete (Query + Targeting)
+// ============================================================================
+
+async function handleScopedDelete(
+  query: string,
+  vaultDir: string,
+  schema: Awaited<ReturnType<typeof loadSchema>>,
+  targetingOpts: TargetingOptions,
+  options: DeleteOptions,
+  jsonMode: boolean,
+  pickerMode: PickerMode
+): Promise<void> {
+  const effectivePickerMode: PickerMode = jsonMode ? 'none' : pickerMode;
+
+  if (jsonMode && !options.force) {
+    printJson(jsonError('JSON mode requires --force flag (no interactive confirmation)', {
+      code: ExitCodes.VALIDATION_ERROR,
+    }));
     process.exitCode = ExitCodes.VALIDATION_ERROR;
     return;
   }
 
-  // Check for backlinks (warn user if other notes link to this file)
-  let backlinks: string[] = [];
-  if (!jsonMode) {
-    backlinks = await findBacklinks(vaultDir, relativePath);
+  const result = await resolveTargets(targetingOpts, schema, vaultDir);
+
+  if (result.error) {
+    if (jsonMode) {
+      const errorDetails = result.files.length
+        ? {
+            errors: result.files.map(f => ({
+              field: 'candidate',
+              value: f.relativePath,
+              message: 'Matching file',
+            })),
+            code: ExitCodes.VALIDATION_ERROR,
+          }
+        : { code: ExitCodes.VALIDATION_ERROR };
+
+      printJson(jsonError(result.error, errorDetails));
+      process.exitCode = ExitCodes.VALIDATION_ERROR;
+      return;
+    }
+
+    printError(result.error);
+    if (result.files.length > 0) {
+      printError('Matching files:');
+      for (const f of result.files) {
+        printError(`  ${f.relativePath}`);
+      }
+    }
+    process.exitCode = ExitCodes.VALIDATION_ERROR;
+    return;
   }
 
-  // Confirm deletion (unless --force)
-  if (!options.force) {
-    printInfo(`\nFile to delete: ${relativePath}`);
-    
-    // Show backlink warning if any
-    if (backlinks.length > 0) {
-      printWarning(`\nWarning: ${backlinks.length} note(s) link to this file:`);
-      for (const link of backlinks.slice(0, 5)) {
-        console.log(`  - ${link}`);
-      }
-      if (backlinks.length > 5) {
-        console.log(`  ... and ${backlinks.length - 5} more`);
-      }
-      console.log('');
+  if (result.files.length === 0) {
+    const error = 'No matching notes found within targeting criteria';
+    if (jsonMode) {
+      printJson(jsonError(error, { code: ExitCodes.VALIDATION_ERROR }));
+    } else {
+      printError(error);
     }
+    process.exitCode = ExitCodes.VALIDATION_ERROR;
+    return;
+  }
 
-    const confirmed = await promptConfirm('Delete this note?');
-    if (confirmed === null) {
-      throw new UserCancelledError();
-    }
-    if (!confirmed) {
-      console.log('Cancelled.');
+  const scopedIndex = buildNoteIndexFromFiles(result.files);
+
+  const resolution = await resolveAndPick(scopedIndex, query, {
+    pickerMode: effectivePickerMode,
+    prompt: 'Select note to delete',
+  });
+
+  if (!resolution.ok) {
+    if (resolution.cancelled) {
       process.exitCode = ExitCodes.SUCCESS;
       return;
     }
-  }
 
-  // Delete the file
-  await unlink(fullPath);
+    if (jsonMode) {
+      const errorDetails = resolution.candidates
+        ? {
+            errors: resolution.candidates.map(c => ({
+              field: 'candidate',
+              value: c.relativePath,
+              message: 'Matching file',
+            })),
+          }
+        : {};
 
-  // Success output
-  if (jsonMode) {
-    printJson(jsonSuccess({
-      message: 'Note deleted successfully',
-      path: relativePath,
-      data: {
-        absolutePath: fullPath,
-        backlinksCount: backlinks.length,
-      },
-    }));
-  } else {
-    printSuccess(`Deleted: ${relativePath}`);
-    if (backlinks.length > 0) {
-      printWarning(`Note: ${backlinks.length} note(s) still contain links to this file.`);
+      printJson(jsonError(resolution.error, {
+        ...errorDetails,
+        code: ExitCodes.VALIDATION_ERROR,
+      }));
+      process.exitCode = ExitCodes.VALIDATION_ERROR;
+      return;
     }
+
+    printError(resolution.error);
+    if (resolution.candidates && resolution.candidates.length > 0) {
+      console.error('\nMatching files:');
+      for (const c of resolution.candidates) {
+        console.error(`  ${c.relativePath}`);
+      }
+    }
+    process.exitCode = ExitCodes.VALIDATION_ERROR;
+    return;
   }
+
+  const isDryRun = !!options.dryRun || !options.execute;
+
+  await deleteResolvedFile({
+    file: resolution.file,
+    vaultDir,
+    options,
+    jsonMode,
+    dryRun: isDryRun,
+  });
 }
 
 // ============================================================================
@@ -426,7 +494,7 @@ async function handleBulkDelete(
   options: DeleteOptions,
   jsonMode: boolean
 ): Promise<void> {
-  const isDryRun = !options.execute;
+  const isDryRun = !!options.dryRun || !options.execute;
 
   // Resolve targets using shared targeting module
   const result = await resolveTargets(targetingOpts, schema, vaultDir);
@@ -520,6 +588,28 @@ async function handleBulkDelete(
     return;
   }
 
+  // Execute mode: confirm before deleting multiple files
+  if (files.length > 1 && !options.force) {
+    if (jsonMode) {
+      printJson(jsonError('Deleting multiple files requires --force (non-interactive confirmation)', {
+        code: ExitCodes.VALIDATION_ERROR,
+      }));
+      process.exitCode = ExitCodes.VALIDATION_ERROR;
+      return;
+    }
+
+    printInfo(`\nAbout to delete ${files.length} file(s).`);
+    const confirmed = await promptConfirm('Continue?');
+    if (confirmed === null) {
+      throw new UserCancelledError();
+    }
+    if (!confirmed) {
+      console.log('Cancelled.');
+      process.exitCode = ExitCodes.SUCCESS;
+      return;
+    }
+  }
+
   // Execute mode: actually delete files
   const deleted: string[] = [];
   const errors: Array<{ path: string; error: string }> = [];
@@ -572,5 +662,124 @@ async function handleBulkDelete(
   // Exit with error if any deletions failed
   if (errors.length > 0) {
     process.exitCode = ExitCodes.VALIDATION_ERROR;
+  }
+}
+
+// ============================================================================
+// Shared Helpers
+// ============================================================================
+
+function buildNoteIndexFromFiles(files: ManagedFile[]): NoteIndex {
+  const byPath = new Map<string, ManagedFile>();
+  const byBasename = new Map<string, ManagedFile[]>();
+
+  for (const file of files) {
+    byPath.set(file.relativePath, file);
+
+    const name = basename(file.relativePath, '.md');
+    const existing = byBasename.get(name) || [];
+    existing.push(file);
+    byBasename.set(name, existing);
+  }
+
+  return { byPath, byBasename, allFiles: files };
+}
+
+async function deleteResolvedFile({
+  file,
+  vaultDir,
+  options,
+  jsonMode,
+  dryRun,
+}: {
+  file: ManagedFile;
+  vaultDir: string;
+  options: DeleteOptions;
+  jsonMode: boolean;
+  dryRun: boolean;
+}): Promise<void> {
+  const fullPath = file.path;
+  const relativePath = file.relativePath;
+
+  if (!(await isFile(fullPath))) {
+    const error = `File not found: ${relativePath}`;
+    if (jsonMode) {
+      printJson(jsonError(error, { code: ExitCodes.IO_ERROR }));
+      process.exitCode = ExitCodes.IO_ERROR;
+      return;
+    }
+    printError(error);
+    process.exitCode = ExitCodes.VALIDATION_ERROR;
+    return;
+  }
+
+  if (dryRun) {
+    if (jsonMode) {
+      printJson(jsonSuccess({
+        message: 'Dry run: file would be deleted',
+        path: relativePath,
+        data: {
+          dryRun: true,
+          absolutePath: fullPath,
+        },
+      }));
+    } else {
+      printWarning(`Dry run: would delete ${relativePath}`);
+    }
+    process.exitCode = ExitCodes.SUCCESS;
+    return;
+  }
+
+  // Check for backlinks (warn user if other notes link to this file)
+  let backlinks: string[] = [];
+  if (!jsonMode) {
+    backlinks = await findBacklinks(vaultDir, relativePath);
+  }
+
+  // Confirm deletion (unless --force)
+  if (!options.force) {
+    printInfo(`\nFile to delete: ${relativePath}`);
+
+    // Show backlink warning if any
+    if (backlinks.length > 0) {
+      printWarning(`\nWarning: ${backlinks.length} note(s) link to this file:`);
+      for (const link of backlinks.slice(0, 5)) {
+        console.log(`  - ${link}`);
+      }
+      if (backlinks.length > 5) {
+        console.log(`  ... and ${backlinks.length - 5} more`);
+      }
+      console.log('');
+    }
+
+    const confirmed = await promptConfirm('Delete this note?');
+    if (confirmed === null) {
+      throw new UserCancelledError();
+    }
+    if (!confirmed) {
+      console.log('Cancelled.');
+      process.exitCode = ExitCodes.SUCCESS;
+      return;
+    }
+  }
+
+  // Delete the file
+  await unlink(fullPath);
+
+  // Success output
+  if (jsonMode) {
+    printJson(jsonSuccess({
+      message: 'Note deleted successfully',
+      path: relativePath,
+      data: {
+        absolutePath: fullPath,
+        backlinksCount: backlinks.length,
+      },
+    }));
+  } else {
+    printSuccess(`Deleted: ${relativePath}`);
+    if (backlinks.length > 0) {
+      printWarning(`Note: ${backlinks.length} note(s) still contain links to this file.`);
+    }
   }
 }
