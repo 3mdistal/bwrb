@@ -182,6 +182,25 @@ bwrb edit --type task "Fix bug" --json '{"priority": "high"}'
 bwrb edit --type task --where "status == 'active'" "Deploy" --json '{"status": "done"}'
 ```
 
+### Deleting Notes
+
+```bash
+# Single-file delete (confirmation unless --force)
+bwrb delete "Note Name" --force
+
+# Scoped delete: query + targeting, requires --execute to delete
+bwrb delete --type idea "Specific Name" --execute --force
+
+# Bulk delete preview (dry-run is default for bulk)
+bwrb delete --type task
+
+# Explicit dry-run preview
+bwrb delete --type task --dry-run
+
+# Bulk delete with confirmation (skip with --force)
+bwrb delete --type task --execute --force
+```
+
 ### Finding Notes
 
 ```bash
