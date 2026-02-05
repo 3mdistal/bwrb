@@ -8,9 +8,9 @@
 
 import type { Expression, BinaryExpression, UnaryExpression, CallExpression, Identifier, Literal, MemberExpression } from 'jsep';
 import { parseExpression } from './expression.js';
-import type { LoadedSchema, Field } from '../types/schema.js';
+import type { LoadedSchema } from '../types/schema.js';
 import { getFieldsForType, getAllFieldsForType } from './schema.js';
-import { suggestOptionValue, suggestFieldName } from './validation.js';
+import { validateSelectOptionValue, suggestFieldName } from './validation.js';
 import { normalizeWhereExpression } from './where-normalize.js';
 import { FRONTMATTER_IDENTIFIER } from './where-constants.js';
 
@@ -280,7 +280,7 @@ export function validateWhereExpressions(
           exprString,
           comparison.field,
           comparison.value,
-          field
+          field.options
         );
 
         if (error) {
@@ -306,26 +306,18 @@ function validateFieldValue(
   expression: string,
   fieldName: string,
   value: string,
-  field: Field
+  options: string[]
 ): WhereValidationError | null {
-  const options = field.options ?? [];
-  if (options.length === 0) return null;
-
-  // Check if value is valid
-  if (options.includes(value)) {
-    return null; // Valid
-  }
-
-  // Invalid value - build error with suggestion
-  const suggestion = suggestOptionValue(value, options);
+  const invalid = validateSelectOptionValue(value, options);
+  if (!invalid) return null;
 
   return {
     expression,
     field: fieldName,
-    value,
-    message: `Invalid value '${value}' for field '${fieldName}'`,
-    validOptions: options,
-    ...(suggestion && { suggestion }),
+    value: invalid.value,
+    message: `Invalid value '${invalid.value}' for field '${fieldName}'`,
+    validOptions: invalid.allowedOptions,
+    ...(invalid.suggestion && { suggestion: invalid.suggestion }),
   };
 }
 
