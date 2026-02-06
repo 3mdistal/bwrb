@@ -8,6 +8,8 @@
 import { createRequire } from 'module';
 import type { IPty } from 'node-pty';
 import * as path from 'path';
+import stripAnsiLib from 'strip-ansi';
+import stringWidth from 'string-width';
 
 const require = createRequire(import.meta.url);
 
@@ -113,6 +115,20 @@ export const Keys = {
 export function stripAnsi(str: string): string {
   // eslint-disable-next-line no-control-regex
   return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+}
+
+/**
+ * Strip ANSI escape codes using the same parser as production layout code.
+ */
+export function stripAnsiSafe(str: string): string {
+  return stripAnsiLib(str);
+}
+
+/**
+ * Visible width helper for terminal overflow assertions.
+ */
+export function visibleWidth(str: string): number {
+  return stringWidth(stripAnsiSafe(str));
 }
 
 /**
@@ -467,6 +483,12 @@ export interface WithTempVaultOptions {
    * - string[]: Copy only templates for specified types (e.g., ['idea', 'objective'])
    */
   includeTemplates?: boolean | string[];
+  /** PTY columns (default: 80) */
+  cols?: number;
+  /** PTY rows (default: 24) */
+  rows?: number;
+  /** Extra environment variables for spawned CLI */
+  env?: Record<string, string>;
 }
 
 // Path to the fixture vault templates
@@ -653,11 +675,18 @@ export async function withTempVault(
   fn: (proc: PtyProcess, vaultPath: string) => Promise<void>,
   options: WithTempVaultOptions = {}
 ): Promise<void> {
-  const { files = [], schema = MINIMAL_SCHEMA, includeTemplates } = options;
+  const {
+    files = [],
+    schema = MINIMAL_SCHEMA,
+    includeTemplates,
+    cols,
+    rows,
+    env,
+  } = options;
 
   const vaultPath = await createTempVault(files, schema, includeTemplates);
   try {
-    const proc = spawnBowerbird(args, { cwd: vaultPath });
+    const proc = spawnBowerbird(args, { cwd: vaultPath, cols, rows, env });
     try {
       await fn(proc, vaultPath);
     } finally {
@@ -701,7 +730,14 @@ export async function withTempVaultRelative(
   fn: (proc: PtyProcess, vaultPath: string) => Promise<void>,
   options: WithTempVaultOptions = {}
 ): Promise<void> {
-  const { files = [], schema = MINIMAL_SCHEMA, includeTemplates } = options;
+  const {
+    files = [],
+    schema = MINIMAL_SCHEMA,
+    includeTemplates,
+    cols,
+    rows,
+    env,
+  } = options;
 
   const vaultPath = await createTempVault(files, schema, includeTemplates);
   const relativePath = getRelativePath(vaultPath);
@@ -709,7 +745,9 @@ export async function withTempVaultRelative(
     // Use relative path via BWRB_VAULT env var
     const proc = spawnBowerbird(args, { 
       cwd: vaultPath,  // Still pass absolute path for internal use
-      env: { BWRB_VAULT: relativePath }  // But set env var to relative
+      cols,
+      rows,
+      env: { ...env, BWRB_VAULT: relativePath }  // But set env var to relative
     });
     try {
       await fn(proc, vaultPath);

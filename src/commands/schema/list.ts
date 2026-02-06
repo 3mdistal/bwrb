@@ -10,6 +10,7 @@ import { resolveVaultDirWithSelection } from '../../lib/vaultSelection.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes } from '../../lib/output.js';
 import { getGlobalOpts } from '../../lib/command.js';
 import { UserCancelledError } from '../../lib/errors.js';
+import { getTtyContext } from '../../lib/tty/context.js';
 import {
   outputSchemaJson,
   outputSchemaVerboseJson,
@@ -18,6 +19,7 @@ import {
   showSchemaTreeVerbose,
   showTypeDetails,
   getFieldType,
+  renderSchemaFieldsTable,
 } from './helpers/output.js';
 import type { Field } from '../../types/schema.js';
 
@@ -165,11 +167,37 @@ listCommand
         }));
       } else {
         console.log(chalk.bold('\nFields:\n'));
-        for (const { type, field, definition } of allFields) {
-          const typeStr = getFieldType(definition);
-          const optionsSuffix = definition.options?.length ? ` [${definition.options.slice(0, 3).join(', ')}${definition.options.length > 3 ? '...' : ''}]` : '';
-          const required = definition.required ? chalk.red('*') : '';
-          console.log(`  ${type}.${field}${required} ${chalk.gray(`(${typeStr}${optionsSuffix})`)}`);
+        const context = getTtyContext();
+        const lines = renderSchemaFieldsTable(
+          allFields.map(({ type, field, definition }) => {
+            const details: string[] = [];
+            if (definition.options?.length) {
+              if (context.isTTY) {
+                details.push(`options=[${definition.options.slice(0, 3).join(', ')}${definition.options.length > 3 ? '...' : ''}]`);
+              } else {
+                details.push(`options=[${definition.options.join(', ')}]`);
+              }
+            }
+            if (definition.required) {
+              details.push('required');
+            }
+            if (definition.default !== undefined) {
+              const def = Array.isArray(definition.default)
+                ? `[${definition.default.join(', ')}]`
+                : String(definition.default);
+              details.push(`default=${def}`);
+            }
+            return {
+              type,
+              field,
+              kind: getFieldType(definition),
+              details: details.join(' '),
+            };
+          })
+        );
+        const linePrefix = context.isTTY ? '  ' : '';
+        for (const line of lines) {
+          console.log(`${linePrefix}${line}`);
         }
       }
     } catch (err) {
