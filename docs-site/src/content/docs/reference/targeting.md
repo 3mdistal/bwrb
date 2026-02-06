@@ -124,13 +124,13 @@ For ergonomics, the first positional argument is auto-detected:
 
 | Command | `--type` | `--path` | `--where` | `--body` | Picker |
 |---------|----------|----------|-----------|----------|--------|
-| [list](/reference/commands/list/)    | Y | Y | Y | Y | - |
-| [bulk](/reference/commands/bulk/)    | Y | Y | Y | Y | - |
-| [audit](/reference/commands/audit/)   | Y | Y | Y | Y | - |
-| [search](/reference/commands/search/)  | Y | Y | Y | Y | Y |
-| [open](/reference/commands/open/)    | Y | Y | Y | Y | Y |
 | [edit](/reference/commands/edit/)    | Y | Y | Y | Y | Y |
 | [delete](/reference/commands/delete/)  | Y | Y | Y | Y | - |
+| [list](/reference/commands/list/)    | Y | Y | Y | Y | - |
+| [open](/reference/commands/open/)    | Y | Y | Y | Y | Y |
+| [search](/reference/commands/search/)  | Y | Y | Y | Y | Y |
+| [audit](/reference/commands/audit/)   | Y | Y | Y | Y | - |
+| [bulk](/reference/commands/bulk/)    | Y | Y | Y | Y | - |
 
 **Notes:**
 - `open` is an alias for `search --open`
