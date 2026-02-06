@@ -113,6 +113,8 @@ Common failures are unused exports, including stale barrel exports. Prefer remov
 
 **Important**: When creating a git worktree, run `pnpm build` after `pnpm install`. The command tests (`tests/ts/commands/`) require the built `dist/` output to run correctly.
 
+For docs-site setup and contributor troubleshooting (including `pnpm approve-builds` warnings and pre-install Astro TypeScript diagnostics), see `docs-site/README.md`.
+
 ## Commander `--no-*` Option Contract
 
 Commander negated flags follow a specific runtime contract:

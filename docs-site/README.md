@@ -7,11 +7,10 @@ Documentation for [bwrb](https://github.com/3mdistal/bwrb), built with [Starligh
 ## Development
 
 ```bash
-cd docs-site
-pnpm install
-pnpm dev        # Start dev server at localhost:4321
-pnpm build      # Build production site
-pnpm preview    # Preview production build
+pnpm -C docs-site install
+pnpm -C docs-site dev      # Start dev server at localhost:4321
+pnpm -C docs-site build    # Build production site
+pnpm -C docs-site preview  # Preview production build
 ```
 
 ## CI Validation
@@ -24,6 +23,41 @@ pnpm -C docs-site build
 ```
 
 The docs build step runs for pull requests when relevant files change (`docs-site/**` and CI workflow changes).
+
+## Contributor Troubleshooting
+
+### pnpm warns about ignored build scripts (`approve-builds`)
+
+Symptom (fresh install): pnpm warns that build scripts were ignored and suggests `pnpm approve-builds`.
+
+- Why this happens: pnpm blocks dependency build scripts by default until approved; docs-site commonly needs `sharp`.
+- What to do locally (interactive):
+
+```bash
+pnpm -C docs-site install
+pnpm -C docs-site approve-builds
+# In the prompt, select sharp (Space) and confirm (Enter)
+pnpm -C docs-site rebuild sharp
+pnpm -C docs-site build
+```
+
+Only approve packages you recognize and expect for this project. `approve-builds` is interactive and intended for local setup, not CI automation.
+
+### TS/IDE errors like `Cannot find module 'astro/config'`
+
+Symptom (before docs-site deps are installed): editors may show missing Astro modules or tsconfig errors (for example `astro/config` or `astro/tsconfigs/strict`).
+
+- Why this happens: the TypeScript server cannot resolve Astro packages until `docs-site` dependencies are installed.
+- What to do:
+
+```bash
+pnpm -C docs-site install
+pnpm -C docs-site astro sync
+# optional but useful for generated types and runtime checks
+pnpm -C docs-site dev
+```
+
+If diagnostics persist after install/sync, restart your editor's TypeScript server. Opening `docs-site/` as its own workspace root also helps keep module resolution clean.
 
 ## Deployment
 
@@ -46,9 +80,8 @@ This means:
 If you need to trigger a manual deployment (e.g., after rate limiting):
 
 ```bash
-cd docs-site
-vercel          # Deploy preview
-vercel --prod   # Deploy to production
+pnpm -C docs-site exec vercel        # Deploy preview
+pnpm -C docs-site exec vercel --prod # Deploy to production
 ```
 
 > **Note**: You need to be authenticated with the Vercel CLI (`vercel login`) and have access to the project.
