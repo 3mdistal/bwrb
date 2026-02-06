@@ -957,7 +957,7 @@ priority: medium
     });
 
     it('should error when --execute is used with --dry-run', async () => {
-      const result = await runCLI(['audit', '--fix', '--dry-run', '--execute', '--all'], vaultDir);
+      const result = await runCLI(['audit', '--fix', '--auto', '--dry-run', '--execute', '--all'], vaultDir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('--execute cannot be used with --dry-run');
