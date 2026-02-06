@@ -17,7 +17,10 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { afterEach } from 'vitest';
+import { ensureDistBuiltForTests } from './lib/build-dist.js';
 import { killAllPtyProcesses } from './lib/pty-helpers.js';
+
+await ensureDistBuiltForTests();
 
 // Set BWRB_VAULT to fixture vault as a safety net.
 // This ensures tests that forget --vault don't accidentally use the developer's real vault.

@@ -55,7 +55,7 @@ pnpm test             # Run vitest tests
 pnpm typecheck        # Type checking
 ```
 
-**Important**: When creating a git worktree, run `pnpm build` after `pnpm install`. The command tests (`tests/ts/commands/`) require the built `dist/` output to run correctly.
+**Important**: Command tests (`tests/ts/commands/`) run against `dist/index.js`. Vitest test setup now runs `pnpm -s build` automatically before tests, so local and CI runs use a fresh `dist/` by default. Run `pnpm build` manually when you need updated artifacts outside the test runner.
 
 ## Testing
 

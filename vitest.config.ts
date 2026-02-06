@@ -5,7 +5,6 @@ export default defineConfig({
     globals: true,
     include: ['tests/ts/**/*.test.ts'],
     setupFiles: ['tests/ts/setup.ts'],
-    globalTeardown: 'tests/ts/teardown.ts',
     // Limit parallelism to prevent CPU saturation causing flaky tests
     // PTY tests are timing-sensitive and fail when CPU is maxed out
     pool: 'forks',
