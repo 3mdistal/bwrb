@@ -26,6 +26,10 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Changed
 
+- **Refreshed pnpm-managed dependencies and lockfiles across root + docs-site** (#335)
+  - Updated direct dependencies to latest compatible releases while preserving current CLI/runtime contracts
+  - Kept core contract-sensitive packages on existing major lines (e.g. `zod` v3, `vitest` v2) to avoid unplanned breaking changes
+
 - **Audit ignores built-in frontmatter fields written by `bwrb new`** (#395)
   - `id` and `name` no longer emit `unknown-field` warnings
 
