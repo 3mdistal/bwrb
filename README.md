@@ -521,3 +521,16 @@ pnpm test:coverage     # Run with coverage report
 pnpm typecheck         # Type checking
 pnpm docs:lint         # Verify canonical docs concept links
 ```
+
+## Docs Site
+
+Run docs-site workflows from the repository root:
+
+```sh
+pnpm docs:install      # Install docs-site dependencies
+pnpm docs:dev          # Start docs dev server
+pnpm docs:build        # Build docs site
+pnpm docs:preview      # Preview built docs site
+```
+
+For docs-site details and deployment notes, see `docs-site/README.md`.

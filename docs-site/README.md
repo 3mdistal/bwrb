@@ -6,6 +6,17 @@ Documentation for [bwrb](https://github.com/3mdistal/bwrb), built with [Starligh
 
 ## Development
 
+From the repository root:
+
+```bash
+pnpm docs:install   # Install docs-site dependencies
+pnpm docs:dev       # Start dev server at localhost:4321
+pnpm docs:build     # Build production site
+pnpm docs:preview   # Preview production build
+```
+
+Or run commands directly in `docs-site/`:
+
 ```bash
 cd docs-site
 pnpm install
