@@ -1,4 +1,4 @@
-import { mkdtemp, rm, mkdir, writeFile, cp } from 'fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, cp, stat } from 'fs/promises';
 import { join, relative } from 'path';
 import { tmpdir } from 'os';
 import { spawn } from 'child_process';
@@ -230,10 +230,26 @@ instances:
 `
   );
 
-  // Delay to ensure file system sync completes (fixes flaky tests on macOS)
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  // Ensure key fixture files are visible before returning (reduces CI fs timing flakes)
+  await waitForFile(join(vaultDir, 'Objectives/Tasks', 'Sample Task.md'));
+  await waitForFile(join(vaultDir, 'Objectives/Milestones', 'Active Milestone.md'));
 
   return vaultDir;
+}
+
+async function waitForFile(path: string): Promise<void> {
+  const deadline = Date.now() + 500;
+
+  while (Date.now() < deadline) {
+    try {
+      const stats = await stat(path);
+      if (stats.isFile()) return;
+    } catch {
+      // Retry until deadline
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 export async function cleanupTestVault(vaultDir: string): Promise<void> {
