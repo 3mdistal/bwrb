@@ -104,6 +104,61 @@ describe('schema command', () => {
       }
     });
 
+    it('should ignore schema snapshot when listing', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-schema-snapshot-ignore-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+
+      const currentSchema = {
+        version: 2,
+        types: {
+          meta: {},
+          current: {
+            extends: 'meta',
+            fields: {
+              title: { prompt: 'text' },
+            },
+          },
+        },
+      };
+
+      const snapshotSchema = {
+        version: 2,
+        types: {
+          meta: {},
+          legacy: {
+            extends: 'meta',
+            fields: {
+              title: { prompt: 'text' },
+            },
+          },
+        },
+      };
+
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(currentSchema, null, 2)
+      );
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.applied.json'),
+        JSON.stringify({
+          schemaVersion: '1.0.0',
+          snapshotAt: new Date().toISOString(),
+          schema: snapshotSchema,
+        }, null, 2)
+      );
+
+      try {
+        const result = await runCLI(['schema', 'list', '--output', 'json'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const data = JSON.parse(result.stdout);
+        expect(data.types.current).toBeDefined();
+        expect(data.types.legacy).toBeUndefined();
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
   });
 
   describe('schema list type <name>', () => {
@@ -115,6 +170,64 @@ describe('schema command', () => {
       expect(result.stdout).toContain('Output Dir:');
       expect(result.stdout).toContain('Ideas');
       expect(result.stdout).toContain('Own fields:');
+    });
+
+    it('should ignore schema snapshot when showing type details in JSON', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-type-snapshot-ignore-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+
+      const currentSchema = {
+        version: 2,
+        types: {
+          meta: {},
+          current: {
+            extends: 'meta',
+            fields: {
+              title: { prompt: 'text' },
+            },
+          },
+        },
+      };
+
+      const snapshotSchema = {
+        version: 2,
+        types: {
+          meta: {},
+          legacy: {
+            extends: 'meta',
+            fields: {
+              title: { prompt: 'text' },
+            },
+          },
+        },
+      };
+
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(currentSchema, null, 2)
+      );
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.applied.json'),
+        JSON.stringify({
+          schemaVersion: '1.0.0',
+          snapshotAt: new Date().toISOString(),
+          schema: snapshotSchema,
+        }, null, 2)
+      );
+
+      try {
+        const result = await runCLI(
+          ['schema', 'list', 'type', 'current', '--output', 'json'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const data = JSON.parse(result.stdout);
+        expect(data.type_path).toBe('current');
+        expect(data.fields.title).toBeDefined();
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
     });
 
     it('should show fields for type', async () => {
@@ -297,6 +410,63 @@ describe('schema command', () => {
         expect(result.stdout).toContain('status');
         expect(result.stdout).toContain('Inherited fields (from meta):');
         expect(result.stdout).toContain('created');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('schema diff', () => {
+    it('should compare schema.json against schema.applied.json', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-schema-diff-snapshot-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+
+      const currentSchema = {
+        version: 2,
+        types: {
+          meta: {},
+          current: {
+            extends: 'meta',
+            fields: {
+              title: { prompt: 'text' },
+            },
+          },
+        },
+      };
+
+      const snapshotSchema = {
+        version: 2,
+        types: {
+          meta: {},
+          legacy: {
+            extends: 'meta',
+            fields: {
+              title: { prompt: 'text' },
+            },
+          },
+        },
+      };
+
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(currentSchema, null, 2)
+      );
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.applied.json'),
+        JSON.stringify({
+          schemaVersion: '1.0.0',
+          snapshotAt: new Date().toISOString(),
+          schema: snapshotSchema,
+        }, null, 2)
+      );
+
+      try {
+        const result = await runCLI(['schema', 'diff', '--output', 'json'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const data = JSON.parse(result.stdout);
+        expect(data.success).toBe(true);
+        expect(data.data.hasChanges).toBe(true);
       } finally {
         await rm(tempVaultDir, { recursive: true, force: true });
       }
