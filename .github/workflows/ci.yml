@@ -55,6 +55,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Check docs policy links
+        run: bash scripts/check-docs-policy.sh
+
       - name: Check for dead code (Knip)
         run: pnpm knip
 

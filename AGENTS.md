@@ -41,6 +41,12 @@ src/
 - **Templates**: Reusable note templates in `.bwrb/templates/{type}/{subtype}/*.md` with defaults and body structure
 - **Wikilinks**: `[[Note]]` or `"[[Note]]"` format for Obsidian linking
 
+## Documentation Policy
+
+- User-facing CLI behavior docs are canonical in `docs-site/src/content/docs/` (published at https://bwrb.dev).
+- `docs/product/` is for rationale/internal notes and should link to canonical docs-site pages for behavior contracts.
+- Source-of-truth policy: `docs/product/canonical-docs-policy.md`
+
 ## Agent Skill
 
 An OpenCode agent skill for programmatic bwrb usage is maintained at `docs/skill/SKILL.md`. Update this file when adding new commands or changing CLI patterns for automation.

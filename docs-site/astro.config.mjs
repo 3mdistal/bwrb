@@ -90,6 +90,7 @@ export default defineConfig({
 					label: 'Product',
 					collapsed: true,
 					items: [
+						{ slug: 'product/documentation-policy' },
 						{ slug: 'product/vision' },
 						{ slug: 'product/roadmap' },
 					],
