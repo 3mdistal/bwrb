@@ -26,6 +26,10 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Changed
 
+- **Deprecated legacy template resolver in favor of inheritance API** (#299)
+  - `resolveTemplate()` is now a compatibility wrapper over `resolveTemplateWithInheritance()`
+  - New internal code should call `resolveTemplateWithInheritance()` directly
+
 - **Audit ignores built-in frontmatter fields written by `bwrb new`** (#395)
   - `id` and `name` no longer emit `unknown-field` warnings
 
