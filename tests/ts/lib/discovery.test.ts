@@ -6,6 +6,15 @@ import {
   getExcludedDirectories,
   collectAllMarkdownFiles,
   collectAllMarkdownFilenames,
+  buildNotePathMap,
+  buildNoteTypeMap,
+  buildNoteTargetIndex,
+  buildVaultNoteSnapshot,
+  buildVaultNoteIndex,
+  deriveAllFiles,
+  deriveNotePathMap,
+  deriveNoteTypeMap,
+  deriveNoteTargetIndex,
   discoverManagedFiles,
   collectFilesForType,
   collectPooledFiles,
@@ -200,6 +209,88 @@ describe('Discovery', () => {
       
       expect(filenames.has('Ideas/Sample Idea')).toBe(true);
       expect(filenames.has('Objectives/Tasks/Sample Task')).toBe(true);
+    });
+  });
+
+  describe('unified note index', () => {
+    it('should match legacy helper outputs', async () => {
+      const index = await buildVaultNoteIndex(schema, vaultDir);
+
+      const legacyAllFiles = await collectAllMarkdownFilenames(schema, vaultDir);
+      const legacyPathMap = await buildNotePathMap(schema, vaultDir);
+      const legacyTypeMap = await buildNoteTypeMap(schema, vaultDir);
+      const legacyTargetIndex = await buildNoteTargetIndex(schema, vaultDir);
+
+      expect(index.allFiles).toEqual(legacyAllFiles);
+      expect(Array.from(index.notePathMap.entries())).toEqual(Array.from(legacyPathMap.entries()));
+      expect(Array.from(index.noteTypeMap.entries())).toEqual(Array.from(legacyTypeMap.entries()));
+      expect(Array.from(index.noteTargetIndex.targetToPaths.entries())).toEqual(
+        Array.from(legacyTargetIndex.targetToPaths.entries())
+      );
+      expect(Array.from(index.noteTargetIndex.pathToType.entries())).toEqual(
+        Array.from(legacyTargetIndex.pathToType.entries())
+      );
+      expect(Array.from(index.noteTargetIndex.pathNoExtToType.entries())).toEqual(
+        Array.from(legacyTargetIndex.pathNoExtToType.entries())
+      );
+    });
+
+    it('should skip parse metadata for malformed frontmatter', async () => {
+      await writeFile(
+        join(vaultDir, 'Ideas', 'Malformed.md'),
+        `---\ntype: [\n---\n`
+      );
+
+      const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
+      const malformed = snapshot.notes.find((note) => note.relativePath === 'Ideas/Malformed.md');
+
+      expect(malformed).toBeDefined();
+      expect(malformed?.frontmatter).toBeUndefined();
+      expect(malformed?.resolvedType).toBeUndefined();
+
+      const typeMap = deriveNoteTypeMap(snapshot);
+      expect(typeMap.has('Malformed')).toBe(false);
+      expect(typeMap.has('Ideas/Malformed')).toBe(false);
+    });
+
+    it('should preserve duplicate basename ambiguity and path normalization', async () => {
+      await writeFile(
+        join(vaultDir, 'Projects', 'Shared.md'),
+        `---\ntype: idea\n---\n`
+      );
+      await writeFile(
+        join(vaultDir, 'Research', 'Shared.md'),
+        `---\ntype: idea\n---\n`
+      );
+
+      const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
+      const allFiles = deriveAllFiles(snapshot);
+      const pathMap = deriveNotePathMap(snapshot);
+      const targetIndex = deriveNoteTargetIndex(snapshot);
+
+      expect(targetIndex.targetToPaths.get('Shared')).toEqual([
+        'Projects/Shared.md',
+        'Research/Shared.md',
+      ]);
+      expect(pathMap.get('Projects/Shared')).toBe('Projects/Shared.md');
+      expect(pathMap.get('Research/Shared')).toBe('Research/Shared.md');
+      expect(allFiles.has('Projects/Shared')).toBe(true);
+      expect(allFiles.has('Research/Shared')).toBe(true);
+    });
+
+    it('should respect excluded directories in snapshot and derived maps', async () => {
+      await mkdir(join(vaultDir, 'Templates'), { recursive: true });
+      await writeFile(
+        join(vaultDir, 'Templates', 'Excluded.md'),
+        `---\ntype: idea\n---\n`
+      );
+
+      const index = await buildVaultNoteIndex(schema, vaultDir);
+
+      expect(index.snapshot.notes.some((note) => note.relativePath === 'Templates/Excluded.md')).toBe(false);
+      expect(index.allFiles.has('Excluded')).toBe(false);
+      expect(index.notePathMap.has('Templates/Excluded')).toBe(false);
+      expect(index.noteTargetIndex.targetToPaths.has('Excluded')).toBe(false);
     });
   });
 

@@ -41,7 +41,7 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `--fix` | Interactive repair mode (writes by default; requires explicit targeting) |
 | `--auto` | With `--fix`: automatically apply unambiguous fixes |
 | `--dry-run` | With `--fix`: preview fixes without writing |
-| `--execute` | With `--fix --auto`: apply fixes (omit to preview) |
+| `--execute` | With `--fix --auto`: apply auto-fixes for execute-gated issues (for example `trailing-whitespace`) |
 
 Repair mode writes by default and requires explicit targeting (selectors or `--all`).
 Use `--dry-run` to preview fixes without writing.
@@ -65,6 +65,7 @@ Use `--dry-run` to preview fixes without writing.
 | `wrong-directory` | File location doesn't match its type's output_dir |
 | `format-violation` | Field value doesn't match expected format (wikilink, etc.) |
 | `stale-reference` | Wikilink points to non-existent file |
+| `trailing-whitespace` | Trailing spaces/tabs on raw frontmatter `key: value` lines (warning; auto-fixable) |
 | `wrong-scalar-type` | Scalar value has wrong type for schema |
 | `invalid-date-format` | Date value is not in `YYYY-MM-DD` format |
 | `invalid-list-element` | List field contains invalid element |
@@ -133,7 +134,47 @@ bwrb audit --path "Ideas/**" --fix --auto --execute
 bwrb audit --path "Ideas/**" --fix --auto
 ```
 
-`bwrb audit --fix` refuses to run without a TTY when interactive fixes are needed (use `--fix --auto --execute` for non-interactive automation; use `--dry-run` to preview fixes).
+### Trailing whitespace hygiene semantics
+
+`trailing-whitespace` is a raw-frontmatter hygiene warning with narrow scope:
+
+- It inspects YAML frontmatter `key: value` lines only (single-line key/value entries).
+- Quoted values: whitespace inside the quotes is allowed; only whitespace after the closing quote is flagged.
+- Block scalars (`|` or `>`) are excluded; content lines inside the block are ignored.
+- It trims both spaces and tabs at line end.
+- The fix is minimal-diff line trim only (no YAML reserialization).
+
+Known non-matches:
+
+- Whitespace before inline comments is not end-of-line whitespace (for example `status: raw  # note`) and is not flagged.
+- Nested `key:` entries with no inline value are not treated as single-line key/value entries.
+
+Auto-fix gating for this issue:
+
+| Command | Result |
+|---------|--------|
+| `bwrb audit --fix` | Interactive mode. If you confirm the fix, the line trim is written. |
+| `bwrb audit --fix --auto` | Preview only when `trailing-whitespace` is present (no writes). |
+| `bwrb audit --fix --auto --execute` | Applies `trailing-whitespace` auto-fixes to disk. |
+
+If a run contains `trailing-whitespace` and `--auto` is used without `--execute`, treat that run as preview-only.
+
+```bash
+# Preview trailing-whitespace auto-fixes (no writes)
+bwrb audit --only trailing-whitespace --fix --auto
+
+# Apply trailing-whitespace auto-fixes
+bwrb audit --only trailing-whitespace --fix --auto --execute
+```
+
+Example on-disk behavior (minimal diff):
+
+```text
+before: status: "raw"   
+after:  status: "raw"
+```
+
+`bwrb audit --fix` refuses to run without a TTY when interactive fixes are needed (use `--fix --auto` for non-interactive previews, and add `--execute` for execute-gated auto-fixes like `trailing-whitespace`).
 
 ### Non-interactive mode
 

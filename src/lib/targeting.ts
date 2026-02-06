@@ -18,9 +18,7 @@ import type { LoadedSchema } from '../types/schema.js';
 import type { ManagedFile } from './discovery.js';
 import {
   discoverManagedFiles,
-  collectAllMarkdownFiles,
-  getExcludedDirectories,
-  loadIgnoreMatcher,
+  discoverFilesForQueryResolution,
 } from './discovery.js';
 import { parseNote } from './frontmatter.js';
 import { applyFrontmatterFilters } from './query.js';
@@ -298,10 +296,8 @@ export async function resolveTargets(
       // Type-specific discovery
       files = await discoverManagedFiles(schema, vaultDir, options.type);
     } else {
-      // Vault-wide discovery
-      const excluded = getExcludedDirectories(schema);
-      const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
-      files = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
+      // Vault-wide discovery (includes dot-directory type output dirs)
+      files = await discoverFilesForQueryResolution(schema, vaultDir);
     }
 
     if (files.length === 0) {
