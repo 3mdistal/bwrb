@@ -9,15 +9,25 @@ function extractCommandNames(helpOutput: string): string[] {
   if (commandsHeaderIndex < 0) return [];
 
   const commandNames: string[] = [];
+  let commandIndent: number | null = null;
   for (let i = commandsHeaderIndex + 1; i < lines.length; i += 1) {
     const line = lines[i] ?? '';
     if (!line.trim()) {
       break;
     }
 
-    const match = line.match(/^\s{2,}([a-z][a-z-]*)\b/i);
-    if (match) {
-      commandNames.push(match[1]!);
+    const match = line.match(/^(\s+)([a-z][a-z-]*)\b/i);
+    if (!match) {
+      continue;
+    }
+
+    const indent = match[1]!.length;
+    if (commandIndent === null) {
+      commandIndent = indent;
+    }
+
+    if (indent === commandIndent) {
+      commandNames.push(match[2]!);
     }
   }
 
