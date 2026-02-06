@@ -160,11 +160,38 @@ bwrb new task --template bug-report --json '{"name": "Login fails"}'
 # Skip template system entirely
 bwrb new task --no-template --json '{"name": "Quick task"}'
 
+# Keep template defaults/body, but skip child instance scaffolding
+bwrb new project --template with-research --no-instances --json '{"name": "Parent Only"}'
+
 # Include body sections
 bwrb new task --json '{"name": "Task", "_body": {"Steps": ["Step 1", "Step 2"]}}'
 ```
 
 Notes created via `bwrb new` always include a system-managed frontmatter `id` (UUIDv4). The `id` is reserved: you cannot set it in `bwrb new --json`, and you cannot modify it via `bwrb edit`.
+
+`--no-template` and `--no-instances` are different controls:
+- `--no-template`: skips the template system entirely (no template defaults/body, no instances).
+- `--no-instances`: keeps template defaults/body, but suppresses child instance creation.
+
+When a template has instances and JSON mode is used, successful output can include an `instances` object:
+
+```json
+{
+  "success": true,
+  "path": "Projects/My Project.md",
+  "instances": {
+    "created": ["Projects/Background Research.md", "Projects/Competitor Analysis.md"],
+    "skipped": [],
+    "errors": []
+  }
+}
+```
+
+Automation notes:
+- `path` and `instances.created`/`instances.skipped` are vault-relative paths.
+- `instances` is omitted when no scaffolding attempt occurs (no template instances, or `--no-instances` passed).
+- `instances.errors` items use `{ type, filename?, message }` (`filename` may be absent).
+- `success: true` can still include non-empty `instances.errors`; treat that as attention-needed in scripts.
 
 ### Editing Notes
 
@@ -323,8 +350,9 @@ bwrb dashboard list --output json  # JSON output for scripting
 2. **Always use `--picker none`** to prevent interactive prompts blocking automation
 3. **Query schema first** before creating notes to understand required fields
 4. **Use `--json` input** for `new` and `edit` to avoid interactive prompts
-5. **Validate with audit** after bulk operations
-6. **Use filter expressions** (`--where`) for targeted queries rather than fetching all notes
+5. **Use `--no-instances` with templates** when automation must create only the parent note
+6. **Validate with audit** after bulk operations
+7. **Use filter expressions** (`--where`) for targeted queries rather than fetching all notes
 
 ## Filter Expression Syntax
 
@@ -350,7 +378,7 @@ bwrb dashboard list --output json  # JSON output for scripting
 bwrb list task --where "status == 'active'" --output json
 
 # Create a task and capture the path
-bwrb new task --json '{"name": "New Task", "status": "backlog"}' --output json
+bwrb new task --json '{"name": "New Task", "status": "backlog"}'
 
 # Bulk update (edit works on single notes; loop for bulk)
 for note in $(bwrb list task --where "status == 'in-progress'" --output paths); do
