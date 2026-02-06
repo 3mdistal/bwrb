@@ -46,6 +46,34 @@ export interface ManagedFile {
   };
 }
 
+/**
+ * Parsed note metadata captured during a single vault scan.
+ */
+export interface VaultNoteSnapshotEntry {
+  path: string;
+  relativePath: string;
+  frontmatter?: Record<string, unknown>;
+  resolvedType?: string;
+}
+
+/**
+ * Snapshot of vault notes built from one discovery pass.
+ */
+export interface VaultNoteSnapshot {
+  notes: VaultNoteSnapshotEntry[];
+}
+
+/**
+ * Unified note index used by audit and relation checks.
+ */
+export interface VaultNoteIndex {
+  snapshot: VaultNoteSnapshot;
+  allFiles: Set<string>;
+  notePathMap: Map<string, string>;
+  noteTypeMap: Map<string, string>;
+  noteTargetIndex: NoteTargetIndex;
+}
+
 // ============================================================================
 // Sorting Helpers
 // ============================================================================
@@ -321,19 +349,8 @@ export async function collectAllMarkdownFilenames(
   schema: LoadedSchema,
   vaultDir: string
 ): Promise<Set<string>> {
-  const filenames = new Set<string>();
-  const excluded = getExcludedDirectories(schema);
-  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
-
-  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
-  for (const file of allFiles) {
-    // Add basename without extension
-    filenames.add(basename(file.relativePath, '.md'));
-    // Also add relative path without extension for path-based links
-    filenames.add(file.relativePath.replace(/\.md$/, ''));
-  }
-  
-  return filenames;
+  const index = await buildVaultNoteIndex(schema, vaultDir);
+  return index.allFiles;
 }
 
 /**
@@ -344,21 +361,8 @@ export async function buildNotePathMap(
   schema: LoadedSchema,
   vaultDir: string
 ): Promise<Map<string, string>> {
-  const pathMap = new Map<string, string>();
-  const excluded = getExcludedDirectories(schema);
-  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
-
-  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
-  for (const file of allFiles) {
-    // Map basename (without .md) to relative path (with .md)
-    const noteName = basename(file.relativePath, '.md');
-    pathMap.set(noteName, file.relativePath);
-    // Map relative path without extension for path-based links
-    const pathKey = file.relativePath.replace(/\.md$/, '');
-    pathMap.set(pathKey, file.relativePath);
-  }
-  
-  return pathMap;
+  const index = await buildVaultNoteIndex(schema, vaultDir);
+  return index.notePathMap;
 }
 
 /**
@@ -369,29 +373,8 @@ export async function buildNoteTypeMap(
   schema: LoadedSchema,
   vaultDir: string
 ): Promise<Map<string, string>> {
-  const typeMap = new Map<string, string>();
-  const excluded = getExcludedDirectories(schema);
-  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
-
-  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
-
-  
-  for (const file of allFiles) {
-    const noteName = basename(file.relativePath, '.md');
-    const pathKey = file.relativePath.replace(/\.md$/, '');
-    try {
-      const { frontmatter } = await parseNote(file.path);
-      const typeName = resolveTypeFromFrontmatter(schema, frontmatter);
-      if (typeName) {
-        typeMap.set(noteName, typeName);
-        typeMap.set(pathKey, typeName);
-      }
-    } catch {
-      // Skip files that can't be parsed
-    }
-  }
-  
-  return typeMap;
+  const index = await buildVaultNoteIndex(schema, vaultDir);
+  return index.noteTypeMap;
 }
 
 export type NoteTargetIndex = {
@@ -407,13 +390,101 @@ export async function buildNoteTargetIndex(
   schema: LoadedSchema,
   vaultDir: string
 ): Promise<NoteTargetIndex> {
+  const index = await buildVaultNoteIndex(schema, vaultDir);
+  return index.noteTargetIndex;
+}
+
+/**
+ * Build a vault-wide note snapshot with one vault walk and parse pass.
+ */
+export async function buildVaultNoteSnapshot(
+  schema: LoadedSchema,
+  vaultDir: string
+): Promise<VaultNoteSnapshot> {
+  const excluded = getExcludedDirectories(schema);
+  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
+
+  const notes: VaultNoteSnapshotEntry[] = [];
+
+  for (const file of allFiles) {
+    const entry: VaultNoteSnapshotEntry = {
+      path: file.path,
+      relativePath: file.relativePath,
+    };
+
+    try {
+      const { frontmatter } = await parseNote(file.path);
+      entry.frontmatter = frontmatter;
+      const resolvedType = resolveTypeFromFrontmatter(schema, frontmatter);
+      if (resolvedType) {
+        entry.resolvedType = resolvedType;
+      }
+    } catch {
+      // Skip parse metadata for files that can't be parsed.
+    }
+
+    notes.push(entry);
+  }
+
+  return { notes };
+}
+
+/**
+ * Derive stale-reference lookup keys from snapshot data.
+ */
+export function deriveAllFiles(snapshot: VaultNoteSnapshot): Set<string> {
+  const filenames = new Set<string>();
+
+  for (const note of snapshot.notes) {
+    filenames.add(basename(note.relativePath, '.md'));
+    filenames.add(note.relativePath.replace(/\.md$/, ''));
+  }
+
+  return filenames;
+}
+
+/**
+ * Derive note path map from snapshot data.
+ */
+export function deriveNotePathMap(snapshot: VaultNoteSnapshot): Map<string, string> {
+  const pathMap = new Map<string, string>();
+
+  for (const note of snapshot.notes) {
+    const noteName = basename(note.relativePath, '.md');
+    const pathKey = note.relativePath.replace(/\.md$/, '');
+    pathMap.set(noteName, note.relativePath);
+    pathMap.set(pathKey, note.relativePath);
+  }
+
+  return pathMap;
+}
+
+/**
+ * Derive note type map from snapshot data.
+ */
+export function deriveNoteTypeMap(snapshot: VaultNoteSnapshot): Map<string, string> {
+  const typeMap = new Map<string, string>();
+
+  for (const note of snapshot.notes) {
+    if (!note.resolvedType) continue;
+
+    const noteName = basename(note.relativePath, '.md');
+    const pathKey = note.relativePath.replace(/\.md$/, '');
+    typeMap.set(noteName, note.resolvedType);
+    typeMap.set(pathKey, note.resolvedType);
+  }
+
+  return typeMap;
+}
+
+/**
+ * Derive relation target index from snapshot data.
+ */
+export function deriveNoteTargetIndex(snapshot: VaultNoteSnapshot): NoteTargetIndex {
   const targetToPaths = new Map<string, string[]>();
   const pathToType = new Map<string, string>();
   const pathNoExtToType = new Map<string, string>();
-  const excluded = getExcludedDirectories(schema);
-  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
-
-  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
 
   const addTarget = (key: string, relativePath: string) => {
     const existing = targetToPaths.get(key);
@@ -426,27 +497,38 @@ export async function buildNoteTargetIndex(
     targetToPaths.set(key, [relativePath]);
   };
 
-  for (const file of allFiles) {
-    const relativePath = file.relativePath;
+  for (const note of snapshot.notes) {
+    const relativePath = note.relativePath;
     const basenameKey = basename(relativePath, '.md');
     const pathKey = relativePath.replace(/\.md$/, '');
 
     addTarget(basenameKey, relativePath);
     addTarget(pathKey, relativePath);
 
-    try {
-      const { frontmatter } = await parseNote(file.path);
-      const typeName = resolveTypeFromFrontmatter(schema, frontmatter);
-      if (typeName) {
-        pathToType.set(relativePath, typeName);
-        pathNoExtToType.set(pathKey, typeName);
-      }
-    } catch {
-      // Skip files that can't be parsed
+    if (note.resolvedType) {
+      pathToType.set(relativePath, note.resolvedType);
+      pathNoExtToType.set(pathKey, note.resolvedType);
     }
   }
 
   return { targetToPaths, pathToType, pathNoExtToType };
+}
+
+/**
+ * Build a unified vault note index from a single snapshot pass.
+ */
+export async function buildVaultNoteIndex(
+  schema: LoadedSchema,
+  vaultDir: string
+): Promise<VaultNoteIndex> {
+  const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
+  return {
+    snapshot,
+    allFiles: deriveAllFiles(snapshot),
+    notePathMap: deriveNotePathMap(snapshot),
+    noteTypeMap: deriveNoteTypeMap(snapshot),
+    noteTargetIndex: deriveNoteTargetIndex(snapshot),
+  };
 }
 
 /**
@@ -463,11 +545,8 @@ export async function discoverManagedFiles(
     // Specific type - only check that type's files
     return collectFilesForType(schema, vaultDir, typeName);
   }
-  
-  // No type specified - scan entire vault
-  const excluded = getExcludedDirectories(schema);
-  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
-  return collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
+
+  return discoverFilesForQueryResolution(schema, vaultDir);
 }
 
 // ============================================================================
@@ -565,7 +644,33 @@ export async function discoverFilesForNavigation(
   schema: LoadedSchema,
   vaultDir: string
 ): Promise<ManagedFile[]> {
-  return discoverManagedFiles(schema, vaultDir);
+  return discoverFilesForQueryResolution(schema, vaultDir);
+}
+
+/**
+ * Discover files for query resolution (open/search/edit targeting).
+ *
+ * This merges:
+ * - All schema-managed type files (including dot-directory output dirs)
+ * - Unmanaged markdown files outside type output dirs (vault-wide scan)
+ *
+ * Hidden directories are still skipped in the unmanaged scan.
+ */
+export async function discoverFilesForQueryResolution(
+  schema: LoadedSchema,
+  vaultDir: string
+): Promise<ManagedFile[]> {
+  const managed = await discoverAllTypeFiles(schema, vaultDir);
+  const unmanaged = await discoverUnmanagedFiles(schema, vaultDir);
+
+  const allFiles = new Map<string, ManagedFile>();
+  for (const file of [...managed, ...unmanaged]) {
+    if (!allFiles.has(file.relativePath)) {
+      allFiles.set(file.relativePath, file);
+    }
+  }
+
+  return Array.from(allFiles.values()).sort(stablePathCompare);
 }
 
 /**

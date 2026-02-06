@@ -75,6 +75,28 @@ const FULL_SCHEMA = {
   },
 };
 
+const INSTANCE_SCAFFOLD_SCHEMA = {
+  version: 2,
+  types: {
+    project: {
+      output_dir: 'Projects',
+      fields: {
+        type: { value: 'project' },
+        status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw' },
+      },
+      field_order: ['type', 'status'],
+    },
+    research: {
+      output_dir: 'Research',
+      fields: {
+        type: { value: 'research' },
+        status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw' },
+      },
+      field_order: ['type', 'status'],
+    },
+  },
+};
+
 describePty('bwrb new command PTY tests', () => {
   beforeAll(() => {
     expect(existsSync(TEST_VAULT_PATH)).toBe(true);
@@ -165,6 +187,36 @@ status: in-flight
           expect(content).toContain('- [ ] Step two');
         },
         { files: [milestone], schema: FULL_SCHEMA }
+      );
+    }, 30000);
+  });
+
+  describe('instance scaffolding', () => {
+    it('should show scaffolded instance output and create parent + instances', async () => {
+      await withTempVault(
+        ['new', 'project', '--template', 'with-research'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Name', 10000);
+          await proc.typeAndEnter('Test');
+
+          const exitCode = await proc.waitForExit(10000);
+          expect(exitCode).toBe(0);
+
+          const parentExists = await vaultFileExists(vaultPath, 'Projects/Test.md');
+          const backgroundExists = await vaultFileExists(vaultPath, 'Projects/Background Research.md');
+          const competitorExists = await vaultFileExists(vaultPath, 'Projects/Competitor Analysis.md');
+
+          expect(parentExists).toBe(true);
+          expect(backgroundExists).toBe(true);
+          expect(competitorExists).toBe(true);
+
+          const output = proc.getOutput().replace(/\\/g, '/');
+          expect(output).toContain('Instances created:');
+          expect(output).toContain('Projects/Background Research.md');
+          expect(output).toContain('Projects/Competitor Analysis.md');
+          expect(output).toContain('Created 3 files (1 parent + 2 instances)');
+        },
+        { schema: INSTANCE_SCAFFOLD_SCHEMA, includeTemplates: ['project'] }
       );
     }, 30000);
   });
