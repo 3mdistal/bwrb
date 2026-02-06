@@ -41,6 +41,8 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | Option | Description |
 |--------|-------------|
 | `-x, --execute` | Actually apply changes (dry-run by default) |
+| `-f, --force` | Skip confirmation prompt for large/cross-type operations |
+| `-y, --yes` | Alias for `--force` (skip confirmation) |
 | `--backup` | Create backup before changes |
 | `--limit <n>` | Limit to n files |
 
@@ -70,6 +72,10 @@ bwrb bulk --type task --set status=done
 # Actually applies changes
 bwrb bulk --type task --set status=done --execute
 ```
+
+### Non-interactive Confirmation
+
+If `stdin` is not a TTY and the operation requires confirmation (cross-type `--all` or large operations), bwrb does not prompt. Use `--force`/`--yes` to skip the confirmation or pipe a single `y/yes` or `n/no` answer. Otherwise the command fails fast with a clear error.
 
 ## Examples
 
@@ -165,4 +171,3 @@ bwrb bulk --type task --rename old_field=new_field --execute
 - [Targeting Model](/reference/targeting/) — Full selector reference
 - [bwrb audit](/reference/commands/audit/) — Validate notes
 - [bwrb delete](/reference/commands/delete/) — Delete notes
-
