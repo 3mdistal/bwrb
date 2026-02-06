@@ -463,11 +463,8 @@ export async function discoverManagedFiles(
     // Specific type - only check that type's files
     return collectFilesForType(schema, vaultDir, typeName);
   }
-  
-  // No type specified - scan entire vault
-  const excluded = getExcludedDirectories(schema);
-  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
-  return collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
+
+  return discoverFilesForQueryResolution(schema, vaultDir);
 }
 
 // ============================================================================
@@ -565,7 +562,33 @@ export async function discoverFilesForNavigation(
   schema: LoadedSchema,
   vaultDir: string
 ): Promise<ManagedFile[]> {
-  return discoverManagedFiles(schema, vaultDir);
+  return discoverFilesForQueryResolution(schema, vaultDir);
+}
+
+/**
+ * Discover files for query resolution (open/search/edit targeting).
+ *
+ * This merges:
+ * - All schema-managed type files (including dot-directory output dirs)
+ * - Unmanaged markdown files outside type output dirs (vault-wide scan)
+ *
+ * Hidden directories are still skipped in the unmanaged scan.
+ */
+export async function discoverFilesForQueryResolution(
+  schema: LoadedSchema,
+  vaultDir: string
+): Promise<ManagedFile[]> {
+  const managed = await discoverAllTypeFiles(schema, vaultDir);
+  const unmanaged = await discoverUnmanagedFiles(schema, vaultDir);
+
+  const allFiles = new Map<string, ManagedFile>();
+  for (const file of [...managed, ...unmanaged]) {
+    if (!allFiles.has(file.relativePath)) {
+      allFiles.set(file.relativePath, file);
+    }
+  }
+
+  return Array.from(allFiles.values()).sort(stablePathCompare);
 }
 
 /**
