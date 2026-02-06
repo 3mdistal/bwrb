@@ -9,15 +9,14 @@
 import { readFile, writeFile, rename } from 'fs/promises';
 import { join } from 'path';
 import { BwrbSchema, type Schema } from '../types/schema.js';
-
-const SCHEMA_PATH = '.bwrb/schema.json';
+import { SCHEMA_RELATIVE_PATH } from './bwrb-paths.js';
 
 /**
  * Load the raw schema JSON from a vault directory.
  * Returns the parsed JSON without resolving inheritance.
  */
 export async function loadRawSchemaJson(vaultDir: string): Promise<Schema> {
-  const schemaPath = join(vaultDir, SCHEMA_PATH);
+  const schemaPath = join(vaultDir, SCHEMA_RELATIVE_PATH);
   const content = await readFile(schemaPath, 'utf-8');
   const json = JSON.parse(content) as unknown;
   return BwrbSchema.parse(json);
@@ -28,8 +27,8 @@ export async function loadRawSchemaJson(vaultDir: string): Promise<Schema> {
  * Uses atomic write (temp file + rename) for safety.
  */
 export async function writeSchema(vaultDir: string, schema: Schema): Promise<void> {
-  const schemaPath = join(vaultDir, SCHEMA_PATH);
-  const tempPath = join(vaultDir, SCHEMA_PATH + '.tmp');
+  const schemaPath = join(vaultDir, SCHEMA_RELATIVE_PATH);
+  const tempPath = join(vaultDir, SCHEMA_RELATIVE_PATH + '.tmp');
   
   // Validate before writing
   BwrbSchema.parse(schema);

@@ -3,6 +3,7 @@ import {
   validateFrontmatter,
   validateContextFields,
   applyDefaults,
+  validateSelectOptionValue,
   suggestOptionValue,
   suggestFieldName,
   formatValidationErrors,
@@ -235,6 +236,39 @@ describe('validation', () => {
     it('should handle in-progress style values', () => {
       expect(suggestOptionValue('wip', ['draft', 'in-progress', 'done'])).toBeUndefined();
       expect(suggestOptionValue('in-prog', ['draft', 'in-progress', 'done'])).toBe('in-progress');
+    });
+  });
+
+  describe('validateSelectOptionValue', () => {
+    it('should return null for valid exact matches', () => {
+      expect(validateSelectOptionValue('raw', ['raw', 'backlog'])).toBeNull();
+    });
+
+    it('should return invalid payload with suggestion', () => {
+      expect(validateSelectOptionValue('bcklog', ['raw', 'backlog'])).toEqual({
+        value: 'bcklog',
+        allowedOptions: ['raw', 'backlog'],
+        suggestion: 'backlog',
+      });
+    });
+
+    it('should return invalid payload without suggestion when no close match exists', () => {
+      expect(validateSelectOptionValue('xyz', ['raw', 'backlog'])).toEqual({
+        value: 'xyz',
+        allowedOptions: ['raw', 'backlog'],
+      });
+    });
+
+    it('should return null when options list is empty', () => {
+      expect(validateSelectOptionValue('anything', [])).toBeNull();
+    });
+
+    it('should coerce non-string values before validation', () => {
+      expect(validateSelectOptionValue(1, ['1', '2'])).toBeNull();
+      expect(validateSelectOptionValue(true, ['false'])).toEqual({
+        value: 'true',
+        allowedOptions: ['false'],
+      });
     });
   });
 
