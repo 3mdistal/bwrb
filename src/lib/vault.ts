@@ -3,6 +3,7 @@ import { join, basename, dirname, resolve } from 'path';
 import { existsSync } from 'fs';
 import { parseNote } from './frontmatter.js';
 import { getOwnedChildFolder } from './ownership-paths.js';
+import { SCHEMA_RELATIVE_PATH } from './bwrb-paths.js';
 import type { LoadedSchema, FilterCondition, OwnerInfo } from '../types/schema.js';
 import {
   getOutputDir as getOutputDirFromSchema,
@@ -13,7 +14,6 @@ import {
   resolveTypeFromFrontmatter,
 } from './schema.js';
 
-const SCHEMA_RELATIVE_PATH = '.bwrb/schema.json';
 const DEFAULT_MAX_DEPTH = 6;
 const DEFAULT_MAX_CANDIDATES = 25;
 const DEFAULT_MAX_DIRS_VISITED = 5000;
