@@ -44,3 +44,25 @@ For list fields, `invalid-list-element` may auto-fix only when deterministic:
 - Remove `null` / empty-string elements if the list remains valid
 - Flatten a single nested list only when exactly one level deep and all elements are valid
 - Apply safe scalar coercions per `wrong-scalar-type` when unambiguous
+
+## Explicit Delete Remediation (Interactive Only)
+
+`bwrb audit --fix` may offer a per-note **delete note** option for risky/out-of-scope files.
+
+Safety rules:
+
+- Delete is never automatic. `--fix --auto` MUST NOT delete notes.
+- Delete is never implicit. Users must explicitly choose delete for a specific note.
+- Delete prompts MUST show why delete is being offered (the triggering issue context).
+- Delete prompts SHOULD show backlink warnings before confirmation.
+- Delete requires strong confirmation (explicit confirmation + typed confirmation).
+
+Mode rules:
+
+- `--dry-run` never deletes; it reports `would delete` only.
+- `--output json` remains non-interactive for audit. In JSON audit output, commands may emit structured `delete-recommended` guidance only (no prompt, no delete).
+
+Semantics:
+
+- Delete from `audit --fix` uses the same semantics as `bwrb delete` (permanent filesystem deletion).
+- This is intentionally explicit and high-friction to avoid surprising destructive behavior.

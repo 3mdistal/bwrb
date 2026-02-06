@@ -50,11 +50,11 @@ Content without type field.
           // Should find the orphan file
           await proc.waitFor('Orphan Idea.md', 10000);
 
-          // Should prompt to add type (inferred from directory)
-          await proc.waitFor("Add type fields for 'idea'", 10000);
+          // Should prompt for orphan action
+          await proc.waitFor('Choose action', 10000);
 
-          // Confirm adding type
-          proc.write('y');
+          // Select add inferred type
+          proc.write('1');
           proc.write(Keys.ENTER);
 
           // Should show success
@@ -86,11 +86,11 @@ some-field: value
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Skip Me.md', 10000);
 
-          // Should prompt to add type
-          await proc.waitFor("Add type fields", 10000);
+          // Should prompt for orphan action
+          await proc.waitFor('Choose action', 10000);
 
-          // Decline
-          proc.write('n');
+          // Select skip
+          proc.write('3');
           proc.write(Keys.ENTER);
 
           // Should show skipped
@@ -102,6 +102,79 @@ some-field: value
           // Verify type was NOT added
           const content = await readVaultFile(vaultPath, 'Ideas/Skip Me.md');
           expect(content).not.toContain('type: idea');
+        },
+        { files: [orphanFile], schema: BASELINE_SCHEMA }
+      );
+    }, 30000);
+
+    it('should allow deleting an orphan note with typed confirmation', async () => {
+      const orphanFile: TempVaultFile = {
+        path: 'Ideas/Delete Me.md',
+        content: `---
+status: raw
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'idea', '--fix'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Delete Me.md', 10000);
+          await proc.waitFor('Choose action', 10000);
+
+          // Select [delete note]
+          proc.write('2');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Delete this note permanently?', 10000);
+          proc.write('y');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor("Type 'Ideas/Delete Me.md' to confirm:", 10000);
+          proc.write('Ideas/Delete Me.md');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Deleted note: Ideas/Delete Me.md', 10000);
+          await proc.waitForStable(500);
+
+          expect(existsSync(`${vaultPath}/Ideas/Delete Me.md`)).toBe(false);
+        },
+        { files: [orphanFile], schema: BASELINE_SCHEMA }
+      );
+    }, 30000);
+
+    it('should report would-delete in dry-run mode', async () => {
+      const orphanFile: TempVaultFile = {
+        path: 'Ideas/Dry Delete.md',
+        content: `---
+status: raw
+---
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'idea', '--fix', '--dry-run'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Dry Delete.md', 10000);
+          await proc.waitFor('Choose action', 10000);
+
+          proc.write('2');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Delete this note permanently?', 10000);
+          proc.write('y');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor("Type 'Ideas/Dry Delete.md' to confirm:", 10000);
+          proc.write('Ideas/Dry Delete.md');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Would delete note: Ideas/Dry Delete.md', 10000);
+          await proc.waitForStable(500);
+
+          expect(existsSync(`${vaultPath}/Ideas/Dry Delete.md`)).toBe(true);
         },
         { files: [orphanFile], schema: BASELINE_SCHEMA }
       );
@@ -806,15 +879,15 @@ status: raw
           await proc.waitFor('Issue', 10000);
 
           // Should prompt for fix
-          await proc.waitFor("Add type fields", 10000);
+          await proc.waitFor('Choose action', 10000);
 
-          // Decline to trigger next issue
-          proc.write('n');
+          // Skip to trigger next issue
+          proc.write('3');
           proc.write(Keys.ENTER);
           await proc.waitForStable(200);
 
           // Wait for second file prompt, then send Ctrl+C to quit
-          await proc.waitFor("Add type fields", 10000);
+          await proc.waitFor('Choose action', 10000);
           proc.write(Keys.CTRL_C);
 
           // Wait for exit
@@ -843,7 +916,7 @@ some: value
           await proc.waitFor('Abort Test.md', 10000);
 
           // Wait for prompt
-          await proc.waitFor("Add type fields", 10000);
+          await proc.waitFor('Choose action', 10000);
 
           // Abort with Ctrl+C
           proc.write(Keys.CTRL_C);

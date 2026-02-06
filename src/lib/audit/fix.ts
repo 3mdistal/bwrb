@@ -5,7 +5,7 @@
  */
 
 import chalk from 'chalk';
-import { readFile, writeFile } from 'fs/promises';
+import { readFile, writeFile, unlink } from 'fs/promises';
 import { join, dirname, basename } from 'path';
 import { parseDocument, isMap, isSeq, isScalar } from 'yaml';
 import type { YAMLSeq } from 'yaml';
@@ -40,9 +40,10 @@ import {
   findWikilinksToFile,
   executeBulkMove,
 } from '../bulk/move.js';
-import { formatValue } from '../vault.js';
+import { formatValue, isFile } from '../vault.js';
 import { buildNoteTargetIndex, type NoteTargetIndex } from '../discovery.js';
 import { isBwrbBuiltinFrontmatterField } from '../frontmatter/systemFields.js';
+import { findBacklinks } from '../backlinks.js';
 
 // Alias for backward compatibility
 const resolveTypePathFromFrontmatter = resolveTypeFromFrontmatter;
@@ -1428,6 +1429,11 @@ export async function runInteractiveFix(
     for (const issue of result.issues) {
       if (quit) break;
 
+      if (!(await isFile(result.path))) {
+        console.log(chalk.dim('  (Note was deleted; skipping remaining issues for this file)'));
+        break;
+      }
+
       const symbol = issue.severity === 'error' ? chalk.red('✗') : chalk.yellow('⚠');
       console.log(`  ${symbol} ${issue.message}`);
 
@@ -1479,7 +1485,7 @@ async function handleInteractiveFix(
   
   switch (issue.code) {
     case 'orphan-file':
-      return handleOrphanFileFix(schema, result, issue);
+      return handleOrphanFileFix(context, result, issue);
     case 'missing-required':
       return handleMissingRequiredFix(schema, result, issue);
     case 'empty-string-required':
@@ -1487,7 +1493,7 @@ async function handleInteractiveFix(
     case 'invalid-option':
       return handleInvalidOptionFix(schema, result, issue);
     case 'invalid-type':
-      return handleInvalidTypeFix(schema, result, issue);
+      return handleInvalidTypeFix(context, result, issue);
     case 'unknown-field':
       return handleUnknownFieldFix(schema, result, issue);
     case 'format-violation':
@@ -1543,29 +1549,103 @@ async function handleInteractiveFix(
   }
 }
 
+async function deleteNoteFromAudit(
+  context: FixContext,
+  result: FileAuditResult,
+  reason: string
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  const relativePath = result.relativePath;
+  console.log(chalk.yellow(`    ⚠ Delete note option selected for ${relativePath}`));
+  console.log(chalk.dim(`    Reason: ${reason}`));
+
+  const backlinks = await findBacklinks(context.vaultDir, relativePath);
+  if (backlinks.length > 0) {
+    console.log(chalk.yellow(`    Warning: ${backlinks.length} note(s) link to this file:`));
+    for (const link of backlinks.slice(0, 5)) {
+      console.log(chalk.dim(`      - ${link}`));
+    }
+    if (backlinks.length > 5) {
+      console.log(chalk.dim(`      ... and ${backlinks.length - 5} more`));
+    }
+    const backlinkConfirm = await promptConfirm('    Continue even though backlinks will break?');
+    if (backlinkConfirm === null) return 'quit';
+    if (!backlinkConfirm) {
+      console.log(chalk.dim('    → Skipped'));
+      return 'skipped';
+    }
+  }
+
+  const deleteConfirm = await promptConfirm('    Delete this note permanently?');
+  if (deleteConfirm === null) return 'quit';
+  if (!deleteConfirm) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  const typed = await promptInput(`    Type '${relativePath}' to confirm:`);
+  if (typed === null) return 'quit';
+
+  const basenameWithoutExt = basename(relativePath, '.md');
+  const normalized = typed.trim();
+  if (normalized !== relativePath && normalized !== basenameWithoutExt) {
+    console.log(chalk.yellow('    ⚠ Confirmation text did not match. Skipping delete.'));
+    return 'skipped';
+  }
+
+  if (context.dryRun) {
+    console.log(chalk.yellow(`    ⚠ Would delete note: ${relativePath}`));
+    return 'fixed';
+  }
+
+  try {
+    await unlink(result.path);
+    console.log(chalk.green(`    ✓ Deleted note: ${relativePath}`));
+    if (backlinks.length > 0) {
+      console.log(chalk.yellow(`    ⚠ ${backlinks.length} backlink(s) now reference a deleted note.`));
+    }
+    return 'fixed';
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(chalk.red(`    ✗ Failed to delete note: ${message}`));
+    return 'failed';
+  }
+}
+
 async function handleOrphanFileFix(
-  schema: LoadedSchema,
+  context: FixContext,
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  const { schema } = context;
   let typePath: string | undefined;
 
   if (issue.inferredType) {
-    // We know the expected type from the directory
-    const confirm = await promptConfirm(
-      `    → Add type fields for '${issue.inferredType}'?`
+    const selectedAction = await promptSelection(
+      '    Choose action:',
+      [`[add inferred type: ${issue.inferredType}]`, '[delete note]', '[skip]', '[quit]']
     );
-    if (confirm === null) {
+
+    if (selectedAction === null || selectedAction === '[quit]') {
       return 'quit';
     }
-    if (confirm) {
+
+    if (selectedAction === '[delete note]') {
+      return deleteNoteFromAudit(context, result, issue.message);
+    }
+
+    if (selectedAction === '[skip]') {
+      console.log(chalk.dim('    → Skipped'));
+      return 'skipped';
+    }
+
+    if (selectedAction === `[add inferred type: ${issue.inferredType}]`) {
       typePath = issue.inferredType;
     }
   } else {
     // Need to prompt user to select type from available types
     const availableTypes = getConcreteTypeNames(schema);
     if (availableTypes.length > 0) {
-      const typeOptions = [...availableTypes, '[skip]', '[quit]'];
+      const typeOptions = [...availableTypes, '[delete note]', '[skip]', '[quit]'];
       const selectedType = await promptSelection(
         '    Select type:',
         typeOptions
@@ -1573,7 +1653,13 @@ async function handleOrphanFileFix(
 
       if (selectedType === null || selectedType === '[quit]') {
         return 'quit';
-      } else if (selectedType === '[skip]') {
+      }
+
+      if (selectedType === '[delete note]') {
+        return deleteNoteFromAudit(context, result, issue.message);
+      }
+
+      if (selectedType === '[skip]') {
         console.log(chalk.dim('    → Skipped'));
         return 'skipped';
       }
@@ -2325,10 +2411,11 @@ async function handleWrongDirectoryFix(
  * 2. Skip (leave for manual fix)
  */
 async function handleInvalidTypeFix(
-  schema: LoadedSchema,
+  context: FixContext,
   result: FileAuditResult,
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  const { schema } = context;
   // Get available types
   const availableTypes = getTypeFamilies(schema);
   
@@ -2343,7 +2430,7 @@ async function handleInvalidTypeFix(
     console.log(chalk.dim(`    ${issue.suggestion}`));
   }
   
-  const options = [...availableTypes, '[skip]', '[quit]'];
+  const options = [...availableTypes, '[delete note]', '[skip]', '[quit]'];
   const selected = await promptSelection(
     '    Select valid type:',
     options
@@ -2351,7 +2438,13 @@ async function handleInvalidTypeFix(
 
   if (selected === null || selected === '[quit]') {
     return 'quit';
-  } else if (selected === '[skip]') {
+  }
+
+  if (selected === '[delete note]') {
+    return deleteNoteFromAudit(context, result, issue.message);
+  }
+
+  if (selected === '[skip]') {
     console.log(chalk.dim('    → Skipped'));
     return 'skipped';
   }

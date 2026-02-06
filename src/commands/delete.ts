@@ -13,7 +13,6 @@
 import { Command } from 'commander';
 import { basename } from 'path';
 import { unlink } from 'fs/promises';
-import { spawn } from 'child_process';
 import { isFile } from '../lib/vault.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
@@ -39,6 +38,7 @@ import {
   hasAnyTargeting,
   type TargetingOptions,
 } from '../lib/targeting.js';
+import { findBacklinks } from '../lib/backlinks.js';
 
 // ============================================================================
 // Types
@@ -58,71 +58,6 @@ interface DeleteOptions {
   text?: string; // deprecated
   all?: boolean;
   execute?: boolean;
-}
-
-// ============================================================================
-// Backlink Search
-// ============================================================================
-
-/**
- * Find files that contain wikilinks to the given note.
- * Uses ripgrep to search for [[NoteName]] patterns.
- * 
- * @param vaultDir - Path to vault directory
- * @param relativePath - Relative path of the note being deleted
- * @returns Array of relative paths that link to this note
- */
-async function findBacklinks(vaultDir: string, relativePath: string): Promise<string[]> {
-  return new Promise((resolve) => {
-    // Extract the note name (without path and extension) for wikilink matching
-    const noteName = basename(relativePath, '.md');
-    
-    // Search for wikilinks: [[NoteName]] or [[NoteName|alias]]
-    // Also match full path: [[path/to/NoteName]]
-    const pattern = `\\[\\[(${escapeRegex(noteName)}|${escapeRegex(relativePath.replace(/\.md$/, ''))})(\\|[^\\]]*)?\\]\\]`;
-    
-    const args = [
-      '--files-with-matches',  // Only output filenames
-      '--glob', '*.md',        // Only search markdown files
-      '--regexp', pattern,     // Use regex pattern
-      '--ignore-case',         // Case insensitive
-    ];
-
-    const rg = spawn('rg', args, {
-      cwd: vaultDir,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-
-    rg.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    rg.on('close', (code) => {
-      // Code 0 = matches found, 1 = no matches, 2+ = error
-      if (code === 0 && stdout.trim()) {
-        const files = stdout.trim().split('\n').filter(Boolean);
-        // Filter out the file itself
-        const backlinks = files.filter(f => f !== relativePath);
-        resolve(backlinks);
-      } else {
-        resolve([]);
-      }
-    });
-
-    rg.on('error', () => {
-      // ripgrep not available, skip backlink check
-      resolve([]);
-    });
-  });
-}
-
-/**
- * Escape special regex characters in a string.
- */
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // ============================================================================

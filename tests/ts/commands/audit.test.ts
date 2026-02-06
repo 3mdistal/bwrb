@@ -2831,6 +2831,40 @@ status: raw
       // Should suggest 'idea' for 'idee'
       expect(typeIssue.suggestion).toContain('idea');
     });
+
+    it('should emit delete recommendations in JSON output for type metadata issues', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Needs Decision.md'),
+        `---
+type: nope
+status: raw
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'No Type.md'),
+        `---
+status: raw
+---
+`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      expect(Array.isArray(output.recommendations)).toBe(true);
+
+      const recommendedPaths = output.recommendations.map((r: { path: string }) => r.path);
+      expect(recommendedPaths).toContain('Ideas/Needs Decision.md');
+      expect(recommendedPaths).toContain('Ideas/No Type.md');
+
+      const recommendation = output.recommendations.find((r: { path: string }) => r.path === 'Ideas/Needs Decision.md');
+      expect(recommendation.action).toBe('delete-recommended');
+      expect(Array.isArray(recommendation.followUp)).toBe(true);
+      expect(recommendation.followUp[0]).toContain('bwrb delete');
+    });
   });
 
   // ============================================================================

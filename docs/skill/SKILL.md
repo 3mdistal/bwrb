@@ -235,10 +235,13 @@ bwrb audit --output json
 # frontmatter-key-casing: fromKey, toKey, before, after (or conflictValue)
 # duplicate-list-values: duplicates, removedCount, before, after
 # invalid-boolean-coercion: coercedTo, before, after
+# recommendations[] may include delete guidance (e.g. action=delete-recommended)
 
 # Fix issues (interactive writes by default; explicit targeting required)
 # Apply guided fixes
 bwrb audit --path "Ideas/**" --fix
+# For orphan-file / invalid-type, guided mode may offer [delete note]
+# with backlink warning + explicit confirmation + typed confirmation
 # Preview fixes without writing
 bwrb audit --path "Ideas/**" --fix --dry-run
 # Auto-apply unambiguous fixes

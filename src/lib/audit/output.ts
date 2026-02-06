@@ -13,7 +13,41 @@ import {
   type FileAuditResult,
   type AuditSummary,
   type FixSummary,
+  type AuditIssue,
 } from './types.js';
+
+interface AuditDeleteRecommendation {
+  action: 'delete-recommended';
+  path: string;
+  reason: string;
+  issueCodes: string[];
+  followUp: string[];
+}
+
+function buildDeleteRecommendations(results: FileAuditResult[]): AuditDeleteRecommendation[] {
+  const recommendations: AuditDeleteRecommendation[] = [];
+
+  for (const result of results) {
+    const relevantIssues = result.issues.filter((issue: AuditIssue) => (
+      issue.code === 'orphan-file' || issue.code === 'invalid-type'
+    ));
+
+    if (relevantIssues.length === 0) continue;
+
+    recommendations.push({
+      action: 'delete-recommended',
+      path: result.relativePath,
+      reason: 'Note has unresolved type metadata issues; consider deleting if it is out-of-scope.',
+      issueCodes: Array.from(new Set(relevantIssues.map((issue) => issue.code))),
+      followUp: [
+        `bwrb delete "${result.relativePath}" --dry-run`,
+        `bwrb delete "${result.relativePath}"`,
+      ],
+    });
+  }
+
+  return recommendations;
+}
 
 // ============================================================================
 // Summary Calculation
@@ -56,6 +90,7 @@ export function calculateSummary(results: FileAuditResult[]): AuditSummary {
  * Output results as JSON.
  */
 export function outputJsonResults(results: FileAuditResult[], summary: AuditSummary): void {
+  const recommendations = buildDeleteRecommendations(results);
   const output = {
     ...jsonSuccess(),
     files: results.map(r => ({
@@ -98,6 +133,7 @@ export function outputJsonResults(results: FileAuditResult[], summary: AuditSumm
       })),
     })),
     summary,
+    ...(recommendations.length > 0 ? { recommendations } : {}),
   };
 
   printJson(output);
