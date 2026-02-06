@@ -34,6 +34,7 @@ All notable changes to Bowerbird are documented in this file.
 - **Owned note creation now writes `owner` frontmatter and uses the owning field folder** (#394)
 - **Delete now scopes query resolution within targeting selectors instead of deleting all matches** (#435)
 - **`--where` now supports regex matching and filename-based `name` filters** (#436)
+- **Non-interactive confirmations no longer render prompt UI; use `--force`/`--yes` or pipe `y/n`** (#432)
 
 ### Added
 
