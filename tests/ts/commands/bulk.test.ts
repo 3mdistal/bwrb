@@ -157,6 +157,18 @@ describe('bulk command', () => {
       expect(result.stdout).toContain('Dry run');
     });
 
+    it('should fail for invalid --where field when type is provided', async () => {
+      const result = await runCLI([
+        'bulk', '--type', 'idea',
+        '--where', "unknown_field == 'raw'",
+        '--set', 'priority=high'
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Unknown field 'unknown_field'");
+      expect(result.stderr).toContain("for type 'idea'");
+    });
+
     it('should work with --all and --execute', async () => {
       const tempVaultDir = await createTestVault();
       try {

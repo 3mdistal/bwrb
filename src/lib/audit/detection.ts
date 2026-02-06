@@ -14,7 +14,6 @@ import {
   getOutputDir,
   getTypeFamilies,
   getDescendants,
-  getAllFieldsForType,
 } from '../schema.js';
 import { readStructuralFrontmatter } from './structural.js';
 import {
@@ -37,8 +36,8 @@ import { isMap } from 'yaml';
 import type { Pair, Scalar, YAMLMap } from 'yaml';
 import { isDeepStrictEqual } from 'node:util';
 import { suggestOptionValue, suggestFieldName } from '../validation.js';
-import { applyFrontmatterFilters } from '../query.js';
 import { searchContent } from '../content-search.js';
+import { applyWhereExpressions } from '../where-targeting.js';
 import type { LoadedSchema, Field } from '../../types/schema.js';
 import {
   type AuditIssue,
@@ -111,18 +110,19 @@ export async function runAudit(
       })
     );
     
-    const knownKeys = options.typePath
-      ? getAllFieldsForType(schema, options.typePath)
-      : null;
-    const filtered = await applyFrontmatterFilters(filesWithFrontmatter, {
+    const filtered = await applyWhereExpressions(filesWithFrontmatter, {
+      schema,
+      ...(options.typePath ? { typePath: options.typePath } : {}),
       whereExpressions: options.whereExpressions,
       vaultDir,
-      silent: true,
-      ...(knownKeys ? { knownKeys } : {}),
     });
+
+    if (!filtered.ok) {
+      throw new Error(filtered.error);
+    }
     
     // Map back to ManagedFile
-    const filteredPaths = new Set(filtered.map(f => f.path));
+    const filteredPaths = new Set(filtered.files.map(f => f.path));
     filteredFiles = filteredFiles.filter(f => filteredPaths.has(f.path));
   }
 
