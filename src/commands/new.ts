@@ -154,6 +154,7 @@ function throwJsonError(result: JsonResult, exitCode: ExitCode): never {
   throw new JsonCommandError(result, exitCode);
 }
 
+// Developer flow map: docs/technical/commands/new.md
 export const newCommand = new Command('new')
   .description('Create a new note (interactive type navigation if type omitted)')
   .argument('[type]', 'Type of note to create (e.g., idea, task)')
