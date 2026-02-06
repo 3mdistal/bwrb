@@ -1,12 +1,12 @@
 import { join } from 'path';
-import { ExitCodes, jsonError, type ExitCode } from '../../lib/output.js';
+import { ExitCodes, jsonError } from '../../lib/output.js';
 import type { CreationMode } from './types.js';
 import { throwJsonError } from './errors.js';
 
 // eslint-disable-next-line no-control-regex
 const INVALID_ITEM_NAME_CHARS = /[/\\:*?"<>|\x00-\x1F]/g;
 
-export function sanitizeItemNameForFilename(name: string): string {
+function sanitizeItemNameForFilename(name: string): string {
   return name.replace(INVALID_ITEM_NAME_CHARS, '').trim();
 }
 
@@ -20,12 +20,4 @@ export function buildNotePath(outputDir: string, itemName: string, mode: Creatio
   }
 
   return join(outputDir, `${sanitizedItemName}.md`);
-}
-
-export function toExitCode(err: unknown, defaultCode: ExitCode): ExitCode {
-  if (typeof err === 'object' && err !== null && 'exitCode' in err) {
-    const candidate = (err as { exitCode?: unknown }).exitCode;
-    if (typeof candidate === 'number') return candidate as ExitCode;
-  }
-  return defaultCode;
 }

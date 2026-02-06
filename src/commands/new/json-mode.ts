@@ -66,7 +66,7 @@ export async function createNoteFromJson(
   );
 }
 
-export async function buildJsonNoteContent(
+async function buildJsonNoteContent(
   schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
@@ -91,7 +91,7 @@ export async function buildJsonNoteContent(
   };
 }
 
-export function parseJsonNoteInput(jsonInput: string): JsonNoteInputResult {
+function parseJsonNoteInput(jsonInput: string): JsonNoteInputResult {
   let inputData: Record<string, unknown>;
   try {
     inputData = JSON.parse(jsonInput) as Record<string, unknown>;
@@ -123,7 +123,7 @@ export function parseJsonNoteInput(jsonInput: string): JsonNoteInputResult {
   return { frontmatter: frontmatterInput, bodyInput };
 }
 
-export function mergeJsonTemplateDefaults(
+function mergeJsonTemplateDefaults(
   schema: LoadedSchema,
   frontmatterInput: Record<string, unknown>,
   template?: Template | null
@@ -140,7 +140,7 @@ export function mergeJsonTemplateDefaults(
   return { ...evaluatedDefaults, ...frontmatterInput };
 }
 
-export async function validateJsonFrontmatter(
+async function validateJsonFrontmatter(
   schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
@@ -213,7 +213,7 @@ export async function validateJsonFrontmatter(
   }
 }
 
-export function resolveJsonItemName(
+function resolveJsonItemName(
   schema: LoadedSchema,
   typeDef: ResolvedType,
   frontmatter: Record<string, unknown>,
@@ -249,12 +249,12 @@ export function resolveJsonItemName(
   return nameField;
 }
 
-export function resolveOrderedFields(typeDef: ResolvedType, frontmatter: Record<string, unknown>): string[] {
+function resolveOrderedFields(typeDef: ResolvedType, frontmatter: Record<string, unknown>): string[] {
   const fieldOrder = getFrontmatterOrder(typeDef);
   return fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
 }
 
-export function generateBodyForJson(
+function generateBodyForJson(
   typeDef: ResolvedType,
   frontmatter: Record<string, unknown>,
   template?: Template | null,

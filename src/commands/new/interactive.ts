@@ -93,7 +93,7 @@ export async function createNoteInteractive(
   return result.path;
 }
 
-export async function buildNoteContent(
+async function buildNoteContent(
   schema: LoadedSchema,
   vaultDir: string,
   typePath: string,
@@ -162,7 +162,7 @@ export async function buildNoteContent(
   return { frontmatter, body, orderedFields };
 }
 
-export async function buildInteractiveNoteContent(
+async function buildInteractiveNoteContent(
   schema: LoadedSchema,
   vaultDir: string,
   typePath: string,

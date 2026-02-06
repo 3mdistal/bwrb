@@ -81,7 +81,7 @@ export async function resolveJsonOwnership(
   return { kind: 'pooled' };
 }
 
-export async function resolveOwnership(
+async function resolveOwnership(
   schema: LoadedSchema,
   vaultDir: string,
   typeName: string,
@@ -162,7 +162,7 @@ export async function resolveOwnership(
   return { isOwned: true, owner, fieldName: ownerInfo.fieldName };
 }
 
-export function getOwnedFieldNameForOwner(
+function getOwnedFieldNameForOwner(
   schema: LoadedSchema,
   childTypeName: string,
   ownerTypeName: string
@@ -172,7 +172,7 @@ export function getOwnedFieldNameForOwner(
   return ownerInfo?.fieldName;
 }
 
-export async function findOwnerFromArg(
+async function findOwnerFromArg(
   schema: LoadedSchema,
   vaultDir: string,
   childTypeName: string,

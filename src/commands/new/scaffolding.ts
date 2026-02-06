@@ -39,7 +39,7 @@ export async function handleInstanceScaffolding(
   return result;
 }
 
-export function printInstanceScaffoldOutput(vaultDir: string, result: ScaffoldResult): void {
+function printInstanceScaffoldOutput(vaultDir: string, result: ScaffoldResult): void {
   if (result.created.length > 0) {
     printInfo('\nInstances created:');
     for (const path of result.created) {
