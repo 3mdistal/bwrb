@@ -55,9 +55,13 @@ describe('Ctrl+C quit behavior', () => {
       // Verify the function exists and returns a promise
       expect(typeof promptSelection).toBe('function');
       
-      // Empty choices should return null (abort case)
-      const result = await promptSelection('Test', []);
-      expect(result).toBeNull();
+      if (process.stdin.isTTY && process.stdout.isTTY) {
+        // Empty choices should return null (abort case)
+        const result = await promptSelection('Test', []);
+        expect(result).toBeNull();
+      } else {
+        await expect(promptSelection('Test', [])).rejects.toThrow('Non-interactive mode detected');
+      }
     });
   });
 
