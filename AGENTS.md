@@ -57,6 +57,8 @@ pnpm typecheck        # Type checking
 
 **Important**: When creating a git worktree, run `pnpm build` after `pnpm install`. The command tests (`tests/ts/commands/`) require the built `dist/` output to run correctly.
 
+For docs-site setup and contributor troubleshooting (including `pnpm approve-builds` warnings and pre-install Astro TypeScript diagnostics), see `docs-site/README.md`.
+
 ## Testing
 
 Tests live in `tests/ts/` with fixtures in `tests/fixtures/vault/`. Run `pnpm test` before committing.
