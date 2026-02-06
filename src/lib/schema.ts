@@ -2,6 +2,7 @@ import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { basename } from 'path';
+import { SCHEMA_RELATIVE_PATH } from './bwrb-paths.js';
 import {
   BwrbSchema,
   type Schema,
@@ -14,7 +15,6 @@ import {
   type OwnerInfo,
 } from '../types/schema.js';
 
-const SCHEMA_PATH = '.bwrb/schema.json';
 const META_TYPE = 'meta';
 
 // ============================================================================
@@ -62,14 +62,21 @@ function autoPluralise(singular: string): string {
 /**
  * Load, validate, and resolve a schema from a vault directory.
  */
-export async function loadSchema(vaultDir: string): Promise<LoadedSchema> {
-  const schemaPath = join(vaultDir, SCHEMA_PATH);
+export async function loadCurrentSchema(vaultDir: string): Promise<LoadedSchema> {
+  const schemaPath = join(vaultDir, SCHEMA_RELATIVE_PATH);
   const content = await readFile(schemaPath, 'utf-8');
   const json = JSON.parse(content) as unknown;
   
   // Parse as v2 schema
   const schema = BwrbSchema.parse(json);
   return resolveSchema(schema);
+}
+
+/**
+ * Backwards-compatible alias for loading the current schema.
+ */
+export async function loadSchema(vaultDir: string): Promise<LoadedSchema> {
+  return loadCurrentSchema(vaultDir);
 }
 
 // ============================================================================

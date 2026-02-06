@@ -44,3 +44,15 @@ For list fields, `invalid-list-element` may auto-fix only when deterministic:
 - Remove `null` / empty-string elements if the list remains valid
 - Flatten a single nested list only when exactly one level deep and all elements are valid
 - Apply safe scalar coercions per `wrong-scalar-type` when unambiguous
+
+## Trailing Whitespace (Raw Frontmatter, Minimal Diff)
+
+`trailing-whitespace` policy is intentionally narrow and deterministic:
+
+- Applies to YAML frontmatter single-line key/value entries only.
+- Quoted values: only whitespace after the closing quote is in scope.
+- Block scalars (`|` or `>`) are excluded; content lines are ignored.
+- Fix behavior is minimal-diff line trim only (no YAML reserialization).
+- In auto-fix mode, writing requires `audit --fix --auto --execute`.
+
+User-facing command behavior and examples are documented in `docs-site/src/content/docs/reference/commands/audit.md`.
