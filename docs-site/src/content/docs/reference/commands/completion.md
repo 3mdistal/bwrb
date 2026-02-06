@@ -47,7 +47,7 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 
 | Context | Completions |
 |---------|-------------|
-| `bwrb <TAB>` | Commands: `new`, `edit`, `list`, `open`, etc. |
+| `bwrb <TAB>` | Commands: `new`, `edit`, `delete`, `list`, `open`, `search`, `schema`, `audit`, `bulk`, `template`, `dashboard`, `config`, `completion` |
 | `bwrb list -<TAB>` | Options: `--type`, `--path`, `--where`, etc. |
 | `bwrb new <TAB>` | Types from your schema |
 | `bwrb list --type <TAB>` | Types from your schema |

@@ -724,6 +724,80 @@ describe('edit command --open flag', () => {
       expect(json.path).toContain('Another Idea.md');
     });
 
+    it('should find notes in dot-directory type outputs', async () => {
+      const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+      const schema = JSON.parse(await readFile(schemaPath, 'utf-8'));
+      schema.types.secret = {
+        output_dir: '.hidden/Secrets',
+        fields: {
+          type: { value: 'secret' },
+          status: { prompt: 'select', options: ['raw', 'done'], default: 'raw' },
+        },
+        field_order: ['type', 'status'],
+      };
+      await writeFile(schemaPath, JSON.stringify(schema, null, 2), 'utf-8');
+
+      const secretDir = join(vaultDir, '.hidden', 'Secrets');
+      await mkdir(secretDir, { recursive: true });
+      const secretPath = join(secretDir, 'Secret Note.md');
+      await writeFile(
+        secretPath,
+        `---\ntype: secret\nstatus: raw\n---\n`,
+        'utf-8'
+      );
+
+      const result = await runCLI(
+        ['edit', 'Secret Note', '--json', '{"status":"done"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.path).toBe('.hidden/Secrets/Secret Note.md');
+      expect(json.updated).toContain('status');
+
+      const content = await readFile(secretPath, 'utf-8');
+      expect(content).toContain('status: done');
+    });
+
+    it('should error on ambiguous exact-name matches', async () => {
+      const duplicatePath = join(vaultDir, 'Objectives/Tasks/Sample Idea.md');
+      await writeFile(
+        duplicatePath,
+        `---\ntype: task\nstatus: backlog\n---\n`,
+        'utf-8'
+      );
+
+      const result = await runCLI(
+        ['edit', 'Sample Idea', '--json', '{"status":"done"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/multiple notes named/i);
+      expect(json.error).toMatch(/--type/);
+      const candidatePaths = json.errors?.map((e: { value: string }) => e.value) ?? [];
+      expect(candidatePaths).toContain('Ideas/Sample Idea.md');
+      expect(candidatePaths).toContain('Objectives/Tasks/Sample Idea.md');
+    });
+
+    it('should include suggestions when no exact match', async () => {
+      const result = await runCLI(
+        ['edit', 'Missing Note Name', '--json', '{"status":"done"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/try:/i);
+      expect(json.error).toMatch(/--type <type>/i);
+      expect(json.error).toMatch(/bwrb search .*--output paths/i);
+    });
+
     it('should error with unknown type filter', async () => {
       const result = await runCLI(
         ['edit', '--type', 'nonexistent-type', '--json', '{}'],
