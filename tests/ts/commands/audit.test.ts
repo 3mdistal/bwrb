@@ -2974,6 +2974,29 @@ priority: medium
       expect(content).not.toContain('status: raw  ');
     });
 
+    it('should preserve CRLF while auto-fixing trailing whitespace', async () => {
+      const filePath = join(tempVaultDir, 'Ideas', 'Fix Whitespace CRLF.md');
+      await writeFile(
+        filePath,
+        `---\r\n` +
+        `type: idea\r\n` +
+        `status: raw  \r\n` +
+        `priority: medium\r\n` +
+        `---\r\n`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(filePath, 'utf-8');
+      expect(content).toContain('status: raw\r\n');
+      expect(content).not.toContain('status: raw  ');
+      expect(content).toContain('\r\n');
+      expect(content).not.toContain('status: raw\n');
+    });
+
     it('should not write without --execute', async () => {
       await writeFile(
         join(tempVaultDir, 'Ideas', 'No Execute.md'),
