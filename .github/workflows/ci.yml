@@ -12,6 +12,84 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docs_relevance:
+    name: Docs Relevance
+    runs-on: ubuntu-latest
+    outputs:
+      docs_relevant: ${{ steps.output.outputs.docs_relevant }}
+    steps:
+      - name: Detect docs-site related changes
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            docs_site:
+              - 'docs-site/**'
+              - '.github/workflows/ci.yml'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+
+      - name: Set docs relevance output
+        id: output
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ steps.filter.outputs.docs_site }}" = "true" ]; then
+            echo "docs_relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  docs_site_ci:
+    name: Docs Site CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [docs_relevance]
+    steps:
+      - name: Decide whether to run docs build
+        id: decision
+        run: |
+          RUN_DOCS_BUILD=false
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            RUN_DOCS_BUILD=true
+          elif [ "${{ needs.docs_relevance.outputs.docs_relevant }}" = "true" ]; then
+            RUN_DOCS_BUILD=true
+          fi
+
+          echo "event_name=${{ github.event_name }}"
+          echo "docs_relevant=${{ needs.docs_relevance.outputs.docs_relevant }}"
+          echo "run_docs_build=$RUN_DOCS_BUILD"
+          echo "run_docs_build=$RUN_DOCS_BUILD" >> "$GITHUB_OUTPUT"
+
+      - name: Skip docs-site build (not relevant)
+        if: steps.decision.outputs.run_docs_build != 'true'
+        run: echo "Skipping docs-site build for this pull request (no relevant file changes)."
+
+      - name: Checkout
+        if: steps.decision.outputs.run_docs_build == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        if: steps.decision.outputs.run_docs_build == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        if: steps.decision.outputs.run_docs_build == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: docs-site/pnpm-lock.yaml
+
+      - name: Install docs-site dependencies
+        if: steps.decision.outputs.run_docs_build == 'true'
+        run: pnpm -C docs-site install --frozen-lockfile
+
+      - name: Build docs-site
+        if: steps.decision.outputs.run_docs_build == 'true'
+        run: pnpm -C docs-site build
+
   test:
     name: Test
     runs-on: ubuntu-latest
