@@ -36,6 +36,36 @@ interface EditOptions {
   app?: string;
 }
 
+function findExactNameMatches(index: { byPath: Map<string, ManagedFile>; byBasename: Map<string, ManagedFile[]> }, query: string): ManagedFile[] {
+  const cleanQuery = query.replace(/\.md$/, '');
+  const directPath = index.byPath.get(query) ?? index.byPath.get(`${cleanQuery}.md`);
+  if (directPath) {
+    return [directPath];
+  }
+
+  const exactBasename = index.byBasename.get(cleanQuery);
+  if (exactBasename && exactBasename.length > 0) {
+    return exactBasename;
+  }
+
+  const lowerQuery = cleanQuery.toLowerCase();
+  const matches: ManagedFile[] = [];
+  const seen = new Set<string>();
+
+  for (const [name, files] of index.byBasename.entries()) {
+    if (name.toLowerCase() === lowerQuery) {
+      for (const file of files) {
+        if (!seen.has(file.relativePath)) {
+          matches.push(file);
+          seen.add(file.relativePath);
+        }
+      }
+    }
+  }
+
+  return matches;
+}
+
 // ============================================================================
 // Command Definition
 // ============================================================================
@@ -164,10 +194,13 @@ Examples:
       }
 
       // Create a filtered index for resolution
+      const candidatePaths = new Set(candidates.map((candidate) => candidate.relativePath));
       const filteredIndex = {
         ...index,
         allFiles: candidates,
-        byPath: new Map([...index.byPath].filter(([, f]) => candidates.includes(f))),
+        byPath: new Map(
+          [...index.byPath].filter(([path]) => candidatePaths.has(path))
+        ),
         byBasename: new Map<string, ManagedFile[]>(),
       };
       // Rebuild byBasename for filtered candidates
@@ -178,13 +211,33 @@ Examples:
         filteredIndex.byBasename.set(fileBasename, existing);
       }
 
-      // Resolve to a single file
-      const result = await resolveAndPick(filteredIndex, query, {
-        pickerMode: effectivePickerMode,
-        prompt: 'Select note to edit',
-        preview: false,
-        vaultDir,
-      });
+      let result: Awaited<ReturnType<typeof resolveAndPick>>;
+      if (query && !options.type) {
+        const exactMatches = findExactNameMatches(filteredIndex, query);
+        if (exactMatches.length === 1) {
+          result = { ok: true, file: exactMatches[0]! };
+        } else if (exactMatches.length === 0) {
+          const error =
+            `No matching notes found for: ${query}\n` +
+            'Try:\n' +
+            `  bwrb edit --type <type> "${query}"\n` +
+            `  bwrb search "${query}" --output paths`;
+          exitWithResolutionError(error, undefined, jsonMode);
+        } else {
+          const error =
+            `Multiple notes named "${query}" found. ` +
+            'Use --type <type> or --path <glob> (or pass a full vault-relative path) to disambiguate.';
+          exitWithResolutionError(error, exactMatches, jsonMode);
+        }
+      } else {
+        // Resolve to a single file
+        result = await resolveAndPick(filteredIndex, query, {
+          pickerMode: effectivePickerMode,
+          prompt: 'Select note to edit',
+          preview: false,
+          vaultDir,
+        });
+      }
 
       if (!result.ok) {
         if (result.cancelled) {

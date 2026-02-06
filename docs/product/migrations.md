@@ -130,6 +130,11 @@ Bowerbird stores migration-related files in `.bwrb/`:
 └── migrations.json       # History of applied migrations
 ```
 
+`schema.applied.json` is migration bookkeeping only. Schema inspection commands
+(for example `bwrb schema list`) always read the current `schema.json`, even if
+the snapshot is out of date. Pending migrations may be surfaced as a warning or
+status line, but the displayed schema is never sourced from the snapshot.
+
 ## Version Suggestion Logic
 
 - **Major bump** (1.0.0 -> 2.0.0): Breaking changes like type/field/enum removals
