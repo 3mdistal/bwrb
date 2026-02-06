@@ -55,6 +55,7 @@ interface BulkCommandOptions {
   where?: string[];
   execute?: boolean;
   force?: boolean;
+  yes?: boolean;
   backup?: boolean;
   limit?: string;
   verbose?: boolean;
@@ -102,12 +103,13 @@ Operations:
   --remove <field>=<value>    Remove from list field
   --move <path>               Move files to path (auto-updates wikilinks)
 
-Execution:
-  -a, --all                   Target all files (requires explicit intent)
-  --execute                   Actually apply changes (dry-run by default)
-  -f, --force                 Skip confirmation prompt for large/cross-type ops
-  --backup                    Create backup before changes
-  --limit <n>                 Limit to n files
+  Execution:
+    -a, --all                   Target all files (requires explicit intent)
+    --execute                   Actually apply changes (dry-run by default)
+    -f, --force                 Skip confirmation prompt for large/cross-type ops
+    -y, --yes                   Alias for --force (skip confirmation)
+    --backup                    Create backup before changes
+    --limit <n>                 Limit to n files
 
 Cross-Type Operations:
   When using --all without --type, operations affect ALL types in the vault.
@@ -166,6 +168,7 @@ Examples:
   .option('-a, --all', 'Target all files (requires explicit intent)')
   .option('-x, --execute', 'Actually apply changes (dry-run by default)')
   .option('-f, --force', 'Skip confirmation prompt for large/cross-type operations')
+  .option('-y, --yes', 'Alias for --force (skip confirmation prompt)')
   .option('--backup', 'Create backup before changes')
   .option('--limit <n>', 'Limit to n files')
   .option('--verbose', 'Show detailed changes per file')
@@ -389,8 +392,9 @@ Hint: Bulk operations require explicit targeting to prevent accidents.
       // Confirmation prompt for cross-type operations and large operations
       // Only prompt when --execute is used (dry-run doesn't need confirmation)
       const isCrossTypeOperation = !!(options.all && !typePath);
+      const skipConfirmation = options.force || options.yes;
       
-      if (options.execute && !options.force) {
+      if (options.execute && !skipConfirmation) {
         // Pre-flight discovery to count files and detect if confirmation needed
         const preflightResult = await preflightDiscovery({
           typePath,
@@ -409,7 +413,7 @@ Hint: Bulk operations require explicit targeting to prevent accidents.
             const reason = isCrossTypeOperation 
               ? 'Cross-type operations' 
               : `Large operations (${preflightResult.totalFiles} files)`;
-            printJson(jsonError(`${reason} require --force flag in JSON mode`));
+            printJson(jsonError(`${reason} require --force or --yes flag in JSON mode`));
             process.exit(ExitCodes.VALIDATION_ERROR);
           }
 
