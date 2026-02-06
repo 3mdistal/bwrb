@@ -55,6 +55,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Docs check
+        run: pnpm docs:check
+
       - name: Check for dead code (Knip)
         run: pnpm knip
 
