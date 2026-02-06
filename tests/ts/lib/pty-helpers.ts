@@ -8,6 +8,7 @@
 import { createRequire } from 'module';
 import type { IPty } from 'node-pty';
 import * as path from 'path';
+import { createHash } from 'crypto';
 
 const require = createRequire(import.meta.url);
 
@@ -90,6 +91,50 @@ export const PROJECT_ROOT = path.resolve(import.meta.dirname, '../../..');
 // Path to tsx binary in node_modules
 export const TSX_BIN = path.join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx');
 
+const PTY_LOG_LIMIT_BYTES = 256 * 1024;
+const PTY_TEST_NAME_ENV = 'BWRB_PTY_TEST_NAME';
+const PTY_TEST_PATH_ENV = 'BWRB_PTY_TEST_PATH';
+let ptyLogCounter = 0;
+
+interface PtyTranscriptConfig {
+  logDir: string;
+  args: string[];
+  cwd: string;
+  testName?: string;
+  testPath?: string;
+}
+
+interface PtyTranscriptMeta {
+  id: string;
+  pid: number;
+  command: string[];
+  cwd: string;
+  testName: string | null;
+  testPath: string | null;
+  startedAt: string;
+  endedAt: string;
+  exitCode: number;
+  truncatedBytes: number;
+  logFile: string;
+}
+
+function sanitizeFilenameSegment(value: string): string {
+  const cleaned = value
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return cleaned || 'pty';
+}
+
+function getPtyLogDir(env: NodeJS.ProcessEnv): string | null {
+  const configured = env.BWRB_PTY_LOG_DIR?.trim();
+  if (!configured) return null;
+  return path.isAbsolute(configured)
+    ? configured
+    : path.resolve(PROJECT_ROOT, configured);
+}
+
 /**
  * Special key sequences for PTY input.
  */
@@ -138,9 +183,16 @@ export class PtyProcess {
   private outputLines: string[] = [];
   private exitCode: number | null = null;
   private exitPromise: Promise<number>;
+  private transcriptConfig?: PtyTranscriptConfig;
+  private transcriptId?: string;
+  private transcriptStartTime: string = new Date().toISOString();
+  private transcriptContent: string = '';
+  private transcriptTruncatedBytes: number = 0;
 
-  constructor(ptyProcess: IPty) {
+  constructor(ptyProcess: IPty, transcriptConfig?: PtyTranscriptConfig) {
     this.ptyProcess = ptyProcess;
+    this.transcriptConfig = transcriptConfig;
+    this.transcriptId = this.buildTranscriptId();
 
     // Register for global tracking (cleanup on test timeout)
     registerPtyProcess(this);
@@ -151,17 +203,80 @@ export class PtyProcess {
       // Split by newlines, keeping track of partial lines
       const lines = this.output.split(/\r?\n/);
       this.outputLines = lines;
+      this.recordTranscriptChunk(data);
     });
 
     // Track exit
     this.exitPromise = new Promise((resolve) => {
       ptyProcess.onExit(({ exitCode }) => {
         this.exitCode = exitCode;
+        void this.flushTranscript(exitCode);
         // Unregister from global tracking
         unregisterPtyProcess(this);
         resolve(exitCode);
       });
     });
+  }
+
+  private buildTranscriptId(): string | undefined {
+    if (!this.transcriptConfig) return undefined;
+
+    ptyLogCounter += 1;
+    const argsBase = sanitizeFilenameSegment(this.transcriptConfig.args.join('-')).slice(0, 40);
+    const hashInput = `${this.transcriptConfig.args.join(' ')}:${this.ptyProcess.pid}:${ptyLogCounter}`;
+    const hash = createHash('sha1').update(hashInput).digest('hex').slice(0, 8);
+    return `${argsBase || 'pty'}-p${this.ptyProcess.pid}-n${ptyLogCounter}-${hash}`;
+  }
+
+  private recordTranscriptChunk(chunk: string): void {
+    if (!this.transcriptConfig) return;
+
+    this.transcriptContent += chunk;
+    const overflow = Buffer.byteLength(this.transcriptContent, 'utf8') - PTY_LOG_LIMIT_BYTES;
+    if (overflow > 0) {
+      const trimmed = Buffer.from(this.transcriptContent, 'utf8').subarray(overflow);
+      this.transcriptContent = trimmed.toString('utf8');
+      this.transcriptTruncatedBytes += overflow;
+    }
+  }
+
+  private async flushTranscript(exitCode: number): Promise<void> {
+    if (!this.transcriptConfig || !this.transcriptId) return;
+
+    try {
+      await fs.mkdir(this.transcriptConfig.logDir, { recursive: true });
+
+      const logFileName = `${this.transcriptId}.log`;
+      const metaFileName = `${this.transcriptId}.meta.json`;
+      const logFilePath = path.join(this.transcriptConfig.logDir, logFileName);
+      const metaFilePath = path.join(this.transcriptConfig.logDir, metaFileName);
+
+      let footer = `\n\n---\npty-exit-code: ${exitCode}\n`;
+      if (this.transcriptTruncatedBytes > 0) {
+        footer += `pty-truncated-bytes: ${this.transcriptTruncatedBytes}\n`;
+      }
+      footer += `pty-ended-at: ${new Date().toISOString()}\n`;
+
+      await fs.writeFile(logFilePath, this.transcriptContent + footer, 'utf8');
+
+      const meta: PtyTranscriptMeta = {
+        id: this.transcriptId,
+        pid: this.ptyProcess.pid,
+        command: ['tsx', 'src/index.ts', ...this.transcriptConfig.args],
+        cwd: this.transcriptConfig.cwd,
+        testName: this.transcriptConfig.testName || null,
+        testPath: this.transcriptConfig.testPath || null,
+        startedAt: this.transcriptStartTime,
+        endedAt: new Date().toISOString(),
+        exitCode,
+        truncatedBytes: this.transcriptTruncatedBytes,
+        logFile: logFileName,
+      };
+
+      await fs.writeFile(metaFilePath, JSON.stringify(meta, null, 2), 'utf8');
+    } catch {
+      // Best effort only: transcript logging must never break tests.
+    }
   }
 
   /**
@@ -382,22 +497,35 @@ export function spawnBowerbird(
   } = options;
 
   // Use tsx to run the TypeScript source directly
+  const resolvedEnv = {
+    ...process.env,
+    // Force color output even in non-TTY-like environments
+    FORCE_COLOR: '1',
+    // Set the vault path
+    BWRB_VAULT: cwd,
+    ...env,
+  };
+
   const ptyProcess = loadPty().spawn(TSX_BIN, ['src/index.ts', ...args], {
     name: 'xterm-256color',
     cols,
     rows,
     cwd: PROJECT_ROOT,
-    env: {
-      ...process.env,
-      // Force color output even in non-TTY-like environments
-      FORCE_COLOR: '1',
-      // Set the vault path
-      BWRB_VAULT: cwd,
-      ...env,
-    },
+    env: resolvedEnv,
   });
 
-  return new PtyProcess(ptyProcess);
+  const logDir = getPtyLogDir(resolvedEnv);
+  const transcriptConfig = logDir
+    ? {
+        logDir,
+        args: [...args],
+        cwd,
+        testName: resolvedEnv[PTY_TEST_NAME_ENV],
+        testPath: resolvedEnv[PTY_TEST_PATH_ENV],
+      }
+    : undefined;
+
+  return new PtyProcess(ptyProcess, transcriptConfig);
 }
 
 // Alias for backward compatibility in tests
@@ -764,11 +892,6 @@ function canUsePty(): boolean {
  * Check if PTY tests should be skipped (e.g., in CI without TTY, or node-pty incompatible).
  */
 export function shouldSkipPtyTests(): boolean {
-  // Skip in CI without TTY
-  if (process.env.CI && !process.stdout.isTTY) {
-    return true;
-  }
-  
   // Skip if node-pty native module can't be loaded
   if (!isNodePtyLoadable()) {
     return true;

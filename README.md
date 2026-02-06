@@ -511,6 +511,17 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 
 ```sh
 pnpm test              # Run tests
+pnpm test:pty          # Run PTY tests with verbose terminal output
+pnpm test:pty:ci       # Run PTY tests with JSON output at artifacts/pty/results.json
 pnpm test:coverage     # Run with coverage report
 pnpm typecheck         # Type checking
 ```
+
+For CI-like PTY debugging, collect deterministic diagnostics locally:
+
+```sh
+BWRB_PTY_LOG_DIR=artifacts/pty/logs pnpm test:pty:ci
+node scripts/ci/pty-summary.mjs --results artifacts/pty/results.json --logs artifacts/pty/logs
+```
+
+This approximates CI artifacts and failure digest output, but terminal behavior can still differ across platforms/runners.

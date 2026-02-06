@@ -113,7 +113,26 @@ jobs:
           find tests -name "*.pty.test.ts"
 
       - name: Run PTY tests
-        run: pnpm test:pty
+        run: pnpm test:pty:ci
         env:
+          # Persist PTY transcripts for CI diagnostics
+          BWRB_PTY_LOG_DIR: artifacts/pty/logs
           # Force color output for better debugging
           FORCE_COLOR: 1
+
+      - name: PTY failure digest
+        if: always()
+        run: node scripts/ci/pty-summary.mjs --results artifacts/pty/results.json --logs artifacts/pty/logs
+        env:
+          FORCE_COLOR: 1
+
+      - name: Upload PTY diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pty-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/pty/results.json
+            artifacts/pty/logs/
+          if-no-files-found: warn
+          retention-days: 7

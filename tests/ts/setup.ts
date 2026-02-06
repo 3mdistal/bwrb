@@ -16,7 +16,7 @@
 
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { afterEach } from 'vitest';
+import { afterEach, beforeEach, expect } from 'vitest';
 import { killAllPtyProcesses } from './lib/pty-helpers.js';
 
 // Set BWRB_VAULT to fixture vault as a safety net.
@@ -25,9 +25,21 @@ import { killAllPtyProcesses } from './lib/pty-helpers.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 process.env.BWRB_VAULT = path.resolve(__dirname, '../fixtures/vault');
 
+beforeEach(() => {
+  const state = expect.getState();
+  if (state.currentTestName) {
+    process.env.BWRB_PTY_TEST_NAME = state.currentTestName;
+  }
+  if (state.testPath) {
+    process.env.BWRB_PTY_TEST_PATH = state.testPath;
+  }
+});
+
 // Kill any orphaned PTY processes after each test
 afterEach(() => {
   killAllPtyProcesses();
+  delete process.env.BWRB_PTY_TEST_NAME;
+  delete process.env.BWRB_PTY_TEST_PATH;
 });
 
 // Handle process interrupts (Ctrl+C) - vitest lifecycle doesn't run on SIGINT

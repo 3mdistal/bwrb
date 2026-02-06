@@ -24,6 +24,7 @@ npm-debug.log*
 
 # Test artifacts
 .vitest/
+artifacts/pty/
 
 # Docs site build
 docs-site/.astro/
