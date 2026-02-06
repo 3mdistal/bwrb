@@ -62,12 +62,19 @@ bwrb schema list
 bwrb schema list --verbose
 
 # Show specific type definition with fields
+bwrb schema list task
+bwrb schema list -t task
 bwrb schema list type task
 
 # Get JSON output for parsing
+bwrb schema list task --output json
+bwrb schema list -t task --output json
 bwrb schema list type task --output json
 bwrb schema list --verbose --output json  # All types with fields as JSON
 ```
+
+Reserved positional nouns (`types`, `fields`, `type`, `enums`) are interpreted as schema-list nouns.
+If a type name collides with one of those, use `schema list type <name>` or `schema list -t <name>`.
 
 ## Configuration
 

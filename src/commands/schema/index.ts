@@ -29,6 +29,7 @@ export const schemaCommand = new Command('schema')
 Examples:
   bwrb schema list              # List all types
   bwrb schema list objective    # Show objective type details
+  bwrb schema list -t objective/task  # Show subtype details by flag
   bwrb schema list objective/task  # Show task subtype details
   bwrb schema list task --output json  # Show as JSON for AI/scripting
   bwrb schema validate          # Validate schema structure`);

@@ -404,6 +404,101 @@ describe('schema command', () => {
     });
   });
 
+  describe('schema list shorthand + --type flag', () => {
+    it('should treat positional type as shorthand for list type', async () => {
+      const result = await runCLI(['schema', 'list', 'idea'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Type: idea');
+      expect(result.stdout).toContain('Output Dir:');
+      expect(result.stdout).not.toContain('Schema Types');
+    });
+
+    it('should output identical JSON for positional shorthand and explicit type subcommand', async () => {
+      const shorthand = await runCLI(['schema', 'list', 'idea', '--output', 'json'], vaultDir);
+      const explicit = await runCLI(['schema', 'list', 'type', 'idea', '--output', 'json'], vaultDir);
+
+      expect(shorthand.exitCode).toBe(0);
+      expect(explicit.exitCode).toBe(0);
+      expect(JSON.parse(shorthand.stdout)).toEqual(JSON.parse(explicit.stdout));
+    });
+
+    it('should support -t shorthand in text mode', async () => {
+      const result = await runCLI(['schema', 'list', '-t', 'idea'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Type: idea');
+      expect(result.stdout).not.toContain('Schema Types');
+    });
+
+    it('should output identical JSON for -t and explicit type subcommand', async () => {
+      const viaFlag = await runCLI(['schema', 'list', '-t', 'idea', '--output', 'json'], vaultDir);
+      const explicit = await runCLI(['schema', 'list', 'type', 'idea', '--output', 'json'], vaultDir);
+
+      expect(viaFlag.exitCode).toBe(0);
+      expect(explicit.exitCode).toBe(0);
+      expect(JSON.parse(viaFlag.stdout)).toEqual(JSON.parse(explicit.stdout));
+    });
+
+    it('should keep reserved noun behavior for positional "types"', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-list-types-collision-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            types: {
+              extends: 'meta',
+              fields: {
+                name: { prompt: 'text' }
+              }
+            },
+            task: {
+              extends: 'meta',
+              fields: {
+                status: { prompt: 'text' }
+              }
+            }
+          }
+        })
+      );
+
+      try {
+        const noun = await runCLI(['schema', 'list', 'types'], tempVaultDir);
+
+        expect(noun.exitCode).toBe(0);
+        expect(noun.stdout).toContain('Types:');
+        expect(noun.stdout).toContain('types');
+        expect(noun.stdout).not.toContain('Type: types');
+
+        const escaped = await runCLI(['schema', 'list', '-t', 'types'], tempVaultDir);
+
+        expect(escaped.exitCode).toBe(0);
+        expect(escaped.stdout).toContain('Type: types');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should error when both positional shorthand and --type are provided', async () => {
+      const result = await runCLI(['schema', 'list', 'task', '-t', 'idea'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Cannot use both positional shorthand and --type together');
+    });
+
+    it('should support option placement before positional shorthand', async () => {
+      const before = await runCLI(['schema', 'list', '--output', 'json', 'idea'], vaultDir);
+      const after = await runCLI(['schema', 'list', 'idea', '--output', 'json'], vaultDir);
+
+      expect(before.exitCode).toBe(0);
+      expect(after.exitCode).toBe(0);
+      expect(JSON.parse(before.stdout)).toEqual(JSON.parse(after.stdout));
+    });
+  });
+
   describe('schema validate', () => {
     it('should validate valid schema', async () => {
       const result = await runCLI(['schema', 'validate'], vaultDir);
