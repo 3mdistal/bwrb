@@ -123,33 +123,35 @@ export function validateFrontmatter(
     // Validate select fields with options
     if (hasValue && field.options && field.options.length > 0) {
       const validOptions = field.options;
-      
+
       // Handle multi-select (array values)
       if (field.multiple && Array.isArray(value)) {
         for (const item of value) {
-          if (!validOptions.includes(String(item))) {
-            const suggestion = suggestOptionValue(String(item), validOptions);
+          const invalid = validateSelectOptionValue(item, validOptions);
+          if (invalid) {
             errors.push({
               type: 'invalid_option_value',
               field: fieldName,
               value: item,
-              message: `Invalid value for ${fieldName}: "${item}"`,
+              message: `Invalid value for ${fieldName}: "${invalid.value}"`,
               expected: validOptions,
-              ...(suggestion && { suggestion: `Did you mean '${suggestion}'?` }),
+              ...(invalid.suggestion && { suggestion: `Did you mean '${invalid.suggestion}'?` }),
             });
           }
         }
-      } else if (!Array.isArray(value) && !validOptions.includes(String(value))) {
+      } else if (!Array.isArray(value)) {
         // Single-select validation
-        const suggestion = suggestOptionValue(String(value), validOptions);
-        errors.push({
-          type: 'invalid_option_value',
-          field: fieldName,
-          value,
-          message: `Invalid value for ${fieldName}: "${value}"`,
-          expected: validOptions,
-          ...(suggestion && { suggestion: `Did you mean '${suggestion}'?` }),
-        });
+        const invalid = validateSelectOptionValue(value, validOptions);
+        if (invalid) {
+          errors.push({
+            type: 'invalid_option_value',
+            field: fieldName,
+            value,
+            message: `Invalid value for ${fieldName}: "${invalid.value}"`,
+            expected: validOptions,
+            ...(invalid.suggestion && { suggestion: `Did you mean '${invalid.suggestion}'?` }),
+          });
+        }
       }
     }
 
@@ -377,6 +379,37 @@ function levenshteinDistance(a: string, b: string): number {
   }
 
   return matrix[aLen]![bLen]!;
+}
+
+export interface InvalidSelectOptionValue {
+  value: string;
+  allowedOptions: string[];
+  suggestion?: string;
+}
+
+/**
+ * Validate a single value against a list of allowed select options.
+ * Returns null when valid (or when no options are defined).
+ */
+export function validateSelectOptionValue(
+  value: unknown,
+  allowedOptions: string[]
+): InvalidSelectOptionValue | null {
+  if (allowedOptions.length === 0) {
+    return null;
+  }
+
+  const normalizedValue = String(value);
+  if (allowedOptions.includes(normalizedValue)) {
+    return null;
+  }
+
+  const suggestion = suggestOptionValue(normalizedValue, allowedOptions);
+  return {
+    value: normalizedValue,
+    allowedOptions,
+    ...(suggestion && { suggestion }),
+  };
 }
 
 /**

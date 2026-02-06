@@ -182,6 +182,9 @@ bwrb edit --type task "Fix bug" --json '{"priority": "high"}'
 bwrb edit --type task --where "status == 'active'" "Deploy" --json '{"status": "done"}'
 ```
 
+Notes:
+- If multiple notes share the same name, `bwrb edit` errors and lists candidates. Disambiguate with `--type`, `--path`, or a vault-relative path.
+
 ### Deleting Notes
 
 ```bash
@@ -356,6 +359,10 @@ bwrb new task --json '{"name": "New Task", "status": "backlog"}' --output json
 for note in $(bwrb list task --where "status == 'in-progress'" --output paths); do
   bwrb edit "$note" --json '{"status": "done"}'
 done
+
+# Bulk update (non-interactive confirmation)
+bwrb bulk --all --set status=processed --execute --yes
+echo "y" | bwrb bulk --all --set status=processed --execute
 
 # Generate a wikilink for insertion
 bwrb search "Target Note" --wikilink --picker none  # Output: [[Target Note]]
