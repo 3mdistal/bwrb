@@ -612,6 +612,26 @@ describe('bulk command', () => {
 
     beforeEach(async () => {
       tempVaultDir = await createTestVault();
+      const schemaWithTags = {
+        ...TEST_SCHEMA,
+        types: {
+          ...TEST_SCHEMA.types,
+          idea: {
+            ...TEST_SCHEMA.types.idea,
+            fields: {
+              ...(TEST_SCHEMA.types.idea.fields ?? {}),
+              tags: {
+                prompt: 'text',
+              },
+            },
+          },
+        },
+      };
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(schemaWithTags, null, 2)
+      );
+
       // Set up array field for testing
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Sample Idea.md'),
