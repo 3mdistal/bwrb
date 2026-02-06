@@ -1,5 +1,5 @@
 import type { LoadedSchema, Field } from '../types/schema.js';
-import { getFieldsForType, getDescendants, getType } from './schema.js';
+import { getFieldsForType, getDescendants, getType, getFieldOptions } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { queryByType } from './vault.js';
 import { extractWikilinkTarget } from './audit/types.js';
@@ -121,36 +121,37 @@ export function validateFrontmatter(
     }
 
     // Validate select fields with options
-    if (hasValue && field.options && field.options.length > 0) {
-      const validOptions = field.options;
-
-      // Handle multi-select (array values)
-      if (field.multiple && Array.isArray(value)) {
-        for (const item of value) {
-          const invalid = validateSelectOptionValue(item, validOptions);
+    if (hasValue) {
+      const validOptions = getFieldOptions(field);
+      if (validOptions.length > 0) {
+        // Handle multi-select (array values)
+        if (field.multiple && Array.isArray(value)) {
+          for (const item of value) {
+            const invalid = validateSelectOptionValue(item, validOptions);
+            if (invalid) {
+              errors.push({
+                type: 'invalid_option_value',
+                field: fieldName,
+                value: item,
+                message: `Invalid value for ${fieldName}: "${invalid.value}"`,
+                expected: validOptions,
+                ...(invalid.suggestion && { suggestion: `Did you mean '${invalid.suggestion}'?` }),
+              });
+            }
+          }
+        } else if (!Array.isArray(value)) {
+          // Single-select validation
+          const invalid = validateSelectOptionValue(value, validOptions);
           if (invalid) {
             errors.push({
               type: 'invalid_option_value',
               field: fieldName,
-              value: item,
+              value,
               message: `Invalid value for ${fieldName}: "${invalid.value}"`,
               expected: validOptions,
               ...(invalid.suggestion && { suggestion: `Did you mean '${invalid.suggestion}'?` }),
             });
           }
-        }
-      } else if (!Array.isArray(value)) {
-        // Single-select validation
-        const invalid = validateSelectOptionValue(value, validOptions);
-        if (invalid) {
-          errors.push({
-            type: 'invalid_option_value',
-            field: fieldName,
-            value,
-            message: `Invalid value for ${fieldName}: "${invalid.value}"`,
-            expected: validOptions,
-            ...(invalid.suggestion && { suggestion: `Did you mean '${invalid.suggestion}'?` }),
-          });
         }
       }
     }
@@ -335,8 +336,9 @@ function validateFieldType(
  * Get expected values description for a field.
  */
 function getFieldExpected(_schema: LoadedSchema, field: Field): string[] | undefined {
-  if (field.options && field.options.length > 0) {
-    return field.options;
+  const options = getFieldOptions(field);
+  if (options.length > 0) {
+    return options;
   }
   return undefined;
 }
