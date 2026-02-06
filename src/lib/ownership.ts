@@ -16,8 +16,7 @@ import {
 } from './schema.js';
 import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
 import type { LoadedSchema } from '../types/schema.js';
-import { extractLinkTargets } from './links.js';
-import { isWikilink } from './audit/types.js';
+import { extractWikilinkTarget } from './links.js';
 
 // ============================================================================
 // Types
@@ -278,25 +277,27 @@ export function validateNewOwned(
  * Handles both single wikilinks and arrays of wikilinks.
  */
 export function extractWikilinkReferences(value: unknown): string[] {
-  // Ownership checks historically treated relation values as *wikilinks* only.
-  // Keep behavior stable: only extract wikilinks (even if they're embedded in a string)
-  // and ignore markdown links.
-  if (typeof value === 'string') {
-    const targets = extractLinkTargets(value);
-    const wikilinkMatches = targets.filter((t) => isWikilink(`[[${t}]]`));
-    return Array.from(new Set(wikilinkMatches));
-  }
-
-  if (Array.isArray(value)) {
-    const refs: string[] = [];
-    for (const item of value) {
-      if (typeof item !== 'string') continue;
-      const targets = extractLinkTargets(item);
-      const wikilinkMatches = targets.filter((t) => isWikilink(`[[${t}]]`));
-      refs.push(...wikilinkMatches);
+  const refs: string[] = [];
+  const collect = (input: string) => {
+    const wikilinkPattern = /\[\[([^\]]+)\]\]/g;
+    let match: RegExpExecArray | null;
+    while ((match = wikilinkPattern.exec(input)) !== null) {
+      const target = extractWikilinkTarget(`[[${match[1] ?? ''}]]`);
+      if (target) {
+        refs.push(target);
+      }
     }
-    return Array.from(new Set(refs));
+  };
+
+  if (typeof value === 'string') {
+    collect(value);
+  } else if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item === 'string') {
+        collect(item);
+      }
+    }
   }
 
-  return [];
+  return Array.from(new Set(refs));
 }

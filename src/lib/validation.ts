@@ -2,7 +2,7 @@ import type { LoadedSchema, Field } from '../types/schema.js';
 import { getFieldsForType, getDescendants, getType } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { queryByType } from './vault.js';
-import { extractWikilinkTarget } from './audit/types.js';
+import { extractWikilinkTarget } from './links.js';
 import { expandStaticValue, parseDate } from './local-date.js';
 
 export type NormalizedDateResult =

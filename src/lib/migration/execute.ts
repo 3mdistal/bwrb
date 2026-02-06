@@ -6,7 +6,7 @@ import { parseNote, writeNote } from '../frontmatter.js';
 import { discoverManagedFiles } from '../discovery.js';
 import { createBackup } from '../bulk/backup.js';
 import { getFieldsForType, resolveTypeFromFrontmatter } from '../schema.js';
-import { toWikilink, toMarkdownLink, isWikilink, isMarkdownLink } from '../audit/types.js';
+import { toWikilink, toMarkdownLink, isWikilink, isMarkdownLink } from '../links.js';
 import type { LoadedSchema } from '../../types/schema.js';
 import type {
   MigrationPlan,

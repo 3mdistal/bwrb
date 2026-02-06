@@ -46,12 +46,14 @@ import {
   type ManagedFile,
   type AuditRunOptions,
   ALLOWED_NATIVE_FIELDS,
+} from './types.js';
+import { isBwrbBuiltinFrontmatterField } from '../frontmatter/systemFields.js';
+import {
   isWikilink,
   isMarkdownLink,
   extractWikilinkTarget,
-} from './types.js';
-import { isBwrbBuiltinFrontmatterField } from '../frontmatter/systemFields.js';
-import { extractLinkTarget } from '../links.js';
+  extractLinkTarget,
+} from '../links.js';
 
 // Import file discovery functions from shared module
 import {

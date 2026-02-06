@@ -6,7 +6,9 @@ import {
   extractMarkdownLinkTarget,
   toWikilink,
   toMarkdownLink,
-} from "../../../src/lib/audit/types.js";
+  extractLinkTarget,
+  extractLinkTargets,
+} from "../../../src/lib/links.js";
 
 describe("link utilities", () => {
   describe("isWikilink", () => {
@@ -151,6 +153,36 @@ describe("link utilities", () => {
       const wikilink = toWikilink(original);
       const backToMarkdown = toMarkdownLink(wikilink);
       expect(backToMarkdown).toBe(original);
+    });
+  });
+
+  describe("extractLinkTarget", () => {
+    it("should extract from wikilink and markdown values", () => {
+      expect(extractLinkTarget("[[Note]]")).toBe("Note");
+      expect(extractLinkTarget('"[[Note]]"')).toBe("Note");
+      expect(extractLinkTarget("[Display](target-file.md)")).toBe("target-file");
+      expect(extractLinkTarget('"[Display](target-file.md)"')).toBe("target-file");
+    });
+
+    it("should return null for non-link values", () => {
+      expect(extractLinkTarget("plain text")).toBe(null);
+      expect(extractLinkTarget("[Note](Note)")).toBe(null);
+    });
+  });
+
+  describe("extractLinkTargets", () => {
+    it("should extract embedded wikilinks and markdown links", () => {
+      expect(extractLinkTargets("See [[One]] and [[Two]]")).toEqual(["One", "Two"]);
+      expect(extractLinkTargets("Read [A](A.md) and [B](B.md)")).toEqual(["A", "B"]);
+    });
+
+    it("should extract from arrays and ignore non-strings", () => {
+      expect(extractLinkTargets(["[[One]]", "[Two](Two.md)", 42])).toEqual(["One", "Two"]);
+    });
+
+    it("should fall back to direct single-link parsing", () => {
+      expect(extractLinkTargets("[[Target|Alias]]")).toEqual(["Target"]);
+      expect(extractLinkTargets("[[Target#Heading]]")).toEqual(["Target"]);
     });
   });
 });

@@ -412,6 +412,11 @@ describe('Wikilink Extraction', () => {
     const refs = extractWikilinkReferences('"[[Quoted Note]]"');
     expect(refs).toEqual(['Quoted Note']);
   });
+
+  it('should normalize alias and heading wikilinks to canonical target', () => {
+    const refs = extractWikilinkReferences(['[[Target|Alias]]', '[[Target#Heading]]']);
+    expect(refs).toEqual(['Target']);
+  });
   
   it('should extract from arrays', () => {
     const refs = extractWikilinkReferences(['[[Note 1]]', '[[Note 2]]']);
@@ -420,6 +425,11 @@ describe('Wikilink Extraction', () => {
   
   it('should return empty for non-wikilink values', () => {
     const refs = extractWikilinkReferences('plain text');
+    expect(refs).toEqual([]);
+  });
+
+  it('should ignore markdown links', () => {
+    const refs = extractWikilinkReferences('[Target](Target.md)');
     expect(refs).toEqual([]);
   });
   
