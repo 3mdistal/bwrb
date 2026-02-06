@@ -11,7 +11,8 @@ import { BASELINE_SCHEMA } from './schemas.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 export const PROJECT_ROOT = join(__dirname, '../../..');
-const CLI_PATH = join(PROJECT_ROOT, 'dist/index.js');
+const DIST_CLI_PATH = join(PROJECT_ROOT, 'dist/index.js');
+const SRC_CLI_PATH = join(PROJECT_ROOT, 'src/index.ts');
 
 /**
  * Get a relative path from the project root to the vault.
@@ -246,23 +247,74 @@ export interface CLIResult {
   exitCode: number;
 }
 
+export type CLIMode = 'source' | 'dist';
+
+export interface RunCLIOptions {
+  vaultDir?: string;
+  stdin?: string;
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  mode?: CLIMode;
+}
+
+function resolveRunCLIOptions(
+  vaultDirOrOptions?: string | RunCLIOptions,
+  stdin?: string
+): RunCLIOptions {
+  if (typeof vaultDirOrOptions === 'string') {
+    return { vaultDir: vaultDirOrOptions, stdin };
+  }
+
+  return vaultDirOrOptions ?? {};
+}
+
+function resolveCLIMode(mode?: CLIMode): CLIMode {
+  if (mode) {
+    return mode;
+  }
+
+  return process.env.BWRB_TEST_DIST === '1' ? 'dist' : 'source';
+}
+
+function buildNodeArgs(mode: CLIMode, args: string[]): string[] {
+  if (mode === 'dist') {
+    return [DIST_CLI_PATH, ...args];
+  }
+
+  return ['--import', 'tsx', SRC_CLI_PATH, ...args];
+}
+
 /**
  * Run the bwrb CLI with arguments and capture output.
  * @param args CLI arguments (e.g., ['list', 'idea', '--status=raw'])
- * @param vaultDir Optional vault directory (passed via --vault)
- * @param stdin Optional stdin input for interactive commands
+ * @param vaultDirOrOptions Optional vault directory or options object
+ * @param stdin Optional stdin input for interactive commands (legacy signature)
  */
 export async function runCLI(
   args: string[],
-  vaultDir?: string,
+  vaultDirOrOptions?: string | RunCLIOptions,
   stdin?: string
 ): Promise<CLIResult> {
-  const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
+  const options = resolveRunCLIOptions(vaultDirOrOptions, stdin);
+  const mode = resolveCLIMode(options.mode);
+  const shouldInjectVaultArg = Boolean(options.vaultDir) && !args.includes('--completions');
+  const fullArgs = shouldInjectVaultArg ? ['--vault', options.vaultDir!, ...args] : args;
+  const cliArgs = buildNodeArgs(mode, fullArgs);
+
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    FORCE_COLOR: '0',
+    ...options.env,
+  };
+
+  if (options.vaultDir && !shouldInjectVaultArg && !env.BWRB_VAULT) {
+    env.BWRB_VAULT = options.vaultDir;
+  }
 
   return new Promise((resolve) => {
-    const proc = spawn('node', [CLI_PATH, ...fullArgs], {
-      cwd: PROJECT_ROOT,
-      env: { ...process.env, FORCE_COLOR: '0' }, // Disable colors for easier parsing
+    const proc = spawn(process.execPath, cliArgs, {
+      cwd: options.cwd ?? PROJECT_ROOT,
+      env,
     });
 
     let stdout = '';
@@ -276,8 +328,8 @@ export async function runCLI(
       stderr += data.toString();
     });
 
-    if (stdin) {
-      proc.stdin.write(stdin);
+    if (options.stdin) {
+      proc.stdin.write(options.stdin);
       proc.stdin.end();
     }
 
