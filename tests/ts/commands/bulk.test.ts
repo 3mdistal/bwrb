@@ -2,8 +2,50 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { mkdtemp, rm, mkdir, writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { createTestVault, cleanupTestVault, runCLI, TEST_SCHEMA } from '../fixtures/setup.js';
+import { spawn } from 'child_process';
+import { createTestVault, cleanupTestVault, runCLI, TEST_SCHEMA, CLI_PATH, PROJECT_ROOT } from '../fixtures/setup.js';
 import { parseNote } from '../../../src/lib/frontmatter.js';
+
+async function runCLIWithOpenStdin(
+  args: string[],
+  vaultDir: string,
+  timeoutMs = 1500
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
+
+  return await new Promise((resolve, reject) => {
+    const proc = spawn('node', [CLI_PATH, ...fullArgs], {
+      cwd: PROJECT_ROOT,
+      env: { ...process.env, FORCE_COLOR: '0' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    const timeout = setTimeout(() => {
+      proc.kill('SIGKILL');
+      reject(new Error('Process timed out waiting for non-interactive confirmation'));
+    }, timeoutMs);
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      clearTimeout(timeout);
+      resolve({
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        exitCode: code ?? 0,
+      });
+    });
+  });
+}
 
 describe('bulk command', () => {
   let vaultDir: string;
@@ -157,6 +199,7 @@ describe('bulk command', () => {
       ], vaultDir);
       
       expect(result.exitCode).toBe(1);
+      expect(result.stderr).toBe('');
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
       expect(json.error).toContain('--force');
@@ -209,6 +252,24 @@ describe('bulk command', () => {
       }
     });
 
+    it('should succeed with --yes for cross-type --execute in text mode', async () => {
+      const tempVaultDir = await createTestVault();
+      try {
+        const result = await runCLI([
+          'bulk',
+          '--all',
+          '--set', 'custom-field=test',
+          '--execute',
+          '--yes'
+        ], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Updated');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+
     it('should work with --path selector (not cross-type) without --force', async () => {
       // When using --path without --type, it's still targeted (not vault-wide)
       const tempVaultDir = await createTestVault();
@@ -239,6 +300,77 @@ describe('bulk command', () => {
       expect(result.stdout).toContain('Dry run');
       // Only Sample Idea has status=raw, not tasks
       expect(result.stdout).toContain('Sample Idea.md');
+    });
+  });
+
+  describe('non-interactive confirmation', () => {
+    it('accepts piped yes for confirmation', async () => {
+      const tempVaultDir = await createTestVault();
+      try {
+        const result = await runCLI([
+          'bulk',
+          '--all',
+          '--set', 'custom-field=test',
+          '--execute'
+        ], tempVaultDir, 'y\n');
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Updated');
+        expect(result.stdout).not.toContain('Are you sure');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+
+    it('accepts piped no for confirmation', async () => {
+      const tempVaultDir = await createTestVault();
+      try {
+        const result = await runCLI([
+          'bulk',
+          '--all',
+          '--set', 'custom-field=test',
+          '--execute'
+        ], tempVaultDir, 'n\n');
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Operation cancelled.');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+
+    it('fails fast on empty confirmation input', async () => {
+      const tempVaultDir = await createTestVault();
+      try {
+        const result = await runCLI([
+          'bulk',
+          '--all',
+          '--set', 'custom-field=test',
+          '--execute'
+        ], tempVaultDir, '\n');
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Non-interactive mode detected');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+
+    it('fails fast when stdin is open but provides no input', async () => {
+      const tempVaultDir = await createTestVault();
+      try {
+        const result = await runCLIWithOpenStdin([
+          'bulk',
+          '--all',
+          '--set', 'custom-field=test',
+          '--execute'
+        ], tempVaultDir);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Non-interactive mode detected');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
     });
   });
 

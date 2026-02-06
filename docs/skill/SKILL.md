@@ -357,6 +357,10 @@ for note in $(bwrb list task --where "status == 'in-progress'" --output paths); 
   bwrb edit "$note" --json '{"status": "done"}'
 done
 
+# Bulk update (non-interactive confirmation)
+bwrb bulk --all --set status=processed --execute --yes
+echo "y" | bwrb bulk --all --set status=processed --execute
+
 # Generate a wikilink for insertion
 bwrb search "Target Note" --wikilink --picker none  # Output: [[Target Note]]
 ```
