@@ -5,11 +5,13 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { loadSchema, getTypeNames } from '../../lib/schema.js';
+import { loadCurrentSchema, getTypeNames } from '../../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../../lib/vaultSelection.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes } from '../../lib/output.js';
 import { getGlobalOpts } from '../../lib/command.js';
 import { UserCancelledError } from '../../lib/errors.js';
+import { loadSchemaSnapshot } from '../../lib/migration/snapshot.js';
+import { getMigrationStatus } from '../../lib/migration/status.js';
 import {
   outputSchemaJson,
   outputSchemaVerboseJson,
@@ -19,7 +21,7 @@ import {
   showTypeDetails,
   getFieldType,
 } from './helpers/output.js';
-import type { Field } from '../../types/schema.js';
+import type { Field, LoadedSchema } from '../../types/schema.js';
 
 interface ListCommandOptions {
   output?: string;
@@ -48,7 +50,8 @@ listCommand
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
-      const schema = await loadSchema(vaultDir);
+      const schema = await loadCurrentSchema(vaultDir);
+      await warnIfPendingMigration(vaultDir, schema, jsonMode);
 
       if (jsonMode) {
         if (options.verbose) {
@@ -95,7 +98,8 @@ listCommand
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
-      const schema = await loadSchema(vaultDir);
+      const schema = await loadCurrentSchema(vaultDir);
+      await warnIfPendingMigration(vaultDir, schema, jsonMode);
 
       const typeNames = getTypeNames(schema).filter(t => t !== 'meta');
 
@@ -144,7 +148,8 @@ listCommand
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
-      const schema = await loadSchema(vaultDir);
+      const schema = await loadCurrentSchema(vaultDir);
+      await warnIfPendingMigration(vaultDir, schema, jsonMode);
 
       const allFields: Array<{ type: string; field: string; definition: Field }> = [];
       
@@ -205,7 +210,8 @@ listCommand
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
-      const schema = await loadSchema(vaultDir);
+      const schema = await loadCurrentSchema(vaultDir);
+      await warnIfPendingMigration(vaultDir, schema, jsonMode);
 
       if (jsonMode) {
         outputTypeDetailsJson(schema, name);
@@ -230,3 +236,33 @@ listCommand
       process.exit(1);
     }
   });
+
+async function warnIfPendingMigration(
+  vaultDir: string,
+  schema: LoadedSchema,
+  jsonMode: boolean
+): Promise<void> {
+  if (!vaultDir) return;
+
+  try {
+    const snapshot = await loadSchemaSnapshot(vaultDir);
+    const status = getMigrationStatus(schema.raw, snapshot);
+
+    if (!status.hasSnapshot || !status.pending) {
+      return;
+    }
+
+    const warning =
+      'Warning: schema has changes not yet migrated (schema.json != schema.applied.json). ' +
+      'Showing current schema.json. Run "bwrb schema diff" or "bwrb schema migrate" to review/apply.';
+
+    if (jsonMode) {
+      console.error(warning);
+      return;
+    }
+
+    console.error(warning);
+  } catch {
+    // Snapshot read failures should not block schema inspection.
+  }
+}

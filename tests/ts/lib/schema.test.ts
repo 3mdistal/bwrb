@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import {
   loadSchema,
+  loadCurrentSchema,
   getTypeFamilies,
   getFieldOptions,
   getOptionsForField,
@@ -48,6 +52,60 @@ describe('schema', () => {
 
     it('should throw on missing schema file', async () => {
       await expect(loadSchema('/nonexistent/path')).rejects.toThrow();
+    });
+  });
+
+  describe('loadCurrentSchema', () => {
+    it('should ignore schema.applied.json when loading', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-load-current-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+
+      const currentSchema = {
+        version: 2,
+        types: {
+          meta: {},
+          current: {
+            extends: 'meta',
+            fields: {
+              title: { prompt: 'text' },
+            },
+          },
+        },
+      };
+
+      const snapshotSchema = {
+        version: 2,
+        types: {
+          meta: {},
+          legacy: {
+            extends: 'meta',
+            fields: {
+              title: { prompt: 'text' },
+            },
+          },
+        },
+      };
+
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(currentSchema, null, 2)
+      );
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.applied.json'),
+        JSON.stringify({
+          schemaVersion: '1.0.0',
+          snapshotAt: new Date().toISOString(),
+          schema: snapshotSchema,
+        }, null, 2)
+      );
+
+      try {
+        const loaded = await loadCurrentSchema(tempVaultDir);
+        expect(loaded.raw.types.current).toBeDefined();
+        expect(loaded.raw.types.legacy).toBeUndefined();
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
     });
   });
 
