@@ -1,5 +1,6 @@
 import prompts from 'prompts';
 import chalk from 'chalk';
+import readline from 'readline';
 import { numberedSelect } from './numberedSelect.js';
 
 /**
@@ -41,6 +42,54 @@ import { numberedSelect } from './numberedSelect.js';
  */
 export type PromptResult<T> = T | null;
 
+const NON_INTERACTIVE_CONFIRM_TIMEOUT_MS = 500;
+
+function isInteractive(): boolean {
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+}
+
+export function parseYesNoInput(input: string): boolean | null {
+  const normalized = input.trim().toLowerCase();
+  if (normalized === 'y' || normalized === 'yes') return true;
+  if (normalized === 'n' || normalized === 'no') return false;
+  return null;
+}
+
+function nonInteractivePromptError(message: string): Error {
+  return new Error(`Non-interactive mode detected (stdin is not a TTY); ${message}`);
+}
+
+async function readLineFromStdin(timeoutMs: number): Promise<string | null> {
+  if (!process.stdin.readable || process.stdin.readableEnded) {
+    return null;
+  }
+
+  return await new Promise((resolve) => {
+    let settled = false;
+    const rl = readline.createInterface({
+      input: process.stdin,
+      crlfDelay: Infinity,
+    });
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      rl.close();
+      resolve(null);
+    }, timeoutMs);
+
+    const finalize = (line: string | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      rl.close();
+      resolve(line);
+    };
+
+    rl.once('line', (line) => finalize(line));
+    rl.once('close', () => finalize(null));
+  });
+}
+
 // ============================================================================
 // Selection Prompts (powered by numberedSelect)
 // ============================================================================
@@ -58,6 +107,9 @@ export async function promptSelection(
   message: string,
   options: string[]
 ): Promise<PromptResult<string>> {
+  if (!isInteractive()) {
+    throw nonInteractivePromptError('interactive prompts are disabled. Re-run in a TTY or use non-interactive flags.');
+  }
   return numberedSelect(message, options);
 }
 
@@ -76,6 +128,9 @@ export async function promptMultiSelect(
   message: string,
   options: string[]
 ): Promise<PromptResult<string[]>> {
+  if (!isInteractive()) {
+    throw nonInteractivePromptError('interactive prompts are disabled. Re-run in a TTY or use non-interactive flags.');
+  }
   const response = await prompts({
     type: 'multiselect',
     name: 'value',
@@ -103,6 +158,9 @@ export async function promptInput(
   message: string,
   defaultValue?: string
 ): Promise<PromptResult<string>> {
+  if (!isInteractive()) {
+    throw nonInteractivePromptError('interactive prompts are disabled. Re-run in a TTY or use non-interactive flags.');
+  }
   const response = await prompts({
     type: 'text',
     name: 'value',
@@ -122,6 +180,9 @@ export async function promptInput(
  * Returns the entered string, or null if user cancels (Ctrl+C/Escape).
  */
 export async function promptRequired(message: string): Promise<PromptResult<string>> {
+  if (!isInteractive()) {
+    throw nonInteractivePromptError('interactive prompts are disabled. Re-run in a TTY or use non-interactive flags.');
+  }
   while (true) {
     const response = await prompts({
       type: 'text',
@@ -152,6 +213,9 @@ export async function promptMultiInput(
   message: string,
   defaultValue?: string
 ): Promise<PromptResult<string[]>> {
+  if (!isInteractive()) {
+    throw nonInteractivePromptError('interactive prompts are disabled. Re-run in a TTY or use non-interactive flags.');
+  }
   const response = await prompts({
     type: 'text',
     name: 'value',
@@ -185,6 +249,14 @@ export async function promptMultiInput(
  * since `false` is a valid non-cancelled answer.
  */
 export async function promptConfirm(message: string): Promise<PromptResult<boolean>> {
+  if (!isInteractive()) {
+    const line = await readLineFromStdin(NON_INTERACTIVE_CONFIRM_TIMEOUT_MS);
+    if (line !== null) {
+      const parsed = parseYesNoInput(line);
+      if (parsed !== null) return parsed;
+    }
+    throw nonInteractivePromptError('confirmation required. Re-run with --force (or --yes where supported) to proceed.');
+  }
   const response = await prompts({
     type: 'confirm',
     name: 'value',

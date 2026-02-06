@@ -57,6 +57,21 @@ pnpm typecheck        # Type checking
 
 **Important**: When creating a git worktree, run `pnpm build` after `pnpm install`. The command tests (`tests/ts/commands/`) require the built `dist/` output to run correctly.
 
+## Worktrees: Agent Review Input
+
+When working in a git worktree, review agents may not be able to read changed files directly from the worktree filesystem.
+
+Include your diff in the review prompt:
+
+```bash
+git fetch origin main --quiet
+git diff --no-color origin/main...HEAD > /tmp/bwrb-review.diff
+wc -l /tmp/bwrb-review.diff
+# Paste the contents of /tmp/bwrb-review.diff into the review prompt
+```
+
+If `origin/main` is unavailable, use `main...HEAD` as the diff base.
+
 ## Testing
 
 Tests live in `tests/ts/` with fixtures in `tests/fixtures/vault/`. Run `pnpm test` before committing.

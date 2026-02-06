@@ -14,15 +14,14 @@ import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import chalk from 'chalk';
 
-import { loadSchema, detectObsidianVault } from '../lib/schema.js';
+import { loadCurrentSchema, detectObsidianVault } from '../lib/schema.js';
+import { SCHEMA_RELATIVE_PATH } from '../lib/bwrb-paths.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { promptInput, promptSelection } from '../lib/prompt.js';
 import { getGlobalOpts } from '../lib/command.js';
 import { ExitCodes } from '../lib/output.js';
 import type { Config } from '../types/schema.js';
 import { UserCancelledError } from '../lib/errors.js';
-
-const SCHEMA_PATH = '.bwrb/schema.json';
 
 // Config option metadata
 interface ConfigOptionMeta {
@@ -96,7 +95,7 @@ configCommand
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
-      const schema = await loadSchema(vaultDir);
+      const schema = await loadCurrentSchema(vaultDir);
       const rawConfig = schema.raw.config ?? {};
       
       if (option) {
@@ -181,7 +180,7 @@ configCommand
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
-      const schemaPath = join(vaultDir, SCHEMA_PATH);
+      const schemaPath = join(vaultDir, SCHEMA_RELATIVE_PATH);
       
       // Load existing schema
       const content = await readFile(schemaPath, 'utf-8');
