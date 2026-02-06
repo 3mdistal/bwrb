@@ -7,7 +7,7 @@ const toPosix = value => value.replace(/\\/g, '/');
 
 const collapseSlashes = value => value.replace(/\/+/g, '/');
 
-export const normalizeLinkText = text => text.trim().replace(/\s+/g, ' ');
+const normalizeLinkText = text => text.trim().replace(/\s+/g, ' ');
 
 export const normalizeDocHref = (href, sourceHref = null) => {
   if (typeof href !== 'string') {
