@@ -21,6 +21,7 @@ import {
   getDefaultTemplateChain,
   mergeTemplateDefaults,
   resolveTemplateWithInheritance,
+  createEmptyTemplateResolution,
   getInheritedTemplates,
 } from '../../../src/lib/template.js';
 import { resolveSchema } from '../../../src/lib/schema.js';
@@ -1610,8 +1611,27 @@ defaults:
 
       const result = await resolveTemplateWithInheritance(tempDir, 'task', schema, { noTemplate: true });
 
-      expect(result.template).toBeNull();
-      expect(result.mergedDefaults).toEqual({});
+      expect(result).toEqual(createEmptyTemplateResolution());
+    });
+
+    it('returns empty resolution when named template is missing', async () => {
+      const result = await resolveTemplateWithInheritance(tempDir, 'task', schema, {
+        templateName: 'missing-template',
+      });
+
+      expect(result).toEqual(createEmptyTemplateResolution());
+    });
+
+    it('creates fresh empty resolution objects per call', () => {
+      const first = createEmptyTemplateResolution();
+      const second = createEmptyTemplateResolution();
+
+      expect(first).toEqual(second);
+      expect(first).not.toBe(second);
+      expect(first.mergedDefaults).not.toBe(second.mergedDefaults);
+      expect(first.mergedConstraints).not.toBe(second.mergedConstraints);
+      expect(first.mergedPromptFields).not.toBe(second.mergedPromptFields);
+      expect(first.availableTemplates).not.toBe(second.availableTemplates);
     });
 
     it('finds specific template by name without inheritance', async () => {

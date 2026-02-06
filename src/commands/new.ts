@@ -57,6 +57,7 @@ import {
 import {
   findTemplateByName,
   resolveTemplateWithInheritance,
+  createEmptyTemplateResolution,
   processTemplateBody,
   validateConstraints,
   createScaffoldedInstances,
@@ -271,14 +272,7 @@ Template management:
       }
 
       // Resolve template for interactive mode (with inheritance support)
-      let templateResolution: InheritedTemplateResolution = {
-        template: null,
-        mergedDefaults: {},
-        mergedConstraints: {},
-        mergedPromptFields: [],
-        shouldPrompt: false,
-        availableTemplates: [],
-      };
+      let templateResolution: InheritedTemplateResolution = createEmptyTemplateResolution();
       
       if (!options.noTemplate) {
         if (options.template) {
@@ -317,14 +311,7 @@ Template management:
               }
             } else {
               // User chose no template - reset to empty resolution
-              templateResolution = {
-                template: null,
-                mergedDefaults: {},
-                mergedConstraints: {},
-                mergedPromptFields: [],
-                shouldPrompt: false,
-                availableTemplates: [],
-              };
+              templateResolution = createEmptyTemplateResolution();
             }
           }
         }

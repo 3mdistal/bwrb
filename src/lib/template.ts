@@ -468,6 +468,17 @@ export interface InheritedTemplateResolution {
   availableTemplates: Template[];
 }
 
+export function createEmptyTemplateResolution(): InheritedTemplateResolution {
+  return {
+    template: null,
+    mergedDefaults: {},
+    mergedConstraints: {},
+    mergedPromptFields: [],
+    shouldPrompt: false,
+    availableTemplates: [],
+  };
+}
+
 /**
  * Resolve template with inheritance support.
  * 
@@ -495,14 +506,7 @@ export async function resolveTemplateWithInheritance(
 ): Promise<InheritedTemplateResolution> {
   // --no-template: Skip template system entirely
   if (options.noTemplate) {
-    return {
-      template: null,
-      mergedDefaults: {},
-      mergedConstraints: {},
-      mergedPromptFields: [],
-      shouldPrompt: false,
-      availableTemplates: [],
-    };
+    return createEmptyTemplateResolution();
   }
   
   // --template <name>: Find specific template (no inheritance for named templates)
@@ -532,14 +536,7 @@ export async function resolveTemplateWithInheritance(
       };
     }
     // Template not found - caller should handle as error
-    return {
-      template: null,
-      mergedDefaults: {},
-      mergedConstraints: {},
-      mergedPromptFields: [],
-      shouldPrompt: false,
-      availableTemplates: [],
-    };
+    return createEmptyTemplateResolution();
   }
   
   // No flags: Auto-discover with inheritance
@@ -596,14 +593,7 @@ export async function resolveTemplateWithInheritance(
   }
   
   // No templates available
-  return {
-    template: null,
-    mergedDefaults: {},
-    mergedConstraints: {},
-    mergedPromptFields: [],
-    shouldPrompt: false,
-    availableTemplates: [],
-  };
+  return createEmptyTemplateResolution();
 }
 
 /**
