@@ -246,6 +246,11 @@ export interface CLIResult {
   exitCode: number;
 }
 
+export interface RunCLIOptions {
+  env?: NodeJS.ProcessEnv;
+  trimOutput?: boolean;
+}
+
 /**
  * Run the bwrb CLI with arguments and capture output.
  * @param args CLI arguments (e.g., ['list', 'idea', '--status=raw'])
@@ -255,14 +260,16 @@ export interface CLIResult {
 export async function runCLI(
   args: string[],
   vaultDir?: string,
-  stdin?: string
+  stdin?: string,
+  options: RunCLIOptions = {}
 ): Promise<CLIResult> {
   const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
+  const trimOutput = options.trimOutput ?? true;
 
   return new Promise((resolve) => {
     const proc = spawn('node', [CLI_PATH, ...fullArgs], {
       cwd: PROJECT_ROOT,
-      env: { ...process.env, FORCE_COLOR: '0' }, // Disable colors for easier parsing
+      env: { ...process.env, FORCE_COLOR: '0', ...options.env }, // Disable colors for easier parsing
     });
 
     let stdout = '';
@@ -283,8 +290,8 @@ export async function runCLI(
 
     proc.on('close', (code) => {
       resolve({
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
+        stdout: trimOutput ? stdout.trim() : stdout,
+        stderr: trimOutput ? stderr.trim() : stderr,
         exitCode: code ?? 0,
       });
     });
