@@ -148,6 +148,7 @@ export const searchCommand = new Command('search')
   .option('--path-glob <pattern>', 'DEPRECATED: use --path')
   .option('-w, --where <expression...>', 'Filter results by frontmatter expression')
   .option('-C, --context <lines>', 'Lines of context around matches (default: 2)')
+  // NOTE: Commander maps --no-context to options.context === false.
   .option('--no-context', 'Do not show context lines')
   .option('-S, --case-sensitive', 'Case-sensitive search (default: case-insensitive)')
   .option('-E, --regex', 'Treat pattern as regex (default: literal)')
