@@ -6,6 +6,14 @@ export type RawLine = {
   endOffset: number;
 };
 
+/**
+ * Split text into raw lines while preserving original EOL sequences.
+ *
+ * Contract:
+ * - `lineNumber` is 1-based.
+ * - `startOffset`/`endOffset` are half-open string index offsets (`[start, end)`).
+ * - `lines.map((line) => line.text + line.eol).join('')` reconstructs the input.
+ */
 export function splitLinesPreserveEol(input: string): RawLine[] {
   const lines: RawLine[] = [];
   let start = 0;
