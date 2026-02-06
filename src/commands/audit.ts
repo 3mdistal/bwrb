@@ -24,6 +24,8 @@ import {
   hasAnyTargeting,
 } from '../lib/targeting.js';
 import { UserCancelledError } from '../lib/errors.js';
+import { formatWhereValidationErrors } from '../lib/expression-validation.js';
+import { validateCliWhere } from '../lib/where-validation.js';
 
 // Import from audit modules
 import {
@@ -292,6 +294,24 @@ Examples:
           }
           printError(error);
           await showAvailableTypes(schema);
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+      }
+
+      if (whereExprs && whereExprs.length > 0) {
+        const whereValidation = validateCliWhere({
+          whereExpressions: whereExprs,
+          ...(typePath ? { typePath } : {}),
+          schema,
+        });
+        if (!whereValidation.ok) {
+          const error = formatWhereValidationErrors(whereValidation.errors);
+          if (jsonMode) {
+            printJson(jsonError(error, { code: ExitCodes.VALIDATION_ERROR }));
+            printError(error);
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(error);
           process.exit(ExitCodes.VALIDATION_ERROR);
         }
       }

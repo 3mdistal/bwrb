@@ -672,6 +672,48 @@ tags:
       expect(result.stdout).toContain('Another Idea.md');
       expect(result.stdout).not.toContain('Sample Idea.md');
     });
+
+    it('should fail fast on invalid where select option with --type', async () => {
+      const result = await runCLI([
+        'bulk', 'idea', '--set', 'priority=high',
+        '--where', "status == 'not-a-valid-status'"
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Invalid value 'not-a-valid-status' for field 'status'");
+    });
+
+    it('should fail fast on unknown where field with --type', async () => {
+      const result = await runCLI([
+        'bulk', 'idea', '--set', 'priority=high',
+        '--where', "unknown_field == 'x'"
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Unknown field 'unknown_field' for type 'idea'");
+    });
+
+    it('should filter with hyphenated field names when type is provided', async () => {
+      await writeFile(
+        join(vaultDir, 'Ideas', 'Hyphen Idea.md'),
+        `---
+type: idea
+status: raw
+creation-date: 2026-02-01
+---
+
+Test note
+`
+      );
+
+      const result = await runCLI([
+        'bulk', 'idea', '--set', 'priority=high',
+        '--where', "creation-date == '2026-02-01'"
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Hyphen Idea.md');
+    });
   });
 
   describe('--path filtering', () => {

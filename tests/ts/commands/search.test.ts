@@ -576,6 +576,28 @@ Some content
           expect(result.stdout).toContain('Sample Idea');
         }
       });
+
+      it('should fail fast on unknown where field with --type', async () => {
+        const result = await runCLI([
+          'search', 'status', '--body', '--type', 'idea',
+          '--where', "unknown_field == 'raw'"
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain("Unknown field 'unknown_field' for type 'idea'");
+      });
+
+      it('should fail fast in json mode on invalid where value with --type', async () => {
+        const result = await runCLI([
+          'search', 'status', '--body', '--type', 'idea', '--output', 'json',
+          '--where', "status == 'not-an-option'"
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(1);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain("Invalid value 'not-an-option' for field 'status'");
+      });
     });
   });
 });

@@ -37,6 +37,8 @@ import {
   parsePositionalArg,
   hasAnyTargeting,
 } from '../lib/targeting.js';
+import { formatWhereValidationErrors } from '../lib/expression-validation.js';
+import { validateCliWhere } from '../lib/where-validation.js';
 import type { BulkOperation, BulkResult } from '../lib/bulk/types.js';
 import type { LoadedSchema } from '../types/schema.js';
 
@@ -228,6 +230,23 @@ Examples:
           }
           printError(error);
           showAvailableTypes(schema);
+          process.exit(1);
+        }
+      }
+
+      if (whereExpressions.length > 0) {
+        const whereValidation = validateCliWhere({
+          whereExpressions,
+          ...(typePath ? { typePath } : {}),
+          schema,
+        });
+        if (!whereValidation.ok) {
+          const error = formatWhereValidationErrors(whereValidation.errors);
+          if (jsonMode) {
+            printJson(jsonError(error));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(error);
           process.exit(1);
         }
       }

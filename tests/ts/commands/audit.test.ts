@@ -2486,6 +2486,26 @@ status: raw
     });
   });
 
+  describe('--where validation with --type', () => {
+    it('should fail fast on unknown where field', async () => {
+      const result = await runCLI([
+        'audit', '--type', 'idea', '--where', "unknown_field == 'x'"
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Unknown field 'unknown_field' for type 'idea'");
+    });
+
+    it('should fail fast on invalid where select option', async () => {
+      const result = await runCLI([
+        'audit', '--type', 'idea', '--where', "status == 'not-a-valid-status'"
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Invalid value 'not-a-valid-status' for field 'status'");
+    });
+  });
+
   describe('--fix targeting gate', () => {
     it('should error when --fix is used without targeting', async () => {
       const result = await runCLI(['audit', '--fix'], vaultDir);

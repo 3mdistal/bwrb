@@ -33,6 +33,8 @@ import { parseNote } from '../lib/frontmatter.js';
 import { applyFrontmatterFilters } from '../lib/query.js';
 import { minimatch } from 'minimatch';
 import { UserCancelledError } from '../lib/errors.js';
+import { formatWhereValidationErrors } from '../lib/expression-validation.js';
+import { validateCliWhere } from '../lib/where-validation.js';
 
 // ============================================================================
 // Types
@@ -323,6 +325,24 @@ async function handleContentSearch(
     const typeDef = getTypeDefByPath(schema, options.type);
     if (!typeDef) {
       const error = `Unknown type: ${options.type}`;
+      if (jsonMode) {
+        printJson(jsonError(error));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      printError(error);
+      process.exit(1);
+    }
+  }
+
+  if (options.where && options.where.length > 0) {
+    const whereValidation = validateCliWhere({
+      whereExpressions: options.where,
+      ...(options.type ? { typePath: options.type } : {}),
+      schema,
+    });
+
+    if (!whereValidation.ok) {
+      const error = formatWhereValidationErrors(whereValidation.errors);
       if (jsonMode) {
         printJson(jsonError(error));
         process.exit(ExitCodes.VALIDATION_ERROR);
