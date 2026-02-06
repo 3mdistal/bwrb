@@ -155,6 +155,11 @@ Bowerbird stores migration state in `.bwrb/`:
 - **migrations.json**: Log of all migrations with timestamps and changes
 - **backups/**: Timestamped directories containing pre-migration file copies
 
+`schema.applied.json` is migration bookkeeping only. Schema inspection commands
+(for example `bwrb schema list`) always read the current `schema.json`. Pending
+migrations may be shown as a warning or status line, but the schema output never
+comes from the snapshot.
+
 ## History and Recovery
 
 ### Viewing History

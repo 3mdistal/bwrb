@@ -38,7 +38,7 @@ export type IssueCode =
   | 'ambiguous-link-target'
   | 'invalid-list-element'
   // Phase 2: Low-risk hygiene auto-fixes
-  | 'trailing-whitespace' // NOTE: Not currently detectable (YAML parser strips whitespace)
+  | 'trailing-whitespace' // Detected on raw frontmatter lines before YAML parsing
   | 'frontmatter-key-casing'
   | 'unknown-enum-casing'
   | 'duplicate-list-values'
