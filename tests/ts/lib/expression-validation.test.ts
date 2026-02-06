@@ -175,6 +175,24 @@ describe('expression-validation', () => {
       expect(result.errors[0]!.suggestion).toBe('backlog');
     });
 
+    it('preserves error payload shape for invalid select options', () => {
+      const result = validateWhereExpressions(
+        ["status == 'bcklog'"],
+        schema,
+        'task'
+      );
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        field: 'status',
+        value: 'bcklog',
+        message: "Invalid value 'bcklog' for field 'status'",
+        validOptions: ['raw', 'backlog', 'in-flight', 'settled'],
+        suggestion: 'backlog',
+      });
+    });
+
     it('skips validation for non-select fields', () => {
       // deadline is a date field, not select
       const result = validateWhereExpressions(

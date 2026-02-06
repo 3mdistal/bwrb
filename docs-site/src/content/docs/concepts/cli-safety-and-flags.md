@@ -74,6 +74,15 @@ bwrb delete "My Note"
 bwrb delete "My Note" --force
 ```
 
+## Non-interactive Mode
+
+When `stdin` is not a TTY (for example, when piping or running in CI), bwrb **does not render interactive prompt UI**. If a command requires confirmation, you must either:
+
+- Pass `--force` (or `--yes` where supported) to skip the confirmation, or
+- Pipe a single `y/yes` or `n/no` answer for simple confirmations
+
+If neither is provided, the command fails fast with an error explaining how to proceed.
+
 ## `--force` for overwrites
 
 In addition to skipping confirmation prompts, `--force` can be used to explicitly allow overwriting an existing saved artifact.

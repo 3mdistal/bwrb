@@ -70,6 +70,14 @@ Edit supports all four targeting selectors. See [Targeting Model](/reference/tar
 bwrb edit -t task -p "Work/**" -w "status == 'active'" "Deploy"
 ```
 
+## Exact-name resolution
+
+When you pass an exact note name and omit `--type`, `edit` searches across all types/paths:
+
+- **1 match:** edit proceeds
+- **0 matches:** error with suggestions (try `--type <type>` or `bwrb search --output paths`)
+- **>1 match:** error listing candidates; disambiguate with `--type`, `--path`, or a vault-relative path
+
 ## Picker Modes
 
 When multiple notes match your query:
