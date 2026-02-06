@@ -2,13 +2,12 @@
  * Bulk execution orchestration.
  */
 
-import { relative, dirname, basename } from 'path';
-import { stat } from 'fs/promises';
 import { parseNote, writeNote } from '../frontmatter.js';
-import { matchesExpression, type EvalContext } from '../expression.js';
 import { discoverManagedFiles } from '../discovery.js';
 import { searchContent } from '../content-search.js';
 import { filterByPath } from '../targeting.js';
+import { applyFrontmatterFilters } from '../query.js';
+import { getAllFieldsForType } from '../schema.js';
 import { applyOperations } from './operations.js';
 import { createBackup } from './backup.js';
 import { executeBulkMove, findAllMarkdownFiles } from './move.js';
@@ -89,8 +88,7 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
 
   result.totalFiles = files.length;
 
-  // Filter and collect changes
-  const filesToModify: {
+  const parsedFiles: {
     path: string;
     relativePath: string;
     frontmatter: Record<string, unknown>;
@@ -100,26 +98,7 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
   for (const file of files) {
     try {
       const { frontmatter, body } = await parseNote(file.path);
-
-      // Apply where expression filters
-      if (whereExpressions.length > 0) {
-        const context = await buildEvalContext(file.path, vaultDir, frontmatter);
-        const allMatch = whereExpressions.every(expr => {
-          try {
-            return matchesExpression(expr, context);
-          } catch {
-            return false;
-          }
-        });
-        if (!allMatch) continue;
-      }
-
-      // Calculate what would change - this may throw for conflicts like rename-to-existing
-      // Such errors should abort the entire operation (fail fast)
-      const { changes } = applyOperations({ ...frontmatter }, operations);
-      if (changes.length === 0) continue;
-
-      filesToModify.push({
+      parsedFiles.push({
         path: file.path,
         relativePath: file.relativePath,
         frontmatter,
@@ -127,12 +106,39 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      result.errors.push(`Failed to parse ${file.relativePath}: ${message}`);
+    }
+  }
+
+  let filteredFiles = parsedFiles;
+  if (whereExpressions.length > 0) {
+    const knownKeys = typePath ? getAllFieldsForType(schema, typePath) : undefined;
+    filteredFiles = await applyFrontmatterFilters(parsedFiles, {
+      whereExpressions,
+      vaultDir,
+      silent: true,
+      ...(knownKeys ? { knownKeys } : {}),
+    });
+  }
+
+  // Filter and collect changes
+  const filesToModify: typeof parsedFiles = [];
+
+  for (const file of filteredFiles) {
+    try {
+      // Calculate what would change - this may throw for conflicts like rename-to-existing
+      // Such errors should abort the entire operation (fail fast)
+      const { changes } = applyOperations({ ...file.frontmatter }, operations);
+      if (changes.length === 0) continue;
+
+      filesToModify.push(file);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       // Check if this is an operation error (like rename conflict) - these abort
       if (message.includes('Cannot rename') || message.includes('target field already exists')) {
         throw new Error(`${file.relativePath}: ${message}`);
       }
-      // Parse errors just get logged
-      result.errors.push(`Failed to parse ${file.relativePath}: ${message}`);
+      result.errors.push(`Failed to modify ${file.relativePath}: ${message}`);
     }
   }
 
@@ -250,28 +256,39 @@ async function executeBulkWithMove(
   // Filter files based on criteria
   const filesToMove: string[] = [];
 
+  const parsedFiles: {
+    path: string;
+    relativePath: string;
+    frontmatter: Record<string, unknown>;
+  }[] = [];
+
   for (const file of files) {
     try {
       const { frontmatter } = await parseNote(file.path);
-
-      // Apply where expression filters
-      if (whereExpressions.length > 0) {
-        const context = await buildEvalContext(file.path, vaultDir, frontmatter);
-        const allMatch = whereExpressions.every(expr => {
-          try {
-            return matchesExpression(expr, context);
-          } catch {
-            return false;
-          }
-        });
-        if (!allMatch) continue;
-      }
-
-      filesToMove.push(file.path);
+      parsedFiles.push({
+        path: file.path,
+        relativePath: file.relativePath,
+        frontmatter,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       result.errors.push(`Failed to parse ${file.relativePath}: ${message}`);
     }
+  }
+
+  let filteredFiles = parsedFiles;
+  if (whereExpressions.length > 0) {
+    const knownKeys = typePath ? getAllFieldsForType(schema, typePath) : undefined;
+    filteredFiles = await applyFrontmatterFilters(parsedFiles, {
+      whereExpressions,
+      vaultDir,
+      silent: true,
+      ...(knownKeys ? { knownKeys } : {}),
+    });
+  }
+
+  for (const file of filteredFiles) {
+    filesToMove.push(file.path);
   }
 
   // Apply limit
@@ -313,44 +330,6 @@ async function executeBulkWithMove(
   result.affectedFiles = moveResult.moveResults.filter(r => !r.error).length;
 
   return result;
-}
-
-/**
- * Build evaluation context for expression filtering.
- */
-async function buildEvalContext(
-  filePath: string,
-  vaultDir: string,
-  frontmatter: Record<string, unknown>
-): Promise<EvalContext> {
-  const relativePath = relative(vaultDir, filePath);
-  const fileName = basename(filePath, '.md');
-  const folder = dirname(relativePath);
-
-  let fileInfo: EvalContext['file'] = {
-    name: fileName,
-    path: relativePath,
-    folder,
-    ext: '.md',
-  };
-
-  // Try to get file stats
-  try {
-    const stats = await stat(filePath);
-    fileInfo = {
-      ...fileInfo,
-      size: stats.size,
-      ctime: stats.birthtime,
-      mtime: stats.mtime,
-    };
-  } catch {
-    // Ignore stat errors
-  }
-
-  return {
-    frontmatter,
-    file: fileInfo,
-  };
 }
 
 /**
