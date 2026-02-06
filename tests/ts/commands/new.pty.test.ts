@@ -403,6 +403,72 @@ defaults:
       );
     }, 30000);
 
+    it('should show inherited template source and apply inherited defaults/body', async () => {
+      const inheritanceSchema = {
+        version: 2,
+        types: {
+          objective: {
+            output_dir: 'Objectives',
+            fields: {
+              origin: { prompt: 'text' },
+            },
+            field_order: ['origin'],
+          },
+          task: {
+            extends: 'objective',
+            output_dir: 'Tasks',
+            fields: {},
+            field_order: ['origin'],
+          },
+        },
+      };
+
+      const inheritedObjectiveDefault: TempVaultFile = {
+        path: '.bwrb/templates/objective/default.md',
+        content: `---
+type: template
+template-for: objective
+description: Objective base template
+defaults:
+  origin: inherited-origin-sentinel
+---
+
+SENTINEL_INHERITED_BODY
+`,
+      };
+
+      await withTempVault(
+        ['new', 'task'],
+        async (proc, vaultPath) => {
+          const taskDefaultExists = await vaultFileExists(
+            vaultPath,
+            '.bwrb/templates/task/default.md'
+          );
+          expect(taskDefaultExists).toBe(false);
+
+          await proc.waitFor('Name', 10000);
+
+          const output = proc.getOutput();
+          expect(output).toContain('Using template: default');
+          expect(output).toContain('inherited from objective');
+
+          await proc.typeAndEnter('Inherited Template UX Test');
+
+          await proc.waitForStable(200);
+          await proc.waitFor('Created:', 5000);
+
+          const content = await readVaultFile(vaultPath, 'Tasks/Inherited Template UX Test.md');
+          expect(content).toContain('origin: inherited-origin-sentinel');
+          expect(content).toContain('SENTINEL_INHERITED_BODY');
+        },
+        {
+          files: [inheritedObjectiveDefault],
+          schema: inheritanceSchema,
+          includeTemplates: false,
+        }
+      );
+    }, 30000);
+
     it('should prompt for template when multiple available and no default', async () => {
       // Two templates, neither is default.md
       // quick has status default, detailed has priority default
