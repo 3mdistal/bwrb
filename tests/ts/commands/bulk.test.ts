@@ -647,6 +647,60 @@ tags:
       expect(result.stdout).toContain('Another Idea.md');
       expect(result.stdout).not.toContain('Sample Idea.md');
     });
+
+    it('should support chained OR filters', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--all',
+        '--where', "name == 'Sample Idea' || name == 'Another Idea' || name == 'Missing'",
+        '--set', 'test=value'
+      ], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Sample Idea.md');
+      expect(result.stdout).toContain('Another Idea.md');
+    });
+
+    it('should respect boolean precedence (&& before ||)', async () => {
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--all',
+        '--where', "name == 'Sample Idea' || name == 'Another Idea' && status == 'backlog'",
+        '--set', 'test=value'
+      ], vaultDir);
+      
+      expect(result.exitCode).toBe(0);
+      // Sample Idea matches the left OR branch, Another Idea matches the AND branch
+      expect(result.stdout).toContain('Sample Idea.md');
+      expect(result.stdout).toContain('Another Idea.md');
+    });
+
+    it('should normalize hyphenated keys in --where filters', async () => {
+      const tempVaultDir = await createTestVault();
+      try {
+        await writeFile(
+          join(tempVaultDir, 'Objectives/Tasks', 'Sample Task.md'),
+          `---
+type: task
+status: in-flight
+creation-date: 2024-01-15
+---
+`
+        );
+
+        const result = await runCLI([
+          'bulk', 'task',
+          '--all',
+          '--where', "creation-date == '2024-01-15'",
+          '--set', 'status=settled'
+        ], tempVaultDir);
+        
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Sample Task.md');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
   });
 
   describe('--limit option', () => {
@@ -786,6 +840,38 @@ tags:
       await expect(readFile(join(tempVaultDir, 'Archive', 'Ideas', 'Sample Idea.md'), 'utf-8')).resolves.toBeDefined();
       // Another Idea should NOT be moved (it has backlog status)
       await expect(readFile(join(tempVaultDir, 'Ideas', 'Another Idea.md'), 'utf-8')).resolves.toBeDefined();
+    });
+
+    it('should filter move targets with hierarchy functions', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Parent Idea.md'),
+        `---
+type: idea
+status: raw
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Child Idea.md'),
+        `---
+type: idea
+status: raw
+parent: "[[Parent Idea]]"
+---
+`
+      );
+
+      const result = await runCLI([
+        'bulk', 'idea',
+        '--move', 'Archive/Ideas',
+        '--where', "isChildOf('Parent Idea')",
+        '--execute'
+      ], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Moved 1 file');
+      await expect(readFile(join(tempVaultDir, 'Archive', 'Ideas', 'Child Idea.md'), 'utf-8')).resolves.toBeDefined();
+      await expect(readFile(join(tempVaultDir, 'Ideas', 'Parent Idea.md'), 'utf-8')).resolves.toBeDefined();
     });
 
     it('should update wikilinks when moving files', async () => {
