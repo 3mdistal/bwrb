@@ -12,7 +12,7 @@ import {
 } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
-import { printError, printWarning } from '../lib/prompt.js';
+import { printError } from '../lib/prompt.js';
 import {
   printJson,
   jsonError,
@@ -107,7 +107,8 @@ Targeting Options:
 Safety:
   bwrb audit (no selectors) defaults to all files because it is read-only.
   bwrb audit --fix requires explicit targeting (selectors or --all) and writes by default.
-  Use --dry-run to preview fixes without writing.
+  bwrb audit --fix --auto previews by default; add --execute to apply auto-fixes.
+  Use --dry-run to preview interactive fixes without writing.
 
 Examples:
   bwrb audit                      # Check all files (report only)
@@ -123,8 +124,9 @@ Examples:
   bwrb audit --all --fix                  # Interactive guided fixes across vault (writes)
   bwrb audit --fix --path "Ideas/**"      # Interactive guided fixes (writes)
   bwrb audit --fix --dry-run --path "Ideas/**"    # Preview guided fixes (no writes)
-  bwrb audit --fix --auto --path "Ideas/**"      # Auto-fix unambiguous issues (writes)
-  bwrb audit --fix --auto --dry-run --path "Ideas/**" # Preview auto-fixes (no writes)`)
+  bwrb audit --fix --auto --path "Ideas/**"      # Preview auto-fixes (no writes)
+  bwrb audit --fix --auto --execute --path "Ideas/**" # Apply auto-fixes (writes)
+  bwrb audit --fix --auto --dry-run --path "Ideas/**" # Explicit preview auto-fixes (no writes)`)
   .argument('[target]', 'Type, path, or where expression (auto-detected)')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path pattern')
@@ -139,7 +141,7 @@ Examples:
   .option('--fix', 'Interactive repair mode (writes by default; requires explicit targeting)')
   .option('--auto', 'With --fix: automatically apply unambiguous fixes')
   .option('--dry-run', 'With --fix: preview fixes without writing')
-  .option('--execute', 'Deprecated (auto-fixes write by default; use --dry-run to preview)')
+  .option('--execute', 'With --fix --auto: apply fixes (omit to preview)')
   .option('--allow-field <fields...>', 'Allow additional fields beyond schema (repeatable)')
   .action(async (target: string | undefined, options: AuditOptions & {
     type?: string;
@@ -183,9 +185,9 @@ Examples:
       exitWithValidationError('--dry-run requires --fix');
     }
 
-    // --execute requires --fix
-    if (executeMode && !fixMode) {
-      exitWithValidationError('--execute requires --fix');
+    // --execute requires --fix --auto
+    if (executeMode && (!fixMode || !autoMode)) {
+      exitWithValidationError('--execute requires --fix --auto');
     }
 
     // --fix is not compatible with JSON output
@@ -195,24 +197,6 @@ Examples:
 
     if (executeMode && dryRunMode) {
       exitWithValidationError('--execute cannot be used with --dry-run');
-    }
-
-    if (fixMode && !target) {
-      const hasInitialTargeting = hasAnyTargeting({
-        ...(options.type && { type: options.type }),
-        ...(options.path && { path: options.path }),
-        ...(options.where && options.where.length > 0 && { where: options.where }),
-        ...(options.body && { body: options.body }),
-        ...(options.text && { text: options.text }),
-        ...(options.all && { all: options.all }),
-      });
-
-      if (!hasInitialTargeting) {
-        exitWithValidationError(FIX_TARGETING_ERROR_MESSAGE, {
-          jsonMessage: FIX_TARGETING_ERROR_SUMMARY,
-          stderrMessage: FIX_TARGETING_ERROR_MESSAGE,
-        });
-      }
     }
 
     try {
@@ -274,12 +258,6 @@ Examples:
         }
       }
 
-      if (executeMode && autoMode) {
-        printWarning('Warning: --execute is deprecated; auto-fixes write by default. Use --dry-run to preview changes.');
-      } else if (executeMode) {
-        printWarning('Warning: --execute is deprecated and has no effect without --auto; interactive --fix writes by default.');
-      }
-
       // Validate type if specified
       if (typePath) {
         const typeDef = getTypeDefByPath(schema, typePath);
@@ -321,16 +299,10 @@ Examples:
           exitWithValidationError('audit --fix is interactive and requires a TTY; use --fix --auto or --output json');
         }
 
-        const executeRequiredIssueCodes = new Set<IssueCode>(['trailing-whitespace']);
-        const hasExecuteRequiredIssues = autoMode && !executeMode && results.some(result =>
-          result.issues.some(issue => issue.autoFixable && executeRequiredIssueCodes.has(issue.code))
-        );
-        const autoFixDryRun = dryRunMode || hasExecuteRequiredIssues;
-        const autoFixDryRunReason = dryRunMode
-          ? 'explicit'
-          : hasExecuteRequiredIssues
-            ? 'execute-required'
-            : undefined;
+        const autoFixDryRun = autoMode && !executeMode;
+        const autoFixDryRunReason = autoFixDryRun
+          ? dryRunMode ? 'explicit' : 'execute-required'
+          : undefined;
 
         const fixSummary = autoMode
           ? await runAutoFix(results, schema, vaultDir, { dryRun: autoFixDryRun, dryRunReason: autoFixDryRunReason })

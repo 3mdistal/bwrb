@@ -906,20 +906,19 @@ priority: medium
       await rm(tempVaultDir, { recursive: true, force: true });
     });
 
-    it('should prompt to rerun without --dry-run after preview', async () => {
+    it('should prompt to rerun with --execute after auto preview', async () => {
       const result = await runCLI(
         ['audit', '--fix', '--auto', '--dry-run', '--path', 'Ideas/**'],
         tempVaultDir
       );
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Re-run without '--dry-run' to apply changes.");
-      expect(result.stdout).not.toContain('--execute');
+      expect(result.stdout).toContain("Re-run with '--execute' to apply fixes.");
     });
 
     it('should not mention --execute after applying fixes', async () => {
       const result = await runCLI(
-        ['audit', '--fix', '--auto', '--path', 'Ideas/**'],
+        ['audit', '--fix', '--auto', '--execute', '--path', 'Ideas/**'],
         tempVaultDir
       );
 
@@ -928,17 +927,14 @@ priority: medium
       expect(result.stdout).not.toContain("Re-run without '--dry-run'");
     });
 
-    it('should warn about deprecated --execute without guidance to rerun', async () => {
+    it('should error when --execute is used without --auto', async () => {
       const result = await runCLI(
-        ['audit', '--fix', '--auto', '--execute', '--path', 'Ideas/**'],
+        ['audit', '--fix', '--execute', '--path', 'Ideas/**'],
         tempVaultDir
       );
 
-      expect(result.exitCode).toBe(0);
-      expect(result.stderr).toContain('deprecated');
-      expect(result.stderr).not.toContain('Run with --execute');
-      expect(result.stderr).not.toContain('rerun with --execute');
-      expect(result.stdout).not.toContain('--execute');
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('--execute requires --fix --auto');
     });
   });
 
@@ -2466,14 +2462,26 @@ status: raw
       const result = await runCLI(['audit', '--execute'], vaultDir);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('--execute requires --fix');
+      expect(result.stderr).toContain('--execute requires --fix --auto');
     });
 
-    it('should accept --execute with --fix', async () => {
+    it('should error when --execute is used with --fix but without --auto', async () => {
       const result = await runCLI(['audit', '--fix', '--all', '--execute'], vaultDir);
 
-      // Should run successfully (no issues in test vault)
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('--execute requires --fix --auto');
+    });
+
+    it('should return JsonError when --execute is invalid in --output json mode', async () => {
+      const result = await runCLI(['audit', '--execute', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('--execute requires --fix --auto');
+
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('--execute requires --fix --auto');
+      expect(parsed.code).toBe(1);
     });
   });
 
@@ -3657,7 +3665,7 @@ tags: later
         `Intro line\n---\ntype: idea\nstatus: raw\npriority: medium\n---\nBody\n`
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Moved frontmatter to top');
 
@@ -3724,7 +3732,7 @@ tags: urgent
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--fix', '--auto'], tempVaultDir);
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
       expect(result.stdout).toContain('Resolved duplicate key');
 
@@ -3772,7 +3780,7 @@ tags: later
       await rm(tempVaultDir, { recursive: true, force: true });
     });
 
-    it('should avoid --execute guidance in dry-run mode', async () => {
+    it('should include --execute guidance in auto dry-run mode', async () => {
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Dry Run.md'),
         `---
@@ -3788,14 +3796,13 @@ priority: medium
       );
 
       expect(result.stdout).toContain('Dry run');
-      expect(result.stdout).toContain("Re-run without '--dry-run'");
-      expect(result.stdout).not.toContain('--execute');
+      expect(result.stdout).toContain("Re-run with '--execute' to apply fixes.");
 
       const content = await readFile(join(tempVaultDir, 'Ideas', 'Dry Run.md'), 'utf-8');
       expect(content).not.toContain('status:');
     });
 
-    it('should confirm applied fixes without --execute guidance', async () => {
+    it('should confirm applied fixes when --execute is provided', async () => {
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Applied Fix.md'),
         `---
@@ -3806,7 +3813,7 @@ priority: medium
       );
 
       const result = await runCLI(
-        ['audit', '--fix', '--auto', '--path', 'Ideas/**'],
+        ['audit', '--fix', '--auto', '--execute', '--path', 'Ideas/**'],
         tempVaultDir
       );
 
