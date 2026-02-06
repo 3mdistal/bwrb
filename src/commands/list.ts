@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { basename, relative } from 'path';
-import Table from 'cli-table3';
+import chalk from 'chalk';
 import {
   getType,
   loadSchema,
@@ -33,6 +33,8 @@ import {
 } from '../lib/targeting.js';
 import { createDashboard, updateDashboard, getDashboard } from '../lib/dashboard.js';
 import { suggestFieldName } from '../lib/validation.js';
+import { getTtyContext } from '../lib/tty/context.js';
+import { renderTable } from '../lib/tty/table.js';
 
 /**
  * Resolve the output format from --output flag and deprecated flags.
@@ -535,26 +537,50 @@ function printTable(
   showPaths: boolean,
   fields: string[]
 ): void {
-  const headers = [showPaths ? 'PATH' : 'NAME', ...fields.map(f => f.toUpperCase())];
+  const context = getTtyContext();
+  const headerStyle = context.colorEnabled ? (text: string) => chalk.gray(text) : null;
 
-  const table = new Table({
-    head: headers,
-    style: { head: [], border: [] },
-  });
+  const columns = [
+    {
+      key: 'primary',
+      title: showPaths ? 'PATH' : 'NAME',
+      minWidth: 12,
+      weight: 2,
+      priority: 0,
+      canDrop: false,
+      ...(headerStyle ? { style: headerStyle } : {}),
+    },
+    ...fields.map((field, index) => ({
+      key: field,
+      title: field.toUpperCase(),
+      minWidth: 8,
+      weight: 1,
+      priority: index + 1,
+      canDrop: true,
+      ...(headerStyle ? { style: headerStyle } : {}),
+    })),
+  ];
+
+  const rows: Array<Record<string, string>> = [];
 
   for (const { path, frontmatter } of files) {
     const name = showPaths ? relative(vaultDir, path) : basename(path, '.md');
-    const row: string[] = [name];
+    const row: Record<string, string> = {
+      primary: name,
+    };
 
     for (const field of fields) {
       const value = frontmatter[field];
-      row.push(formatValue(value));
+      row[field] = formatValue(value);
     }
 
-    table.push(row);
+    rows.push(row);
   }
 
-  console.log(table.toString());
+  const lines = renderTable({ columns, rows, context });
+  for (const line of lines) {
+    console.log(line);
+  }
 }
 
 /**
