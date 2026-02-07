@@ -576,6 +576,30 @@ Some content
           expect(result.stdout).toContain('Sample Idea');
         }
       });
+
+      it('should fail for invalid field in --where when --type is provided', async () => {
+        const result = await runCLI([
+          'search', 'status', '--body', '--type', 'idea',
+          '--where', "unknown_field == 'raw'"
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain("Unknown field 'unknown_field'");
+        expect(result.stderr).toContain("for type 'idea'");
+      });
+
+      it('should return JsonError for invalid field in --where with --output json', async () => {
+        const result = await runCLI([
+          'search', 'status', '--body', '--type', 'idea',
+          '--where', "unknown_field == 'raw'",
+          '--output', 'json'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(1);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain("Unknown field 'unknown_field'");
+      });
     });
   });
 });
