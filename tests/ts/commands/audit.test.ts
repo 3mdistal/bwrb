@@ -40,6 +40,18 @@ describe('audit command', () => {
 
       expect(result.exitCode).toBe(0);
     });
+
+    it('should fail for invalid --where field when --type is provided', async () => {
+      const result = await runCLI([
+        'audit',
+        '--type', 'idea',
+        '--where', "unknown_field == 'raw'"
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Unknown field 'unknown_field'");
+      expect(result.stderr).toContain("for type 'idea'");
+    });
   });
 
   describe('relation field integrity', () => {
@@ -2964,6 +2976,29 @@ priority: medium
       const content = await readFile(join(tempVaultDir, 'Ideas', 'Fix Whitespace.md'), 'utf-8');
       expect(content).toContain('status: raw\n');
       expect(content).not.toContain('status: raw  ');
+    });
+
+    it('should preserve CRLF while auto-fixing trailing whitespace', async () => {
+      const filePath = join(tempVaultDir, 'Ideas', 'Fix Whitespace CRLF.md');
+      await writeFile(
+        filePath,
+        `---\r\n` +
+        `type: idea\r\n` +
+        `status: raw  \r\n` +
+        `priority: medium\r\n` +
+        `---\r\n`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(filePath, 'utf-8');
+      expect(content).toContain('status: raw\r\n');
+      expect(content).not.toContain('status: raw  ');
+      expect(content).toContain('\r\n');
+      expect(content).not.toContain('status: raw\n');
     });
 
     it('should not write without --execute', async () => {

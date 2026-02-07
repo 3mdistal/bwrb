@@ -4,6 +4,35 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-02-03
+
+Changes since `v0.1.4`.
+
+### Added
+
+- **Phase 2 vault auto-detection with downward discovery and picker** (#338)
+- **`bwrb delete --dry-run` for explicit previewing of deletions** (#435)
+- **Audit --fix interactive detections and fixes for list/type/date/link edge cases** (#375)
+
+### Changed
+
+- **Audit ignores built-in frontmatter fields written by `bwrb new`** (#395)
+- **`--where` now supports hyphenated frontmatter keys** (#410)
+- **`--where` now supports regex matching and filename-based `name` filters** (#436)
+- **Clarify `audit --fix` targeting requirements and guidance** (#378)
+
+### Fixed
+
+- **Owned note creation now writes `owner` frontmatter and uses the owning field folder** (#394)
+- **Delete now scopes query resolution within targeting selectors instead of deleting all matches** (#435)
+- **Report packaged version in `bwrb --version` output** (#379)
+- **Ensure npm publish artifacts include built CLI output** (#408)
+- **Audit --fix structural auto-fixes are more conservative and preserve line endings** (#374)
+
+### Changed (Internal)
+
+- **Remove beads artifacts/backups from the repo** (#415)
+
 ### Changed (Breaking)
 
 - **Standardized `-o` flag to mean `--open` across all commands** (#239)
@@ -26,6 +55,10 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Changed
 
+- **Refreshed pnpm-managed dependencies and lockfiles across root + docs-site** (#335)
+  - Updated direct dependencies to latest compatible releases while preserving current CLI/runtime contracts
+  - Kept core contract-sensitive packages on existing major lines (e.g. `zod` v3, `vitest` v2) to avoid unplanned breaking changes
+
 - **Audit ignores built-in frontmatter fields written by `bwrb new`** (#395)
   - `id` and `name` no longer emit `unknown-field` warnings
 
@@ -34,6 +67,8 @@ All notable changes to Bowerbird are documented in this file.
 - **Owned note creation now writes `owner` frontmatter and uses the owning field folder** (#394)
 - **Delete now scopes query resolution within targeting selectors instead of deleting all matches** (#435)
 - **`--where` now supports regex matching and filename-based `name` filters** (#436)
+- **`bwrb edit` now resolves exact-name queries across all types (including dot-directory outputs) and errors with disambiguation guidance when names are ambiguous** (#428)
+- **Non-interactive confirmations no longer render prompt UI; use `--force`/`--yes` or pipe `y/n`** (#432)
 
 ### Added
 
