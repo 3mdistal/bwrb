@@ -40,6 +40,18 @@ describe('audit command', () => {
 
       expect(result.exitCode).toBe(0);
     });
+
+    it('should fail for invalid --where field when --type is provided', async () => {
+      const result = await runCLI([
+        'audit',
+        '--type', 'idea',
+        '--where', "unknown_field == 'raw'"
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Unknown field 'unknown_field'");
+      expect(result.stderr).toContain("for type 'idea'");
+    });
   });
 
   describe('relation field integrity', () => {
