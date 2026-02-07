@@ -108,6 +108,7 @@ export default defineConfig({
 					items: [
 						{ slug: 'product/documentation-policy' },
 						{ slug: 'product/vision' },
+						{ slug: 'product/docs-taxonomy-and-naming' },
 						{ slug: 'product/roadmap' },
 					],
 				},
