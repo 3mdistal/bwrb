@@ -14,6 +14,17 @@ pnpm build      # Build production site
 pnpm preview    # Preview production build
 ```
 
+## CI Validation
+
+GitHub Actions validates docs build health for pull requests and pushes by running:
+
+```bash
+pnpm -C docs-site install --frozen-lockfile
+pnpm -C docs-site build
+```
+
+The docs build step runs for pull requests when relevant files change (`docs-site/**` and CI workflow changes).
+
 ## Deployment
 
 The docs are hosted on Vercel and connected to GitHub.
