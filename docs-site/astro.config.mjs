@@ -106,6 +106,7 @@ export default defineConfig({
 					label: 'Product',
 					collapsed: true,
 					items: [
+						{ slug: 'product/documentation-policy' },
 						{ slug: 'product/vision' },
 						{ slug: 'product/docs-taxonomy-and-naming' },
 						{ slug: 'product/roadmap' },
