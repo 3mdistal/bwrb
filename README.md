@@ -519,4 +519,5 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 pnpm test              # Run tests
 pnpm test:coverage     # Run with coverage report
 pnpm typecheck         # Type checking
+pnpm docs:lint         # Verify canonical docs concept links
 ```

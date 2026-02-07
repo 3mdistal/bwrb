@@ -237,7 +237,7 @@ export BWRB_VAULT=~/notes
 
 ## Next Steps
 
-- [Schema concepts](/concepts/schema/) — Deep dive into schema structure
-- [Types and inheritance](/concepts/types/) — Organize types hierarchically
+- [Schema](/concepts/schema/) — Deep dive into schema structure
+- [Types and Inheritance](/concepts/types-and-inheritance/) — Organize types hierarchically
 - [CLI Reference](/reference/commands/new/) — Full command documentation
 - [Templates](/templates/overview/) — Create reusable note structures
