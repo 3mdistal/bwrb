@@ -55,6 +55,10 @@ Changes since `v0.1.4`.
 
 ### Changed
 
+- **Refreshed pnpm-managed dependencies and lockfiles across root + docs-site** (#335)
+  - Updated direct dependencies to latest compatible releases while preserving current CLI/runtime contracts
+  - Kept core contract-sensitive packages on existing major lines (e.g. `zod` v3, `vitest` v2) to avoid unplanned breaking changes
+
 - **Audit ignores built-in frontmatter fields written by `bwrb new`** (#395)
   - `id` and `name` no longer emit `unknown-field` warnings
 
@@ -63,6 +67,7 @@ Changes since `v0.1.4`.
 - **Owned note creation now writes `owner` frontmatter and uses the owning field folder** (#394)
 - **Delete now scopes query resolution within targeting selectors instead of deleting all matches** (#435)
 - **`--where` now supports regex matching and filename-based `name` filters** (#436)
+- **`bwrb edit` now resolves exact-name queries across all types (including dot-directory outputs) and errors with disambiguation guidance when names are ambiguous** (#428)
 - **Non-interactive confirmations no longer render prompt UI; use `--force`/`--yes` or pipe `y/n`** (#432)
 
 ### Added

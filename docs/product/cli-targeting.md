@@ -222,6 +222,8 @@ bwrb audit          # Audits all notes
 
 No selectors = prompt with picker.
 
+**Edit exact-name behavior:** When `bwrb edit "Exact Note Name"` omits `--type`, the command resolves across all types. If multiple notes share the exact name, it errors and lists candidates; disambiguate with `--type`, `--path`, or a vault-relative path.
+
 ### Destructive commands (`bulk`, `delete`)
 
 **Two safety gates:**
@@ -291,6 +293,7 @@ Bowerbird recognizes multiple exclusion mechanisms:
 - `.bwrbignore` rules are applied after `.gitignore`, so they can override gitignored paths. Note: re-including a file under a gitignored directory requires unignoring the directory too (e.g. `!dist/` then `!dist/**`).
 - `.bwrbignore` files inside a directory that is ignored (by `.gitignore` or a parent `.bwrbignore`) may not be discovered, because bwrb does not traverse into ignored directories just to look for more ignore rules. Put override rules in an ancestor directory (often the vault root).
 - Hard exclusions (schema/env exclusions, hidden directories, and `.bwrb/`) are always excluded and are not overrideable via `.bwrbignore`.
+- Schema-declared type output directories are discoverable even when they live under a hidden dot-directory; vault-wide scans still skip other hidden directories.
 
 ### When Exclusion Rules Apply
 

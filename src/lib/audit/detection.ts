@@ -14,7 +14,6 @@ import {
   getOutputDir,
   getTypeFamilies,
   getDescendants,
-  getAllFieldsForType,
 } from '../schema.js';
 import { readStructuralFrontmatter } from './structural.js';
 import {
@@ -37,8 +36,8 @@ import { isMap } from 'yaml';
 import type { Pair, Scalar, YAMLMap } from 'yaml';
 import { isDeepStrictEqual } from 'node:util';
 import { suggestOptionValue, suggestFieldName } from '../validation.js';
-import { applyFrontmatterFilters } from '../query.js';
 import { searchContent } from '../content-search.js';
+import { applyWhereExpressions } from '../where-targeting.js';
 import type { LoadedSchema, Field } from '../../types/schema.js';
 import {
   type AuditIssue,
@@ -56,10 +55,7 @@ import { extractLinkTarget } from '../links.js';
 // Import file discovery functions from shared module
 import {
   discoverManagedFiles,
-  collectAllMarkdownFilenames,
-  buildNotePathMap,
-  buildNoteTypeMap,
-  buildNoteTargetIndex,
+  buildVaultNoteIndex,
   findSimilarFiles,
 } from '../discovery.js';
 
@@ -114,18 +110,19 @@ export async function runAudit(
       })
     );
     
-    const knownKeys = options.typePath
-      ? getAllFieldsForType(schema, options.typePath)
-      : null;
-    const filtered = await applyFrontmatterFilters(filesWithFrontmatter, {
+    const filtered = await applyWhereExpressions(filesWithFrontmatter, {
+      schema,
+      ...(options.typePath ? { typePath: options.typePath } : {}),
       whereExpressions: options.whereExpressions,
       vaultDir,
-      silent: true,
-      ...(knownKeys ? { knownKeys } : {}),
     });
+
+    if (!filtered.ok) {
+      throw new Error(filtered.error);
+    }
     
     // Map back to ManagedFile
-    const filteredPaths = new Set(filtered.map(f => f.path));
+    const filteredPaths = new Set(filtered.files.map(f => f.path));
     filteredFiles = filteredFiles.filter(f => filteredPaths.has(f.path));
   }
 
@@ -148,29 +145,20 @@ export async function runAudit(
     }
   }
 
-  // Build set of all markdown files for stale reference checking
-  const allFiles = await collectAllMarkdownFilenames(schema, vaultDir);
-
-  // Build map from note names to relative paths for ownership checking
-  const notePathMap = await buildNotePathMap(schema, vaultDir);
+  // Build a unified note index for relation/type/path lookups.
+  const noteIndex = await buildVaultNoteIndex(schema, vaultDir);
 
   // Build ownership index for ownership violation checking
   const ownershipIndex = await buildOwnershipIndex(schema, vaultDir);
 
-  // Build map from note names to their types for context field validation
-  const noteTypeMap = await buildNoteTypeMap(schema, vaultDir);
-
-  // Build a note target index for disambiguation and type resolution
-  const noteTargetIndex = await buildNoteTargetIndex(schema, vaultDir);
-
   // Build parent map for cycle detection on recursive types
-  const parentMap = await buildParentMap(schema, vaultDir, filteredFiles, noteTargetIndex);
+  const parentMap = await buildParentMap(schema, filteredFiles, noteIndex);
 
   // Audit each file
   const results: FileAuditResult[] = [];
 
   for (const file of filteredFiles) {
-    const issues = await auditFile(schema, vaultDir, file, options, allFiles, ownershipIndex, notePathMap, noteTypeMap, parentMap, noteTargetIndex);
+    const issues = await auditFile(schema, vaultDir, file, options, noteIndex, ownershipIndex, parentMap);
 
     // Apply issue filters
     let filteredIssues = issues;
@@ -205,12 +193,9 @@ export async function auditFile(
   _vaultDir: string,
   file: ManagedFile,
   options: AuditRunOptions,
-  _allFiles?: Set<string>,
+  noteIndex?: import('../discovery.js').VaultNoteIndex,
   ownershipIndex?: OwnershipIndex,
-  notePathMap?: Map<string, string>,
-  noteTypeMap?: Map<string, string>,
   parentMap?: Map<string, string>,
-  noteTargetIndex?: import('../discovery.js').NoteTargetIndex
 ): Promise<AuditIssue[]> {
   const issues: AuditIssue[] = [];
 
@@ -517,8 +502,8 @@ export async function auditFile(
         fieldName,
         value,
         field,
-        noteTargetIndex,
-        noteTypeMap,
+        noteIndex?.noteTargetIndex,
+        noteIndex?.noteTypeMap,
         file
       );
       issues.push(...relationIssues);
@@ -570,13 +555,13 @@ export async function auditFile(
   // Per product scope, v1.0 only validates frontmatter relation fields
 
   // Check for ownership violations
-  if (ownershipIndex && notePathMap) {
+  if (ownershipIndex && noteIndex?.notePathMap) {
     const ownershipIssues = await checkOwnershipViolations(
       file,
       frontmatter,
       fields,
       ownershipIndex,
-      notePathMap
+      noteIndex.notePathMap
     );
     issues.push(...ownershipIssues);
   }
@@ -1339,16 +1324,22 @@ async function checkOwnershipViolations(
  */
 async function buildParentMap(
   schema: LoadedSchema,
-  _vaultDir: string,
   files: ManagedFile[],
-  noteTargetIndex: import('../discovery.js').NoteTargetIndex | undefined
+  noteIndex: import('../discovery.js').VaultNoteIndex | undefined
 ): Promise<Map<string, string>> {
   const parentMap = new Map<string, string>();
+  const noteTargetIndex = noteIndex?.noteTargetIndex;
+  const snapshotByRelativePath = new Map(
+    (noteIndex?.snapshot.notes ?? []).map((note) => [note.relativePath, note] as const)
+  );
   
   for (const file of files) {
     try {
-      const { frontmatter } = await readStructuralFrontmatter(file.path);
-      const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
+      const snapshotNote = snapshotByRelativePath.get(file.relativePath);
+      const frontmatter = snapshotNote?.frontmatter;
+      if (!frontmatter) continue;
+
+      const typePath = snapshotNote.resolvedType ?? resolveTypeFromFrontmatter(schema, frontmatter);
       if (!typePath) continue;
       
       const typeDef = getType(schema, typePath);
