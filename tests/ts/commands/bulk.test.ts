@@ -157,6 +157,18 @@ describe('bulk command', () => {
       expect(result.stdout).toContain('Dry run');
     });
 
+    it('should fail for invalid --where field when type is provided', async () => {
+      const result = await runCLI([
+        'bulk', '--type', 'idea',
+        '--where', "unknown_field == 'raw'",
+        '--set', 'priority=high'
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Unknown field 'unknown_field'");
+      expect(result.stderr).toContain("for type 'idea'");
+    });
+
     it('should work with --all and --execute', async () => {
       const tempVaultDir = await createTestVault();
       try {
@@ -600,6 +612,26 @@ describe('bulk command', () => {
 
     beforeEach(async () => {
       tempVaultDir = await createTestVault();
+      const schemaWithTags = {
+        ...TEST_SCHEMA,
+        types: {
+          ...TEST_SCHEMA.types,
+          idea: {
+            ...TEST_SCHEMA.types.idea,
+            fields: {
+              ...(TEST_SCHEMA.types.idea.fields ?? {}),
+              tags: {
+                prompt: 'text',
+              },
+            },
+          },
+        },
+      };
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(schemaWithTags, null, 2)
+      );
+
       // Set up array field for testing
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Sample Idea.md'),

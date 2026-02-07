@@ -48,23 +48,23 @@
     "gray-matter": "^4.0.3",
     "ignore": "^7.0.5",
     "jsep": "^1.4.0",
-    "minimatch": "^10.1.1",
+    "minimatch": "^10.1.2",
     "prompts": "^2.4.2",
     "yaml": "^2.8.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
-    "@types/node": "^22.19.3",
+    "@types/node": "^22.19.9",
     "@types/prompts": "^2.4.9",
     "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^9.39.2",
-    "knip": "^5.80.0",
+    "knip": "^5.83.1",
     "node-pty": "^1.1.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.51.0",
+    "typescript-eslint": "^8.54.0",
     "vitest": "^2.1.9"
   },
   "engines": {
