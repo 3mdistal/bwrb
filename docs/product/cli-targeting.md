@@ -2,7 +2,7 @@
 
 > How Bowerbird commands select which notes to operate on.
 
-**Canonical docs:** This document is product rationale. The user-facing, canonical targeting reference lives on the docs-site at `/reference/targeting/`.
+**Canonical docs:** This document is product rationale. User-facing targeting behavior is canonical on docs-site: https://bwrb.dev/reference/targeting/. Source-of-truth policy: `docs/product/canonical-docs-policy.md`.
 
 ---
 
