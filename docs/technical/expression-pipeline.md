@@ -40,9 +40,10 @@ This page documents current behavior using those contracts as guardrails.
 Primary call path:
 
 1. `resolveTargets()` in `src/lib/targeting.ts`
-2. optional early static validation via `validateWhereExpressions()` in `src/lib/expression-validation.ts` (only when `--type` is present)
-3. runtime filtering via `applyFrontmatterFilters()` in `src/lib/query.ts`
-4. expression parse/eval via `matchesExpression()` in `src/lib/expression.ts`
+2. strict/permissive routing via `applyWhereExpressions()` in `src/lib/where-targeting.ts`
+3. optional early static validation via `validateWhereExpressions()` in `src/lib/expression-validation.ts` (only when `--type` is present)
+4. runtime filtering via `applyFrontmatterFilters()` in `src/lib/query.ts`
+5. expression parse/eval via `matchesExpression()` in `src/lib/expression.ts`
 
 ### 2) Template constraints (`constraint.validate`)
 
@@ -93,10 +94,12 @@ This reuses the same parser/evaluator, but not targeting policy.
   - `src/lib/where-normalize.ts`
 - Static/type-aware validation findings
   - `src/lib/expression-validation.ts`
+- Strict/permissive where policy seam
+  - `src/lib/where-targeting.ts`
 - Runtime filter application and hierarchy precompute
   - `src/lib/query.ts`
 - Strict/permissive policy selection and command-facing error flow
-  - `src/lib/targeting.ts` and command boundaries
+  - `src/lib/targeting.ts`, `src/lib/where-targeting.ts`, and command boundaries
 - JSON envelope and exit-code contract
   - `src/lib/output.ts`
 
@@ -111,8 +114,9 @@ Rule: keep policy decisions at command/targeting boundaries. Keep lower-level he
 | `src/lib/expression.ts` | Parse/eval semantics, built-ins, operator behavior, context property lookup | CLI mode policy, warning formatting, command exits |
 | `src/lib/where-normalize.ts` | String rewrite for hyphenated keys in expressions | Schema/type validation, output rendering |
 | `src/lib/expression-validation.ts` | Static analysis for known type context; unknown-field/select-option findings | Runtime file filtering, printing, process exit |
+| `src/lib/where-targeting.ts` | Apply strict-vs-permissive `--where` policy (typed early validation when available), then delegate runtime filtering | Expression language semantics; command output rendering |
 | `src/lib/query.ts` | Apply expressions to file sets; hierarchy precomputation for hierarchy functions | Strict/permissive policy decisions; JSON envelope rendering |
-| `src/lib/targeting.ts` + commands | Select strict/permissive path; route failures to text/JSON output flows | Low-level parse/eval semantics |
+| `src/lib/targeting.ts` + commands | Orchestrate selector order and route failures to text/JSON output flows | Low-level parse/eval semantics |
 | `src/lib/output.ts` | JSON envelope helpers and exit-code constants | Expression semantics |
 
 ---
@@ -130,6 +134,25 @@ Rule: keep policy decisions at command/targeting boundaries. Keep lower-level he
   - Command behavior stays permissive to support migration workflows described in product docs.
 
 This mirrors current product policy; do not tighten permissive mode in docs-only changes.
+
+---
+
+## Layering and Side-Effect Boundaries
+
+Dependency direction for `--where`:
+
+`commands/*` -> `targeting.ts` -> `where-targeting.ts` -> (`expression-validation.ts` and `query.ts`) -> `expression.ts`
+
+Current functional-core vs shell reality:
+
+- Mostly pure analysis/helpers:
+  - `expression-validation.ts` (AST walk and findings)
+  - `where-normalize.ts` (string rewriting)
+- Not purely functional (by design today):
+  - `query.ts` may emit diagnostics in non-silent mode and performs file-driven filtering orchestration
+  - `expression.ts` includes time-sensitive built-ins (`today()`, `now()`) and context-dependent evaluation
+
+When extending the pipeline, keep policy and rendering at boundaries (`targeting`/commands), and keep parsing/analysis helpers deterministic where practical.
 
 ---
 
@@ -204,4 +227,7 @@ Related tests:
 - `tests/ts/lib/expression.test.ts`
 - `tests/ts/lib/where-normalize.test.ts`
 - `tests/ts/lib/expression-validation.test.ts`
+- `tests/ts/lib/where-targeting.test.ts`
+- `tests/ts/lib/where-targeting-guard.test.ts`
 - `tests/ts/lib/targeting.test.ts`
+- `tests/ts/commands/search.test.ts` (JSON error contract for invalid typed `--where`)
