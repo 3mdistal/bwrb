@@ -2,7 +2,7 @@
 
 > The product-level contract for machine-readable CLI output.
 
-**Canonical docs:** This document is product rationale + implementation contract. It should be mirrored on the docs-site (planned path: `/reference/output/`).
+**Canonical docs:** This document is product rationale + implementation contract. User-facing JSON behavior is canonical on docs-site (see https://bwrb.dev/automation/json-mode/ and command reference pages). Source-of-truth policy: `docs/product/canonical-docs-policy.md`.
 
 ---
 
