@@ -637,7 +637,7 @@ A full schema demonstrating inheritance, relations, body sections, and config:
 
 ## See Also
 
-- [Schema concept](/concepts/schema/) — Why schema matters
+- [Schema](/concepts/schema/) — Why schema matters
 - [Types and Inheritance](/concepts/types-and-inheritance/) — Mental model for type hierarchies
 - [Validation and Audit](/concepts/validation-and-audit/) — Keeping notes in sync
 - [`bwrb schema`](/reference/commands/schema/) — Schema management commands

@@ -122,4 +122,4 @@ bwrb config edit obsidian_vault --json '"My Vault"'
 
 ## See Also
 
-- [Schema concepts](/concepts/schema/) — Schema structure
+- [Schema](/concepts/schema/) — Schema structure

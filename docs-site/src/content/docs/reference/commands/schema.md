@@ -283,6 +283,6 @@ bwrb schema history --output json
 
 ## See Also
 
-- [Schema concepts](/concepts/schema/) — Understanding schema structure
+- [Schema](/concepts/schema/) — Understanding schema structure
 - [Migrations](/concepts/migrations/) — Migration workflow
 - [bwrb audit](/reference/commands/audit/) — Validate notes against schema
