@@ -57,6 +57,26 @@ Apply fixes across the entire vault:
 bwrb audit --all --fix
 ```
 
+## Hygiene Warnings
+
+Audit also reports low-risk hygiene warnings to keep frontmatter deterministic and reduce noisy diffs.
+
+- Example: `trailing-whitespace` checks raw frontmatter `key: value` lines for trailing spaces/tabs.
+- Scope is intentionally narrow: block scalar content (`|`/`>`) is ignored, and whitespace inside quoted values is allowed.
+- Fix behavior is minimal-diff line trim only; it does not reserialize YAML.
+
+Automation note:
+
+```bash
+# Preview auto-fixes
+bwrb audit --fix --auto --all
+
+# Apply execute-gated auto-fixes (including trailing-whitespace)
+bwrb audit --fix --auto --execute --all
+```
+
+See the [bwrb audit command reference](/reference/commands/audit/) for exact issue semantics and fix gating details.
+
 ## CI Integration
 
 Run audit in CI to catch schema violations:

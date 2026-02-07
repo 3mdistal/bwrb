@@ -6,8 +6,7 @@ import { parseNote, writeNote } from '../frontmatter.js';
 import { discoverManagedFiles } from '../discovery.js';
 import { searchContent } from '../content-search.js';
 import { filterByPath } from '../targeting.js';
-import { applyFrontmatterFilters } from '../query.js';
-import { getAllFieldsForType } from '../schema.js';
+import { applyWhereExpressions } from '../where-targeting.js';
 import { applyOperations } from './operations.js';
 import { createBackup } from './backup.js';
 import { executeBulkMove, findAllMarkdownFiles } from './move.js';
@@ -112,13 +111,16 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
 
   let filteredFiles = parsedFiles;
   if (whereExpressions.length > 0) {
-    const knownKeys = typePath ? getAllFieldsForType(schema, typePath) : undefined;
-    filteredFiles = await applyFrontmatterFilters(parsedFiles, {
+    const whereResult = await applyWhereExpressions(filteredFiles, {
+      schema,
+      ...(typePath ? { typePath } : {}),
       whereExpressions,
       vaultDir,
-      silent: true,
-      ...(knownKeys ? { knownKeys } : {}),
     });
+    if (!whereResult.ok) {
+      throw new Error(whereResult.error);
+    }
+    filteredFiles = whereResult.files;
   }
 
   // Filter and collect changes
@@ -253,9 +255,6 @@ async function executeBulkWithMove(
 
   result.totalFiles = files.length;
 
-  // Filter files based on criteria
-  const filesToMove: string[] = [];
-
   const parsedFiles: {
     path: string;
     relativePath: string;
@@ -278,18 +277,19 @@ async function executeBulkWithMove(
 
   let filteredFiles = parsedFiles;
   if (whereExpressions.length > 0) {
-    const knownKeys = typePath ? getAllFieldsForType(schema, typePath) : undefined;
-    filteredFiles = await applyFrontmatterFilters(parsedFiles, {
+    const whereResult = await applyWhereExpressions(filteredFiles, {
+      schema,
+      ...(typePath ? { typePath } : {}),
       whereExpressions,
       vaultDir,
-      silent: true,
-      ...(knownKeys ? { knownKeys } : {}),
     });
+    if (!whereResult.ok) {
+      throw new Error(whereResult.error);
+    }
+    filteredFiles = whereResult.files;
   }
 
-  for (const file of filteredFiles) {
-    filesToMove.push(file.path);
-  }
+  const filesToMove = filteredFiles.map(file => file.path);
 
   // Apply limit
   const filesToProcess = limit ? filesToMove.slice(0, limit) : filesToMove;

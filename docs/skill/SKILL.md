@@ -182,6 +182,9 @@ bwrb edit --type task "Fix bug" --json '{"priority": "high"}'
 bwrb edit --type task --where "status == 'active'" "Deploy" --json '{"status": "done"}'
 ```
 
+Notes:
+- If multiple notes share the same name, `bwrb edit` errors and lists candidates. Disambiguate with `--type`, `--path`, or a vault-relative path.
+
 ### Deleting Notes
 
 ```bash
