@@ -9,6 +9,7 @@ import {
   TempVaultFile,
 } from '../lib/pty-helpers.js';
 import { TEST_SCHEMA } from '../fixtures/setup.js';
+import { parseFrontmatter } from '../../../src/lib/frontmatter.js';
 
 const describePty = shouldSkipPtyTests() ? describe.skip : describe;
 
@@ -29,6 +30,47 @@ defaults:
 ## Description
 
 [Describe your idea here]
+`,
+};
+
+const RELATION_MULTIPLE_SCHEMA = {
+  version: 2,
+  config: {
+    link_format: 'wikilink',
+  },
+  types: {
+    meeting: {
+      output_dir: 'Meetings',
+      fields: {
+        type: { value: 'meeting' },
+        people: {
+          prompt: 'relation',
+          source: 'person',
+          multiple: true,
+          required: false,
+        },
+      },
+      field_order: ['type', 'people'],
+    },
+    person: {
+      output_dir: 'People',
+      fields: {
+        type: { value: 'person' },
+      },
+      field_order: ['type'],
+    },
+  },
+} as const;
+
+const RELATION_MULTIPLE_TEMPLATE: TempVaultFile = {
+  path: '.bwrb/templates/meeting/default.md',
+  content: `---
+type: template
+template-for: meeting
+description: Meeting template
+---
+
+# {title}
 `,
 };
 
@@ -329,6 +371,99 @@ describePty('template command PTY tests', () => {
         { files: [DEFAULT_IDEA_TEMPLATE], schema: TEST_SCHEMA }
       );
     }, 15000);
+
+    it('should allow setting empty array defaults for multiple relation fields', async () => {
+      await withTempVault(
+        ['template', 'edit', 'meeting', 'default'],
+        async (proc, vaultPath) => {
+          const templatePath = join(vaultPath, '.bwrb/templates/meeting/default.md');
+
+          await proc.waitFor('Current description:', 10000);
+          proc.write('\r');
+
+          await proc.waitFor('Edit default values', 5000);
+          proc.write('y');
+
+          await proc.waitFor('How to update people', 5000);
+          proc.write('3'); // (set empty [])
+
+          await proc.waitFor('Edit prompt-fields', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Edit filename pattern', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Edit body', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Updated:', 5000);
+
+          const content = await readFile(templatePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          const defaults = frontmatter.defaults as Record<string, unknown>;
+          expect(defaults.people).toEqual([]);
+        },
+        {
+          files: [RELATION_MULTIPLE_TEMPLATE],
+          schema: RELATION_MULTIPLE_SCHEMA,
+        }
+      );
+    }, 30000);
+
+    it('should allow selecting multiple relation defaults in template edit', async () => {
+      await withTempVault(
+        ['template', 'edit', 'meeting', 'default'],
+        async (proc, vaultPath) => {
+          const templatePath = join(vaultPath, '.bwrb/templates/meeting/default.md');
+
+          await proc.waitFor('Current description:', 10000);
+          proc.write('\r');
+
+          await proc.waitFor('Edit default values', 5000);
+          proc.write('y');
+
+          await proc.waitFor('How to update people', 5000);
+          proc.write('4'); // (select values)
+
+          await proc.waitFor('Select people', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write(' ');      // select Alice
+          proc.write('\x1b[B'); // down to Bob
+          proc.write(' ');      // select Bob
+          proc.write('\r');
+
+          await proc.waitFor('Edit prompt-fields', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Edit filename pattern', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Edit body', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Updated:', 5000);
+
+          const content = await readFile(templatePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          const defaults = frontmatter.defaults as Record<string, unknown>;
+          expect(defaults.people).toEqual(['"[[Alice]]"', '"[[Bob]]"']);
+        },
+        {
+          files: [
+            RELATION_MULTIPLE_TEMPLATE,
+            {
+              path: 'People/Alice.md',
+              content: `---\ntype: person\n---\n`,
+            },
+            {
+              path: 'People/Bob.md',
+              content: `---\ntype: person\n---\n`,
+            },
+          ],
+          schema: RELATION_MULTIPLE_SCHEMA,
+        }
+      );
+    }, 30000);
   });
 
   describe('template delete (interactive)', () => {
