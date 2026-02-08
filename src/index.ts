@@ -50,6 +50,9 @@ if (completionsIndex !== -1) {
     .option('-v, --vault <path>', 'Path to the vault directory')
     .enablePositionalOptions();
 
+  // Command registration order determines `bwrb --help` output order.
+  // Canonical ordering: docs/product/vision.md "Help Output Ordering".
+  // Regression test: tests/ts/commands/help-ordering.test.ts.
   // CRUD operations
   program.addCommand(newCommand);
   program.addCommand(editCommand);
