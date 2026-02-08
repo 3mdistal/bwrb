@@ -85,7 +85,7 @@ export const TEST_VAULT_PATH = path.resolve(
 );
 
 // Path to the project root (for running bwrb via tsx)
-export const PROJECT_ROOT = path.resolve(import.meta.dirname, '../../..');
+export const PROJECT_ROOT = process.cwd();
 
 // Path to tsx binary in node_modules
 export const TSX_BIN = path.join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx');
