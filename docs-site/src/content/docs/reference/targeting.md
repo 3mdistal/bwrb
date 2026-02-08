@@ -124,13 +124,13 @@ For ergonomics, the first positional argument is auto-detected:
 
 | Command | `--type` | `--path` | `--where` | `--body` | Picker |
 |---------|----------|----------|-----------|----------|--------|
-| [list](/reference/commands/list/)    | Y | Y | Y | Y | - |
-| [bulk](/reference/commands/bulk/)    | Y | Y | Y | Y | - |
-| [audit](/reference/commands/audit/)   | Y | Y | Y | Y | - |
-| [search](/reference/commands/search/)  | Y | Y | Y | Y | Y |
-| [open](/reference/commands/open/)    | Y | Y | Y | Y | Y |
 | [edit](/reference/commands/edit/)    | Y | Y | Y | Y | Y |
 | [delete](/reference/commands/delete/)  | Y | Y | Y | Y | - |
+| [list](/reference/commands/list/)    | Y | Y | Y | Y | - |
+| [open](/reference/commands/open/)    | Y | Y | Y | Y | Y |
+| [search](/reference/commands/search/)  | Y | Y | Y | Y | Y |
+| [audit](/reference/commands/audit/)   | Y | Y | Y | Y | - |
+| [bulk](/reference/commands/bulk/)    | Y | Y | Y | Y | - |
 
 **Notes:**
 - `open` is an alias for `search --open`
@@ -224,6 +224,6 @@ When a command needs you to pick from multiple results, Bowerbird uses an intera
 ## See Also
 
 - [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — `--execute` vs `--force` semantics
-- [Expression syntax](/concepts/schema/) — Query expression details
+- [Schema](/concepts/schema/) — Query expression details
 - [bwrb list](/reference/commands/list/) — List and filter notes
 - [bwrb bulk](/reference/commands/bulk/) — Batch operations

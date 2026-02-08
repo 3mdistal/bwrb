@@ -62,7 +62,23 @@ export default defineConfig({
 						{
 							label: 'Commands',
 							collapsed: true,
-							autogenerate: { directory: 'reference/commands' },
+							// Keep in sync with runtime `bwrb --help` command ordering.
+							// `init` and `help` are intentionally omitted until docs pages exist.
+							items: [
+								{ slug: 'reference/commands/new' },
+								{ slug: 'reference/commands/edit' },
+								{ slug: 'reference/commands/delete' },
+								{ slug: 'reference/commands/list' },
+								{ slug: 'reference/commands/open' },
+								{ slug: 'reference/commands/search' },
+								{ slug: 'reference/commands/schema' },
+								{ slug: 'reference/commands/audit' },
+								{ slug: 'reference/commands/bulk' },
+								{ slug: 'reference/commands/template' },
+								{ slug: 'reference/commands/dashboard' },
+								{ slug: 'reference/commands/config' },
+								{ slug: 'reference/commands/completion' },
+							],
 						},
 					],
 				},
@@ -90,7 +106,9 @@ export default defineConfig({
 					label: 'Product',
 					collapsed: true,
 					items: [
+						{ slug: 'product/documentation-policy' },
 						{ slug: 'product/vision' },
+						{ slug: 'product/docs-taxonomy-and-naming' },
 						{ slug: 'product/roadmap' },
 					],
 				},
