@@ -2,15 +2,11 @@ import { mkdtemp, rm, mkdir, writeFile, cp } from 'fs/promises';
 import { join, relative } from 'path';
 import { tmpdir } from 'os';
 import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
 
 // Import canonical schema from shared module
 import { BASELINE_SCHEMA } from './schemas.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-export const PROJECT_ROOT = join(__dirname, '../../..');
+export const PROJECT_ROOT = process.cwd();
 export const CLI_PATH = join(PROJECT_ROOT, 'dist/index.js');
 
 /**
