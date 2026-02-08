@@ -18,15 +18,12 @@ import type { LoadedSchema } from '../types/schema.js';
 import type { ManagedFile } from './discovery.js';
 import {
   discoverManagedFiles,
-  collectAllMarkdownFiles,
-  getExcludedDirectories,
-  loadIgnoreMatcher,
+  discoverFilesForQueryResolution,
 } from './discovery.js';
 import { parseNote } from './frontmatter.js';
-import { applyFrontmatterFilters } from './query.js';
 import { searchContent } from './content-search.js';
-import { getTypeNames, getAllFieldsForType } from './schema.js';
-import { validateWhereExpressions, formatWhereValidationErrors } from './expression-validation.js';
+import { getTypeNames } from './schema.js';
+import { applyWhereExpressions } from './where-targeting.js';
 
 // ============================================================================
 // Types
@@ -277,19 +274,6 @@ export async function resolveTargets(
     options.type || options.path || options.where?.length || options.id || bodyFilter
   );
 
-  // Early validation of --where expression values when type is known
-  // This catches invalid select field values before we do any file discovery
-  if (options.type && options.where && options.where.length > 0) {
-    const validation = validateWhereExpressions(options.where, schema, options.type);
-    if (!validation.valid) {
-      return {
-        files: [],
-        hasTargeting,
-        error: formatWhereValidationErrors(validation.errors),
-      };
-    }
-  }
-
   try {
     // Step 1: Discover base files
     let files: ManagedFile[];
@@ -298,10 +282,8 @@ export async function resolveTargets(
       // Type-specific discovery
       files = await discoverManagedFiles(schema, vaultDir, options.type);
     } else {
-      // Vault-wide discovery
-      const excluded = getExcludedDirectories(schema);
-      const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
-      files = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
+      // Vault-wide discovery (includes dot-directory type output dirs)
+      files = await discoverFilesForQueryResolution(schema, vaultDir);
     }
 
     if (files.length === 0) {
@@ -400,18 +382,23 @@ export async function resolveTargets(
 
     // Step 6: Filter by --where expressions
     if (options.where && options.where.length > 0) {
-      const knownKeys = options.type
-        ? getAllFieldsForType(schema, options.type)
-        : null;
-      const filtered = await applyFrontmatterFilters(filteredFiles, {
+      const filtered = await applyWhereExpressions(filteredFiles, {
+        schema,
+        ...(options.type ? { typePath: options.type } : {}),
         whereExpressions: options.where,
         vaultDir,
-        silent: true,
-        ...(knownKeys ? { knownKeys } : {}),
       });
 
+      if (!filtered.ok) {
+        return {
+          files: [],
+          hasTargeting,
+          error: filtered.error,
+        };
+      }
+
       return {
-        files: filtered as TargetedFile[],
+        files: filtered.files as TargetedFile[],
         hasTargeting,
       };
     }

@@ -2,7 +2,7 @@
 
 > How Bowerbird commands select which notes to operate on.
 
-**Canonical docs:** This document is product rationale. The user-facing, canonical targeting reference lives on the docs-site at `/reference/targeting/`.
+**Canonical docs:** This document is product rationale. User-facing targeting behavior is canonical on docs-site: https://bwrb.dev/reference/targeting/. Source-of-truth policy: `docs/product/canonical-docs-policy.md`.
 
 ---
 
@@ -92,6 +92,8 @@ bwrb audit --where "isEmpty(tags)"
 **Type-checking behavior:**
 - With `--type`: strict validation (error on unknown fields)
 - Without `--type`: permissive with warnings (supports migration workflows)
+
+**Maintainer reference:** For internal implementation details (pipeline stages, ownership boundaries, and error-surface responsibilities), see `docs/technical/expression-pipeline.md`.
 
 **Audit type inference:**
 When running `bwrb audit` without `--type`, each file's type is resolved from its frontmatter `type` field. Files with missing or invalid types report `orphan-file` or `invalid-type` errors and skip type-dependent checks (like `wrong-directory`, `missing-required`, `invalid-option`). This is by design: audit can't validate fields without knowing the type's schema.
@@ -222,6 +224,8 @@ bwrb audit          # Audits all notes
 
 No selectors = prompt with picker.
 
+**Edit exact-name behavior:** When `bwrb edit "Exact Note Name"` omits `--type`, the command resolves across all types. If multiple notes share the exact name, it errors and lists candidates; disambiguate with `--type`, `--path`, or a vault-relative path.
+
 ### Destructive commands (`bulk`, `delete`)
 
 **Two safety gates:**
@@ -291,6 +295,7 @@ Bowerbird recognizes multiple exclusion mechanisms:
 - `.bwrbignore` rules are applied after `.gitignore`, so they can override gitignored paths. Note: re-including a file under a gitignored directory requires unignoring the directory too (e.g. `!dist/` then `!dist/**`).
 - `.bwrbignore` files inside a directory that is ignored (by `.gitignore` or a parent `.bwrbignore`) may not be discovered, because bwrb does not traverse into ignored directories just to look for more ignore rules. Put override rules in an ancestor directory (often the vault root).
 - Hard exclusions (schema/env exclusions, hidden directories, and `.bwrb/`) are always excluded and are not overrideable via `.bwrbignore`.
+- Schema-declared type output directories are discoverable even when they live under a hidden dot-directory; vault-wide scans still skip other hidden directories.
 
 ### When Exclusion Rules Apply
 

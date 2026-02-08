@@ -7,15 +7,14 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Schema } from '../../types/schema.js';
 import { SchemaSnapshot, SchemaSnapshotSchema } from '../../types/migration.js';
-
-const SNAPSHOT_FILE = '.bwrb/schema.applied.json';
+import { SCHEMA_SNAPSHOT_RELATIVE_PATH } from '../bwrb-paths.js';
 
 /**
  * Load the last-applied schema snapshot.
  * Returns undefined if no snapshot exists (first migration).
  */
 export async function loadSchemaSnapshot(vaultPath: string): Promise<SchemaSnapshot | undefined> {
-  const filePath = path.join(vaultPath, SNAPSHOT_FILE);
+  const filePath = path.join(vaultPath, SCHEMA_SNAPSHOT_RELATIVE_PATH);
   
   try {
     const content = await fs.readFile(filePath, 'utf-8');
@@ -38,7 +37,7 @@ export async function saveSchemaSnapshot(
   schema: Schema,
   schemaVersion: string
 ): Promise<void> {
-  const filePath = path.join(vaultPath, SNAPSHOT_FILE);
+  const filePath = path.join(vaultPath, SCHEMA_SNAPSHOT_RELATIVE_PATH);
   const tempPath = `${filePath}.tmp`;
   
   const snapshot: SchemaSnapshot = {
@@ -58,7 +57,7 @@ export async function saveSchemaSnapshot(
  * Alias: snapshotExists
  */
 export async function hasSchemaSnapshot(vaultPath: string): Promise<boolean> {
-  const filePath = path.join(vaultPath, SNAPSHOT_FILE);
+  const filePath = path.join(vaultPath, SCHEMA_SNAPSHOT_RELATIVE_PATH);
   
   try {
     await fs.access(filePath);
@@ -76,4 +75,3 @@ export async function getSnapshotVersion(vaultPath: string): Promise<string | un
   const snapshot = await loadSchemaSnapshot(vaultPath);
   return snapshot?.schemaVersion;
 }
-

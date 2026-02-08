@@ -222,16 +222,22 @@ export BWRB_VAULT=~/notes
 | Command | Description |
 |---------|-------------|
 | `bwrb new <type>` | Create a new note |
-| `bwrb list <type>` | List notes of a type |
 | `bwrb edit <path>` | Edit note frontmatter |
+| `bwrb delete [query]` | Delete notes from the vault |
+| `bwrb list <type>` | List notes of a type |
 | `bwrb open [query]` | Open a note |
 | `bwrb search [query]` | Find notes, generate wikilinks |
-| `bwrb audit` | Check schema compliance |
 | `bwrb schema list` | View schema types |
+| `bwrb audit` | Check schema compliance |
+| `bwrb bulk --type <type> --set key=value` | Apply frontmatter changes in bulk |
+| `bwrb template list [type]` | List templates for a type |
+| `bwrb dashboard [name]` | Run a saved query |
+| `bwrb config list` | Show vault config values |
+| `bwrb completion <shell>` | Generate shell completion script |
 
 ## Next Steps
 
-- [Schema concepts](/concepts/schema/) — Deep dive into schema structure
-- [Types and inheritance](/concepts/types/) — Organize types hierarchically
+- [Schema](/concepts/schema/) — Deep dive into schema structure
+- [Types and Inheritance](/concepts/types-and-inheritance/) — Organize types hierarchically
 - [CLI Reference](/reference/commands/new/) — Full command documentation
 - [Templates](/templates/overview/) — Create reusable note structures
