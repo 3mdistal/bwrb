@@ -10,7 +10,7 @@ import { BASELINE_SCHEMA } from './schemas.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-export const PROJECT_ROOT = join(__dirname, '../../..');
+export const PROJECT_ROOT = process.cwd();
 const CLI_PATH = join(PROJECT_ROOT, 'dist/index.js');
 
 /**
