@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { createTestVault, cleanupTestVault, runCLI, waitForFile } from '../fixtures/setup.js';
 import { ExitCodes } from '../../../src/lib/output.js';
 import { parseNote } from '../../../src/lib/frontmatter.js';
 import { extractWikilinkTarget } from '../../../src/lib/audit/types.js';
