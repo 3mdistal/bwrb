@@ -224,6 +224,6 @@ When a command needs you to pick from multiple results, Bowerbird uses an intera
 ## See Also
 
 - [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — `--execute` vs `--force` semantics
-- [Expression syntax](/concepts/schema/) — Query expression details
+- [Schema](/concepts/schema/) — Query expression details
 - [bwrb list](/reference/commands/list/) — List and filter notes
 - [bwrb bulk](/reference/commands/bulk/) — Batch operations
