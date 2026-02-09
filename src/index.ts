@@ -50,6 +50,9 @@ if (completionsIndex !== -1) {
     .option('-v, --vault <path>', 'Path to the vault directory')
     .enablePositionalOptions();
 
+  // Help output order follows registration order.
+  // See "Help Output Ordering" in docs/product/vision.md and the regression test
+  // in tests/ts/commands/help-ordering.test.ts.
   // CRUD operations
   program.addCommand(newCommand);
   program.addCommand(editCommand);
