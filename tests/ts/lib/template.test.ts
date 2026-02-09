@@ -11,7 +11,6 @@ import {
   findDefaultTemplate,
   findTemplateByName,
   processTemplateBody,
-  resolveTemplate,
   validateConstraints,
   validateConstraintSyntax,
   createScaffoldedInstances,
