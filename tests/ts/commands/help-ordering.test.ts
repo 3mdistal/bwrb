@@ -12,7 +12,7 @@ describe('top-level help command ordering', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
 
-    const commands = parseHelpCommandNames(result.stdout);
+    const commands = extractHelpCommands(result.stdout);
 
     expect(() => assertCanonicalHelpCommandOrdering(commands)).not.toThrow();
   });
