@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`new command > help and usage > matches help output snapshot 1`] = `
-Usage: bwrb new [options] [type]
+"Usage: bwrb new [options] [type]
 
 Create a new note (interactive type navigation if type omitted)
 
