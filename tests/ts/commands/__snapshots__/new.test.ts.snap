@@ -52,5 +52,5 @@ Body sections (JSON mode):
   The _body field accepts section names as keys, with string or string[] values.
 
 Template management:
-  Templates are managed with 'bwrb template' - see 'bwrb template --help'.
+  Templates are managed with 'bwrb template' - see 'bwrb template --help'."
 `;
