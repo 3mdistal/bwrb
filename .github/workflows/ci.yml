@@ -195,8 +195,61 @@ jobs:
           echo "PTY test files:"
           find tests -name "*.pty.test.ts"
 
+      - name: Prepare PTY artifacts directory
+        run: mkdir -p artifacts
+
       - name: Run PTY tests
-        run: pnpm test:pty
+        run: |
+          set -o pipefail
+          pnpm test:pty:ci 2>&1 | tee artifacts/pty.log
         env:
           # Force color output for better debugging
           FORCE_COLOR: 1
+
+      - name: Summarize PTY failures
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'artifacts/pty-results.json';
+          if (!fs.existsSync(path)) {
+            console.log('PTY summary: results file not found.');
+            process.exit(0);
+          }
+          const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const failed = [];
+          (data.testResults || []).forEach((suite) => {
+            (suite.assertionResults || []).forEach((test) => {
+              if (test.status === 'failed') {
+                failed.push({
+                  name: test.fullName || test.title || suite.name || 'unknown',
+                  messages: test.failureMessages || [],
+                });
+              }
+            });
+          });
+          if (!failed.length) {
+            console.log('PTY summary: no failed tests.');
+            process.exit(0);
+          }
+          console.log('PTY summary: failed tests');
+          failed.forEach((test) => {
+            console.log(`- ${test.name}`);
+            test.messages.slice(0, 2).forEach((msg) => {
+              const line = String(msg).split('\n')[0];
+              if (line) {
+                console.log(`  ${line}`);
+              }
+            });
+          });
+          NODE
+
+      - name: Upload PTY artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pty-test-artifacts
+          path: |
+            artifacts/pty.log
+            artifacts/pty-results.json
+          if-no-files-found: warn

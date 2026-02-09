@@ -138,6 +138,8 @@ Non-PTY CLI tests run the TypeScript source via `tsx` by default. Set `BWRB_TEST
 
 **PTY tests**: Tests in `tests/ts/**/*.pty.test.ts` use node-pty to spawn real terminal processes. These are slower (~1s each) but catch interactive UI bugs that unit tests miss. PTY tests automatically skip when node-pty is incompatible (e.g., Node.js 25+).
 
+For a CI-like PTY run with deterministic output, use `pnpm test:pty:ci`. This writes `artifacts/pty-results.json` for structured results (the CI workflow also captures `artifacts/pty.log` for raw output).
+
 PTY test locations:
 - `tests/ts/lib/*.pty.test.ts` - Prompt-level tests (input, confirm, select)
 - `tests/ts/commands/*.pty.test.ts` - Full command flow tests (new, edit, audit, template)

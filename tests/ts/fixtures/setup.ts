@@ -1,4 +1,4 @@
-import { mkdtemp, rm, mkdir, writeFile, cp } from 'fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, cp, stat } from 'fs/promises';
 import { join, relative } from 'path';
 import { tmpdir } from 'os';
 import { spawn } from 'child_process';
@@ -28,6 +28,34 @@ export function getRelativeVaultPath(vaultDir: string): string {
  * Use BASELINE_SCHEMA from './schemas.js' for new tests.
  */
 export const TEST_SCHEMA = BASELINE_SCHEMA;
+
+export interface WaitForFileOptions {
+  timeoutMs?: number;
+  intervalMs?: number;
+  minSize?: number;
+}
+
+export async function waitForFile(
+  filePath: string,
+  { timeoutMs = 1000, intervalMs = 20, minSize = 1 }: WaitForFileOptions = {}
+): Promise<void> {
+  const start = Date.now();
+
+  while (true) {
+    try {
+      const info = await stat(filePath);
+      if (info.isFile() && info.size >= minSize) return;
+    } catch {
+      // File not ready yet.
+    }
+
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`Timed out waiting for ${filePath}`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
 
 export async function createTestVault(): Promise<string> {
   const vaultDir = await mkdtemp(join(tmpdir(), 'bwrb-test-'));
@@ -230,8 +258,7 @@ instances:
 `
   );
 
-  // Delay to ensure file system sync completes (fixes flaky tests on macOS)
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await waitForFile(join(vaultDir, '.bwrb/templates/project', 'with-research.md'));
 
   return vaultDir;
 }
