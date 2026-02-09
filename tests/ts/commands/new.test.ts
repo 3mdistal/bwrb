@@ -16,7 +16,9 @@ function extractIdFromFrontmatter(content: string): string {
 }
 
 async function readRegistryIds(vaultDir: string): Promise<Set<string>> {
-  const registry = await readFile(join(vaultDir, '.bwrb', 'ids.jsonl'), 'utf-8');
+  const registryPath = join(vaultDir, '.bwrb', 'ids.jsonl');
+  await waitForFile(registryPath);
+  const registry = await readFile(registryPath, 'utf-8');
   const ids = new Set<string>();
   for (const line of registry.split('\n')) {
     const trimmed = line.trim();
