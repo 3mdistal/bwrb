@@ -33,7 +33,7 @@ export function normalizeHelpOutput(helpOutput: string): string {
   const withoutVersion = withoutAnsi.replace(VERSION_RE, '<VERSION>');
   const projectRoot = escapeRegExp(process.cwd());
   const withoutProjectRoot = withoutVersion.replace(
-    new RegExp(`${projectRoot}[^\s]*`, 'g'),
+    new RegExp(`${projectRoot}[^\\s]*`, 'g'),
     '<PATH>'
   );
 
