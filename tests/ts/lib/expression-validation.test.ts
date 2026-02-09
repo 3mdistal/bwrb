@@ -156,6 +156,18 @@ describe('expression-validation', () => {
       expect(result.errors[0]!.validOptions).toContain('backlog');
     });
 
+    it('preserves validOptions payload shape for select validation errors', () => {
+      const result = validateWhereExpressions(
+        ["status == 'invalid'"],
+        schema,
+        'task'
+      );
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]!.validOptions).toEqual(['raw', 'backlog', 'in-flight', 'settled']);
+    });
+
     it('passes for hyphenated field comparisons', () => {
       const result = validateWhereExpressions(
         ["creation-date == '2026-01-28'"],

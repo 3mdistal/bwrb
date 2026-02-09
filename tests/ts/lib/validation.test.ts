@@ -49,6 +49,17 @@ describe('validation', () => {
       expect(result.errors[0].field).toBe('status');
     });
 
+    it('should preserve expected payload shape for select validation errors', () => {
+      const result = validateFrontmatter(schema, 'idea', {
+        type: 'idea',
+        status: 'invalid-status',
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].expected).toEqual(['raw', 'backlog', 'in-flight', 'settled']);
+    });
+
     it('should suggest similar option values', () => {
       const result = validateFrontmatter(schema, 'idea', {
         type: 'idea',
@@ -89,6 +100,17 @@ describe('validation', () => {
         type: 'idea',
         status: 'raw',
         labels: [],
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should preserve scalar handling for multiple select fields', () => {
+      const result = validateFrontmatter(schema, 'idea', {
+        type: 'idea',
+        status: 'raw',
+        labels: 'urgent',
       });
 
       expect(result.valid).toBe(true);
