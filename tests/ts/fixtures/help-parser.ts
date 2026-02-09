@@ -23,6 +23,23 @@ function formatList(values: string[]): string {
   return values.join(', ');
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function normalizeHelpOutput(helpOutput: string): string {
+  const normalizedLineEndings = helpOutput.replace(/\r\n/g, '\n');
+  const withoutAnsi = normalizedLineEndings.replace(ANSI_ESCAPE_RE, '');
+  const withoutVersion = withoutAnsi.replace(VERSION_RE, '<VERSION>');
+  const projectRoot = escapeRegExp(process.cwd());
+  const withoutProjectRoot = withoutVersion.replace(
+    new RegExp(`${projectRoot}[^\s]*`, 'g'),
+    '<PATH>'
+  );
+
+  return withoutProjectRoot.trim();
+}
+
 export function parseHelpCommandNames(helpOutput: string): string[] {
   const normalized = helpOutput.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
