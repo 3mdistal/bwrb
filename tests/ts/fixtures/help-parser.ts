@@ -37,7 +37,13 @@ export function normalizeHelpOutput(helpOutput: string): string {
     '<PATH>'
   );
 
-  return withoutProjectRoot.trim();
+  const trimmed = withoutProjectRoot.trim();
+
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
 }
 
 export function parseHelpCommandNames(helpOutput: string): string[] {
