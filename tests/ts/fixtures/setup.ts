@@ -8,8 +8,8 @@ import { BASELINE_SCHEMA } from './schemas.js';
 
 export const PROJECT_ROOT = process.cwd();
 export const CLI_PATH = join(PROJECT_ROOT, 'dist/index.js');
-export const CLI_SRC_PATH = join(PROJECT_ROOT, 'src/index.ts');
-export const TSX_BIN = join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx');
+const CLI_SRC_PATH = join(PROJECT_ROOT, 'src/index.ts');
+const TSX_BIN = join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx');
 
 const USE_DIST = process.env.BWRB_TEST_DIST === '1';
 
