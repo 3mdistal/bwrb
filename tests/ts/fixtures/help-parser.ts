@@ -38,12 +38,9 @@ export function normalizeHelpOutput(helpOutput: string): string {
   );
 
   const trimmed = withoutProjectRoot.trim();
+  const withoutWrappingQuotes = trimmed.replace(/^"+/, '').replace(/"+$/, '');
 
-  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    return trimmed.slice(1, -1);
-  }
-
-  return trimmed;
+  return withoutWrappingQuotes;
 }
 
 export function parseHelpCommandNames(helpOutput: string): string[] {
