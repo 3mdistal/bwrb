@@ -13,7 +13,7 @@ const USE_DIST = process.env.BWRB_TEST_DIST === '1';
 async function runCLIWithOpenStdin(
   args: string[],
   vaultDir: string,
-  timeoutMs = 1500
+  timeoutMs = USE_DIST ? 1500 : 4000
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
 
