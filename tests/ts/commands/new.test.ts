@@ -82,6 +82,13 @@ describe('new command', () => {
   });
 
   describe('help and usage', () => {
+    it('matches help output snapshot', async () => {
+      const result = await runCLI(['new', '--help'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(normalizeHelpOutput(result.stdout)).toMatchSnapshot();
+    });
+
     it('should show help with --help flag', async () => {
       const result = await runCLI(['new', '--help'], vaultDir);
 
