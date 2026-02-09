@@ -305,7 +305,9 @@ describe('new command - instance scaffolding', () => {
     expect(output.instances.errors).toHaveLength(0);
 
     // Verify parent note content
-    const parentContent = await readFile(join(vaultDir, output.path), 'utf-8');
+    const parentPath = join(vaultDir, output.path);
+    await waitForFile(parentPath);
+    const parentContent = await readFile(parentPath, 'utf-8');
     expect(parentContent).toContain('status: in-flight');
     expect(parentContent).toContain('# Project Overview');
 
