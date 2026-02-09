@@ -313,11 +313,15 @@ describe('new command - instance scaffolding', () => {
 
     // Verify instance files exist and have correct content
     const instanceDir = join(vaultDir, 'Projects');
-    const bgResearch = await readFile(join(instanceDir, 'Background Research.md'), 'utf-8');
+    const bgResearchPath = join(instanceDir, 'Background Research.md');
+    await waitForFile(bgResearchPath);
+    const bgResearch = await readFile(bgResearchPath, 'utf-8');
     expect(bgResearch).toContain('type: research');
     expect(bgResearch).toContain('status: raw');
 
-    const compAnalysis = await readFile(join(instanceDir, 'Competitor Analysis.md'), 'utf-8');
+    const compAnalysisPath = join(instanceDir, 'Competitor Analysis.md');
+    await waitForFile(compAnalysisPath);
+    const compAnalysis = await readFile(compAnalysisPath, 'utf-8');
     expect(compAnalysis).toContain('type: research');
     expect(compAnalysis).toContain('status: raw');
 
