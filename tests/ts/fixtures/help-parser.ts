@@ -16,6 +16,8 @@ const CANONICAL_HELP_COMMAND_ORDER = [
 ] as const;
 
 const SECTION_HEADER_RE = /^[A-Z][A-Za-z0-9 /-]*:\s*$/;
+const ANSI_ESCAPE_RE = /[\u001B\u009B][[\]()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
+const VERSION_RE = /\bv?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\b/g;
 
 function formatList(values: string[]): string {
   return values.join(', ');
