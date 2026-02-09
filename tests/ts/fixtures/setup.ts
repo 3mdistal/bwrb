@@ -8,6 +8,10 @@ import { BASELINE_SCHEMA } from './schemas.js';
 
 export const PROJECT_ROOT = process.cwd();
 export const CLI_PATH = join(PROJECT_ROOT, 'dist/index.js');
+export const CLI_SRC_PATH = join(PROJECT_ROOT, 'src/index.ts');
+export const TSX_BIN = join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx');
+
+const USE_DIST = process.env.BWRB_TEST_DIST === '1';
 
 /**
  * Get a relative path from the project root to the vault.
@@ -242,6 +246,11 @@ export interface CLIResult {
   exitCode: number;
 }
 
+export interface RunCLIOptions {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
 /**
  * Run the bwrb CLI with arguments and capture output.
  * @param args CLI arguments (e.g., ['list', 'idea', '--status=raw'])
@@ -251,14 +260,19 @@ export interface CLIResult {
 export async function runCLI(
   args: string[],
   vaultDir?: string,
-  stdin?: string
+  stdin?: string,
+  options: RunCLIOptions = {}
 ): Promise<CLIResult> {
   const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
+  const { cwd = PROJECT_ROOT, env = {} } = options;
+
+  const cliCommand = USE_DIST ? 'node' : TSX_BIN;
+  const cliArgs = USE_DIST ? [CLI_PATH, ...fullArgs] : [CLI_SRC_PATH, ...fullArgs];
 
   return new Promise((resolve) => {
-    const proc = spawn('node', [CLI_PATH, ...fullArgs], {
-      cwd: PROJECT_ROOT,
-      env: { ...process.env, FORCE_COLOR: '0' }, // Disable colors for easier parsing
+    const proc = spawn(cliCommand, cliArgs, {
+      cwd,
+      env: { ...process.env, FORCE_COLOR: '0', ...env }, // Disable colors for easier parsing
     });
 
     let stdout = '';
