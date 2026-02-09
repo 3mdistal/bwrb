@@ -88,10 +88,7 @@ describe('new command', () => {
       const result = await runCLI(['new', '--help'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      const normalizedHelp = normalizeHelpOutput(result.stdout);
-      console.log('HELP_START', JSON.stringify(normalizedHelp.slice(0, 20)), normalizedHelp.charCodeAt(0));
-      console.log('HELP_END', JSON.stringify(normalizedHelp.slice(-20)), normalizedHelp.charCodeAt(normalizedHelp.length - 1));
-      expect(normalizedHelp).toMatchSnapshot();
+      expect(normalizeHelpOutput(result.stdout)).toMatchSnapshot();
     });
 
     it('should show help with --help flag', async () => {
