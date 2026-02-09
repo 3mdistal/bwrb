@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { createTestVault, cleanupTestVault, runCLI, waitForFile } from '../fixtures/setup.js';
 import { formatLocalDate } from '../../../src/lib/local-date.js';
 import { ExitCodes } from '../../../src/lib/output.js';
 
