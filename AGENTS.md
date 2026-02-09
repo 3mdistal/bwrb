@@ -41,6 +41,12 @@ src/
 - **Templates**: Reusable note templates in `.bwrb/templates/{type}/{subtype}/*.md` with defaults and body structure
 - **Wikilinks**: `[[Note]]` or `"[[Note]]"` format for Obsidian linking
 
+## Documentation Policy
+
+- User-facing CLI behavior docs are canonical in `docs-site/src/content/docs/` (published at https://bwrb.dev).
+- `docs/product/` is for rationale/internal notes and should link to canonical docs-site pages for behavior contracts.
+- Source-of-truth policy: `docs/product/canonical-docs-policy.md`
+
 ## Agent Skill
 
 An OpenCode agent skill for programmatic bwrb usage is maintained at `docs/skill/SKILL.md`. Update this file when adding new commands or changing CLI patterns for automation.
@@ -54,6 +60,56 @@ pnpm build            # Build to dist/
 pnpm test             # Run vitest tests
 pnpm typecheck        # Type checking
 ```
+
+## Local CI parity
+
+Source of truth: `.github/workflows/ci.yml`.
+If docs and CI differ, follow CI.
+
+### Full CI parity (matches CI)
+
+Run these commands in this exact order:
+
+```sh
+pnpm build
+pnpm verify:pack
+pnpm typecheck
+pnpm lint
+pnpm knip
+pnpm test -- --exclude='**/*.pty.test.ts'
+```
+
+CI runs Node 22, and this repo pins `pnpm@10.11.0` in `package.json`.
+
+### Recommended pre-push subset (faster, not full parity)
+
+Recommended (optional) quick check before pushing:
+
+```sh
+pnpm typecheck && pnpm lint && pnpm knip
+```
+
+### Optional local pre-push hook (opt-in, local only)
+
+If you want to automate local checks, you can create a local Git hook (not committed to the repo):
+
+```sh
+cat > .git/hooks/pre-push <<'EOF'
+#!/usr/bin/env sh
+set -eu
+
+pnpm typecheck
+pnpm lint
+pnpm knip
+EOF
+chmod +x .git/hooks/pre-push
+```
+
+This can slow down pushes, so keep it opt-in per contributor preference.
+
+### Knip notes
+
+Common failures are unused exports, including stale barrel exports. Prefer removing or adjusting exports first. Use `knip.jsonc` ignores only when an export is intentionally retained.
 
 **Important**: When creating a git worktree, run `pnpm build` after `pnpm install`. The command tests (`tests/ts/commands/`) require the built `dist/` output to run correctly.
 

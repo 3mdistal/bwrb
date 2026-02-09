@@ -2,7 +2,7 @@
 
 > How Bowerbird commands select which notes to operate on.
 
-**Canonical docs:** This document is product rationale. The user-facing, canonical targeting reference lives on the docs-site at `/reference/targeting/`.
+**Canonical docs:** This document is product rationale. User-facing targeting behavior is canonical on docs-site: https://bwrb.dev/reference/targeting/. Source-of-truth policy: `docs/product/canonical-docs-policy.md`.
 
 ---
 
@@ -92,6 +92,8 @@ bwrb audit --where "isEmpty(tags)"
 **Type-checking behavior:**
 - With `--type`: strict validation (error on unknown fields)
 - Without `--type`: permissive with warnings (supports migration workflows)
+
+**Maintainer reference:** For internal implementation details (pipeline stages, ownership boundaries, and error-surface responsibilities), see `docs/technical/expression-pipeline.md`.
 
 **Audit type inference:**
 When running `bwrb audit` without `--type`, each file's type is resolved from its frontmatter `type` field. Files with missing or invalid types report `orphan-file` or `invalid-type` errors and skip type-dependent checks (like `wrong-directory`, `missing-required`, `invalid-option`). This is by design: audit can't validate fields without knowing the type's schema.

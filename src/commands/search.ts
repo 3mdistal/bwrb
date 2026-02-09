@@ -11,7 +11,7 @@ import { readFile } from 'fs/promises';
 import { basename } from 'path';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
-import { loadSchema, getTypeDefByPath, getAllFieldsForType } from '../lib/schema.js';
+import { loadSchema, getTypeDefByPath } from '../lib/schema.js';
 import { printError, printSuccess } from '../lib/prompt.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError, warnDeprecated, type SearchOutputFormat } from '../lib/output.js';
 import { openNote, resolveAppMode } from './open.js';
@@ -30,7 +30,7 @@ import {
   type ContentMatch,
 } from '../lib/content-search.js';
 import { parseNote } from '../lib/frontmatter.js';
-import { applyFrontmatterFilters } from '../lib/query.js';
+import { applyWhereExpressions } from '../lib/where-targeting.js';
 import { minimatch } from 'minimatch';
 import { UserCancelledError } from '../lib/errors.js';
 
@@ -367,15 +367,12 @@ async function handleContentSearch(
 
   // Apply frontmatter filters if specified (--where expressions)
   if (options.where && options.where.length > 0) {
-    const knownKeys = options.type
-      ? getAllFieldsForType(schema, options.type)
-      : null;
     filteredResults = await filterByFrontmatter(
-      searchResult.results,
+      filteredResults,
       options.where,
       vaultDir,
-      jsonMode,
-      knownKeys
+      schema,
+      options.type
     );
   }
 
@@ -491,8 +488,8 @@ async function filterByFrontmatter(
   results: ContentMatch[],
   whereExpressions: string[],
   vaultDir: string,
-  jsonMode: boolean,
-  knownKeys?: Set<string> | null
+  schema: import('../types/schema.js').LoadedSchema,
+  typePath?: string
 ): Promise<ContentMatch[]> {
   // Parse frontmatter for each result and prepare for filtering
   const resultsWithFrontmatter: Array<{
@@ -514,16 +511,19 @@ async function filterByFrontmatter(
     }
   }
 
-  // Apply filters using shared helper
-  const filtered = await applyFrontmatterFilters(resultsWithFrontmatter, {
+  const filtered = await applyWhereExpressions(resultsWithFrontmatter, {
+    schema,
+    ...(typePath ? { typePath } : {}),
     whereExpressions,
     vaultDir,
-    silent: jsonMode,
-    ...(knownKeys ? { knownKeys } : {}),
   });
 
+  if (!filtered.ok) {
+    throw new Error(filtered.error);
+  }
+
   // Return the original ContentMatch objects
-  return filtered.map(f => f.original);
+  return filtered.files.map(f => f.original);
 }
 
 // ============================================================================

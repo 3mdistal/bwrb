@@ -432,7 +432,25 @@ template-for: task
     });
   });
 
-  describe('resolveTemplate', () => {
+  describe('resolveTemplate (deprecated wrapper)', () => {
+    beforeEach(async () => {
+      await mkdir(join(tempDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            idea: {
+              output_dir: 'Ideas',
+              fields: {
+                title: { prompt: 'text', required: true },
+              },
+            },
+          },
+        })
+      );
+    });
+
     it('returns null template when noTemplate is true', async () => {
       const result = await resolveTemplate(tempDir, 'idea', { noTemplate: true });
 

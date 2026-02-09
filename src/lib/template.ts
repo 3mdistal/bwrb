@@ -3,7 +3,7 @@ import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
 import { TemplateFrontmatterSchema, type Template, type LoadedSchema, type Field, type Constraint, type InstanceScaffold, type ResolvedType } from '../types/schema.js';
-import { getType, getFieldsForType, getFieldOptions } from './schema.js';
+import { getType, getFieldsForType, getFieldOptions, loadSchema } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
@@ -882,6 +882,8 @@ export interface TemplateResolutionResult {
 
 /**
  * Resolve which template to use based on CLI flags and available templates.
+ *
+ * @deprecated Use `resolveTemplateWithInheritance()` for new code.
  * 
  * Logic:
  * - --no-template: Return null template, no prompt
@@ -899,35 +901,14 @@ export async function resolveTemplate(
     templateName?: string;
   }
 ): Promise<TemplateResolutionResult> {
-  // --no-template: Skip template system entirely
-  if (options.noTemplate) {
-    return { template: null, shouldPrompt: false, availableTemplates: [] };
-  }
-  
-  // --template <name>: Find specific template
-  if (options.templateName) {
-    const template = await findTemplateByName(vaultDir, typePath, options.templateName);
-    // Note: Caller should handle null case as an error
-    return { template, shouldPrompt: false, availableTemplates: [] };
-  }
-  
-  // No flags: Auto-discover templates
-  const templates = await findTemplates(vaultDir, typePath);
-  
-  if (templates.length === 0) {
-    // No templates available
-    return { template: null, shouldPrompt: false, availableTemplates: [] };
-  }
-  
-  // Check for default.md
-  const defaultTemplate = templates.find(t => t.name === 'default');
-  if (defaultTemplate) {
-    // Auto-use default.md
-    return { template: defaultTemplate, shouldPrompt: false, availableTemplates: templates };
-  }
-  
-  // Multiple templates, no default - need to prompt
-  return { template: null, shouldPrompt: true, availableTemplates: templates };
+  const schema = await loadSchema(vaultDir);
+  const resolved = await resolveTemplateWithInheritance(vaultDir, typePath, schema, options);
+
+  return {
+    template: resolved.template,
+    shouldPrompt: resolved.shouldPrompt,
+    availableTemplates: resolved.availableTemplates,
+  };
 }
 
 // ============================================================================
