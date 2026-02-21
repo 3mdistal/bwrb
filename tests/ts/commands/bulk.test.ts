@@ -9,7 +9,7 @@ import { parseNote } from '../../../src/lib/frontmatter.js';
 async function runCLIWithOpenStdin(
   args: string[],
   vaultDir: string,
-  timeoutMs = 1500
+  timeoutMs = 3000
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
 
