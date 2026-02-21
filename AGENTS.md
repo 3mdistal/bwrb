@@ -132,6 +132,8 @@ If `origin/main` is unavailable, use `main...HEAD` as the diff base.
 
 Tests live in `tests/ts/` with fixtures in `tests/fixtures/vault/`. Run `pnpm test` before committing.
 
+Non-PTY CLI tests run the TypeScript source via `tsx` by default. Set `BWRB_TEST_DIST=1` to run tests against `dist/index.js` (ensure `pnpm build` has been run).
+
 **Always use `pnpm test`** - this runs `vitest run` which exits after tests complete. Running `vitest` directly (without `run`) starts watch mode, which is interactive and not suitable for CI or scripting.
 
 **PTY tests**: Tests in `tests/ts/**/*.pty.test.ts` use node-pty to spawn real terminal processes. These are slower (~1s each) but catch interactive UI bugs that unit tests miss. PTY tests automatically skip when node-pty is incompatible (e.g., Node.js 25+).

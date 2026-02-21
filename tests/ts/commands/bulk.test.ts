@@ -6,15 +6,22 @@ import { spawn } from 'child_process';
 import { createTestVault, cleanupTestVault, runCLI, TEST_SCHEMA, CLI_PATH, PROJECT_ROOT } from '../fixtures/setup.js';
 import { parseNote } from '../../../src/lib/frontmatter.js';
 
+const CLI_SRC_PATH = join(PROJECT_ROOT, 'src/index.ts');
+const TSX_BIN = join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx');
+const USE_DIST = process.env.BWRB_TEST_DIST === '1';
+
 async function runCLIWithOpenStdin(
   args: string[],
   vaultDir: string,
-  timeoutMs = 3000
+  timeoutMs = USE_DIST ? 1500 : 4000
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
 
+  const cliCommand = USE_DIST ? 'node' : TSX_BIN;
+  const cliArgs = USE_DIST ? [CLI_PATH, ...fullArgs] : [CLI_SRC_PATH, ...fullArgs];
+
   return await new Promise((resolve, reject) => {
-    const proc = spawn('node', [CLI_PATH, ...fullArgs], {
+    const proc = spawn(cliCommand, cliArgs, {
       cwd: PROJECT_ROOT,
       env: { ...process.env, FORCE_COLOR: '0' },
       stdio: ['pipe', 'pipe', 'pipe'],

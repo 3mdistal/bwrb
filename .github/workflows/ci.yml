@@ -139,6 +139,11 @@ jobs:
       - name: Run tests (excluding PTY)
         run: pnpm test -- --exclude='**/*.pty.test.ts'
 
+      - name: Run tests (excluding PTY) with dist
+        run: pnpm test -- --exclude='**/*.pty.test.ts'
+        env:
+          BWRB_TEST_DIST: 1
+
   test-pty:
     name: PTY Tests
     runs-on: ubuntu-latest
