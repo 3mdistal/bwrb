@@ -296,10 +296,25 @@ export async function runCLI(
   const cliCommand = USE_DIST ? 'node' : TSX_BIN;
   const cliArgs = USE_DIST ? [CLI_PATH, ...fullArgs] : [CLI_SRC_PATH, ...fullArgs];
 
+  const childEnv: Record<string, string> = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key, value]) => key !== 'FORCE_COLOR' && typeof value === 'string'
+    )
+  );
+
+  const mergedEnv: Record<string, string> = {
+    ...childEnv,
+    ...env,
+  };
+
+  if (mergedEnv.NO_COLOR === undefined) {
+    mergedEnv.NO_COLOR = '1';
+  }
+
   return new Promise((resolve) => {
     const proc = spawn(cliCommand, cliArgs, {
       cwd,
-      env: { ...process.env, FORCE_COLOR: '0', ...env }, // Disable colors for easier parsing
+      env: mergedEnv,
     });
 
     let stdout = '';
