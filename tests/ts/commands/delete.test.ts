@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync } from 'fs';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { createTestVault, cleanupTestVault, runCLI, waitForFile } from '../fixtures/setup.js';
 
 describe('delete command', () => {
   let vaultDir: string;
@@ -241,13 +241,14 @@ describe('delete command', () => {
       await writeFile(
         join(vaultDir, 'Ideas', 'Linker Note.md'),
         `---
-type: idea
-status: raw
----
+ type: idea
+ status: raw
+ ---
 
-This links to [[Sample Idea]].
-`
+ This links to [[Sample Idea]].
+ `
       );
+      await waitForFile(join(vaultDir, 'Ideas', 'Linker Note.md'));
 
       // Delete Sample Idea in JSON mode (backlinks still counted for output)
       const result = await runCLI(['delete', 'Sample Idea', '--force', '--output', 'json'], vaultDir);
