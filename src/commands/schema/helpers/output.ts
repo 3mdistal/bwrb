@@ -21,6 +21,9 @@ import {
 import { printError } from '../../../lib/prompt.js';
 import { printJson, jsonError, ExitCodes } from '../../../lib/output.js';
 import type { LoadedSchema, Field, BodySection, ResolvedType } from '../../../types/schema.js';
+import { getTtyContext, type TtyContext } from '../../../lib/tty/context.js';
+import { truncateAnsi, visibleWidth, wrapAnsi } from '../../../lib/tty/layout.js';
+import { renderTable } from '../../../lib/tty/table.js';
 
 /**
  * Output schema as JSON for AI/scripting usage.
@@ -190,6 +193,7 @@ function formatBodySectionsForJson(sections: BodySection[]): unknown[] {
  * Show a tree view of all types in the schema.
  */
 export function showSchemaTree(schema: LoadedSchema): void {
+  const context = getTtyContext();
   console.log(chalk.bold('\nSchema Types\n'));
 
   // Show types
@@ -197,8 +201,19 @@ export function showSchemaTree(schema: LoadedSchema): void {
   for (const family of getTypeFamilies(schema)) {
     const typeDef = getTypeDefByPath(schema, family);
     if (!typeDef) continue;
-    printTypeTree(schema, family, typeDef, 0);
+    printTypeTree(schema, family, typeDef, 0, context);
   }
+}
+
+function printTreeLine(prefix: string, content: string, context: TtyContext): void {
+  if (!context.isTTY || !context.width) {
+    console.log(prefix + content);
+    return;
+  }
+
+  const available = Math.max(1, context.width - visibleWidth(prefix));
+  const fitted = truncateAnsi(content, available, { ellipsis: '...' });
+  console.log(prefix + fitted);
 }
 
 /**
@@ -208,7 +223,8 @@ function printTypeTree(
   schema: LoadedSchema,
   typePath: string,
   typeDef: ResolvedType,
-  depth: number
+  depth: number,
+  context: TtyContext
 ): void {
   const indent = '  '.repeat(depth + 1);
   const typeName = typePath.split('/').pop() ?? typePath;
@@ -218,17 +234,43 @@ function printTypeTree(
   let label = chalk.green(typeName);
   label += chalk.gray(` -> ${outputDir}`);
 
-  console.log(`${indent}${label}`);
+  printTreeLine(indent, label, context);
 
   // Show subtypes (children in new model)
   if (hasSubtypes(typeDef)) {
     for (const subtype of getSubtypeKeys(typeDef)) {
       // In v2, children are just type names, not paths
-      const subDef = getTypeDefByPath(schema, subtype);
-      if (subDef) {
-        printTypeTree(schema, subtype, subDef, depth + 1);
+        const subDef = getTypeDefByPath(schema, subtype);
+        if (subDef) {
+          printTypeTree(schema, subtype, subDef, depth + 1, context);
+        }
       }
-    }
+  }
+}
+
+function printLabelValue(
+  label: string,
+  value: string,
+  context: TtyContext,
+  indent: string = '  ',
+  labelWidth: number = 18
+): void {
+  const labelText = `${label}:`;
+  const labelPadded = labelText.padEnd(labelWidth);
+  const prefix = `${indent}${chalk.cyan(labelPadded)} `;
+
+  if (!context.isTTY || !context.width) {
+    console.log(prefix + value);
+    return;
+  }
+
+  const wrapped = wrapAnsi(value, context.width, {
+    indent: prefix,
+    hangingIndent: `${indent}${' '.repeat(labelWidth)} `,
+  });
+
+  for (const line of wrapped) {
+    console.log(line);
   }
 }
 
@@ -236,6 +278,7 @@ function printTypeTree(
  * Show detailed information about a specific type.
  */
 export function showTypeDetails(schema: LoadedSchema, typePath: string): void {
+  const context = getTtyContext();
   const typeDef = getTypeDefByPath(schema, typePath);
   if (!typeDef) {
     printError(`Unknown type: ${typePath}`);
@@ -246,17 +289,17 @@ export function showTypeDetails(schema: LoadedSchema, typePath: string): void {
 
   // Basic info - always show output dir since getOutputDir always returns a value
   const outputDir = getOutputDir(schema, typePath);
-  console.log(`  ${chalk.cyan('Output Dir:')} ${outputDir}`);
+  printLabelValue('Output Dir', outputDir, context);
   if (typeDef.filename) {
-    console.log(`  ${chalk.cyan('Filename Pattern:')} ${typeDef.filename}`);
+    printLabelValue('Filename Pattern', typeDef.filename, context);
   }
   if (typeDef.parent) {
-    console.log(`  ${chalk.cyan('Extends:')} ${typeDef.parent}`);
+    printLabelValue('Extends', typeDef.parent, context);
   }
 
   // Subtypes (children in new model) - show before fields for better overview
   if (hasSubtypes(typeDef)) {
-    console.log(`  ${chalk.cyan('Subtypes:')} ${getSubtypeKeys(typeDef).join(', ')}`);
+    printLabelValue('Subtypes', getSubtypeKeys(typeDef).join(', '), context);
   }
 
   // Fields grouped by origin (own vs inherited)
@@ -271,7 +314,7 @@ export function showTypeDetails(schema: LoadedSchema, typePath: string): void {
     // Use this type's field order for own fields
     const orderedOwnFields = getFieldOrderForOrigin(schema, typeDef.name, ownFieldNames);
     for (const name of orderedOwnFields) {
-      printFieldDetails(name, ownFields[name]!, '    ');
+      printFieldDetails(name, ownFields[name]!, '    ', context);
     }
   }
 
@@ -289,7 +332,7 @@ export function showTypeDetails(schema: LoadedSchema, typePath: string): void {
           Object.keys(ancestorFields)
         );
         for (const name of orderedFields) {
-          printFieldDetails(name, ancestorFields[name]!, '    ');
+          printFieldDetails(name, ancestorFields[name]!, '    ', context);
         }
       }
     }
@@ -315,38 +358,59 @@ export function showTypeDetails(schema: LoadedSchema, typePath: string): void {
 function printFieldDetails(
   name: string,
   field: Field,
-  indent: string
+  indent: string,
+  context: TtyContext
 ): void {
   const type = getFieldType(field);
-  let line = `${indent}${chalk.yellow(name)}: ${type}`;
+  const details: string[] = [];
 
-  // Show options if applicable
   if (field.options && field.options.length > 0) {
-    line += chalk.gray(` (${field.options.slice(0, 5).join(', ')}${field.options.length > 5 ? '...' : ''})`);
-  }
-
-  // Show filter summary for dynamic fields
-  if (field.prompt === 'relation' && field.filter) {
-    const filterKeys = Object.keys(field.filter);
-    if (filterKeys.length > 0) {
-      line += chalk.gray(` filter=[${filterKeys.join(',')}]`);
+    if (context.isTTY) {
+      details.push(`options=[${field.options.slice(0, 5).join(', ')}${field.options.length > 5 ? '...' : ''}]`);
+    } else {
+      details.push(`options=[${field.options.join(', ')}]`);
     }
   }
 
-  // Show default
+  if (field.prompt === 'relation' && field.filter) {
+    const filterKeys = Object.keys(field.filter);
+    if (filterKeys.length > 0) {
+      details.push(`filter=[${filterKeys.join(',')}]`);
+    }
+  }
+
   if (field.default !== undefined) {
     const defaultStr = Array.isArray(field.default)
       ? `[${field.default.join(', ')}]`
       : String(field.default);
-    line += chalk.gray(` default=${defaultStr}`);
+    details.push(`default=${defaultStr}`);
   }
 
-  // Show required
   if (field.required) {
-    line += chalk.red(' *required');
+    details.push('required');
   }
 
-  console.log(line);
+  const prefix = `${indent}${chalk.yellow(name)}: ${type}`;
+  const suffix = details.length > 0 ? ` ${chalk.gray(details.join(' '))}` : '';
+
+  if (!context.isTTY || !context.width) {
+    console.log(prefix + suffix);
+    return;
+  }
+
+  const content = details.join(' ');
+  if (!content) {
+    console.log(prefix);
+    return;
+  }
+
+  const wrapped = wrapAnsi(content, context.width, {
+    indent: `${prefix} `,
+    hangingIndent: ' '.repeat(visibleWidth(prefix) + 1),
+  });
+  for (const line of wrapped) {
+    console.log(line);
+  }
 }
 
 /**
@@ -385,13 +449,14 @@ export function getFieldType(field: Field): string {
  * Show a verbose tree view of all types with their fields inline.
  */
 export function showSchemaTreeVerbose(schema: LoadedSchema): void {
+  const context = getTtyContext();
   console.log(chalk.bold('\nSchema Types\n'));
 
   console.log(chalk.cyan('Types:'));
   for (const family of getTypeFamilies(schema)) {
     const typeDef = getTypeDefByPath(schema, family);
     if (!typeDef) continue;
-    printTypeTreeVerbose(schema, family, typeDef, 0);
+    printTypeTreeVerbose(schema, family, typeDef, 0, context);
   }
 }
 
@@ -402,7 +467,8 @@ function printTypeTreeVerbose(
   schema: LoadedSchema,
   typePath: string,
   typeDef: ResolvedType,
-  depth: number
+  depth: number,
+  context: TtyContext
 ): void {
   const indent = '  '.repeat(depth + 1);
   const typeName = typePath.split('/').pop() ?? typePath;
@@ -415,7 +481,7 @@ function printTypeTreeVerbose(
   const effectiveOutputDir = getOutputDir(schema, typePath);
   header += chalk.gray(` -> ${effectiveOutputDir}`);
 
-  console.log(`${indent}${header}`);
+  printTreeLine(indent, header, context);
 
   // Get fields grouped by origin
   const { ownFields, inheritedFields } = getFieldsByOrigin(schema, typePath);
@@ -454,19 +520,14 @@ function printTypeTreeVerbose(
     const isLast = i === fieldsToShow.length - 1;
     const prefix = isLast ? '└─' : '├─';
 
-    let line = `${fieldIndent}${prefix} ${chalk.yellow(name)}: ${getFieldTypeCompact(field)}`;
-
-    // Add required marker
+    let content = `${chalk.yellow(name)}: ${getFieldTypeCompact(field)}`;
     if (field.required) {
-      line += chalk.red(' [required]');
+      content += chalk.red(' [required]');
     }
-
-    // Add inherited marker
     if (inherited) {
-      line += chalk.gray(` (inherited)`);
+      content += chalk.gray(' (inherited)');
     }
-
-    console.log(line);
+    printTreeLine(`${fieldIndent}${prefix} `, content, context);
   }
 
   // Add blank line between types for readability (but not after the last subtype)
@@ -478,12 +539,66 @@ function printTypeTreeVerbose(
   // Show subtypes (children in new model)
   if (subtypes.length > 0) {
     for (const subtype of subtypes) {
-      const subDef = getTypeDefByPath(schema, subtype);
-      if (subDef) {
-        printTypeTreeVerbose(schema, subtype, subDef, depth + 1);
+        const subDef = getTypeDefByPath(schema, subtype);
+        if (subDef) {
+        printTypeTreeVerbose(schema, subtype, subDef, depth + 1, context);
       }
     }
   }
+}
+
+export function renderSchemaFieldsTable(
+  rows: Array<{ type: string; field: string; kind: string; details: string }>
+): string[] {
+  const context = getTtyContext();
+  const headerStyle = context.colorEnabled ? (text: string) => chalk.gray(text) : null;
+  return renderTable({
+    context,
+    columns: [
+      {
+        key: 'type',
+        title: 'TYPE',
+        minWidth: 8,
+        weight: 1,
+        priority: 0,
+        canDrop: false,
+        ...(headerStyle ? { style: headerStyle } : {}),
+      },
+      {
+        key: 'field',
+        title: 'FIELD',
+        minWidth: 8,
+        weight: 1,
+        priority: 1,
+        canDrop: false,
+        ...(headerStyle ? { style: headerStyle } : {}),
+      },
+      {
+        key: 'kind',
+        title: 'KIND',
+        minWidth: 8,
+        weight: 1,
+        priority: 2,
+        canDrop: true,
+        ...(headerStyle ? { style: headerStyle } : {}),
+      },
+      {
+        key: 'details',
+        title: 'DETAILS',
+        minWidth: 12,
+        weight: 3,
+        priority: 4,
+        canDrop: true,
+        ...(headerStyle ? { style: headerStyle } : {}),
+      },
+    ],
+    rows: rows.map(row => ({
+      type: row.type,
+      field: row.field,
+      kind: row.kind,
+      details: row.details,
+    })),
+  });
 }
 
 /**
