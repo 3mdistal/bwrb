@@ -397,6 +397,14 @@ export function spawnBowerbird(
     rows = 24,
   } = options;
 
+  // Some environments export NO_COLOR by default. When combined with FORCE_COLOR,
+  // Node emits a runtime warning that pollutes PTY assertions.
+  const baseEnv: Record<string, string> = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key, value]) => key !== 'NO_COLOR' && typeof value === 'string'
+    )
+  );
+
   // Use tsx to run the TypeScript source directly
   const ptyProcess = loadPty().spawn(TSX_BIN, ['src/index.ts', ...args], {
     name: 'xterm-256color',
@@ -404,7 +412,7 @@ export function spawnBowerbird(
     rows,
     cwd: PROJECT_ROOT,
     env: {
-      ...process.env,
+      ...baseEnv,
       // Force color output even in non-TTY-like environments
       FORCE_COLOR: '1',
       // Set the vault path

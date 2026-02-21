@@ -200,9 +200,8 @@ listCommand
             };
           })
         );
-        const linePrefix = context.isTTY ? '  ' : '';
         for (const line of lines) {
-          console.log(`${linePrefix}${line}`);
+          console.log(line);
         }
       }
     } catch (err) {
