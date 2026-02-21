@@ -20,8 +20,3 @@ export function normalizeHelpOutput(helpOutput: string): string {
 
   return withoutWrappingQuotes;
 }
-export {
-  assertCanonicalHelpCommandOrdering,
-  CANONICAL_HELP_COMMAND_ORDER,
-  extractHelpCommands,
-} from '../helpers/help.js';
