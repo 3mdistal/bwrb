@@ -281,11 +281,20 @@ export async function runCLI(
   stdin?: string
 ): Promise<CLIResult> {
   const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
+  const childEnv: Record<string, string> = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key, value]) => key !== 'FORCE_COLOR' && typeof value === 'string'
+    )
+  );
 
   return new Promise((resolve) => {
     const proc = spawn('node', [CLI_PATH, ...fullArgs], {
       cwd: PROJECT_ROOT,
-      env: { ...process.env, FORCE_COLOR: '0' }, // Disable colors for easier parsing
+      env: {
+        ...childEnv,
+        // Disable colors for easier parsing without conflicting with NO_COLOR.
+        NO_COLOR: '1',
+      },
     });
 
     let stdout = '';
