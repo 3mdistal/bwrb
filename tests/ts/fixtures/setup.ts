@@ -1,4 +1,4 @@
-import { mkdtemp, rm, mkdir, writeFile, cp } from 'fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, cp, stat } from 'fs/promises';
 import { join, relative } from 'path';
 import { tmpdir } from 'os';
 import { spawn } from 'child_process';
@@ -8,6 +8,10 @@ import { BASELINE_SCHEMA } from './schemas.js';
 
 export const PROJECT_ROOT = process.cwd();
 export const CLI_PATH = join(PROJECT_ROOT, 'dist/index.js');
+const CLI_SRC_PATH = join(PROJECT_ROOT, 'src/index.ts');
+const TSX_BIN = join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx');
+
+const USE_DIST = process.env.BWRB_TEST_DIST === '1';
 
 /**
  * Get a relative path from the project root to the vault.
@@ -24,6 +28,34 @@ export function getRelativeVaultPath(vaultDir: string): string {
  * Use BASELINE_SCHEMA from './schemas.js' for new tests.
  */
 export const TEST_SCHEMA = BASELINE_SCHEMA;
+
+export interface WaitForFileOptions {
+  timeoutMs?: number;
+  intervalMs?: number;
+  minSize?: number;
+}
+
+export async function waitForFile(
+  filePath: string,
+  { timeoutMs = 1000, intervalMs = 20, minSize = 1 }: WaitForFileOptions = {}
+): Promise<void> {
+  const start = Date.now();
+
+  while (true) {
+    try {
+      const info = await stat(filePath);
+      if (info.isFile() && info.size >= minSize) return;
+    } catch {
+      // File not ready yet.
+    }
+
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`Timed out waiting for ${filePath}`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
 
 export async function createTestVault(): Promise<string> {
   const vaultDir = await mkdtemp(join(tmpdir(), 'bwrb-test-'));
@@ -226,8 +258,7 @@ instances:
 `
   );
 
-  // Delay to ensure file system sync completes (fixes flaky tests on macOS)
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await waitForFile(join(vaultDir, '.bwrb/templates/project', 'with-research.md'));
 
   return vaultDir;
 }
@@ -242,6 +273,11 @@ export interface CLIResult {
   exitCode: number;
 }
 
+export interface RunCLIOptions {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
 /**
  * Run the bwrb CLI with arguments and capture output.
  * @param args CLI arguments (e.g., ['list', 'idea', '--status=raw'])
@@ -251,14 +287,34 @@ export interface CLIResult {
 export async function runCLI(
   args: string[],
   vaultDir?: string,
-  stdin?: string
+  stdin?: string,
+  options: RunCLIOptions = {}
 ): Promise<CLIResult> {
   const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
+  const { cwd = PROJECT_ROOT, env = {} } = options;
+
+  const cliCommand = USE_DIST ? 'node' : TSX_BIN;
+  const cliArgs = USE_DIST ? [CLI_PATH, ...fullArgs] : [CLI_SRC_PATH, ...fullArgs];
+
+  const childEnv: Record<string, string> = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key, value]) => key !== 'FORCE_COLOR' && typeof value === 'string'
+    )
+  );
+
+  const mergedEnv: Record<string, string> = {
+    ...childEnv,
+    ...env,
+  };
+
+  if (mergedEnv.NO_COLOR === undefined) {
+    mergedEnv.NO_COLOR = '1';
+  }
 
   return new Promise((resolve) => {
-    const proc = spawn('node', [CLI_PATH, ...fullArgs], {
-      cwd: PROJECT_ROOT,
-      env: { ...process.env, FORCE_COLOR: '0' }, // Disable colors for easier parsing
+    const proc = spawn(cliCommand, cliArgs, {
+      cwd,
+      env: mergedEnv,
     });
 
     let stdout = '';

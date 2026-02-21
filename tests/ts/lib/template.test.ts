@@ -11,7 +11,6 @@ import {
   findDefaultTemplate,
   findTemplateByName,
   processTemplateBody,
-  resolveTemplate,
   validateConstraints,
   validateConstraintSyntax,
   createScaffoldedInstances,
@@ -429,120 +428,6 @@ template-for: task
       const result = processTemplateBody(body, frontmatter);
 
       expect(result).toBe('A: , B: ');
-    });
-  });
-
-  describe('resolveTemplate (deprecated wrapper)', () => {
-    beforeEach(async () => {
-      await mkdir(join(tempDir, '.bwrb'), { recursive: true });
-      await writeFile(
-        join(tempDir, '.bwrb', 'schema.json'),
-        JSON.stringify({
-          version: 2,
-          types: {
-            idea: {
-              output_dir: 'Ideas',
-              fields: {
-                title: { prompt: 'text', required: true },
-              },
-            },
-          },
-        })
-      );
-    });
-
-    it('returns null template when noTemplate is true', async () => {
-      const result = await resolveTemplate(tempDir, 'idea', { noTemplate: true });
-
-      expect(result.template).toBeNull();
-      expect(result.shouldPrompt).toBe(false);
-      expect(result.availableTemplates).toEqual([]);
-    });
-
-    it('finds specific template by name', async () => {
-      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
-      await writeFile(
-        join(tempDir, '.bwrb/templates/idea', 'special.md'),
-        `---
-type: template
-template-for: idea
----
-`
-      );
-
-      const result = await resolveTemplate(tempDir, 'idea', { templateName: 'special' });
-
-      expect(result.template).not.toBeNull();
-      expect(result.template?.name).toBe('special');
-      expect(result.shouldPrompt).toBe(false);
-    });
-
-    it('returns null when templateName not found', async () => {
-      const result = await resolveTemplate(tempDir, 'idea', { templateName: 'nonexistent' });
-
-      expect(result.template).toBeNull();
-      expect(result.shouldPrompt).toBe(false);
-    });
-
-    it('auto-selects default.md when no flags provided', async () => {
-      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
-      await writeFile(
-        join(tempDir, '.bwrb/templates/idea', 'default.md'),
-        `---
-type: template
-template-for: idea
----
-`
-      );
-      await writeFile(
-        join(tempDir, '.bwrb/templates/idea', 'other.md'),
-        `---
-type: template
-template-for: idea
----
-`
-      );
-
-      const result = await resolveTemplate(tempDir, 'idea', {});
-
-      expect(result.template).not.toBeNull();
-      expect(result.template?.name).toBe('default');
-      expect(result.shouldPrompt).toBe(false);
-      expect(result.availableTemplates).toHaveLength(2);
-    });
-
-    it('prompts when multiple templates but no default', async () => {
-      await mkdir(join(tempDir, '.bwrb/templates/idea'), { recursive: true });
-      await writeFile(
-        join(tempDir, '.bwrb/templates/idea', 'alpha.md'),
-        `---
-type: template
-template-for: idea
----
-`
-      );
-      await writeFile(
-        join(tempDir, '.bwrb/templates/idea', 'beta.md'),
-        `---
-type: template
-template-for: idea
----
-`
-      );
-
-      const result = await resolveTemplate(tempDir, 'idea', {});
-
-      expect(result.template).toBeNull();
-      expect(result.shouldPrompt).toBe(true);
-      expect(result.availableTemplates).toHaveLength(2);
-    });
-
-    it('returns no prompt when no templates exist', async () => {
-      const result = await resolveTemplate(tempDir, 'idea', {});
-
-      expect(result.template).toBeNull();
-      expect(result.shouldPrompt).toBe(false);
-      expect(result.availableTemplates).toEqual([]);
     });
   });
 
