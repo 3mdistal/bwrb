@@ -1,6 +1,26 @@
 import { defineConfig } from 'vitest/config';
+import {
+  createVitestViteEnvShimPlugin,
+  VITE_ENV_SHIM_ID,
+} from './tests/ts/support/vite-env-shim.js';
+import { resolveVitestRoot } from './tests/ts/support/vitest-root.js';
 
 export default defineConfig({
+  plugins: [createVitestViteEnvShimPlugin()],
+  root: resolveVitestRoot(),
+  resolve: {
+    preserveSymlinks: true,
+    alias: [
+      {
+        find: /^\/@vite\/env(?:\?.*)?$/,
+        replacement: VITE_ENV_SHIM_ID,
+      },
+      {
+        find: /vite\/dist\/client\/env\.mjs(?:\?.*)?$/,
+        replacement: VITE_ENV_SHIM_ID,
+      },
+    ],
+  },
   test: {
     globals: true,
     include: ['tests/ts/**/*.test.ts'],

@@ -24,6 +24,7 @@ import { getGlobalOpts } from '../lib/command.js';
 import { parseNote, writeNote } from '../lib/frontmatter.js';
 import {
   promptSelection,
+  promptMultiSelect,
   promptInput,
   promptConfirm,
   promptMultiInput,
@@ -1101,7 +1102,7 @@ async function editTemplateInteractive(
   if (editDefaults === null) throw new UserCancelledError();
 
   if (editDefaults) {
-    console.log(chalk.gray('\nFor each field, enter a new default, press Enter to keep, or type "clear" to remove.\n'));
+    console.log(chalk.gray('\nFor each field, choose how to update its default value (keep, clear, or set a new value).\n'));
     
     for (const fieldName of fieldNames) {
       const field = fields[fieldName];
@@ -1261,8 +1262,26 @@ async function promptFieldDefaultEdit(
     case 'relation': {
       if (!field.source) return currentValue;
       const dynamicOptions = await queryByType(schema, vaultDir, field.source, field.filter);
+
+      if (field.multiple) {
+        const actionOptions = ['(keep)', '(clear)', '(set empty [])'];
+        if (dynamicOptions.length > 0) {
+          actionOptions.push('(select values)');
+        }
+
+        const action = await promptSelection(`How to update ${label}:`, actionOptions);
+        if (action === null) throw new UserCancelledError();
+        if (action === '(keep)') return currentValue;
+        if (action === '(clear)') return 'CLEAR';
+        if (action === '(set empty [])') return [];
+
+        const selected = await promptMultiSelect(`Select ${label}:`, dynamicOptions);
+        if (selected === null) throw new UserCancelledError();
+        return formatUniqueRelationValues(selected, schema.config.linkFormat);
+      }
+
       if (dynamicOptions.length === 0) return currentValue;
-      
+
       const options = ['(keep)', '(clear)', ...dynamicOptions];
       const selected = await promptSelection(`New ${label}:`, options);
       if (selected === null) throw new UserCancelledError();
@@ -1290,6 +1309,24 @@ async function promptFieldDefaultEdit(
       return input.trim();
     }
   }
+}
+
+function formatUniqueRelationValues(
+  values: string[],
+  linkFormat: 'wikilink' | 'markdown'
+): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    const formatted = formatValue(value, linkFormat);
+    if (!seen.has(formatted)) {
+      seen.add(formatted);
+      result.push(formatted);
+    }
+  }
+
+  return result;
 }
 
 // ============================================================================

@@ -257,11 +257,9 @@ bwrb template list [type] [name]   # List all, or show details if both provided
 
 ### Documentation Canon
 
-The docs-site (`https://bwrb.dev`) is the canonical source for user-facing CLI documentation.
+Documentation source of truth is defined in `docs/product/canonical-docs-policy.md`.
 
-The `docs/product/` folder is for product rationale, decisions, and internal design notes that may link to canonical docs-site pages.
-
-**Documentation note:** The docs-site (`docs-site/`) is the canonical source for user-facing CLI documentation. `docs/product/` is for product rationale and internal notes; when it describes CLI behavior, it should link to the docs-site page.
+In short: docs-site is canonical for user-facing CLI behavior; `docs/product/` is for rationale and should link to docs-site behavior pages.
 
 ### Help Output Ordering
 

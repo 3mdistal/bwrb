@@ -45,16 +45,24 @@ Changes since `v0.1.4`.
 
 - **`bwrb audit --fix` now previews and applies fixes more explicitly** (#346, #272)
   - Interactive fixes write by default; use `--dry-run` to preview without writing
-  - Auto-fixes require `--execute` to apply changes
+  - Auto-fixes preview by default; add `--execute` to apply changes
   - `--fix` remains interactive-only; non-TTY requires `--fix --auto` or `--output json`
-  - `--fix --auto` applies only unambiguous fixes and reports remaining issues without failing the run
+  - `--fix --auto` applies only unambiguous fixes when `--execute` is present, and reports remaining issues without failing the run
   - `--fix` requires explicit targeting (`--type`, `--path`, `--where`, `--body`, or `--all`)
+
+- **Clarified `bwrb audit --execute` semantics** (#403)
+  - `--execute` is valid only with `--fix --auto`; using it without `--auto` now errors
+  - Removed deprecated/no-op messaging for `--execute`
+  - Auto-fix preview guidance now consistently instructs rerun with `--execute` to apply
 
 - **Vault auto-detection now uses nearest `.bwrb/schema.json` (find-up)** (#337)
   - Precedence: `--vault` > find-up > `BWRB_VAULT` > `cwd` (error if not a vault)
 
 ### Changed
 
+- **Deprecated legacy template resolver in favor of inheritance API** (#299)
+  - `resolveTemplate()` is now a compatibility wrapper over `resolveTemplateWithInheritance()`
+  - New internal code should call `resolveTemplateWithInheritance()` directly
 - **Refreshed pnpm-managed dependencies and lockfiles across root + docs-site** (#335)
   - Updated direct dependencies to latest compatible releases while preserving current CLI/runtime contracts
   - Kept core contract-sensitive packages on existing major lines (e.g. `zod` v3, `vitest` v2) to avoid unplanned breaking changes

@@ -215,7 +215,7 @@ describe('delete command', () => {
       const filePath = join(vaultDir, 'Objectives/Tasks', 'Sample Task.md');
       expect(existsSync(filePath)).toBe(true);
 
-      const result = await runCLI(['delete', 'Sample Task', '--force'], vaultDir);
+      const result = await runCLI(['delete', 'Sample Task', '--force', '--picker', 'none'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(existsSync(filePath)).toBe(false);
@@ -225,7 +225,7 @@ describe('delete command', () => {
       const filePath = join(vaultDir, 'Objectives/Milestones', 'Active Milestone.md');
       expect(existsSync(filePath)).toBe(true);
 
-      const result = await runCLI(['delete', 'Active Milestone', '--force'], vaultDir);
+      const result = await runCLI(['delete', 'Active Milestone', '--force', '--picker', 'none'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(existsSync(filePath)).toBe(false);
