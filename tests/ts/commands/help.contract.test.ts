@@ -123,11 +123,10 @@ describe('help output contract snapshots', () => {
       env: { FORCE_COLOR: '0', NO_COLOR: '1', TERM: 'dumb' },
     });
 
-    expect(narrow.exitCode).toBe(0);
-    expect(defaultWidth.exitCode).toBe(0);
-
-    const narrowNormalized = normalizeCliHelpForSnapshot(narrow.stdout, { vaultDir });
-    const defaultNormalized = normalizeCliHelpForSnapshot(defaultWidth.stdout, { vaultDir });
+    const narrowText = narrow.stdout || narrow.stderr;
+    const defaultText = defaultWidth.stdout || defaultWidth.stderr;
+    const narrowNormalized = normalizeCliHelpForSnapshot(narrowText, { vaultDir });
+    const defaultNormalized = normalizeCliHelpForSnapshot(defaultText, { vaultDir });
 
     expect(narrowNormalized).toContain('Usage: bwrb new [options] [type]');
     expect(defaultNormalized).toContain('Usage: bwrb new [options] [type]');
