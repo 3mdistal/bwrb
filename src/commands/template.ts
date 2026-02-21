@@ -40,6 +40,8 @@ import {
 } from '../lib/output.js';
 import type { LoadedSchema, Field, Template } from '../types/schema.js';
 import { UserCancelledError } from '../lib/errors.js';
+import { getTtyContext } from '../lib/tty/context.js';
+import { renderTable } from '../lib/tty/table.js';
 
 interface TemplateListOptions {
   output?: string;
@@ -216,17 +218,43 @@ templateCommand
       // Show own templates for this type
       if (typePath) {
         console.log(chalk.bold(`\nTemplates for ${typePath}\n`));
+        const context = getTtyContext();
+        const headerStyle = context.colorEnabled ? (text: string) => chalk.gray(text) : null;
         
         if (ownTemplates.length === 0) {
           console.log(chalk.gray('  (none defined - inheriting from ancestors)\n'));
         } else {
-          // Calculate column widths for own templates
-          const nameWidth = Math.max(10, ...ownTemplates.map(t => t.name.length));
-          
-          for (const template of ownTemplates) {
-            const nameCol = chalk.green(template.name.padEnd(nameWidth + 2));
-            const descCol = template.description ?? chalk.gray('(no description)');
-            console.log(`  ${nameCol}${descCol}`);
+          const ownRows = ownTemplates.map((template) => ({
+            name: template.name,
+            description: template.description ?? '(no description)',
+          }));
+          const ownLines = renderTable({
+            context,
+            columns: [
+              {
+                key: 'name',
+                title: 'NAME',
+                minWidth: 10,
+                weight: 2,
+                priority: 0,
+                canDrop: false,
+                ...(headerStyle ? { style: headerStyle } : {}),
+              },
+              {
+                key: 'description',
+                title: 'DESCRIPTION',
+                minWidth: 12,
+                weight: 3,
+                priority: 2,
+                canDrop: true,
+                ...(headerStyle ? { style: headerStyle } : {}),
+              },
+            ],
+            rows: ownRows,
+          });
+          const linePrefix = context.isTTY ? '  ' : '';
+          for (const line of ownLines) {
+            console.log(`${linePrefix}${line}`);
           }
           console.log('');
         }
@@ -234,14 +262,48 @@ templateCommand
         // Show inherited templates
         if (inheritedTemplates.length > 0) {
           console.log(chalk.bold('Inherited templates\n'));
-          
-          const nameWidth = Math.max(10, ...inheritedTemplates.map(t => t.name.length));
-          
-          for (const template of inheritedTemplates) {
-            const nameCol = chalk.green(template.name.padEnd(nameWidth + 2));
-            const sourceCol = chalk.yellow(`(from ${template.inheritedFrom})`);
-            const descCol = template.description ? ` - ${template.description}` : '';
-            console.log(`  ${nameCol}${sourceCol}${chalk.gray(descCol)}`);
+
+          const inheritedRows = inheritedTemplates.map((template) => ({
+            name: template.name,
+            source: `from ${template.inheritedFrom}`,
+            description: template.description ?? '',
+          }));
+          const inheritedLines = renderTable({
+            context,
+            columns: [
+              {
+                key: 'name',
+                title: 'NAME',
+                minWidth: 10,
+                weight: 2,
+                priority: 0,
+                canDrop: false,
+                ...(headerStyle ? { style: headerStyle } : {}),
+              },
+              {
+                key: 'source',
+                title: 'SOURCE',
+                minWidth: 10,
+                weight: 1,
+                priority: 1,
+                canDrop: false,
+                ...(headerStyle ? { style: headerStyle } : {}),
+              },
+              {
+                key: 'description',
+                title: 'DESCRIPTION',
+                minWidth: 12,
+                weight: 3,
+                priority: 3,
+                canDrop: true,
+                ...(headerStyle ? { style: headerStyle } : {}),
+              },
+            ],
+            rows: inheritedRows,
+          });
+          const linePrefix = context.isTTY ? '  ' : '';
+          for (const line of inheritedLines) {
+            console.log(`${linePrefix}${line}`);
           }
           console.log('');
         }
@@ -252,25 +314,48 @@ templateCommand
         // Listing all templates (no type specified)
         console.log(chalk.bold('\nTemplates\n'));
 
-        // Calculate column widths
-        const typeWidth = Math.max(12, ...ownTemplates.map(t => t.templateFor.length));
-        const nameWidth = Math.max(10, ...ownTemplates.map(t => t.name.length));
-
-        // Header
-        console.log(
-          chalk.gray(
-            'TYPE'.padEnd(typeWidth + 2) +
-            'NAME'.padEnd(nameWidth + 2) +
-            'DESCRIPTION'
-          )
-        );
-
-        // Rows
-        for (const template of ownTemplates) {
-          const typeCol = chalk.cyan(template.templateFor.padEnd(typeWidth + 2));
-          const nameCol = chalk.green(template.name.padEnd(nameWidth + 2));
-          const descCol = template.description ?? chalk.gray('(no description)');
-          console.log(typeCol + nameCol + descCol);
+        const context = getTtyContext();
+        const headerStyle = context.colorEnabled ? (text: string) => chalk.gray(text) : null;
+        const rows = ownTemplates.map(template => ({
+          type: template.templateFor,
+          name: template.name,
+          description: template.description ?? '(no description)',
+        }));
+        const lines = renderTable({
+          context,
+          columns: [
+            {
+              key: 'type',
+              title: 'TYPE',
+              minWidth: 10,
+              weight: 1,
+              priority: 0,
+              canDrop: false,
+              ...(headerStyle ? { style: headerStyle } : {}),
+            },
+            {
+              key: 'name',
+              title: 'NAME',
+              minWidth: 10,
+              weight: 2,
+              priority: 1,
+              canDrop: false,
+              ...(headerStyle ? { style: headerStyle } : {}),
+            },
+            {
+              key: 'description',
+              title: 'DESCRIPTION',
+              minWidth: 12,
+              weight: 3,
+              priority: 3,
+              canDrop: true,
+              ...(headerStyle ? { style: headerStyle } : {}),
+            },
+          ],
+          rows,
+        });
+        for (const line of lines) {
+          console.log(line);
         }
 
         console.log(`\n${ownTemplates.length} template(s) found`);

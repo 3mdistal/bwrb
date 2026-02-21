@@ -468,6 +468,20 @@ export interface InheritedTemplateResolution {
   availableTemplates: Template[];
 }
 
+export function createEmptyTemplateResolution(
+  overrides: Partial<InheritedTemplateResolution> = {}
+): InheritedTemplateResolution {
+  return {
+    template: null,
+    mergedDefaults: {},
+    mergedConstraints: {},
+    mergedPromptFields: [],
+    shouldPrompt: false,
+    availableTemplates: [],
+    ...overrides,
+  };
+}
+
 /**
  * Resolve template with inheritance support.
  * 
@@ -495,14 +509,7 @@ export async function resolveTemplateWithInheritance(
 ): Promise<InheritedTemplateResolution> {
   // --no-template: Skip template system entirely
   if (options.noTemplate) {
-    return {
-      template: null,
-      mergedDefaults: {},
-      mergedConstraints: {},
-      mergedPromptFields: [],
-      shouldPrompt: false,
-      availableTemplates: [],
-    };
+    return createEmptyTemplateResolution();
   }
   
   // --template <name>: Find specific template (no inheritance for named templates)
@@ -532,14 +539,7 @@ export async function resolveTemplateWithInheritance(
       };
     }
     // Template not found - caller should handle as error
-    return {
-      template: null,
-      mergedDefaults: {},
-      mergedConstraints: {},
-      mergedPromptFields: [],
-      shouldPrompt: false,
-      availableTemplates: [],
-    };
+    return createEmptyTemplateResolution();
   }
   
   // No flags: Auto-discover with inheritance
@@ -585,25 +585,14 @@ export async function resolveTemplateWithInheritance(
   // No default templates at all
   // If there are other templates for this type, prompt
   if (ownTemplates.length > 0) {
-    return {
-      template: null,
-      mergedDefaults: {},
-      mergedConstraints: {},
-      mergedPromptFields: [],
+    return createEmptyTemplateResolution({
       shouldPrompt: true,
       availableTemplates: ownTemplates,
-    };
+    });
   }
-  
+
   // No templates available
-  return {
-    template: null,
-    mergedDefaults: {},
-    mergedConstraints: {},
-    mergedPromptFields: [],
-    shouldPrompt: false,
-    availableTemplates: [],
-  };
+  return createEmptyTemplateResolution();
 }
 
 /**

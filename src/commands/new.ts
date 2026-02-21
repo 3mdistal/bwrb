@@ -11,6 +11,7 @@ import {
   ExitCodes,
 } from '../lib/output.js';
 import {
+  createEmptyTemplateResolution,
   findTemplateByName,
   resolveTemplateWithInheritance,
   type InheritedTemplateResolution,
@@ -191,14 +192,7 @@ async function resolveTemplateResolution(
   schema: LoadedSchema,
   options: NewCommandOptions
 ): Promise<InheritedTemplateResolution> {
-  let templateResolution: InheritedTemplateResolution = {
-    template: null,
-    mergedDefaults: {},
-    mergedConstraints: {},
-    mergedPromptFields: [],
-    shouldPrompt: false,
-    availableTemplates: [],
-  };
+  let templateResolution: InheritedTemplateResolution = createEmptyTemplateResolution();
 
   if (options.noTemplate) {
     return templateResolution;
@@ -236,14 +230,7 @@ async function resolveTemplateResolution(
         });
       }
     } else {
-      templateResolution = {
-        template: null,
-        mergedDefaults: {},
-        mergedConstraints: {},
-        mergedPromptFields: [],
-        shouldPrompt: false,
-        availableTemplates: [],
-      };
+      templateResolution = createEmptyTemplateResolution();
     }
   }
 

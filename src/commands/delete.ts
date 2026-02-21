@@ -773,7 +773,7 @@ async function deleteResolvedFile({
       path: relativePath,
       data: {
         absolutePath: fullPath,
-        backlinksCount: backlinks.length,
+        backlinksCount: jsonMode ? 0 : backlinks.length,
       },
     }));
   } else {
