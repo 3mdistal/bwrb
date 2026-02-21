@@ -347,6 +347,19 @@ bwrb dashboard list --output json  # JSON output for scripting
 5. **Validate with audit** after bulk operations
 6. **Use filter expressions** (`--where`) for targeted queries rather than fetching all notes
 
+### Commander Negated Flags (`--no-*`)
+
+For automation, treat Commander negated flags as a contract:
+
+- `--no-foo` maps to `options.foo === false` at runtime.
+- Do not assume `options.noFoo` exists.
+
+Examples in bwrb:
+
+- `bwrb new ... --no-template` => `options.template === false`
+- `bwrb search ... --no-context` => `options.context === false`
+- `bwrb schema migrate ... --no-backup` => `options.backup === false`
+
 ## Filter Expression Syntax
 
 ```bash

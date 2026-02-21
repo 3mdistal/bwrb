@@ -113,6 +113,26 @@ Common failures are unused exports, including stale barrel exports. Prefer remov
 
 **Important**: When creating a git worktree, run `pnpm build` after `pnpm install`. The command tests (`tests/ts/commands/`) require the built `dist/` output to run correctly.
 
+## Commander `--no-*` Option Contract
+
+Commander negated flags follow a specific runtime contract:
+
+- `.option('--no-foo')` sets `options.foo === false`
+- It does **not** set `options.noFoo`
+
+When implementing command handlers, read the positive key (`foo`) and check for `false` explicitly where needed.
+
+Current examples in this repo:
+
+| CLI flag | Runtime option key | Correct check |
+| --- | --- | --- |
+| `--no-template` | `options.template` | `options.template === false` |
+| `--no-instances` | `options.instances` | `options.instances === false` |
+| `--no-context` | `options.context` | `options.context === false` |
+| `--no-backup` | `options.backup` | `options.backup === false` |
+
+If a command accepts both a positive value form and a negated form (for example `--template <name>` and `--no-template`), treat that combination as a command-flow contract decision at the command boundary (error, or documented precedence), and test both flag orders.
+
 ## Worktrees: Agent Review Input
 
 When working in a git worktree, review agents may not be able to read changed files directly from the worktree filesystem.
