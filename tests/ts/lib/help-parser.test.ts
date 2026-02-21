@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   assertCanonicalHelpCommandOrdering,
   CANONICAL_HELP_COMMAND_ORDER,
-  parseHelpCommandNames,
-} from '../fixtures/help-parser.js';
+  extractHelpCommands,
+} from '../helpers/help.js';
 
 function buildHelpOutput(commandRows: string[], sectionsAfter: string[] = ['Options:']): string {
   const commands = commandRows.map((line) => `  ${line}`).join('\n');
@@ -30,7 +30,7 @@ describe('help parser', () => {
       '  -h, --help                   display help for command',
     ].join('\n');
 
-    expect(parseHelpCommandNames(output)).toEqual(['new', 'edit', 'delete']);
+    expect(extractHelpCommands(output)).toEqual(['new', 'edit', 'delete']);
   });
 
   it('supports CRLF line endings', () => {
@@ -39,19 +39,19 @@ describe('help parser', () => {
       'edit [options] [query]       Edit an existing note',
     ]).replace(/\n/g, '\r\n');
 
-    expect(parseHelpCommandNames(output)).toEqual(['new', 'edit']);
+    expect(extractHelpCommands(output)).toEqual(['new', 'edit']);
   });
 
   it('throws when Commands section is missing', () => {
     const output = ['Usage: bwrb [options] [command]', '', 'Options:'].join('\n');
 
-    expect(() => parseHelpCommandNames(output)).toThrow(/Commands:/);
+    expect(() => extractHelpCommands(output)).toThrow(/Commands:/);
   });
 
   it('throws when no command entries are present', () => {
     const output = ['Usage: bwrb [options] [command]', '', 'Commands:', '', 'Options:'].join('\n');
 
-    expect(() => parseHelpCommandNames(output)).toThrow(/no command entries/i);
+    expect(() => extractHelpCommands(output)).toThrow(/no command entries/i);
   });
 
   it('throws when duplicate commands are present', () => {
@@ -60,7 +60,7 @@ describe('help parser', () => {
       'new [options] [type]         Create a new note again',
     ]);
 
-    expect(() => parseHelpCommandNames(output)).toThrow(/Duplicate commands/);
+    expect(() => extractHelpCommands(output)).toThrow(/Duplicate commands/);
   });
 
   it('accepts canonical ordering with optional trailing help', () => {
@@ -68,7 +68,7 @@ describe('help parser', () => {
       ...CANONICAL_HELP_COMMAND_ORDER.map((name) => `${name} [options] description`),
       'help [command] display help for command',
     ];
-    const commands = parseHelpCommandNames(buildHelpOutput(commandRows));
+    const commands = extractHelpCommands(buildHelpOutput(commandRows));
 
     expect(() => assertCanonicalHelpCommandOrdering(commands)).not.toThrow();
   });
@@ -79,7 +79,7 @@ describe('help parser', () => {
       'help [command] display help for command',
       ...CANONICAL_HELP_COMMAND_ORDER.slice(2).map((name) => `${name} [options] description`),
     ];
-    const commands = parseHelpCommandNames(buildHelpOutput(commandRows));
+    const commands = extractHelpCommands(buildHelpOutput(commandRows));
 
     expect(() => assertCanonicalHelpCommandOrdering(commands)).toThrow(/must appear at the end/);
   });
