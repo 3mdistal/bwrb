@@ -3,7 +3,7 @@ import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
 import { TemplateFrontmatterSchema, type Template, type LoadedSchema, type Field, type Constraint, type InstanceScaffold, type ResolvedType } from '../types/schema.js';
-import { getType, getFieldsForType, getFieldOptions, loadSchema } from './schema.js';
+import { getType, getFieldsForType, getFieldOptions } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
@@ -468,6 +468,20 @@ export interface InheritedTemplateResolution {
   availableTemplates: Template[];
 }
 
+export function createEmptyTemplateResolution(
+  overrides: Partial<InheritedTemplateResolution> = {}
+): InheritedTemplateResolution {
+  return {
+    template: null,
+    mergedDefaults: {},
+    mergedConstraints: {},
+    mergedPromptFields: [],
+    shouldPrompt: false,
+    availableTemplates: [],
+    ...overrides,
+  };
+}
+
 /**
  * Resolve template with inheritance support.
  * 
@@ -495,14 +509,7 @@ export async function resolveTemplateWithInheritance(
 ): Promise<InheritedTemplateResolution> {
   // --no-template: Skip template system entirely
   if (options.noTemplate) {
-    return {
-      template: null,
-      mergedDefaults: {},
-      mergedConstraints: {},
-      mergedPromptFields: [],
-      shouldPrompt: false,
-      availableTemplates: [],
-    };
+    return createEmptyTemplateResolution();
   }
   
   // --template <name>: Find specific template (no inheritance for named templates)
@@ -532,14 +539,7 @@ export async function resolveTemplateWithInheritance(
       };
     }
     // Template not found - caller should handle as error
-    return {
-      template: null,
-      mergedDefaults: {},
-      mergedConstraints: {},
-      mergedPromptFields: [],
-      shouldPrompt: false,
-      availableTemplates: [],
-    };
+    return createEmptyTemplateResolution();
   }
   
   // No flags: Auto-discover with inheritance
@@ -585,25 +585,14 @@ export async function resolveTemplateWithInheritance(
   // No default templates at all
   // If there are other templates for this type, prompt
   if (ownTemplates.length > 0) {
-    return {
-      template: null,
-      mergedDefaults: {},
-      mergedConstraints: {},
-      mergedPromptFields: [],
+    return createEmptyTemplateResolution({
       shouldPrompt: true,
       availableTemplates: ownTemplates,
-    };
+    });
   }
-  
+
   // No templates available
-  return {
-    template: null,
-    mergedDefaults: {},
-    mergedConstraints: {},
-    mergedPromptFields: [],
-    shouldPrompt: false,
-    availableTemplates: [],
-  };
+  return createEmptyTemplateResolution();
 }
 
 /**
@@ -867,49 +856,6 @@ export function resolveFilenamePattern(
 // ============================================================================
 // Template Selection Helpers
 // ============================================================================
-
-/**
- * Result of template resolution for the new command.
- */
-export interface TemplateResolutionResult {
-  /** The selected template, or null if no template should be used */
-  template: Template | null;
-  /** Whether the user should be prompted to select */
-  shouldPrompt: boolean;
-  /** Available templates for prompting */
-  availableTemplates: Template[];
-}
-
-/**
- * Resolve which template to use based on CLI flags and available templates.
- *
- * @deprecated Use `resolveTemplateWithInheritance()` for new code.
- * 
- * Logic:
- * - --no-template: Return null template, no prompt
- * - --template <name>: Find and return that template (error if not found)
- * - No flags:
- *   - If default.md exists: Use it automatically
- *   - If multiple templates: Prompt user to select
- *   - If no templates: No template, no prompt
- */
-export async function resolveTemplate(
-  vaultDir: string,
-  typePath: string,
-  options: {
-    noTemplate?: boolean;
-    templateName?: string;
-  }
-): Promise<TemplateResolutionResult> {
-  const schema = await loadSchema(vaultDir);
-  const resolved = await resolveTemplateWithInheritance(vaultDir, typePath, schema, options);
-
-  return {
-    template: resolved.template,
-    shouldPrompt: resolved.shouldPrompt,
-    availableTemplates: resolved.availableTemplates,
-  };
-}
 
 // ============================================================================
 // Template Validation

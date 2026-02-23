@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync } from 'fs';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { createTestVault, cleanupTestVault, runCLI, waitForFile } from '../fixtures/setup.js';
 
 describe('delete command', () => {
   let vaultDir: string;
@@ -215,7 +215,7 @@ describe('delete command', () => {
       const filePath = join(vaultDir, 'Objectives/Tasks', 'Sample Task.md');
       expect(existsSync(filePath)).toBe(true);
 
-      const result = await runCLI(['delete', 'Sample Task', '--force', '--picker', 'none'], vaultDir);
+      const result = await runCLI(['delete', 'Sample Task', '--force'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       expect(existsSync(filePath)).toBe(false);
@@ -225,7 +225,10 @@ describe('delete command', () => {
       const filePath = join(vaultDir, 'Objectives/Milestones', 'Active Milestone.md');
       expect(existsSync(filePath)).toBe(true);
 
-      const result = await runCLI(['delete', 'Active Milestone', '--force', '--picker', 'none'], vaultDir);
+      const result = await runCLI(
+        ['delete', 'Objectives/Milestones/Active Milestone.md', '--force'],
+        vaultDir
+      );
 
       expect(result.exitCode).toBe(0);
       expect(existsSync(filePath)).toBe(false);
@@ -238,13 +241,14 @@ describe('delete command', () => {
       await writeFile(
         join(vaultDir, 'Ideas', 'Linker Note.md'),
         `---
-type: idea
-status: raw
----
+ type: idea
+ status: raw
+ ---
 
-This links to [[Sample Idea]].
-`
+ This links to [[Sample Idea]].
+ `
       );
+      await waitForFile(join(vaultDir, 'Ideas', 'Linker Note.md'));
 
       // Delete Sample Idea in JSON mode (backlinks still counted for output)
       const result = await runCLI(['delete', 'Sample Idea', '--force', '--output', 'json'], vaultDir);

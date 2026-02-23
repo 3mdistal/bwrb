@@ -162,6 +162,24 @@ bwrb new task --no-template --json '{"name": "Quick task"}'
 
 # Include body sections
 bwrb new task --json '{"name": "Task", "_body": {"Steps": ["Step 1", "Step 2"]}}'
+
+# Skip instance scaffolding for templates that define instances
+bwrb new task --template epic --no-instances --json '{"name": "Ship feature"}'
+```
+
+Some templates and schema types define **instance scaffolding** (child notes created alongside the main note). By default, `bwrb new` creates those instances; pass `--no-instances` to skip child creation.
+
+When `--output json` is used and instance scaffolding runs, the response includes an `instances` object with the created, skipped, and error lists. This object is omitted when `--no-instances` is set.
+
+```json
+{
+  "path": "Projects/Ship feature.md",
+  "instances": {
+    "created": ["Projects/Ship feature/Design.md"],
+    "skipped": [],
+    "errors": []
+  }
+}
 ```
 
 Notes created via `bwrb new` always include a system-managed frontmatter `id` (UUIDv4). The `id` is reserved: you cannot set it in `bwrb new --json`, and you cannot modify it via `bwrb edit`.
@@ -328,6 +346,19 @@ bwrb dashboard list --output json  # JSON output for scripting
 4. **Use `--json` input** for `new` and `edit` to avoid interactive prompts
 5. **Validate with audit** after bulk operations
 6. **Use filter expressions** (`--where`) for targeted queries rather than fetching all notes
+
+### Commander Negated Flags (`--no-*`)
+
+For automation, treat Commander negated flags as a contract:
+
+- `--no-foo` maps to `options.foo === false` at runtime.
+- Do not assume `options.noFoo` exists.
+
+Examples in bwrb:
+
+- `bwrb new ... --no-template` => `options.template === false`
+- `bwrb search ... --no-context` => `options.context === false`
+- `bwrb schema migrate ... --no-backup` => `options.backup === false`
 
 ## Filter Expression Syntax
 

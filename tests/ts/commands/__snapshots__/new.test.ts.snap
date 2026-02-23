@@ -1,0 +1,56 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`new command > help and usage > matches help output snapshot 1`] = `
+"Usage: bwrb new [options] [type]
+
+Create a new note (interactive type navigation if type omitted)
+
+Arguments:
+  type                  Type of note to create (e.g., idea, task)
+
+Options:
+  -t, --type <type>     Type of note to create (alternative to positional
+                        argument)
+  -o, --open            Open the note after creation (uses BWRB_DEFAULT_APP or
+                        system default)
+  --json <frontmatter>  Create note non-interactively with JSON frontmatter
+  --template <name>     Use a specific template (use "default" for default.md)
+  --no-template         Skip template selection, use schema only
+  --no-instances        Skip instance scaffolding (when template has instances)
+  --owner <wikilink>    Owner note for owned types (e.g., "[[My Novel]]")
+  --standalone          Create as standalone (skip owner selection for ownable
+                        types)
+  -h, --help            display help for command
+
+Examples:
+  bwrb new                    # Interactive type selection
+  bwrb new idea               # Create an idea
+  bwrb new task               # Create a task
+  bwrb new draft --open       # Create and open (respects BWRB_DEFAULT_APP)
+
+Templates:
+  bwrb new task --template bug-report  # Use specific template
+  bwrb new task --template default     # Use default.md template explicitly
+  bwrb new task --no-template          # Skip templates, use schema only
+
+Ownership:
+  bwrb new research                        # Prompted: standalone or owned?
+  bwrb new research --standalone           # Create in shared location
+  bwrb new research --owner "[[My Novel]]" # Create owned by specific note
+
+Instance scaffolding:
+  bwrb new draft --template project        # Creates parent + child instances
+  bwrb new draft --template project --no-instances  # Skip instances
+
+Non-interactive (JSON) mode:
+  bwrb new idea --json '{"name": "My Idea", "status": "raw"}'
+  bwrb new task --json '{"name": "Fix bug", "status": "in-progress"}'
+  bwrb new task --json '{"name": "Bug"}' --template bug-report
+
+Body sections (JSON mode):
+  bwrb new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'
+  The _body field accepts section names as keys, with string or string[] values.
+
+Template management:
+  Templates are managed with 'bwrb template' - see 'bwrb template --help'."
+`;

@@ -175,6 +175,7 @@ Examples:
     .description('Apply schema changes to existing notes')
     .option('--output <format>', 'Output format: text (default) or json')
     .option('-x, --execute', 'Actually apply the migration (default is dry-run)')
+    // NOTE: Commander maps --no-backup to options.backup === false.
     .option('--no-backup', 'Skip backup creation (not recommended)')
     .addHelpText('after', `
 Examples:

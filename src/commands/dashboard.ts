@@ -31,6 +31,8 @@ import {
 import { listObjects, type ListOptions } from './list.js';
 import { UserCancelledError } from '../lib/errors.js';
 import type { DashboardDefinition, LoadedSchema } from '../types/schema.js';
+import { getTtyContext } from '../lib/tty/context.js';
+import { renderTable } from '../lib/tty/table.js';
 
 /**
  * Resolve output format from string, with validation.
@@ -305,28 +307,14 @@ dashboardCommand
       }
 
       console.log(chalk.bold('\nDashboards\n'));
+      const context = getTtyContext();
+      const headerStyle = context.colorEnabled ? (text: string) => chalk.gray(text) : null;
 
-      // Calculate column widths
-      const nameWidth = Math.max(10, ...names.map(n => n.length));
-      const typeWidth = Math.max(6, ...names.map(n => (dashboards[n]?.type ?? '').length));
-
-      // Header
-      console.log(
-        chalk.gray(
-          'NAME'.padEnd(nameWidth + 2) +
-          'TYPE'.padEnd(typeWidth + 2) +
-          'FILTERS'
-        )
-      );
-
-      // Rows
+      const rows: Array<Record<string, string>> = [];
       for (const name of names) {
         const def = dashboards[name];
         if (!def) continue;
 
-        const nameCol = chalk.cyan(name.padEnd(nameWidth + 2));
-        const typeCol = chalk.green((def.type ?? '').padEnd(typeWidth + 2));
-        
         // Build filters summary
         const filters: string[] = [];
         if (def.where && def.where.length > 0) {
@@ -345,11 +333,49 @@ dashboardCommand
           filters.push(`fields: ${def.fields.length}`);
         }
 
-        const filtersCol = filters.length > 0 
-          ? chalk.gray(filters.join(', '))
-          : chalk.gray('(no filters)');
+        rows.push({
+          name,
+          type: def.type ?? '',
+          filters: filters.length > 0 ? filters.join(', ') : '(no filters)',
+        });
+      }
 
-        console.log(nameCol + typeCol + filtersCol);
+      const lines = renderTable({
+        context,
+        columns: [
+          {
+            key: 'name',
+            title: 'NAME',
+            minWidth: 10,
+            weight: 2,
+            priority: 0,
+            canDrop: false,
+            ...(headerStyle ? { style: headerStyle } : {}),
+          },
+          {
+            key: 'type',
+            title: 'TYPE',
+            minWidth: 6,
+            weight: 1,
+            priority: 1,
+            canDrop: false,
+            ...(headerStyle ? { style: headerStyle } : {}),
+          },
+          {
+            key: 'filters',
+            title: 'FILTERS',
+            minWidth: 12,
+            weight: 3,
+            priority: 3,
+            canDrop: true,
+            ...(headerStyle ? { style: headerStyle } : {}),
+          },
+        ],
+        rows,
+      });
+
+      for (const line of lines) {
+        console.log(line);
       }
 
       console.log(`\n${names.length} dashboard(s) found`);

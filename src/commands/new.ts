@@ -11,6 +11,7 @@ import {
   ExitCodes,
 } from '../lib/output.js';
 import {
+  createEmptyTemplateResolution,
   findTemplateByName,
   resolveTemplateWithInheritance,
   type InheritedTemplateResolution,
@@ -30,7 +31,9 @@ export const newCommand = new Command('new')
   .option('-o, --open', 'Open the note after creation (uses BWRB_DEFAULT_APP or system default)')
   .option('--json <frontmatter>', 'Create note non-interactively with JSON frontmatter')
   .option('--template <name>', 'Use a specific template (use "default" for default.md)')
+  // NOTE: Commander maps --no-template to options.template === false.
   .option('--no-template', 'Skip template selection, use schema only')
+  // NOTE: Commander maps --no-instances to options.instances === false.
   .option('--no-instances', 'Skip instance scaffolding (when template has instances)')
   .option('--owner <wikilink>', 'Owner note for owned types (e.g., "[[My Novel]]")')
   .option('--standalone', 'Create as standalone (skip owner selection for ownable types)')
@@ -191,14 +194,7 @@ async function resolveTemplateResolution(
   schema: LoadedSchema,
   options: NewCommandOptions
 ): Promise<InheritedTemplateResolution> {
-  let templateResolution: InheritedTemplateResolution = {
-    template: null,
-    mergedDefaults: {},
-    mergedConstraints: {},
-    mergedPromptFields: [],
-    shouldPrompt: false,
-    availableTemplates: [],
-  };
+  let templateResolution: InheritedTemplateResolution = createEmptyTemplateResolution();
 
   if (options.noTemplate) {
     return templateResolution;
@@ -236,14 +232,7 @@ async function resolveTemplateResolution(
         });
       }
     } else {
-      templateResolution = {
-        template: null,
-        mergedDefaults: {},
-        mergedConstraints: {},
-        mergedPromptFields: [],
-        shouldPrompt: false,
-        availableTemplates: [],
-      };
+      templateResolution = createEmptyTemplateResolution();
     }
   }
 
