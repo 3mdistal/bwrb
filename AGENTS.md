@@ -113,6 +113,26 @@ Common failures are unused exports, including stale barrel exports. Prefer remov
 
 **Important**: When creating a git worktree, run `pnpm build` after `pnpm install`. The command tests (`tests/ts/commands/`) require the built `dist/` output to run correctly.
 
+## Commander `--no-*` Option Contract
+
+Commander negated flags follow a specific runtime contract:
+
+- `.option('--no-foo')` sets `options.foo === false`
+- It does **not** set `options.noFoo`
+
+When implementing command handlers, read the positive key (`foo`) and check for `false` explicitly where needed.
+
+Current examples in this repo:
+
+| CLI flag | Runtime option key | Correct check |
+| --- | --- | --- |
+| `--no-template` | `options.template` | `options.template === false` |
+| `--no-instances` | `options.instances` | `options.instances === false` |
+| `--no-context` | `options.context` | `options.context === false` |
+| `--no-backup` | `options.backup` | `options.backup === false` |
+
+If a command accepts both a positive value form and a negated form (for example `--template <name>` and `--no-template`), treat that combination as a command-flow contract decision at the command boundary (error, or documented precedence), and test both flag orders.
+
 ## Worktrees: Agent Review Input
 
 When working in a git worktree, review agents may not be able to read changed files directly from the worktree filesystem.
@@ -132,9 +152,13 @@ If `origin/main` is unavailable, use `main...HEAD` as the diff base.
 
 Tests live in `tests/ts/` with fixtures in `tests/fixtures/vault/`. Run `pnpm test` before committing.
 
+Non-PTY CLI tests run the TypeScript source via `tsx` by default. Set `BWRB_TEST_DIST=1` to run tests against `dist/index.js` (ensure `pnpm build` has been run).
+
 **Always use `pnpm test`** - this runs `vitest run` which exits after tests complete. Running `vitest` directly (without `run`) starts watch mode, which is interactive and not suitable for CI or scripting.
 
 **PTY tests**: Tests in `tests/ts/**/*.pty.test.ts` use node-pty to spawn real terminal processes. These are slower (~1s each) but catch interactive UI bugs that unit tests miss. PTY tests automatically skip when node-pty is incompatible (e.g., Node.js 25+).
+
+For a CI-like PTY run with deterministic output, use `pnpm test:pty:ci`. This writes `artifacts/pty-results.json` for structured results (the CI workflow also captures `artifacts/pty.log` for raw output).
 
 PTY test locations:
 - `tests/ts/lib/*.pty.test.ts` - Prompt-level tests (input, confirm, select)

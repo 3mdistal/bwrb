@@ -8,6 +8,10 @@ import { BASELINE_SCHEMA } from './schemas.js';
 
 export const PROJECT_ROOT = process.cwd();
 export const CLI_PATH = join(PROJECT_ROOT, 'dist/index.js');
+const CLI_SRC_PATH = join(PROJECT_ROOT, 'src/index.ts');
+const TSX_BIN = join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx');
+
+const USE_DIST = process.env.BWRB_TEST_DIST === '1';
 
 /**
  * Get a relative path from the project root to the vault.
@@ -24,6 +28,34 @@ export function getRelativeVaultPath(vaultDir: string): string {
  * Use BASELINE_SCHEMA from './schemas.js' for new tests.
  */
 export const TEST_SCHEMA = BASELINE_SCHEMA;
+
+export interface WaitForFileOptions {
+  timeoutMs?: number;
+  intervalMs?: number;
+  minSize?: number;
+}
+
+export async function waitForFile(
+  filePath: string,
+  { timeoutMs = 1000, intervalMs = 20, minSize = 1 }: WaitForFileOptions = {}
+): Promise<void> {
+  const start = Date.now();
+
+  while (true) {
+    try {
+      const info = await stat(filePath);
+      if (info.isFile() && info.size >= minSize) return;
+    } catch {
+      // File not ready yet.
+    }
+
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`Timed out waiting for ${filePath}`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
 
 export async function createTestVault(): Promise<string> {
   const vaultDir = await mkdtemp(join(tmpdir(), 'bwrb-test-'));
@@ -226,26 +258,9 @@ instances:
 `
   );
 
-  // Ensure key fixture files are visible before returning (reduces CI fs timing flakes)
-  await waitForFile(join(vaultDir, 'Objectives/Tasks', 'Sample Task.md'));
-  await waitForFile(join(vaultDir, 'Objectives/Milestones', 'Active Milestone.md'));
+  await waitForFile(join(vaultDir, '.bwrb/templates/project', 'with-research.md'));
 
   return vaultDir;
-}
-
-async function waitForFile(path: string): Promise<void> {
-  const deadline = Date.now() + 500;
-
-  while (Date.now() < deadline) {
-    try {
-      const stats = await stat(path);
-      if (stats.isFile()) return;
-    } catch {
-      // Retry until deadline
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
 }
 
 export async function cleanupTestVault(vaultDir: string): Promise<void> {
@@ -259,8 +274,8 @@ export interface CLIResult {
 }
 
 export interface RunCLIOptions {
+  cwd?: string;
   env?: NodeJS.ProcessEnv;
-  trimOutput?: boolean;
 }
 
 /**
@@ -276,12 +291,30 @@ export async function runCLI(
   options: RunCLIOptions = {}
 ): Promise<CLIResult> {
   const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
-  const trimOutput = options.trimOutput ?? true;
+  const { cwd = PROJECT_ROOT, env = {} } = options;
+
+  const cliCommand = USE_DIST ? 'node' : TSX_BIN;
+  const cliArgs = USE_DIST ? [CLI_PATH, ...fullArgs] : [CLI_SRC_PATH, ...fullArgs];
+
+  const childEnv: Record<string, string> = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key, value]) => key !== 'FORCE_COLOR' && typeof value === 'string'
+    )
+  );
+
+  const mergedEnv: Record<string, string> = {
+    ...childEnv,
+    ...env,
+  };
+
+  if (mergedEnv.NO_COLOR === undefined) {
+    mergedEnv.NO_COLOR = '1';
+  }
 
   return new Promise((resolve) => {
-    const proc = spawn('node', [CLI_PATH, ...fullArgs], {
-      cwd: PROJECT_ROOT,
-      env: { ...process.env, FORCE_COLOR: '0', ...options.env }, // Disable colors for easier parsing
+    const proc = spawn(cliCommand, cliArgs, {
+      cwd,
+      env: mergedEnv,
     });
 
     let stdout = '';
@@ -302,8 +335,8 @@ export async function runCLI(
 
     proc.on('close', (code) => {
       resolve({
-        stdout: trimOutput ? stdout.trim() : stdout,
-        stderr: trimOutput ? stderr.trim() : stderr,
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
         exitCode: code ?? 0,
       });
     });

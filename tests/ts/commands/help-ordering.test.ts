@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { runCLI } from '../fixtures/setup.js';
 import {
   assertCanonicalHelpCommandOrdering,
-  parseHelpCommandNames,
-} from '../fixtures/help-parser.js';
+  extractHelpCommands,
+} from '../helpers/help.js';
 
 describe('top-level help command ordering', () => {
   it('matches the canonical product ordering contract', async () => {
@@ -12,7 +12,7 @@ describe('top-level help command ordering', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
 
-    const commands = parseHelpCommandNames(result.stdout);
+    const commands = extractHelpCommands(result.stdout);
 
     expect(() => assertCanonicalHelpCommandOrdering(commands)).not.toThrow();
   });

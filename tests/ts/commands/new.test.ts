@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { createTestVault, cleanupTestVault, runCLI, waitForFile } from '../fixtures/setup.js';
+import { normalizeHelpOutput } from '../fixtures/help-parser.js';
 import { formatLocalDate } from '../../../src/lib/local-date.js';
 import { ExitCodes } from '../../../src/lib/output.js';
 
@@ -16,7 +17,9 @@ function extractIdFromFrontmatter(content: string): string {
 }
 
 async function readRegistryIds(vaultDir: string): Promise<Set<string>> {
-  const registry = await readFile(join(vaultDir, '.bwrb', 'ids.jsonl'), 'utf-8');
+  const registryPath = join(vaultDir, '.bwrb', 'ids.jsonl');
+  await waitForFile(registryPath);
+  const registry = await readFile(registryPath, 'utf-8');
   const ids = new Set<string>();
   for (const line of registry.split('\n')) {
     const trimmed = line.trim();
@@ -81,6 +84,13 @@ describe('new command', () => {
   });
 
   describe('help and usage', () => {
+    it('matches help output snapshot', async () => {
+      const result = await runCLI(['new', '--help'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(normalizeHelpOutput(result.stdout)).toMatchSnapshot();
+    });
+
     it('should show help with --help flag', async () => {
       const result = await runCLI(['new', '--help'], vaultDir);
 
@@ -303,17 +313,23 @@ describe('new command - instance scaffolding', () => {
     expect(output.instances.errors).toHaveLength(0);
 
     // Verify parent note content
-    const parentContent = await readFile(join(vaultDir, output.path), 'utf-8');
+    const parentPath = join(vaultDir, output.path);
+    await waitForFile(parentPath);
+    const parentContent = await readFile(parentPath, 'utf-8');
     expect(parentContent).toContain('status: in-flight');
     expect(parentContent).toContain('# Project Overview');
 
     // Verify instance files exist and have correct content
     const instanceDir = join(vaultDir, 'Projects');
-    const bgResearch = await readFile(join(instanceDir, 'Background Research.md'), 'utf-8');
+    const bgResearchPath = join(instanceDir, 'Background Research.md');
+    await waitForFile(bgResearchPath);
+    const bgResearch = await readFile(bgResearchPath, 'utf-8');
     expect(bgResearch).toContain('type: research');
     expect(bgResearch).toContain('status: raw');
 
-    const compAnalysis = await readFile(join(instanceDir, 'Competitor Analysis.md'), 'utf-8');
+    const compAnalysisPath = join(instanceDir, 'Competitor Analysis.md');
+    await waitForFile(compAnalysisPath);
+    const compAnalysis = await readFile(compAnalysisPath, 'utf-8');
     expect(compAnalysis).toContain('type: research');
     expect(compAnalysis).toContain('status: raw');
 
