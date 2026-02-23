@@ -9,7 +9,7 @@
 import type { Expression, BinaryExpression, UnaryExpression, CallExpression, Identifier, Literal, MemberExpression } from 'jsep';
 import { parseExpression } from './expression.js';
 import type { LoadedSchema } from '../types/schema.js';
-import { getFieldsForType, getAllFieldsForType } from './schema.js';
+import { getFieldsForType, getAllFieldsForType, getFieldOptions } from './schema.js';
 import { validateSelectOptionValue, suggestFieldName } from './validation.js';
 import { normalizeWhereExpression } from './where-normalize.js';
 import { FRONTMATTER_IDENTIFIER } from './where-constants.js';
@@ -273,14 +273,15 @@ export function validateWhereExpressions(
         if (!field) continue;
 
         // Only validate fields with options (select fields)
-        if (!field.options || field.options.length === 0) continue;
+        const validOptions = getFieldOptions(field);
+        if (validOptions.length === 0) continue;
 
         // Validate the value against options
         const error = validateFieldValue(
           exprString,
           comparison.field,
           comparison.value,
-          field.options
+          validOptions
         );
 
         if (error) {
@@ -306,9 +307,9 @@ function validateFieldValue(
   expression: string,
   fieldName: string,
   value: string,
-  options: string[]
+  allowedOptions: string[]
 ): WhereValidationError | null {
-  const invalid = validateSelectOptionValue(value, options);
+  const invalid = validateSelectOptionValue(value, allowedOptions);
   if (!invalid) return null;
 
   return {

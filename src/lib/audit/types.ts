@@ -185,7 +185,7 @@ export interface AuditOptions {
   auto?: boolean;
   /** Preview fixes without writing. */
   dryRun?: boolean;
-  /** Apply auto-fixes; deprecated in favor of --dry-run. */
+  /** With --fix --auto: apply fixes (omit to preview). */
   execute?: boolean;
   all?: boolean;
   allowField?: string[];
