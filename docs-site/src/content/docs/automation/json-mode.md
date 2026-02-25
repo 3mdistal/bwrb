@@ -43,6 +43,8 @@ bwrb new task --json "{
 bwrb audit --output json | jq '.violations[] | .file'
 ```
 
+Audit JSON is report-only. It never performs fixes or deletes. For delete-eligible findings, the issue payload can include recommendation metadata under `meta.recommendation` (for example `{"action":"delete-note","interactiveOnly":true}`).
+
 ### Batch Operations
 
 ```bash

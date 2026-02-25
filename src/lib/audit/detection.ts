@@ -221,6 +221,17 @@ export async function auditFile(
 
   const frontmatter: Record<string, unknown> = structural.frontmatter;
 
+  const getDeleteRecommendationMeta = (
+    reason: 'missing-type' | 'invalid-type'
+  ): Record<string, unknown> => ({
+    recommendation: {
+      action: 'delete-note',
+      reason,
+      interactiveOnly: true,
+      source: 'audit-fix',
+    },
+  });
+
   // Phase 4: Structural integrity issues
   issues.push(...collectStructuralIssues(structural, frontmatter));
 
@@ -235,6 +246,7 @@ export async function auditFile(
       code: 'orphan-file',
       message: "No 'type' field (in managed directory). Type-dependent checks skipped.",
       autoFixable: Boolean(file.expectedType),
+      meta: getDeleteRecommendationMeta('missing-type'),
       ...(file.expectedType && { inferredType: file.expectedType }),
     });
     return issues;
@@ -253,6 +265,7 @@ export async function auditFile(
       value: typeValue,
       ...(suggestion && { suggestion: `Did you mean '${suggestion}'?` }),
       autoFixable: false,
+      meta: getDeleteRecommendationMeta('invalid-type'),
     });
     return issues;
   }
@@ -267,6 +280,7 @@ export async function auditFile(
       field: 'type',
       value: typeValue,
       autoFixable: false,
+      meta: getDeleteRecommendationMeta('invalid-type'),
     });
     return issues;
   }

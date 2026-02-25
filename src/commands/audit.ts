@@ -107,6 +107,8 @@ Targeting Options:
 Safety:
   bwrb audit (no selectors) defaults to all files because it is read-only.
   bwrb audit --fix requires explicit targeting (selectors or --all) and writes by default.
+  In interactive --fix only, orphan-file/invalid-type may offer an explicit delete action.
+  Auto mode (--fix --auto) never deletes files.
   bwrb audit --fix --auto previews by default; add --execute to apply auto-fixes.
   Use --dry-run to preview interactive fixes without writing.
 

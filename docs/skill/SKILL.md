@@ -256,6 +256,8 @@ bwrb audit --output json
 # frontmatter-key-casing: fromKey, toKey, before, after (or conflictValue)
 # duplicate-list-values: duplicates, removedCount, before, after
 # invalid-boolean-coercion: coercedTo, before, after
+# orphan-file / invalid-type may include recommendation metadata:
+# meta.recommendation.action=delete-note (report-only; no delete is performed)
 
 # Fix issues (interactive writes by default; explicit targeting required)
 # Apply guided fixes
@@ -266,6 +268,7 @@ bwrb audit --path "Ideas/**" --fix --dry-run
 bwrb audit --path "Ideas/**" --fix --auto --execute
 # Preview auto-fixes
 bwrb audit --path "Ideas/**" --fix --auto
+# Note: auto mode never deletes files
 
 # Fix a specific issue code (auto-fix; safe to script)
 bwrb audit --path "Ideas/**" --only trailing-whitespace --fix --auto --execute
