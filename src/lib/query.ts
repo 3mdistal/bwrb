@@ -3,7 +3,6 @@ import type { LoadedSchema } from '../types/schema.js';
 import { getAllFieldsForType } from './schema.js';
 import { matchesExpression, buildEvalContext, type HierarchyData } from './expression.js';
 import { collectFrontmatterKeys, normalizeWhereExpressions } from './where-normalize.js';
-import { printError } from './prompt.js';
 import { extractWikilinkTarget } from './audit/types.js';
 
 /**
@@ -35,8 +34,6 @@ export interface FrontmatterFilterOptions {
   whereExpressions: string[];
   /** Vault directory for building eval context */
   vaultDir: string;
-  /** Whether to suppress error output (for JSON mode) */
-  silent?: boolean;
   /** Optional known frontmatter keys for normalization */
   knownKeys?: Set<string>;
 }
@@ -112,7 +109,7 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
   files: T[],
   options: FrontmatterFilterOptions
 ): Promise<T[]> {
-  const { whereExpressions, vaultDir, silent = false, knownKeys } = options;
+  const { whereExpressions, vaultDir, knownKeys } = options;
   const result: T[] = [];
   const effectiveKnownKeys =
     knownKeys ?? collectFrontmatterKeys(files.map(file => file.frontmatter));
@@ -151,11 +148,8 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
             break;
           }
         } catch (e) {
-          if (!silent) {
-            printError(`Expression error in "${original}": ${(e as Error).message}`);
-          }
-          allMatch = false;
-          break;
+          const message = e instanceof Error ? e.message : String(e);
+          throw new Error(`Expression error in "${original}": ${message}`);
         }
       }
 

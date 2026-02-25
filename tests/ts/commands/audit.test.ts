@@ -52,6 +52,42 @@ describe('audit command', () => {
       expect(result.stderr).toContain("Unknown field 'unknown_field'");
       expect(result.stderr).toContain("for type 'idea'");
     });
+
+    it('should allow unknown where fields without --type (permissive mode)', async () => {
+      const result = await runCLI([
+        'audit',
+        '--where', "unknown_field == 'raw'"
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe('');
+    });
+
+    it('should fail on invalid where syntax', async () => {
+      const result = await runCLI([
+        'audit',
+        '--where', "status == 'raw' &&"
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Expression error in');
+      expect(result.stderr).toContain('Expression parse error');
+    });
+
+    it('should fail on where runtime errors in json mode', async () => {
+      const result = await runCLI([
+        'audit',
+        '--where', 'missingFn(status)',
+        '--output', 'json'
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Expression error in');
+      expect(json.error).toContain('Unknown function: missingFn');
+      expect(result.stderr).toContain('Expression error in');
+    });
   });
 
   describe('relation field integrity', () => {
