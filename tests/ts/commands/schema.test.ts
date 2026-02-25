@@ -574,6 +574,87 @@ describe('schema command', () => {
     });
   });
 
+  describe('schema list shorthand targeting', () => {
+    it('should treat positional typePath as alias for "schema list type <name>"', async () => {
+      const result = await runCLI(['schema', 'list', 'idea'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Type: idea');
+      expect(result.stdout).toContain('Own fields:');
+    });
+
+    it('should support --type alias for type details', async () => {
+      const result = await runCLI(['schema', 'list', '--type', 'idea'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Type: idea');
+    });
+
+    it('should support -t alias in JSON mode', async () => {
+      const result = await runCLI(['schema', 'list', '-t', 'idea', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.type_path).toBe('idea');
+      expect(json.fields).toBeDefined();
+    });
+
+    it('should keep reserved nouns deterministic for subcommands', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-schema-list-reserved-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            types: {
+              extends: 'meta',
+              fields: {
+                title: { prompt: 'text' },
+              },
+            },
+          },
+        })
+      );
+
+      try {
+        const subcommandResult = await runCLI(['schema', 'list', 'types'], tempVaultDir);
+        expect(subcommandResult.exitCode).toBe(0);
+        expect(subcommandResult.stdout).toContain('Types:');
+        expect(subcommandResult.stdout).toContain('types');
+        expect(subcommandResult.stdout).not.toContain('Type: types');
+
+        const explicitAliasResult = await runCLI(['schema', 'list', '--type', 'types'], tempVaultDir);
+        expect(explicitAliasResult.exitCode).toBe(0);
+        expect(explicitAliasResult.stdout).toContain('Type: types');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should error when positional typePath and --type are both provided', async () => {
+      const result = await runCLI(['schema', 'list', 'idea', '--type', 'task'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Cannot combine positional type path');
+    });
+
+    it('should error when schema list type and --type are mixed', async () => {
+      const result = await runCLI(['schema', 'list', 'type', 'idea', '--type', 'task'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Cannot combine 'bwrb schema list type idea' with --type/-t");
+    });
+
+    it('should error when schema list fields and --type are mixed', async () => {
+      const result = await runCLI(['schema', 'list', 'fields', '--type', 'task'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Cannot use --type with 'bwrb schema list fields'");
+    });
+  });
+
   describe('schema validate', () => {
     it('should validate valid schema', async () => {
       const result = await runCLI(['schema', 'validate'], vaultDir);

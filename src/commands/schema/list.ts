@@ -28,6 +28,24 @@ import type { Field, LoadedSchema } from '../../types/schema.js';
 interface ListCommandOptions {
   output?: string;
   verbose?: boolean;
+  type?: string;
+}
+
+const RESERVED_LIST_NOUNS = new Set(['types', 'fields', 'type']);
+
+function hasTypeAliasFlagToken(): boolean {
+  return process.argv.includes('--type') || process.argv.includes('-t');
+}
+
+function ensureNoTypeAliasConflict(options: ListCommandOptions, usage: string): void {
+  if (!options.type && !hasTypeAliasFlagToken()) {
+    return;
+  }
+
+  throw new Error(
+    `Cannot use --type with '${usage}'. ` +
+    `Use either '${usage}' or 'bwrb schema list --type <typePath>'.`
+  );
 }
 
 export const listCommand = new Command('list')
@@ -38,22 +56,52 @@ Examples:
   bwrb schema list --verbose      # Show all types with their fields
   bwrb schema list types          # List type names only
   bwrb schema list fields         # List all fields across types
-  bwrb schema list type task      # Show details for "task" type`);
+  bwrb schema list type task      # Canonical type detail form
+  bwrb schema list task           # Alias for: schema list type task
+  bwrb schema list -t task        # Alias for: schema list type task`);
 
 // schema list (no args - show full schema overview)
 listCommand
+  .argument('[typePath]', 'Type path alias for "schema list type <typePath>"')
+  .option('-t, --type <typePath>', 'Type path alias for "schema list type <typePath>"')
   .option('--output <format>', 'Output format: text (default) or json')
   .option('--verbose', 'Show all types with their fields inline')
-  .action(async (options: ListCommandOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
+  .action(async (typePath: string | undefined, options: ListCommandOptions, cmd: Command) => {
+    const globalOpts = getGlobalOpts(cmd);
+    const jsonMode = options.output === 'json' || globalOpts.output === 'json';
 
     try {
-      const globalOpts = getGlobalOpts(cmd);
+      if (typePath && options.type) {
+        throw new Error(
+          `Cannot combine positional type path '${typePath}' with --type '${options.type}'. ` +
+          'Use one form: "bwrb schema list <typePath>", "bwrb schema list --type <typePath>", or "bwrb schema list type <typePath>".'
+        );
+      }
+
+      const targetType = options.type ?? typePath;
+
+      if (typePath && !options.type && RESERVED_LIST_NOUNS.has(typePath)) {
+        throw new Error(
+          `Type path '${typePath}' is reserved by schema list subcommands. ` +
+          `Use 'bwrb schema list ${typePath}' for the subcommand, or ` +
+          `'bwrb schema list type ${typePath}' to show that type.`
+        );
+      }
+
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadCurrentSchema(vaultDir);
       await warnIfPendingMigration(vaultDir, schema, jsonMode);
+
+      if (targetType) {
+        if (jsonMode) {
+          outputTypeDetailsJson(schema, targetType);
+        } else {
+          showTypeDetails(schema, targetType);
+        }
+        return;
+      }
 
       if (jsonMode) {
         if (options.verbose) {
@@ -96,6 +144,8 @@ listCommand
     const jsonMode = options.output === 'json';
 
     try {
+      ensureNoTypeAliasConflict(options, 'bwrb schema list types');
+
       const globalOpts = getGlobalOpts(cmd);
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
@@ -146,6 +196,8 @@ listCommand
     const jsonMode = options.output === 'json';
 
     try {
+      ensureNoTypeAliasConflict(options, 'bwrb schema list fields');
+
       const globalOpts = getGlobalOpts(cmd);
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
@@ -234,6 +286,13 @@ listCommand
     const jsonMode = options.output === 'json' || globalOpts.output === 'json';
 
     try {
+      if (options.type || hasTypeAliasFlagToken()) {
+        throw new Error(
+          `Cannot combine 'bwrb schema list type ${name}' with --type/-t. ` +
+          `Use either 'bwrb schema list type ${name}' or 'bwrb schema list --type <typePath>'.`
+        );
+      }
+
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
