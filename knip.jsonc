@@ -32,6 +32,9 @@
     "src/lib/bulk/types.ts": ["types"]
   },
 
+  // docs-site scripts call Astro binaries from a separate package context
+  "ignoreBinaries": ["preview"],
+
   // Ignore specific exports that are intentional public API for testing/external use
   "ignoreExportsUsedInFile": {
     "interface": true,
