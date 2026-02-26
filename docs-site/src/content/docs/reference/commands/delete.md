@@ -126,6 +126,8 @@ When query is ambiguous (single-file mode):
 
 Deletion is permanent. Use version control (git) to recover deleted notes if needed.
 
+`bwrb audit --fix` can offer a delete action for specific issue classes, but it remains interactive-only and never runs in `--auto` mode. For non-interactive or scripted deletion workflows, use `bwrb delete`.
+
 ## See Also
 
 - [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — `--execute` vs `--force` semantics
