@@ -176,6 +176,32 @@ describe('bulk command', () => {
       expect(result.stderr).toContain("for type 'idea'");
     });
 
+    it('should allow unknown --where fields without --type (permissive mode)', async () => {
+      const result = await runCLI([
+        'bulk',
+        '--where', "unknown_field == 'raw'",
+        '--set', 'priority=high'
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe('');
+    });
+
+    it('should fail on invalid --where syntax in json mode', async () => {
+      const result = await runCLI([
+        'bulk',
+        '--where', "status == 'raw' &&",
+        '--set', 'priority=high',
+        '--output', 'json'
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Expression error in');
+      expect(json.error).toContain('Expression parse error');
+    });
+
     it('should work with --all and --execute', async () => {
       const tempVaultDir = await createTestVault();
       try {

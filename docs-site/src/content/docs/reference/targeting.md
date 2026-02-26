@@ -65,8 +65,9 @@ bwrb audit --where "isEmpty(tags)"
 - System fields are always available: `name` (falls back to filename) and `id`.
 
 **Type-checking behavior:**
-- With `--type`: strict validation (error on unknown fields)
-- Without `--type`: permissive with warnings (supports migration workflows)
+- With `--type`: strict validation (error on unknown fields and invalid enum/select values)
+- Without `--type`: unknown fields are permissive (no unknown-field validation)
+- In all modes: invalid expression syntax and runtime expression errors are hard errors
 
 **Hierarchy functions** (for recursive types):
 - `isRoot()` — note has no parent

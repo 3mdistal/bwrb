@@ -600,6 +600,40 @@ Some content
         expect(json.success).toBe(false);
         expect(json.error).toContain("Unknown field 'unknown_field'");
       });
+
+      it('should allow unknown where fields without --type (permissive mode)', async () => {
+        const result = await runCLI([
+          'search', 'status', '--body',
+          '--where', "unknown_field == 'raw'"
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+      });
+
+      it('should fail on invalid where syntax in text mode', async () => {
+        const result = await runCLI([
+          'search', 'status', '--body',
+          '--where', "status == 'raw' &&"
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Expression error in');
+        expect(result.stderr).toContain('Expression parse error');
+      });
+
+      it('should fail on where runtime errors in json mode', async () => {
+        const result = await runCLI([
+          'search', 'status', '--body',
+          '--where', 'missingFn(status)',
+          '--output', 'json'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(1);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain('Expression error in');
+        expect(json.error).toContain('Unknown function: missingFn');
+      });
     });
   });
 });

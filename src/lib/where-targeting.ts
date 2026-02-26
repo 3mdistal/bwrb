@@ -39,12 +39,19 @@ export async function applyWhereExpressions<T extends FileWithFrontmatter>(
   }
 
   const knownKeys = typePath ? getAllFieldsForType(schema, typePath) : null;
-  const filtered = await applyFrontmatterFilters(files, {
-    whereExpressions,
-    vaultDir,
-    silent: true,
-    ...(knownKeys ? { knownKeys } : {}),
-  });
+  try {
+    const filtered = await applyFrontmatterFilters(files, {
+      whereExpressions,
+      vaultDir,
+      ...(knownKeys ? { knownKeys } : {}),
+    });
 
-  return { ok: true, files: filtered };
+    return { ok: true, files: filtered };
+  } catch (error) {
+    return {
+      ok: false,
+      kind: 'where-validation',
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
