@@ -8,7 +8,7 @@ export function isWikilink(value: string): boolean {
 /**
  * Check if a value is formatted as a quoted wikilink.
  */
-export function isQuotedWikilink(value: string): boolean {
+function isQuotedWikilink(value: string): boolean {
   return /^"\[\[.+\]\]"$/.test(value);
 }
 
@@ -29,7 +29,7 @@ export function isMarkdownLink(value: string): boolean {
  * Returns the target without the .md extension.
  * Example: "[Note Name](Note Name.md)" -> "Note Name"
  */
-export function extractMarkdownLinkTarget(value: string): string | null {
+function extractMarkdownLinkTarget(value: string): string | null {
   let v = value;
   if (v.startsWith('"') && v.endsWith('"')) {
     v = v.slice(1, -1);

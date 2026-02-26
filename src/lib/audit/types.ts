@@ -8,9 +8,7 @@ import type { LoadedSchema } from '../../types/schema.js';
 import type { NoteTargetIndex } from '../discovery.js';
 import {
   isWikilink,
-  isQuotedWikilink,
   isMarkdownLink,
-  extractMarkdownLinkTarget,
   extractWikilinkTarget,
   toWikilink,
   toMarkdownLink,
@@ -252,9 +250,7 @@ export const ALLOWED_NATIVE_FIELDS = new Set([
  */
 export {
   isWikilink,
-  isQuotedWikilink,
   isMarkdownLink,
-  extractMarkdownLinkTarget,
   extractWikilinkTarget,
   toWikilink,
   toMarkdownLink,
