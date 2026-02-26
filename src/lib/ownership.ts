@@ -16,8 +16,7 @@ import {
 } from './schema.js';
 import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
 import type { LoadedSchema } from '../types/schema.js';
-import { extractLinkTargets } from './links.js';
-import { isWikilink } from './audit/types.js';
+import { extractLinkTargets, isWikilink } from './links.js';
 
 // ============================================================================
 // Types
