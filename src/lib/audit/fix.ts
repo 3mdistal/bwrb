@@ -53,9 +53,8 @@ import {
   type FixResult,
   type FixSummary,
   type FixContext,
-  toWikilink,
-  toMarkdownLink,
 } from './types.js';
+import { toMarkdownLink, toWikilink } from '../links.js';
 import {
   readStructuralFrontmatterFromRaw,
   movePrimaryBlockToTop,

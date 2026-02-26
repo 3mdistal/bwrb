@@ -1,10 +1,93 @@
-import {
-  extractWikilinkTarget,
-  extractMarkdownLinkTarget,
-  isWikilink,
-  isQuotedWikilink,
-  isMarkdownLink,
-} from './audit/types.js';
+/**
+ * Check if a value is formatted as a wikilink.
+ */
+export function isWikilink(value: string): boolean {
+  return /^\[\[.+\]\]$/.test(value);
+}
+
+/**
+ * Check if a value is formatted as a quoted wikilink.
+ */
+function isQuotedWikilink(value: string): boolean {
+  return /^"\[\[.+\]\]"$/.test(value);
+}
+
+/**
+ * Check if a value is formatted as a markdown link.
+ * Matches: [Note Name](Note Name.md) or "[Note Name](Note Name.md)"
+ */
+export function isMarkdownLink(value: string): boolean {
+  let v = value;
+  if (v.startsWith('"') && v.endsWith('"')) {
+    v = v.slice(1, -1);
+  }
+  return /^\[.+\]\(.+\.md\)$/.test(v);
+}
+
+/**
+ * Extract the target from a markdown link.
+ * Returns the target without the .md extension.
+ * Example: "[Note Name](Note Name.md)" -> "Note Name"
+ */
+export function extractMarkdownLinkTarget(value: string): string | null {
+  let v = value;
+  if (v.startsWith('"') && v.endsWith('"')) {
+    v = v.slice(1, -1);
+  }
+
+  const match = v.match(/^\[.+\]\((.+)\.md\)$/);
+  return match ? match[1]! : null;
+}
+
+/**
+ * Extract the target from a wikilink.
+ * Returns the target without brackets, heading, or alias.
+ */
+export function extractWikilinkTarget(value: string): string | null {
+  let v = value;
+  if (v.startsWith('"') && v.endsWith('"')) {
+    v = v.slice(1, -1);
+  }
+
+  const match = v.match(/^\[\[([^\]|#]+)/);
+  return match ? match[1]! : null;
+}
+
+/**
+ * Convert a value to wikilink format.
+ * Extracts the note name from markdown links if needed.
+ */
+export function toWikilink(value: string): string {
+  if (isWikilink(value) || isQuotedWikilink(value)) {
+    return value;
+  }
+
+  let name = value;
+  if (isMarkdownLink(value)) {
+    name = extractMarkdownLinkTarget(value) ?? value;
+  }
+
+  return `[[${name}]]`;
+}
+
+/**
+ * Convert a value to markdown link format.
+ * Extracts the note name from wikilinks if needed.
+ */
+export function toMarkdownLink(value: string): string {
+  if (isMarkdownLink(value)) {
+    return value;
+  }
+
+  let name = value;
+  if (isWikilink(value)) {
+    name = extractWikilinkTarget(value) ?? value;
+  } else if (isQuotedWikilink(value)) {
+    name = extractWikilinkTarget(value.slice(1, -1)) ?? value;
+  }
+
+  return `[${name}](${name}.md)`;
+}
 
 /**
  * Extract a relation target from a link value.
