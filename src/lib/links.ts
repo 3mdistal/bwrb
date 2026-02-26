@@ -29,7 +29,7 @@ export function isMarkdownLink(value: string): boolean {
  * Returns the target without the .md extension.
  * Example: "[Note Name](Note Name.md)" -> "Note Name"
  */
-function extractMarkdownLinkTarget(value: string): string | null {
+export function extractMarkdownLinkTarget(value: string): string | null {
   let v = value;
   if (v.startsWith('"') && v.endsWith('"')) {
     v = v.slice(1, -1);
