@@ -50,6 +50,8 @@ List schema contents including types, fields, and detailed type information.
 
 ```bash
 bwrb schema list [options]
+bwrb schema list [options] <typePath>
+bwrb schema list [options] -t|--type <typePath>
 bwrb schema list types [options]
 bwrb schema list fields [options]
 bwrb schema list type [options] <name>
@@ -63,12 +65,20 @@ bwrb schema list type [options] <name>
 | `types` | List type names only |
 | `fields` | List all fields across all types |
 | `type <name>` | Show details for a specific type |
+| `<typePath>` | Alias for `type <typePath>` (except reserved nouns) |
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
 | `--output <format>` | Output format: `text`, `json` |
+| `-t, --type <typePath>` | Alias for `type <typePath>` |
+
+### Targeting Rules
+
+- Reserved nouns are deterministic subcommands: `types`, `fields`, `type`
+- Use shorthand (`<typePath>` or `--type`) for all other type paths
+- If mixed forms are provided (for example positional + `--type`), the command errors with guidance
 
 ### Examples
 
@@ -86,9 +96,15 @@ bwrb schema list fields
 bwrb schema list type task
 bwrb schema list type objective/milestone
 
+# Equivalent aliases for type details
+bwrb schema list task
+bwrb schema list --type task
+bwrb schema list -t objective/milestone
+
 # JSON output for scripting
 bwrb schema list --output json
 bwrb schema list type task --output json
+bwrb schema list -t task --output json
 ```
 
 ---

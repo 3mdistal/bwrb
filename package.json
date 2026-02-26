@@ -1,6 +1,6 @@
 {
   "name": "bwrb",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Schema-driven note management for markdown vaults",
   "type": "module",
   "main": "dist/index.js",
@@ -26,6 +26,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "docs:install": "pnpm -C docs-site install",
+    "docs:dev": "pnpm -C docs-site dev",
+    "docs:build": "pnpm -C docs-site build",
+    "docs:preview": "pnpm -C docs-site preview",
     "docs:lint": "node scripts/docs-link-consistency.mjs",
     "qa": "pnpm typecheck && pnpm lint && pnpm docs:lint && pnpm build && pnpm test",
     "verify:pack": "node scripts/verify-pack.mjs",

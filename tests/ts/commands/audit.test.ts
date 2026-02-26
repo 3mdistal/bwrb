@@ -926,6 +926,37 @@ dead_line: 2026-01-01
       expect(content).toContain('deadline: 2026-01-01');
       expect(content).not.toContain('dead_line:');
     });
+
+    it('should never delete orphan or invalid-type files in --auto mode', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'No Type.md'),
+        `---
+status: raw
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Bad Type.md'),
+        `---
+type: definitely-not-a-type
+status: raw
+---
+`
+      );
+
+      const result = await runCLI(['audit', '--all', '--fix', '--auto', '--execute'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Issues requiring manual review');
+      expect(result.stdout).toContain('No Type.md');
+      expect(result.stdout).toContain('Bad Type.md');
+
+      const noTypeContent = await readFile(join(tempVaultDir, 'Ideas', 'No Type.md'), 'utf-8');
+      const badTypeContent = await readFile(join(tempVaultDir, 'Ideas', 'Bad Type.md'), 'utf-8');
+      expect(noTypeContent).toContain('status: raw');
+      expect(badTypeContent).toContain('type: definitely-not-a-type');
+    });
   });
 
   describe('audit --fix messaging', () => {
@@ -1371,6 +1402,8 @@ status: raw
       const orphanIssue = output.files[0].issues.find((i: { code: string }) => i.code === 'orphan-file');
       expect(orphanIssue).toBeDefined();
       expect(orphanIssue.autoFixable).toBe(true);
+      expect(orphanIssue.meta?.recommendation?.action).toBe('delete-note');
+      expect(orphanIssue.meta?.recommendation?.interactiveOnly).toBe(true);
     });
 
     it('should NOT mark orphan-file as auto-fixable when no inferred type', async () => {
@@ -2864,6 +2897,8 @@ status: raw
       const typeIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-type');
       expect(typeIssue).toBeDefined();
       expect(typeIssue.value).toBe('notavalidtype');
+      expect(typeIssue.meta?.recommendation?.action).toBe('delete-note');
+      expect(typeIssue.meta?.recommendation?.interactiveOnly).toBe(true);
     });
 
     it('should show suggestion for typo in type', async () => {

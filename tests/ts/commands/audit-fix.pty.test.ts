@@ -14,9 +14,10 @@ import {
   shouldSkipPtyTests,
 } from '../lib/pty-helpers.js';
 import { existsSync } from 'fs';
+import { join } from 'path';
 
 // Import shared schema for audit tests
-import { AUDIT_SCHEMA, BASELINE_SCHEMA } from '../fixtures/schemas.js';
+import { AUDIT_SCHEMA, BASELINE_SCHEMA, MINIMAL_SCHEMA } from '../fixtures/schemas.js';
 
 // Skip PTY tests if running in CI without TTY support or node-pty is incompatible
 const describePty = shouldSkipPtyTests()
@@ -50,11 +51,11 @@ Content without type field.
           // Should find the orphan file
           await proc.waitFor('Orphan Idea.md', 10000);
 
-          // Should prompt to add type (inferred from directory)
-          await proc.waitFor("Add type fields for 'idea'", 10000);
+          // Should prompt for action
+          await proc.waitFor('Action for orphan file', 10000);
 
-          // Confirm adding type
-          proc.write('y');
+          // Select inferred type action
+          proc.write('1');
           proc.write(Keys.ENTER);
 
           // Should show success
@@ -67,7 +68,7 @@ Content without type field.
           const content = await readVaultFile(vaultPath, 'Ideas/Orphan Idea.md');
           expect(content).toContain('type: idea');
         },
-        { files: [orphanFile], schema: BASELINE_SCHEMA }
+        { files: [orphanFile], schema: MINIMAL_SCHEMA }
       );
     }, 30000);
 
@@ -86,11 +87,11 @@ some-field: value
           await proc.waitFor('Auditing vault', 10000);
           await proc.waitFor('Skip Me.md', 10000);
 
-          // Should prompt to add type
-          await proc.waitFor("Add type fields", 10000);
+          // Should prompt for action
+          await proc.waitFor('Action for orphan file', 10000);
 
-          // Decline
-          proc.write('n');
+          // [add inferred type], idea, [delete note], [skip], [quit]
+          proc.write('4');
           proc.write(Keys.ENTER);
 
           // Should show skipped
@@ -103,7 +104,121 @@ some-field: value
           const content = await readVaultFile(vaultPath, 'Ideas/Skip Me.md');
           expect(content).not.toContain('type: idea');
         },
-        { files: [orphanFile], schema: BASELINE_SCHEMA }
+        { files: [orphanFile], schema: MINIMAL_SCHEMA }
+      );
+    }, 30000);
+
+    it('should allow deleting orphan file with backlink warning and strong confirmation', async () => {
+      const orphanFile: TempVaultFile = {
+        path: 'Ideas/Delete Me.md',
+        content: `---
+status: raw
+---
+
+Delete this note.
+`,
+      };
+
+      const linkerFile: TempVaultFile = {
+        path: 'Ideas/Linker.md',
+        content: `---
+type: idea
+status: raw
+priority: medium
+---
+
+Reference [[Delete Me]].
+`,
+      };
+
+      await withTempVault(
+        ['audit', '--all', '--fix'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Delete Me.md', 10000);
+          await proc.waitFor('Action for orphan file', 10000);
+
+          proc.write(Keys.DOWN);
+          proc.write(Keys.DOWN);
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('wikilink(s) reference this note', 10000);
+          await proc.waitFor('Delete this note permanently?', 10000);
+          proc.write('y');
+
+          await proc.waitFor('backlink(s) unresolved', 10000);
+          proc.write('y');
+
+          await proc.waitFor('Deleted Ideas/Delete Me.md', 10000);
+          await proc.waitForStable(500);
+
+          expect(existsSync(join(vaultPath, 'Ideas/Delete Me.md'))).toBe(false);
+        },
+        { files: [orphanFile, linkerFile], schema: MINIMAL_SCHEMA }
+      );
+    }, 30000);
+
+    it('should preview delete in dry-run without removing the file', async () => {
+      const orphanFile: TempVaultFile = {
+        path: 'Ideas/Dry Delete.md',
+        content: `---
+status: raw
+---
+
+Dry run delete.
+`,
+      };
+
+      await withTempVault(
+        ['audit', '--all', '--fix', '--dry-run'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Dry Delete.md', 10000);
+          await proc.waitFor('Action for orphan file', 10000);
+
+          proc.write('3');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Would delete Ideas/Dry Delete.md', 10000);
+          await proc.waitForStable(500);
+
+          expect(existsSync(join(vaultPath, 'Ideas/Dry Delete.md'))).toBe(true);
+        },
+        { files: [orphanFile], schema: MINIMAL_SCHEMA }
+      );
+    }, 30000);
+  });
+
+  describe('invalid type fix', () => {
+    it('should allow deleting invalid-type note from interactive fix flow', async () => {
+      const invalidTypeFile: TempVaultFile = {
+        path: 'Ideas/Invalid Type Delete.md',
+        content: `---
+type: nope
+status: raw
+---
+
+Delete this invalid type note.
+`,
+      };
+
+      await withTempVault(
+        ['audit', '--all', '--fix'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Invalid Type Delete.md', 10000);
+          await proc.waitFor('Invalid type', 10000);
+          await proc.waitFor('Select valid type', 10000);
+
+          proc.write(Keys.DOWN);
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Delete this note permanently?', 10000);
+          await proc.typeAndEnter('y');
+
+          await proc.waitFor('Deleted Ideas/Invalid Type Delete.md', 10000);
+          await proc.waitForStable(500);
+
+          expect(existsSync(join(vaultPath, 'Ideas/Invalid Type Delete.md'))).toBe(false);
+        },
+        { files: [invalidTypeFile], schema: MINIMAL_SCHEMA }
       );
     }, 30000);
   });
@@ -806,15 +921,15 @@ status: raw
           await proc.waitFor('Issue', 10000);
 
           // Should prompt for fix
-          await proc.waitFor("Add type fields", 10000);
+          await proc.waitFor('Action for orphan file', 10000);
 
-          // Decline to trigger next issue
-          proc.write('n');
+          // Skip to trigger next issue
+          proc.write('4');
           proc.write(Keys.ENTER);
           await proc.waitForStable(200);
 
           // Wait for second file prompt, then send Ctrl+C to quit
-          await proc.waitFor("Add type fields", 10000);
+          await proc.waitFor('Action for orphan file', 10000);
           proc.write(Keys.CTRL_C);
 
           // Wait for exit
@@ -823,7 +938,7 @@ status: raw
           // Should have exited (Ctrl+C cancels during prompts)
           expect(proc.hasExited()).toBe(true);
         },
-        { files: [file1, file2], schema: BASELINE_SCHEMA }
+        { files: [file1, file2], schema: MINIMAL_SCHEMA }
       );
     }, 30000);
 
@@ -843,7 +958,7 @@ some: value
           await proc.waitFor('Abort Test.md', 10000);
 
           // Wait for prompt
-          await proc.waitFor("Add type fields", 10000);
+          await proc.waitFor('Action for orphan file', 10000);
 
           // Abort with Ctrl+C
           proc.write(Keys.CTRL_C);
@@ -852,7 +967,7 @@ some: value
           await proc.waitForExit(5000);
           expect(proc.hasExited()).toBe(true);
         },
-        { files: [orphanFile], schema: BASELINE_SCHEMA }
+        { files: [orphanFile], schema: MINIMAL_SCHEMA }
       );
     }, 30000);
   });

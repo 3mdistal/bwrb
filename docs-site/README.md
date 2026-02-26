@@ -6,6 +6,17 @@ Documentation for [bwrb](https://github.com/3mdistal/bwrb), built with [Starligh
 
 ## Development
 
+From the repository root:
+
+```bash
+pnpm docs:install   # Install docs-site dependencies
+pnpm docs:dev       # Start dev server at localhost:4321
+pnpm docs:build     # Build production site
+pnpm docs:preview   # Preview production build
+```
+
+Or run commands directly in `docs-site/`:
+
 ```bash
 cd docs-site
 pnpm install
@@ -13,6 +24,14 @@ pnpm dev        # Start dev server at localhost:4321
 pnpm build      # Build production site
 pnpm preview    # Preview production build
 ```
+
+## Contributor Troubleshooting
+
+This section is for contributor workflow setup only. User-facing CLI behavior contracts remain canonical in `docs-site/src/content/docs/`.
+
+- **Ignored build scripts warning (`pnpm install`)**: You may see `Ignored build scripts` (often for `sharp`) on first install. This is a pnpm supply-chain safety prompt, not a bwrb docs bug.
+- **When to run `pnpm approve-builds`**: Run it in `docs-site/` only if you need to allow trusted scripts for local docs builds. If a build/install step fails because a script stayed blocked, approve the package and re-run `pnpm install`.
+- **Transient TypeScript noise before deps install**: Errors like `Cannot find module 'astro/config'` are expected until docs-site dependencies are installed. Run `pnpm docs:install` from repo root (or `pnpm install` in `docs-site/`), then restart your editor TS server if diagnostics linger.
 
 ## CI Validation
 

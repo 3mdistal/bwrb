@@ -46,6 +46,13 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 Repair mode writes by default and requires explicit targeting (selectors or `--all`).
 Use `--dry-run` to preview fixes without writing.
 
+Delete semantics in repair mode:
+
+- `bwrb audit --fix` (interactive only) can offer an explicit `[delete note]` action for clearly unrecoverable type problems (currently `orphan-file` and `invalid-type`).
+- Delete is never the default choice.
+- `bwrb audit --fix --auto` and `bwrb audit --fix --auto --execute` never delete files.
+- `bwrb audit --fix --output json` is invalid (interactive repair and JSON mode are intentionally separated).
+
 ### Output
 
 | Option | Description |
@@ -183,6 +190,25 @@ after:  status: "raw"
 bwrb audit --fix --auto --execute --all
 # Report-only JSON for CI/daemons
 bwrb audit --output json
+```
+
+### JSON recommendations for delete-eligible issues
+
+`bwrb audit --output json` is report-only and never deletes files. For delete-eligible findings (such as `orphan-file` or `invalid-type`), JSON output includes recommendation metadata so automation can decide on follow-up actions.
+
+```json
+{
+  "code": "invalid-type",
+  "autoFixable": false,
+  "meta": {
+    "recommendation": {
+      "action": "delete-note",
+      "reason": "invalid-type",
+      "interactiveOnly": true,
+      "source": "audit-fix"
+    }
+  }
+}
 ```
 
 ### Phase 5: Type coercion fixes

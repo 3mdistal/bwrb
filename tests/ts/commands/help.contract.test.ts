@@ -110,7 +110,7 @@ describe('help output contract snapshots', () => {
       'help',
     ]);
     expect(normalized).toContain('bwrb schema list objective/task');
-    expect(normalized).toContain('bwrb schema list task --output json');
+    expect(normalized).toContain('bwrb schema list -t task --output json');
   });
 
   it('keeps normalized help deterministic with and without explicit terminal width hints', async () => {
