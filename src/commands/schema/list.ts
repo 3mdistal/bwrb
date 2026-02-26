@@ -34,7 +34,12 @@ interface ListCommandOptions {
 const RESERVED_LIST_NOUNS = new Set(['types', 'fields', 'type']);
 
 function hasTypeAliasFlagToken(): boolean {
-  return process.argv.includes('--type') || process.argv.includes('-t');
+  return process.argv.some((arg: string) =>
+    arg === '--type' ||
+    arg.startsWith('--type=') ||
+    arg === '-t' ||
+    arg.startsWith('-t=')
+  );
 }
 
 function ensureNoTypeAliasConflict(options: ListCommandOptions, usage: string): void {
