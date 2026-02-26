@@ -640,6 +640,13 @@ describe('schema command', () => {
       expect(result.stderr).toContain('Cannot combine positional type path');
     });
 
+    it('should error when positional typePath and --type=<value> are both provided', async () => {
+      const result = await runCLI(['schema', 'list', 'idea', '--type=task'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Cannot combine positional type path');
+    });
+
     it('should error when schema list type and --type are mixed', async () => {
       const result = await runCLI(['schema', 'list', 'type', 'idea', '--type', 'task'], vaultDir);
 
@@ -647,8 +654,22 @@ describe('schema command', () => {
       expect(result.stderr).toContain("Cannot combine 'bwrb schema list type idea' with --type/-t");
     });
 
+    it('should error when schema list type and --type=<value> are mixed', async () => {
+      const result = await runCLI(['schema', 'list', 'type', 'idea', '--type=task'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Cannot combine 'bwrb schema list type idea' with --type/-t");
+    });
+
     it('should error when schema list fields and --type are mixed', async () => {
       const result = await runCLI(['schema', 'list', 'fields', '--type', 'task'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Cannot use --type with 'bwrb schema list fields'");
+    });
+
+    it('should error when schema list fields and --type=<value> are mixed', async () => {
+      const result = await runCLI(['schema', 'list', 'fields', '--type=task'], vaultDir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("Cannot use --type with 'bwrb schema list fields'");
