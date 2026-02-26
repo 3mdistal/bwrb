@@ -1615,10 +1615,6 @@ async function handleOrphanFileFix(
   let typePath: string | undefined;
 
   const availableTypes = getConcreteTypeNames(schema);
-  if (availableTypes.length === 0) {
-    console.log(chalk.dim('    (No types defined in schema - skipping)'));
-    return 'skipped';
-  }
 
   const inferredLabel = issue.inferredType ? `[add inferred type: ${issue.inferredType}]` : undefined;
   const options = [

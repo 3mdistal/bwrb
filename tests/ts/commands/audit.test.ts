@@ -1427,6 +1427,32 @@ title: Random note
       expect(orphanIssue).toBeDefined();
       expect(orphanIssue.autoFixable).toBe(false);
     });
+
+    it('should keep delete-note recommendation when schema has zero types', async () => {
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({ version: 2, types: {} }, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Inbox'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Inbox', 'No Type.md'),
+        `---
+status: raw
+---
+`
+      );
+
+      const result = await runCLI(['audit', '--all', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const orphanFile = output.files.find((f: { path: string }) => f.path.includes('No Type.md'));
+      expect(orphanFile).toBeDefined();
+      const orphanIssue = orphanFile.issues.find((i: { code: string }) => i.code === 'orphan-file');
+      expect(orphanIssue).toBeDefined();
+      expect(orphanIssue.meta?.recommendation?.action).toBe('delete-note');
+      expect(orphanIssue.meta?.recommendation?.interactiveOnly).toBe(true);
+    });
   });
 
   describe('--allow-field option', () => {

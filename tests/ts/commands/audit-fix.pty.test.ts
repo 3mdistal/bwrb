@@ -17,7 +17,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 
 // Import shared schema for audit tests
-import { AUDIT_SCHEMA, BASELINE_SCHEMA, MINIMAL_SCHEMA } from '../fixtures/schemas.js';
+import { AUDIT_SCHEMA, BASELINE_SCHEMA, EMPTY_SCHEMA, MINIMAL_SCHEMA } from '../fixtures/schemas.js';
 
 // Skip PTY tests if running in CI without TTY support or node-pty is incompatible
 const describePty = shouldSkipPtyTests()
@@ -154,6 +154,51 @@ Reference [[Delete Me]].
           expect(existsSync(join(vaultPath, 'Ideas/Delete Me.md'))).toBe(false);
         },
         { files: [orphanFile, linkerFile], schema: MINIMAL_SCHEMA }
+      );
+    }, 30000);
+
+    it('should offer delete for orphan file when schema has zero types', async () => {
+      const orphanFile: TempVaultFile = {
+        path: 'Inbox/Delete Me.md',
+        content: `---
+status: raw
+---
+
+Delete this note.
+`,
+      };
+
+      const linkerFile: TempVaultFile = {
+        path: 'Inbox/Linker.md',
+        content: `---
+title: Linker
+---
+
+Reference [[Delete Me]].
+`,
+      };
+
+      await withTempVault(
+        ['audit', '--fix', '--path', 'Inbox/Delete Me.md'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Delete Me.md', 10000);
+          await proc.waitFor('Action for orphan file', 10000);
+
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('wikilink(s) reference this note', 10000);
+          await proc.waitFor('Delete this note permanently?', 10000);
+          proc.write('y');
+
+          await proc.waitFor('backlink(s) unresolved', 10000);
+          proc.write('y');
+
+          await proc.waitFor('Deleted Inbox/Delete Me.md', 10000);
+          await proc.waitForStable(500);
+
+          expect(existsSync(join(vaultPath, 'Inbox/Delete Me.md'))).toBe(false);
+        },
+        { files: [orphanFile, linkerFile], schema: EMPTY_SCHEMA }
       );
     }, 30000);
 
