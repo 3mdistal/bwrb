@@ -28,9 +28,9 @@ export const schemaCommand = new Command('schema')
   .addHelpText('after', `
 Examples:
   bwrb schema list              # List all types
-  bwrb schema list objective    # Show objective type details
-  bwrb schema list objective/task  # Show task subtype details
-  bwrb schema list task --output json  # Show as JSON for AI/scripting
+  bwrb schema list type objective  # Show objective type details (canonical)
+  bwrb schema list objective/task  # Alias for schema list type objective/task
+  bwrb schema list -t task --output json  # Type details as JSON for AI/scripting
   bwrb schema validate          # Validate schema structure`);
 
 // ============================================================================
