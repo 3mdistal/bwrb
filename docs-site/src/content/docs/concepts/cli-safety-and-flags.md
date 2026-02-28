@@ -52,6 +52,8 @@ bwrb delete --type task --execute
 
 `bwrb audit --fix` is a remediation workflow. It still requires explicit targeting. Interactive fixes write by default; use `--dry-run` to preview, and use `--execute` for auto-fixes.
 
+For severe type-resolution failures, interactive audit fix can offer an explicit delete action. This path is guarded: delete is never default, requires confirmation, and auto mode (`--fix --auto`) never deletes.
+
 ```bash
 # Apply guided fixes
 bwrb audit --path "Ideas/**" --fix

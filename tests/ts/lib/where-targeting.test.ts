@@ -58,4 +58,56 @@ describe('where targeting helper', () => {
 
     expect(result.ok).toBe(true);
   });
+
+  it('fails for invalid expression syntax in typed mode', async () => {
+    const schema = await loadSchema(vaultDir);
+    const files = await getFilesWithFrontmatter('idea');
+
+    const result = await applyWhereExpressions(files, {
+      schema,
+      typePath: 'idea',
+      whereExpressions: ["status == 'raw' &&"],
+      vaultDir,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('Expression error in');
+      expect(result.error).toContain('Expression parse error');
+    }
+  });
+
+  it('fails for invalid expression syntax in permissive mode', async () => {
+    const schema = await loadSchema(vaultDir);
+    const files = await getFilesWithFrontmatter();
+
+    const result = await applyWhereExpressions(files, {
+      schema,
+      whereExpressions: ["status == 'raw' &&"],
+      vaultDir,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('Expression error in');
+      expect(result.error).toContain('Expression parse error');
+    }
+  });
+
+  it('fails for runtime expression errors in all modes', async () => {
+    const schema = await loadSchema(vaultDir);
+    const files = await getFilesWithFrontmatter();
+
+    const result = await applyWhereExpressions(files, {
+      schema,
+      whereExpressions: ['missingFn(status)'],
+      vaultDir,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('Expression error in');
+      expect(result.error).toContain('Unknown function: missingFn');
+    }
+  });
 });

@@ -6,6 +6,13 @@
 
 import type { LoadedSchema } from '../../types/schema.js';
 import type { NoteTargetIndex } from '../discovery.js';
+import {
+  isWikilink,
+  isMarkdownLink,
+  extractWikilinkTarget,
+  toWikilink,
+  toMarkdownLink,
+} from '../links.js';
 
 // ============================================================================
 // Issue Types
@@ -239,102 +246,12 @@ export const ALLOWED_NATIVE_FIELDS = new Set([
 ]);
 
 /**
- * Check if a value is formatted as a wikilink.
+ * Re-export shared link helpers for compatibility with existing imports.
  */
-export function isWikilink(value: string): boolean {
-  return /^\[\[.+\]\]$/.test(value);
-}
-
-/**
- * Check if a value is formatted as a quoted wikilink.
- */
-export function isQuotedWikilink(value: string): boolean {
-  return /^"\[\[.+\]\]"$/.test(value);
-}
-
-/**
- * Check if a value is formatted as a markdown link.
- * Matches: [Note Name](Note Name.md) or "[Note Name](Note Name.md)"
- */
-export function isMarkdownLink(value: string): boolean {
-  // Remove quotes if present
-  let v = value;
-  if (v.startsWith('"') && v.endsWith('"')) {
-    v = v.slice(1, -1);
-  }
-  return /^\[.+\]\(.+\.md\)$/.test(v);
-}
-
-/**
- * Extract the target from a markdown link.
- * Returns the target without the .md extension.
- * Example: "[Note Name](Note Name.md)" → "Note Name"
- */
-export function extractMarkdownLinkTarget(value: string): string | null {
-  // Handle quoted markdown link
-  let v = value;
-  if (v.startsWith('"') && v.endsWith('"')) {
-    v = v.slice(1, -1);
-  }
-  
-  // Match [display](path.md) and extract the path without .md
-  const match = v.match(/^\[.+\]\((.+)\.md\)$/);
-  return match ? match[1]! : null;
-}
-
-/**
- * Extract the target from a wikilink.
- * Returns the target without brackets, heading, or alias.
- */
-export function extractWikilinkTarget(value: string): string | null {
-  // Handle quoted wikilink
-  let v = value;
-  if (v.startsWith('"') && v.endsWith('"')) {
-    v = v.slice(1, -1);
-  }
-  
-  const match = v.match(/^\[\[([^\]|#]+)/);
-  return match ? match[1]! : null;
-}
-
-
-/**
- * Convert a value to wikilink format.
- * Extracts the note name from markdown links if needed.
- */
-export function toWikilink(value: string): string {
-  // If already a wikilink, return as-is
-  if (isWikilink(value) || isQuotedWikilink(value)) {
-    return value;
-  }
-  
-  // Extract name from markdown link if present
-  let name = value;
-  if (isMarkdownLink(value)) {
-    name = extractMarkdownLinkTarget(value) ?? value;
-  }
-  
-  return `[[${name}]]`;
-}
-
-/**
- * Convert a value to markdown link format.
- * Extracts the note name from wikilinks if needed.
- */
-export function toMarkdownLink(value: string): string {
-  // If already a markdown link, return as-is
-  if (isMarkdownLink(value)) {
-    return value;
-  }
-  
-  // Extract name from wikilink if present
-  let name = value;
-  if (isWikilink(value)) {
-    name = extractWikilinkTarget(value) ?? value;
-  } else if (isQuotedWikilink(value)) {
-    name = extractWikilinkTarget(value.slice(1, -1)) ?? value;
-  }
-  
-  // Convert to markdown link format
-  return `[${name}](${name}.md)`;
-}
+export {
+  isWikilink,
+  isMarkdownLink,
+  extractWikilinkTarget,
+  toWikilink,
+  toMarkdownLink,
+};

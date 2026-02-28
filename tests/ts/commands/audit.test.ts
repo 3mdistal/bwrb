@@ -52,6 +52,42 @@ describe('audit command', () => {
       expect(result.stderr).toContain("Unknown field 'unknown_field'");
       expect(result.stderr).toContain("for type 'idea'");
     });
+
+    it('should allow unknown where fields without --type (permissive mode)', async () => {
+      const result = await runCLI([
+        'audit',
+        '--where', "unknown_field == 'raw'"
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe('');
+    });
+
+    it('should fail on invalid where syntax', async () => {
+      const result = await runCLI([
+        'audit',
+        '--where', "status == 'raw' &&"
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Expression error in');
+      expect(result.stderr).toContain('Expression parse error');
+    });
+
+    it('should fail on where runtime errors in json mode', async () => {
+      const result = await runCLI([
+        'audit',
+        '--where', 'missingFn(status)',
+        '--output', 'json'
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Expression error in');
+      expect(json.error).toContain('Unknown function: missingFn');
+      expect(result.stderr).toContain('Expression error in');
+    });
   });
 
   describe('relation field integrity', () => {
@@ -890,6 +926,37 @@ dead_line: 2026-01-01
       expect(content).toContain('deadline: 2026-01-01');
       expect(content).not.toContain('dead_line:');
     });
+
+    it('should never delete orphan or invalid-type files in --auto mode', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'No Type.md'),
+        `---
+status: raw
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Bad Type.md'),
+        `---
+type: definitely-not-a-type
+status: raw
+---
+`
+      );
+
+      const result = await runCLI(['audit', '--all', '--fix', '--auto', '--execute'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Issues requiring manual review');
+      expect(result.stdout).toContain('No Type.md');
+      expect(result.stdout).toContain('Bad Type.md');
+
+      const noTypeContent = await readFile(join(tempVaultDir, 'Ideas', 'No Type.md'), 'utf-8');
+      const badTypeContent = await readFile(join(tempVaultDir, 'Ideas', 'Bad Type.md'), 'utf-8');
+      expect(noTypeContent).toContain('status: raw');
+      expect(badTypeContent).toContain('type: definitely-not-a-type');
+    });
   });
 
   describe('audit --fix messaging', () => {
@@ -1335,6 +1402,8 @@ status: raw
       const orphanIssue = output.files[0].issues.find((i: { code: string }) => i.code === 'orphan-file');
       expect(orphanIssue).toBeDefined();
       expect(orphanIssue.autoFixable).toBe(true);
+      expect(orphanIssue.meta?.recommendation?.action).toBe('delete-note');
+      expect(orphanIssue.meta?.recommendation?.interactiveOnly).toBe(true);
     });
 
     it('should NOT mark orphan-file as auto-fixable when no inferred type', async () => {
@@ -1357,6 +1426,32 @@ title: Random note
       const orphanIssue = strayFile.issues.find((i: { code: string }) => i.code === 'orphan-file');
       expect(orphanIssue).toBeDefined();
       expect(orphanIssue.autoFixable).toBe(false);
+    });
+
+    it('should keep delete-note recommendation when schema has zero types', async () => {
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({ version: 2, types: {} }, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Inbox'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Inbox', 'No Type.md'),
+        `---
+status: raw
+---
+`
+      );
+
+      const result = await runCLI(['audit', '--all', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const orphanFile = output.files.find((f: { path: string }) => f.path.includes('No Type.md'));
+      expect(orphanFile).toBeDefined();
+      const orphanIssue = orphanFile.issues.find((i: { code: string }) => i.code === 'orphan-file');
+      expect(orphanIssue).toBeDefined();
+      expect(orphanIssue.meta?.recommendation?.action).toBe('delete-note');
+      expect(orphanIssue.meta?.recommendation?.interactiveOnly).toBe(true);
     });
   });
 
@@ -2828,6 +2923,8 @@ status: raw
       const typeIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-type');
       expect(typeIssue).toBeDefined();
       expect(typeIssue.value).toBe('notavalidtype');
+      expect(typeIssue.meta?.recommendation?.action).toBe('delete-note');
+      expect(typeIssue.meta?.recommendation?.interactiveOnly).toBe(true);
     });
 
     it('should show suggestion for typo in type', async () => {

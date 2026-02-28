@@ -6,7 +6,7 @@ import {
   extractMarkdownLinkTarget,
   toWikilink,
   toMarkdownLink,
-} from "../../../src/lib/audit/types.js";
+} from "../../../src/lib/links.js";
 
 describe("link utilities", () => {
   describe("isWikilink", () => {

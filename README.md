@@ -534,3 +534,5 @@ pnpm docs:preview      # Preview built docs site
 ```
 
 For docs-site details and deployment notes, see `docs-site/README.md`.
+
+If you hit local docs contributor setup quirks (ignored build scripts or transient TS diagnostics), see `docs-site/README.md#contributor-troubleshooting`.

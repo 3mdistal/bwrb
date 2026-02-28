@@ -36,7 +36,6 @@ describe('query', () => {
   });
 
   describe('applyFrontmatterFilters', () => {
-    // Helper to create test files with frontmatter
     const makeFiles = (data: Array<{ path: string; fm: Record<string, unknown> }>): FileWithFrontmatter[] =>
       data.map(d => ({ path: join(vaultDir, d.path), frontmatter: d.fm }));
 
@@ -50,7 +49,6 @@ describe('query', () => {
       const result = await applyFrontmatterFilters(files, {
         whereExpressions: ["status == 'active'"],
         vaultDir,
-        silent: true,
       });
 
       expect(result).toHaveLength(2);
@@ -67,7 +65,6 @@ describe('query', () => {
       const result = await applyFrontmatterFilters(files, {
         whereExpressions: ["creation-date == '2026-01-28'"],
         vaultDir,
-        silent: true,
       });
 
       expect(result).toHaveLength(1);
@@ -84,7 +81,6 @@ describe('query', () => {
       const result = await applyFrontmatterFilters(files, {
         whereExpressions: ["status != 'done'"],
         vaultDir,
-        silent: true,
       });
 
       expect(result).toHaveLength(2);
@@ -101,7 +97,6 @@ describe('query', () => {
       const result = await applyFrontmatterFilters(files, {
         whereExpressions: ['priority < 3'],
         vaultDir,
-        silent: true,
       });
 
       expect(result).toHaveLength(2);
@@ -119,7 +114,6 @@ describe('query', () => {
       const result = await applyFrontmatterFilters(files, {
         whereExpressions: ["status == 'active'", 'priority < 3'],
         vaultDir,
-        silent: true,
       });
 
       expect(result).toHaveLength(2);
@@ -136,7 +130,6 @@ describe('query', () => {
       const result = await applyFrontmatterFilters(files, {
         whereExpressions: ["status == 'active'"],
         vaultDir,
-        silent: true,
       });
 
       expect(result).toHaveLength(0);
@@ -151,7 +144,6 @@ describe('query', () => {
       const result = await applyFrontmatterFilters(files, {
         whereExpressions: [],
         vaultDir,
-        silent: true,
       });
 
       expect(result).toHaveLength(2);
@@ -164,7 +156,6 @@ describe('query', () => {
       const result = await applyFrontmatterFilters(files, {
         whereExpressions: [],
         vaultDir,
-        silent: true,
       });
 
       expect(result[0]).toBe(originalFile);
@@ -173,18 +164,43 @@ describe('query', () => {
     it('should handle isEmpty function in expressions', async () => {
       const files = makeFiles([
         { path: 'a.md', fm: { status: 'active', deadline: '2025-01-15' } },
-        { path: 'b.md', fm: { status: 'active' } },  // no deadline
-        { path: 'c.md', fm: { status: 'done', deadline: '' } },  // empty deadline
+        { path: 'b.md', fm: { status: 'active' } },
+        { path: 'c.md', fm: { status: 'done', deadline: '' } },
       ]);
 
       const result = await applyFrontmatterFilters(files, {
         whereExpressions: ['!isEmpty(deadline)'],
         vaultDir,
-        silent: true,
       });
 
       expect(result).toHaveLength(1);
       expect(result[0]?.frontmatter.deadline).toBe('2025-01-15');
+    });
+
+    it('should throw on invalid expression syntax', async () => {
+      const files = makeFiles([
+        { path: 'a.md', fm: { status: 'active' } },
+      ]);
+
+      await expect(
+        applyFrontmatterFilters(files, {
+          whereExpressions: ["status == 'active' &&"],
+          vaultDir,
+        })
+      ).rejects.toThrow(/Expression error in/);
+    });
+
+    it('should throw on expression runtime errors', async () => {
+      const files = makeFiles([
+        { path: 'a.md', fm: { status: 'active' } },
+      ]);
+
+      await expect(
+        applyFrontmatterFilters(files, {
+          whereExpressions: ['missingFn(status)'],
+          vaultDir,
+        })
+      ).rejects.toThrow(/Unknown function: missingFn/);
     });
   });
 });
