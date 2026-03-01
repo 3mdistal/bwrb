@@ -4,6 +4,7 @@ import { join } from 'path';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { extractHelpCommands } from '../helpers/help.js';
 
 describe('schema command', () => {
   let vaultDir: string;
@@ -1284,13 +1285,15 @@ describe('schema command', () => {
       const result = await runCLI(['schema', '--help'], vaultDir);
 
       expect(result.exitCode).toBe(0);
+      const commands = extractHelpCommands(result.stdout);
+
       // Deprecated commands should not appear
-      expect(result.stdout).not.toContain('edit-type');
-      expect(result.stdout).not.toContain('edit-field');
+      expect(commands).not.toContain('edit-type');
+      expect(commands).not.toContain('edit-field');
       // Modern commands should appear
-      expect(result.stdout).toContain('new');
-      expect(result.stdout).toContain('edit');
-      expect(result.stdout).toContain('delete');
+      expect(commands).toContain('new');
+      expect(commands).toContain('edit');
+      expect(commands).toContain('delete');
     });
 
     it('should error when deprecated edit-type command is called', async () => {

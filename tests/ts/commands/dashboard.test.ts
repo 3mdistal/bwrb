@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { join } from 'path';
 import { writeFile, rm, readFile } from 'fs/promises';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { extractHelpCommands } from '../helpers/help.js';
 import type { DashboardsFile } from '../../../src/types/schema.js';
 
 describe('dashboard command', () => {
@@ -1656,7 +1657,8 @@ describe('dashboard command', () => {
         const result = await runCLI(['dashboard', '--help'], vaultDir);
 
         expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain('delete');
+        const commands = extractHelpCommands(result.stdout);
+        expect(commands).toContain('delete');
         expect(result.stdout).not.toContain('coming soon');
       });
 

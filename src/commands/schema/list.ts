@@ -3,7 +3,7 @@
  * Handles: list, list types, list fields, list type <name>
  */
 
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import chalk from 'chalk';
 import { loadCurrentSchema, getTypeNames } from '../../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../../lib/vaultSelection.js';
@@ -33,19 +33,9 @@ interface ListCommandOptions {
 
 const RESERVED_LIST_NOUNS = new Set(['types', 'fields', 'type']);
 
-function hasTypeAliasFlagToken(): boolean {
-  return process.argv.some((arg: string) =>
-    arg === '--type' ||
-    arg.startsWith('--type=') ||
-    arg === '-t' ||
-    arg.startsWith('-t=')
-  );
-}
-
-function ensureNoTypeAliasConflict(options: ListCommandOptions, usage: string): void {
-  if (!options.type && !hasTypeAliasFlagToken()) {
-    return;
-  }
+function ensureNoTypeAliasConflict(cmd: Command, usage: string): void {
+  const type = (cmd.optsWithGlobals() as ListCommandOptions).type;
+  if (!type) return;
 
   throw new Error(
     `Cannot use --type with '${usage}'. ` +
@@ -55,6 +45,7 @@ function ensureNoTypeAliasConflict(options: ListCommandOptions, usage: string): 
 
 export const listCommand = new Command('list')
   .description('List schema contents')
+  .enablePositionalOptions()
   .addHelpText('after', `
 Examples:
   bwrb schema list                # Show full schema overview
@@ -144,12 +135,13 @@ listCommand
 listCommand
   .command('types')
   .description('List all type names')
+  .addOption(new Option('-t, --type <typePath>').hideHelp())
   .option('--output <format>', 'Output format: text (default) or json')
   .action(async (options: ListCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
     try {
-      ensureNoTypeAliasConflict(options, 'bwrb schema list types');
+      ensureNoTypeAliasConflict(cmd, 'bwrb schema list types');
 
       const globalOpts = getGlobalOpts(cmd);
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
@@ -196,12 +188,13 @@ listCommand
 listCommand
   .command('fields')
   .description('List all fields across all types')
+  .addOption(new Option('-t, --type <typePath>').hideHelp())
   .option('--output <format>', 'Output format: text (default) or json')
   .action(async (options: ListCommandOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
     try {
-      ensureNoTypeAliasConflict(options, 'bwrb schema list fields');
+      ensureNoTypeAliasConflict(cmd, 'bwrb schema list fields');
 
       const globalOpts = getGlobalOpts(cmd);
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
@@ -284,6 +277,7 @@ listCommand
 listCommand
   .command('type <name>')
   .description('Show details for a specific type')
+  .addOption(new Option('-t, --type <typePath>').hideHelp())
   .option('--output <format>', 'Output format: text (default) or json')
   .action(async (name: string, options: ListCommandOptions, cmd: Command) => {
     // Check both this command's options and global options
@@ -291,7 +285,8 @@ listCommand
     const jsonMode = options.output === 'json' || globalOpts.output === 'json';
 
     try {
-      if (options.type || hasTypeAliasFlagToken()) {
+      const typeOpt = (cmd.optsWithGlobals() as ListCommandOptions).type;
+      if (typeOpt) {
         throw new Error(
           `Cannot combine 'bwrb schema list type ${name}' with --type/-t. ` +
           `Use either 'bwrb schema list type ${name}' or 'bwrb schema list --type <typePath>'.`

@@ -17,7 +17,7 @@ export default tseslint.config(
     },
   },
   {
-    // Ignore build output, test fixtures, config files, and Astro generated files
-    ignores: ["dist/**", "tests/**", "*.config.js", "*.config.ts", "docs-site/.astro/**"],
+    // Ignore build output, test fixtures, config files, and generated docs-site files
+    ignores: ["dist/**", "tests/**", "*.config.js", "*.config.ts", "docs-site/.astro/**", "docs-site/.cache/**", "docs-site/dist/**"],
   }
 );

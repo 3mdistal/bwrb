@@ -1617,9 +1617,13 @@ async function handleOrphanFileFix(
   const availableTypes = getConcreteTypeNames(schema);
 
   const inferredLabel = issue.inferredType ? `[add inferred type: ${issue.inferredType}]` : undefined;
+
+  // Deduplicate the inferred type from available types
+  const deduplicatedTypes = availableTypes.filter(t => t !== issue.inferredType);
+
   const options = [
     ...(inferredLabel ? [inferredLabel] : []),
-    ...availableTypes,
+    ...deduplicatedTypes,
     '[delete note]',
     '[skip]',
     '[quit]',
