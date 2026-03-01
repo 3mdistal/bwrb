@@ -90,8 +90,8 @@ some-field: value
           // Should prompt for action
           await proc.waitFor('Action for orphan file', 10000);
 
-          // [add inferred type], idea, [delete note], [skip], [quit]
-          proc.write('4');
+          // [add inferred type], [delete note], [skip], [quit]
+          proc.write('3');
           proc.write(Keys.ENTER);
 
           // Should show skipped
@@ -137,7 +137,6 @@ Reference [[Delete Me]].
           await proc.waitFor('Delete Me.md', 10000);
           await proc.waitFor('Action for orphan file', 10000);
 
-          proc.write(Keys.DOWN);
           proc.write(Keys.DOWN);
           proc.write(Keys.ENTER);
 
@@ -219,13 +218,49 @@ Dry run delete.
           await proc.waitFor('Dry Delete.md', 10000);
           await proc.waitFor('Action for orphan file', 10000);
 
-          proc.write('3');
+          proc.write('2');
           proc.write(Keys.ENTER);
 
           await proc.waitFor('Would delete Ideas/Dry Delete.md', 10000);
           await proc.waitForStable(500);
 
           expect(existsSync(join(vaultPath, 'Ideas/Dry Delete.md'))).toBe(true);
+        },
+        { files: [orphanFile], schema: MINIMAL_SCHEMA }
+      );
+    }, 30000);
+
+    it('should dedupe type choices in orphan file prompt', async () => {
+      const orphanFile: TempVaultFile = {
+        path: 'Ideas/Dedupe Test.md',
+        content: `---
+status: raw
+---
+
+Content without type field.
+`,
+      };
+
+      await withTempVault(
+        ['audit', 'idea', '--fix', '--dry-run'],
+        async (proc) => {
+          await proc.waitFor('Auditing vault', 10000);
+          await proc.waitFor('Dedupe Test.md', 10000);
+
+          await proc.waitFor('Action for orphan file', 10000);
+          await proc.waitForStable(500);
+
+          const output = proc.getOutput();
+          expect(output).toContain('[add inferred type: idea]');
+
+          // Select option 2. If 'idea' was not deduped, option 2 would be 'idea',
+          // which would say '✓ Added type: idea'.
+          // Since 'idea' is deduped, option 2 is '[delete note]',
+          // which in dry-run says '⚠ Would delete'.
+          proc.write('2');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Would delete Ideas/Dedupe Test.md', 5000);
         },
         { files: [orphanFile], schema: MINIMAL_SCHEMA }
       );
@@ -969,7 +1004,7 @@ status: raw
           await proc.waitFor('Action for orphan file', 10000);
 
           // Skip to trigger next issue
-          proc.write('4');
+          proc.write('3');
           proc.write(Keys.ENTER);
           await proc.waitForStable(200);
 
