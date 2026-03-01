@@ -3,7 +3,7 @@ import type { LoadedSchema } from '../types/schema.js';
 import { getAllFieldsForType } from './schema.js';
 import { matchesExpression, buildEvalContext, type HierarchyData } from './expression.js';
 import { collectFrontmatterKeys, normalizeWhereExpressions } from './where-normalize.js';
-import { extractWikilinkTarget } from './audit/types.js';
+import { extractWikilinkTarget } from './links.js';
 
 /**
  * Validate that a field name is valid for a type.

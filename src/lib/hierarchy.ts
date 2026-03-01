@@ -7,7 +7,7 @@
 
 import { basename } from 'path';
 import { parseNote } from './frontmatter.js';
-import { extractWikilinkTarget } from './audit/types.js';
+import { extractWikilinkTarget } from './links.js';
 import { discoverManagedFiles } from './discovery.js';
 import { getType, resolveTypeFromFrontmatter } from './schema.js';
 import type { LoadedSchema } from '../types/schema.js';

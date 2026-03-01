@@ -6,15 +6,6 @@
 
 import type { LoadedSchema } from '../../types/schema.js';
 import type { NoteTargetIndex } from '../discovery.js';
-import {
-  isWikilink,
-  isMarkdownLink,
-  extractWikilinkTarget,
-  toWikilink,
-  toMarkdownLink,
-} from '../links.js';
-
-// ============================================================================
 // Issue Types
 // ============================================================================
 
@@ -244,14 +235,3 @@ export const ALLOWED_NATIVE_FIELDS = new Set([
   'publish',
   'type',  // type discriminator
 ]);
-
-/**
- * Re-export shared link helpers for compatibility with existing imports.
- */
-export {
-  isWikilink,
-  isMarkdownLink,
-  extractWikilinkTarget,
-  toWikilink,
-  toMarkdownLink,
-};
