@@ -2,37 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { cleanupTestVault, createTestVault, runCLI } from '../fixtures/setup.js';
 import { normalizeCliHelpForSnapshot, runHelp } from '../fixtures/help.js';
-
-function extractCommandNames(helpOutput: string): string[] {
-  const lines = helpOutput.split('\n');
-  const commandsHeaderIndex = lines.findIndex((line) => line.trim() === 'Commands:');
-  if (commandsHeaderIndex < 0) return [];
-
-  const commandNames: string[] = [];
-  let commandIndent: number | null = null;
-  for (let i = commandsHeaderIndex + 1; i < lines.length; i += 1) {
-    const line = lines[i] ?? '';
-    if (!line.trim()) {
-      break;
-    }
-
-    const match = line.match(/^(\s+)([a-z][a-z-]*)\b/i);
-    if (!match) {
-      continue;
-    }
-
-    const indent = match[1]!.length;
-    if (commandIndent === null) {
-      commandIndent = indent;
-    }
-
-    if (indent === commandIndent) {
-      commandNames.push(match[2]!);
-    }
-  }
-
-  return commandNames;
-}
+import { extractHelpCommands } from '../helpers/help.js';
 
 describe('help output contract snapshots', () => {
   let vaultDir: string;
@@ -48,7 +18,7 @@ describe('help output contract snapshots', () => {
   it('captures top-level help output contract', async () => {
     const result = await runHelp([]);
     const normalized = normalizeCliHelpForSnapshot(result.stdout);
-    const commandNames = extractCommandNames(normalized);
+    const commandNames = extractHelpCommands(normalized);
 
     expect(result.exitCode).toBe(0);
     expect(normalized).toContain('Usage: bwrb [options] [command]');
@@ -93,7 +63,7 @@ describe('help output contract snapshots', () => {
   it('captures schema command help output contract', async () => {
     const result = await runHelp(['schema'], vaultDir);
     const normalized = normalizeCliHelpForSnapshot(result.stdout, { vaultDir });
-    const commandNames = extractCommandNames(normalized);
+    const commandNames = extractHelpCommands(normalized);
 
     expect(result.exitCode).toBe(0);
     expect(normalized).toContain('Schema introspection commands');

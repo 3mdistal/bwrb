@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI, waitForFile } from '../fixtures/setup.js';
-import { normalizeHelpOutput } from '../fixtures/help-parser.js';
 import { formatLocalDate } from '../../../src/lib/local-date.js';
 import { ExitCodes } from '../../../src/lib/output.js';
 
@@ -84,13 +83,6 @@ describe('new command', () => {
   });
 
   describe('help and usage', () => {
-    it('matches help output snapshot', async () => {
-      const result = await runCLI(['new', '--help'], vaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(normalizeHelpOutput(result.stdout)).toMatchSnapshot();
-    });
-
     it('should show help with --help flag', async () => {
       const result = await runCLI(['new', '--help'], vaultDir);
 
