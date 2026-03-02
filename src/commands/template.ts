@@ -617,6 +617,13 @@ templateCommand
         return;
       }
 
+      // Non-interactive shortcut: if --name is provided and stdin is not a TTY,
+      // create a minimal template without prompting (fixes #541)
+      if (options.name && !process.stdin.isTTY) {
+        await createTemplateMinimal(schema, vaultDir, resolvedTypePath, options);
+        return;
+      }
+
       await createTemplateInteractive(schema, vaultDir, resolvedTypePath, options);
     } catch (err) {
       if (err instanceof UserCancelledError) {
@@ -717,6 +724,48 @@ async function createTemplateFromJson(
     path: relative(vaultDir, templatePath),
     message: 'Template created successfully',
   }));
+}
+
+/**
+ * Create a minimal template non-interactively when --name is provided
+ * in a non-TTY context (e.g., piped scripts). This avoids hanging on
+ * interactive prompts while still creating a usable template.
+ */
+async function createTemplateMinimal(
+  _schema: LoadedSchema,
+  vaultDir: string,
+  typePath: string,
+  options: TemplateNewOptions
+): Promise<void> {
+  const name = options.name!;
+
+  // Check if template already exists
+  const existing = await findTemplateByName(vaultDir, typePath, name);
+  if (existing) {
+    printError(`Template already exists: ${name}`);
+    process.exit(1);
+  }
+
+  const templateDir = getTemplateDir(vaultDir, typePath);
+  const templatePath = join(templateDir, `${name}.md`);
+
+  // Build template content
+  const frontmatter: Record<string, unknown> = {
+    type: 'template',
+    'template-for': typePath,
+  };
+
+  if (options.description) {
+    frontmatter.description = options.description;
+  }
+
+  const body = '# {title}\n\n[Template body - customize this section]';
+
+  // Create directory and write template
+  await mkdir(templateDir, { recursive: true });
+  await writeNote(templatePath, frontmatter, body, ['type', 'template-for', 'description']);
+
+  printSuccess(`Template created: ${relative(vaultDir, templatePath)}`);
 }
 
 /**
