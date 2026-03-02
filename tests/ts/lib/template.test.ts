@@ -21,6 +21,7 @@ import {
   mergeTemplateDefaults,
   resolveTemplateWithInheritance,
   getInheritedTemplates,
+  createEmptyTemplateResolution,
 } from '../../../src/lib/template.js';
 import { resolveSchema } from '../../../src/lib/schema.js';
 import type { Schema, LoadedSchema } from '../../../src/types/schema.js';
@@ -1634,5 +1635,27 @@ template-for: objective
       // Should not find the named template
       expect(result).toBeNull();
     });
+  });
+});
+
+describe('createEmptyTemplateResolution', () => {
+  it('returns all required fields with empty/null defaults', () => {
+    const result = createEmptyTemplateResolution();
+    expect(result.template).toBeNull();
+    expect(result.mergedDefaults).toEqual({});
+    expect(result.mergedConstraints).toEqual({});
+    expect(result.mergedPromptFields).toEqual([]);
+    expect(result.shouldPrompt).toBe(false);
+    expect(result.availableTemplates).toEqual([]);
+  });
+
+  it('applies overrides while keeping unspecified fields at defaults', () => {
+    const result = createEmptyTemplateResolution({ shouldPrompt: true });
+    expect(result.shouldPrompt).toBe(true);
+    expect(result.template).toBeNull();
+    expect(result.mergedDefaults).toEqual({});
+    expect(result.mergedConstraints).toEqual({});
+    expect(result.mergedPromptFields).toEqual([]);
+    expect(result.availableTemplates).toEqual([]);
   });
 });
