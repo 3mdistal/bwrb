@@ -77,7 +77,7 @@ Safety (Two-Gate Model):
 
   # Error: no targeting specified
   bwrb bulk --set status=done
-  # "No files selected. Use --type, --path, --where, --text, or --all."
+  # "No files selected. Use --type, --path, --where, --body, or --all."
 
   # OK: filtered with --type and --where
   bwrb bulk --type task --where "status == 'active'" --set status=done
@@ -242,7 +242,7 @@ Examples:
       });
 
       if (!hasTargeting) {
-        const error = 'No files selected. Use --type, --path, --where, --text, or --all.';
+        const error = 'No files selected. Use --type, --path, --where, --body, or --all.';
         if (jsonMode) {
           printJson(jsonError(error));
           process.exit(ExitCodes.VALIDATION_ERROR);
