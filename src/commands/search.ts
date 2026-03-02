@@ -569,6 +569,20 @@ async function handleNameSearch(
       process.exit(0);
     }
 
+    // For pipe-friendly output formats (link, paths, content), output all
+    // candidates instead of erroring on ambiguity. This enables workflows
+    // like `bwrb search Idea --output link` to return disambiguated
+    // wikilinks for all matches. (fixes #544)
+    if (result.candidates && result.candidates.length > 0) {
+      const pipeFormats: SearchOutputFormat[] = ['link', 'paths', 'content'];
+      if (pipeFormats.includes(outputFormat)) {
+        for (const candidate of result.candidates) {
+          await outputTextResult(index, candidate, outputFormat);
+        }
+        process.exit(0);
+      }
+    }
+
     exitWithResolutionError(result.error, result.candidates, jsonMode);
   }
 
