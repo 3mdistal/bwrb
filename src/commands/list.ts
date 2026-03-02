@@ -7,7 +7,7 @@ import {
   getTypeDefByPath,
   getAllFieldsForType,
 } from '../lib/schema.js';
-import { extractWikilinkTarget } from '../lib/audit/types.js';
+import { extractWikilinkTarget } from '../lib/links.js';
 
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
