@@ -22,7 +22,7 @@ import {
 } from './discovery.js';
 import { parseNote } from './frontmatter.js';
 import { searchContent } from './content-search.js';
-import { getTypeNames } from './schema.js';
+import { getType, getTypeNames } from './schema.js';
 import { applyWhereExpressions } from './where-targeting.js';
 
 // ============================================================================
@@ -95,20 +95,19 @@ export function detectPositionalType(
   arg: string,
   schema: LoadedSchema
 ): 'type' | 'path' | 'where' | null {
-  // Check for path indicators first (most specific)
-  if (arg.includes('/') || arg.includes('*')) {
-    return 'path';
-  }
-
-  // Check for where expression operators
+  // Check for where expression operators (most specific pattern)
   if (/[=!><~]/.test(arg)) {
     return 'where';
   }
 
-  // Check if it matches a known type name
-  const typeNames = getTypeNames(schema);
-  if (typeNames.includes(arg)) {
+  // Check if it matches a known type name (direct or slash-notation)
+  if (getType(schema, arg)) {
     return 'type';
+  }
+
+  // Check for path indicators
+  if (arg.includes('/') || arg.includes('*')) {
+    return 'path';
   }
 
   // Ambiguous - could be anything
@@ -158,7 +157,11 @@ export function parsePositionalArg(
           error: `Type already specified as '${options.type}'. Cannot also use '${arg}'.`,
         };
       }
-      options.type = arg;
+      // Resolve slash-notation to the actual type name (e.g. "objective/task" → "task")
+      {
+        const resolved = getType(schema, arg);
+        options.type = resolved ? resolved.name : arg;
+      }
       break;
 
     case 'path':

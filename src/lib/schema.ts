@@ -431,7 +431,22 @@ export function detectObsidianVault(vaultDir: string): string | undefined {
  * Get a resolved type by name.
  */
 export function getType(schema: LoadedSchema, typeName: string): ResolvedType | undefined {
-  return schema.types.get(typeName);
+  const direct = schema.types.get(typeName);
+  if (direct) return direct;
+
+  // Support legacy slash-notation (e.g. "objective/task" → "task").
+  if (typeName.includes('/')) {
+    const segments = typeName.split('/');
+    const leafName = segments[segments.length - 1]!;
+    const resolved = schema.types.get(leafName);
+    if (resolved) {
+      const ancestors = new Set(resolved.ancestors);
+      const parentSegments = segments.slice(0, -1);
+      if (parentSegments.every(seg => ancestors.has(seg))) return resolved;
+    }
+  }
+
+  return undefined;
 }
 
 /**
@@ -656,7 +671,27 @@ export function parseTypePath(typePath: string): string[] {
  * @deprecated Use getType(schema, typeName) instead
  */
 export function getTypeDefByPath(schema: LoadedSchema, typePath: string): ResolvedType | undefined {
-  return schema.types.get(typePath);
+  // Direct lookup first (most common case)
+  const direct = schema.types.get(typePath);
+  if (direct) return direct;
+
+  // Support legacy slash-notation (e.g. "objective/task" → "task").
+  // Types are flat with inheritance; the last segment is the actual type name.
+  if (typePath.includes('/')) {
+    const segments = typePath.split('/');
+    const typeName = segments[segments.length - 1]!;
+    const resolved = schema.types.get(typeName);
+    if (resolved) {
+      // Validate that the ancestor chain is consistent with the slash path
+      // e.g. "objective/task" is valid only if task's ancestor chain includes "objective"
+      const ancestors = new Set(resolved.ancestors);
+      const parentSegments = segments.slice(0, -1);
+      const chainValid = parentSegments.every(seg => ancestors.has(seg));
+      if (chainValid) return resolved;
+    }
+  }
+
+  return undefined;
 }
 
 /**

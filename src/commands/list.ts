@@ -237,6 +237,8 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
           printError(error);
           process.exit(1);
         }
+        // Normalize slash-notation to canonical type name
+        targeting.type = typeDef.name;
       }
 
       // Resolve targets using shared targeting module

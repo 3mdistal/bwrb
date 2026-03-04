@@ -230,6 +230,8 @@ Examples:
           showAvailableTypes(schema);
           process.exit(1);
         }
+        // Normalize slash-notation to canonical type name
+        typePath = typeDef.name;
       }
 
       // Targeting gate: require explicit selector(s) OR --all for destructive operations
@@ -634,7 +636,7 @@ function outputTextResult(result: BulkResult, verbose: boolean, quiet: boolean):
   // Show errors if any
   if (result.errors.length > 0) {
     console.log();
-    console.log(chalk.red(`Errors (${result.errors.length}):`));
+    console.log(chalk.red(`Errors (${result.errors.length}):`))
     for (const error of result.errors) {
       console.log(`  ${chalk.red('•')} ${error}`);
     }
@@ -734,7 +736,7 @@ function outputMoveTextResult(result: BulkResult, verbose: boolean, quiet: boole
   // Show errors if any
   if (result.errors.length > 0) {
     console.log();
-    console.log(chalk.red(`Errors (${result.errors.length}):`));
+    console.log(chalk.red(`Errors (${result.errors.length}):`))
     for (const error of result.errors) {
       console.log(`  ${chalk.red('•')} ${error}`);
     }

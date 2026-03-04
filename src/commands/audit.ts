@@ -274,6 +274,8 @@ Examples:
           await showAvailableTypes(schema);
           process.exit(ExitCodes.VALIDATION_ERROR);
         }
+        // Normalize slash-notation to canonical type name
+        typePath = typeDef.name;
       }
 
       // Build allowed fields set from CLI option
