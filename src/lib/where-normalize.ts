@@ -182,7 +182,7 @@ function isWhitespace(char: string): boolean {
  * Multi-character operators that contain `=` (`==`, `!=`, `<=`, `>=`, `=~`)
  * are left untouched.
  */
-export function normalizeSingleEquals(expression: string): string {
+function normalizeSingleEquals(expression: string): string {
   let result = '';
   let inSingle = false;
   let inDouble = false;
