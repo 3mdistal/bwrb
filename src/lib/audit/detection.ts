@@ -144,6 +144,10 @@ export async function runAudit(
     if (searchResult.success && searchResult.results) {
       const matchingPaths = new Set(searchResult.results.map(r => r.file.path));
       filteredFiles = filteredFiles.filter(f => matchingPaths.has(f.path));
+    } else if (!searchResult.success) {
+      // Content search failed (e.g. ripgrep not installed) — filter to empty set
+      // rather than silently skipping the --body filter
+      filteredFiles = [];
     }
   }
 
