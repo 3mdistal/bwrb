@@ -6,11 +6,19 @@ export function normalizeWhereExpressions(
   expressions: string[],
   knownKeys: Set<string>
 ): string[] {
-  if (expressions.length === 0 || knownKeys.size === 0) {
+  if (expressions.length === 0) {
     return expressions;
   }
 
-  return expressions.map(expr => normalizeWhereExpression(expr, knownKeys));
+  return expressions.map(expr => {
+    // Always normalize single '=' to '==' for jsep compatibility
+    let normalized = normalizeSingleEquals(expr);
+    // Then handle hyphenated-key rewriting if applicable
+    if (knownKeys.size > 0) {
+      normalized = normalizeWhereExpression(normalized, knownKeys);
+    }
+    return normalized;
+  });
 }
 
 export function normalizeWhereExpression(
@@ -162,4 +170,110 @@ function hasLeftOperandBeforeMinus(expression: string, minusIndex: number): bool
 
 function isWhitespace(char: string): boolean {
   return /\s/.test(char);
+}
+
+/**
+ * Normalize bare single `=` to `==` for jsep compatibility.
+ *
+ * jsep is configured with `==` as a binary operator but does not recognise
+ * single `=`. Help text and examples show the `status=active` shorthand,
+ * so we convert it before parsing.
+ *
+ * When the RHS of a bare `=` is an unquoted value (e.g. `status=active` or
+ * `status=in-flight`), the value is auto-quoted so jsep treats it as a
+ * string literal rather than an identifier or arithmetic expression.
+ *
+ * Multi-character operators that contain `=` (`==`, `!=`, `<=`, `>=`, `=~`)
+ * are left untouched.
+ */
+function normalizeSingleEquals(expression: string): string {
+  let result = '';
+  let inSingle = false;
+  let inDouble = false;
+  let i = 0;
+
+  while (i < expression.length) {
+    const ch = expression[i] ?? '';
+
+    // Track string state (skip contents of quoted strings)
+    if (inSingle) {
+      if (ch === '\\' && i + 1 < expression.length) {
+        result += ch + (expression[i + 1] ?? '');
+        i += 2;
+        continue;
+      }
+      if (ch === "'") inSingle = false;
+      result += ch;
+      i += 1;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '\\' && i + 1 < expression.length) {
+        result += ch + (expression[i + 1] ?? '');
+        i += 2;
+        continue;
+      }
+      if (ch === '"') inDouble = false;
+      result += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "'") { inSingle = true; result += ch; i += 1; continue; }
+    if (ch === '"') { inDouble = true; result += ch; i += 1; continue; }
+
+    if (ch === '=') {
+      const prev = i > 0 ? (expression[i - 1] ?? '') : '';
+      const next = expression[i + 1] ?? '';
+
+      // Already part of a multi-char operator: ==, !=, <=, >=, =~
+      if (next === '=' || next === '~' || prev === '!' || prev === '<' || prev === '>' || prev === '=') {
+        result += ch;
+        i += 1;
+        continue;
+      }
+
+      // Bare single '=' → replace with '==' and auto-quote the RHS value
+      // so that e.g. status=active becomes status=='active'
+      result += '==';
+      i += 1;
+
+      // Skip optional whitespace after =
+      while (i < expression.length && /\s/.test(expression[i] ?? '')) {
+        result += expression[i] ?? '';
+        i += 1;
+      }
+
+      // If RHS is already quoted or is a number, leave it as-is
+      const rhsStart = expression[i] ?? '';
+      if (rhsStart === "'" || rhsStart === '"' || /^[0-9]/.test(rhsStart)) {
+        continue;
+      }
+
+      // Collect the unquoted RHS value (up to next operator, whitespace-before-operator, or end)
+      let value = '';
+      while (i < expression.length) {
+        const c = expression[i] ?? '';
+        // Stop at logical operators (&&, ||) or comparison operators that start a new clause
+        if ((c === '&' || c === '|') && expression[i + 1] === c) break;
+        // Stop at whitespace only if followed by an operator keyword
+        if (/\s/.test(c)) {
+          const rest = expression.slice(i).trimStart();
+          if (/^(&&|\|\||==|!=|<=|>=|=~|<|>)/.test(rest)) break;
+        }
+        value += c;
+        i += 1;
+      }
+
+      value = value.trimEnd();
+      if (value.length > 0) {
+        result += "'" + value.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+      }
+      continue;
+    }
+
+    result += ch;
+    i += 1;
+  }
+
+  return result;
 }
