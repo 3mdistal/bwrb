@@ -78,6 +78,10 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
     });
     if (searchResult.success) {
       textMatchingPaths = new Set(searchResult.results.map(r => r.file.path));
+    } else {
+      // Content search failed (e.g. ripgrep not installed) — filter to empty set
+      // rather than silently skipping the --body filter
+      textMatchingPaths = new Set<string>();
     }
   }
 
@@ -246,6 +250,10 @@ async function executeBulkWithMove(
     });
     if (searchResult.success) {
       textMatchingPaths = new Set(searchResult.results.map(r => r.file.path));
+    } else {
+      // Content search failed (e.g. ripgrep not installed) — filter to empty set
+      // rather than silently skipping the --body filter
+      textMatchingPaths = new Set<string>();
     }
   }
 
