@@ -6,11 +6,19 @@ export function normalizeWhereExpressions(
   expressions: string[],
   knownKeys: Set<string>
 ): string[] {
-  if (expressions.length === 0 || knownKeys.size === 0) {
+  if (expressions.length === 0) {
     return expressions;
   }
 
-  return expressions.map(expr => normalizeWhereExpression(expr, knownKeys));
+  return expressions.map(expr => {
+    // Always normalize single '=' to '==' for jsep compatibility
+    let normalized = normalizeSingleEquals(expr);
+    // Then handle hyphenated-key rewriting if applicable
+    if (knownKeys.size > 0) {
+      normalized = normalizeWhereExpression(normalized, knownKeys);
+    }
+    return normalized;
+  });
 }
 
 export function normalizeWhereExpression(
@@ -162,4 +170,73 @@ function hasLeftOperandBeforeMinus(expression: string, minusIndex: number): bool
 
 function isWhitespace(char: string): boolean {
   return /\s/.test(char);
+}
+
+/**
+ * Normalize bare single `=` to `==` for jsep compatibility.
+ *
+ * jsep is configured with `==` as a binary operator but does not recognise
+ * single `=`. Help text and examples show the `status=active` shorthand,
+ * so we convert it before parsing.
+ *
+ * Multi-character operators that contain `=` (`==`, `!=`, `<=`, `>=`, `=~`)
+ * are left untouched.
+ */
+export function normalizeSingleEquals(expression: string): string {
+  let result = '';
+  let inSingle = false;
+  let inDouble = false;
+  let i = 0;
+
+  while (i < expression.length) {
+    const ch = expression[i] ?? '';
+
+    // Track string state (skip contents of quoted strings)
+    if (inSingle) {
+      if (ch === '\\' && i + 1 < expression.length) {
+        result += ch + (expression[i + 1] ?? '');
+        i += 2;
+        continue;
+      }
+      if (ch === "'") inSingle = false;
+      result += ch;
+      i += 1;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '\\' && i + 1 < expression.length) {
+        result += ch + (expression[i + 1] ?? '');
+        i += 2;
+        continue;
+      }
+      if (ch === '"') inDouble = false;
+      result += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "'") { inSingle = true; result += ch; i += 1; continue; }
+    if (ch === '"') { inDouble = true; result += ch; i += 1; continue; }
+
+    if (ch === '=') {
+      const prev = i > 0 ? (expression[i - 1] ?? '') : '';
+      const next = expression[i + 1] ?? '';
+
+      // Already part of a multi-char operator: ==, !=, <=, >=, =~
+      if (next === '=' || next === '~' || prev === '!' || prev === '<' || prev === '>' || prev === '=') {
+        result += ch;
+        i += 1;
+        continue;
+      }
+
+      // Bare single '=' → replace with '=='
+      result += '==';
+      i += 1;
+      continue;
+    }
+
+    result += ch;
+    i += 1;
+  }
+
+  return result;
 }
