@@ -352,8 +352,22 @@ describe('targeting', () => {
       );
 
       expect(result.hasTargeting).toBe(true);
+      expect(result.files.length).toBeGreaterThan(0);
       // Should only get in-flight milestones (Active Milestone in fixture)
       expect(result.files.every(f => f.frontmatter.status === 'in-flight')).toBe(true);
+    });
+
+    it('normalizes single = to == in where filter', async () => {
+      // Uses single = shorthand (status=settled) which should be normalized to ==
+      const result = await resolveTargets(
+        { type: 'milestone', where: ['status=settled'] },
+        schema,
+        vaultDir
+      );
+
+      expect(result.hasTargeting).toBe(true);
+      expect(result.files.length).toBeGreaterThan(0);
+      expect(result.files.every(f => f.frontmatter.status === 'settled')).toBe(true);
     });
 
     it('supports regex matching on name with where filters', async () => {

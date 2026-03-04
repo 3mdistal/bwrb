@@ -179,6 +179,10 @@ function isWhitespace(char: string): boolean {
  * single `=`. Help text and examples show the `status=active` shorthand,
  * so we convert it before parsing.
  *
+ * When the RHS of a bare `=` is an unquoted value (e.g. `status=active` or
+ * `status=in-flight`), the value is auto-quoted so jsep treats it as a
+ * string literal rather than an identifier or arithmetic expression.
+ *
  * Multi-character operators that contain `=` (`==`, `!=`, `<=`, `>=`, `=~`)
  * are left untouched.
  */
@@ -228,9 +232,42 @@ function normalizeSingleEquals(expression: string): string {
         continue;
       }
 
-      // Bare single '=' → replace with '=='
+      // Bare single '=' → replace with '==' and auto-quote the RHS value
+      // so that e.g. status=active becomes status=='active'
       result += '==';
       i += 1;
+
+      // Skip optional whitespace after =
+      while (i < expression.length && /\s/.test(expression[i] ?? '')) {
+        result += expression[i] ?? '';
+        i += 1;
+      }
+
+      // If RHS is already quoted or is a number, leave it as-is
+      const rhsStart = expression[i] ?? '';
+      if (rhsStart === "'" || rhsStart === '"' || /^[0-9]/.test(rhsStart)) {
+        continue;
+      }
+
+      // Collect the unquoted RHS value (up to next operator, whitespace-before-operator, or end)
+      let value = '';
+      while (i < expression.length) {
+        const c = expression[i] ?? '';
+        // Stop at logical operators (&&, ||) or comparison operators that start a new clause
+        if ((c === '&' || c === '|') && expression[i + 1] === c) break;
+        // Stop at whitespace only if followed by an operator keyword
+        if (/\s/.test(c)) {
+          const rest = expression.slice(i).trimStart();
+          if (/^(&&|\|\||==|!=|<=|>=|=~|<|>)/.test(rest)) break;
+        }
+        value += c;
+        i += 1;
+      }
+
+      value = value.trimEnd();
+      if (value.length > 0) {
+        result += "'" + value.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+      }
       continue;
     }
 
