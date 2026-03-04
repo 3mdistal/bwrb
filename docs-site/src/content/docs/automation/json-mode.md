@@ -40,7 +40,7 @@ bwrb new task --json "{
 ### Process Audit Results
 
 ```bash
-bwrb audit --output json | jq '.violations[] | .file'
+bwrb audit --output json | jq '.files[] | .path'
 ```
 
 Audit JSON is report-only. It never performs fixes or deletes. For delete-eligible findings, the issue payload can include recommendation metadata under `meta.recommendation` (for example `{"action":"delete-note","interactiveOnly":true}`).
@@ -49,8 +49,8 @@ Audit JSON is report-only. It never performs fixes or deletes. For delete-eligib
 
 ```bash
 bwrb list task --output json | \
-  jq -r '.[] | select(.status == "done") | .path' | \
-  xargs -I {} bwrb delete {} --execute
+  jq -r '.[] | select(.status == "done") | ._path' | \
+  xargs -I {} bwrb delete {} --force
 ```
 
 ## AI Integration
