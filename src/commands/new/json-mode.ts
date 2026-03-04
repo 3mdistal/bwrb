@@ -101,6 +101,13 @@ function parseJsonNoteInput(jsonInput: string): JsonNoteInputResult {
   }
 
   const { _body: rawBodyInput, ...frontmatterInput } = inputData;
+
+  // Strip redundant outer double quotes from wikilink values.
+  // Users may pass '"[[Target]]"' in JSON (which JSON-parses to the string
+  // "[[Target]]"), but the YAML serializer already adds appropriate quoting,
+  // so the extra quotes cause double-wrapping in the output file.
+  stripRedundantWikilinkQuotes(frontmatterInput);
+
   if ('id' in frontmatterInput) {
     throwJsonError(
       jsonError("Frontmatter field 'id' is reserved and cannot be set in --json mode"),
@@ -283,4 +290,34 @@ function generateBodyForJson(
     return '';
   }
   return generateBodySections(sections);
+}
+
+/**
+ * Strip redundant outer double quotes from wikilink string values.
+ *
+ * When a user passes `'"[[Target]]"'` as a JSON value, JSON.parse yields
+ * the string `"[[Target]]"` (with literal quote characters). The YAML
+ * serializer will then add its own quoting, producing `'"[[Target]]"'` in
+ * the output file rather than the expected `"[[Target]]"`. This function
+ * strips those outer quotes so the YAML layer can handle quoting correctly.
+ */
+function stripRedundantWikilinkQuotes(obj: Record<string, unknown>): void {
+  const WIKILINK_QUOTED = /^"(\[\[.+\]\])"$/;
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'string') {
+      const match = value.match(WIKILINK_QUOTED);
+      if (match) {
+        obj[key] = match[1];
+      }
+    } else if (Array.isArray(value)) {
+      obj[key] = value.map(item => {
+        if (typeof item === 'string') {
+          const match = item.match(WIKILINK_QUOTED);
+          return match ? match[1] : item;
+        }
+        return item;
+      });
+    }
+  }
 }
