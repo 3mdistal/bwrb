@@ -135,9 +135,12 @@ Template management:
         process.exit(1);
       }
 
+      // Normalize slash-notation to canonical type name
+      const canonicalType = typeDef.name;
+
       const templateResolution = await resolveTemplateResolution(
         vaultDir,
-        resolvedPath,
+        canonicalType,
         schema,
         options
       );
@@ -145,7 +148,7 @@ Template management:
       const filePath = await createNoteInteractive(
         schema,
         vaultDir,
-        resolvedPath,
+        canonicalType,
         typeDef,
         templateResolution,
         {
