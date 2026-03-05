@@ -259,6 +259,40 @@ describe('list command', () => {
       expect(result.stdout).toContain('Another Idea');
     });
 
+    it('should exclude notes with parent-like relation fields from isRoot()', async () => {
+      const taskDir = join(vaultDir, 'Objectives', 'Tasks');
+      await mkdir(taskDir, { recursive: true });
+
+      await writeFile(
+        join(taskDir, 'Root Candidate.md'),
+        [
+          '---',
+          'type: task',
+          'status: raw',
+          '---',
+          '',
+        ].join('\n')
+      );
+
+      await writeFile(
+        join(taskDir, 'Milestoned Task.md'),
+        [
+          '---',
+          'type: task',
+          'status: raw',
+          'milestone: "[[Active Milestone]]"',
+          '---',
+          '',
+        ].join('\n')
+      );
+
+      const result = await runCLI(['list', 'task', '--where', 'isRoot()'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Root Candidate');
+      expect(result.stdout).not.toContain('Milestoned Task');
+    });
+
     it('should filter by negation', async () => {
       const result = await runCLI(['list', 'milestone', '--where', "status != 'settled'"], vaultDir);
 

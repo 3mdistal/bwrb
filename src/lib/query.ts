@@ -1,9 +1,9 @@
 import { basename } from 'path';
 import type { LoadedSchema } from '../types/schema.js';
-import { getAllFieldsForType } from './schema.js';
+import { getAllFieldsForType, getType, resolveTypeFromFrontmatter } from './schema.js';
 import { matchesExpression, buildEvalContext, type HierarchyData } from './expression.js';
 import { collectFrontmatterKeys, normalizeWhereExpressions } from './where-normalize.js';
-import { extractWikilinkTarget } from './links.js';
+import { extractLinkTarget } from './links.js';
 
 /**
  * Validate that a field name is valid for a type.
@@ -36,6 +36,10 @@ export interface FrontmatterFilterOptions {
   vaultDir: string;
   /** Optional known frontmatter keys for normalization */
   knownKeys?: Set<string>;
+  /** Optional schema for resolving parent-like hierarchy fields */
+  schema?: LoadedSchema;
+  /** Optional type path for type-aware hierarchy resolution */
+  typePath?: string;
 }
 
 // ============================================================================
@@ -60,17 +64,21 @@ function expressionsUseHierarchyFunctions(expressions: string[]): boolean {
  * This builds the parent and children maps needed for isRoot, isChildOf, isDescendantOf.
  */
 function buildHierarchyDataFromFiles(
-  files: FileWithFrontmatter[]
+  files: FileWithFrontmatter[],
+  options: Pick<FrontmatterFilterOptions, 'schema' | 'typePath'>
 ): HierarchyData {
   const parentMap = new Map<string, string>();
   const childrenMap = new Map<string, Set<string>>();
+  const hierarchyFieldCache = new Map<string, string[]>();
 
   for (const file of files) {
     const noteName = basename(file.path, '.md');
-    const parentValue = file.frontmatter['parent'];
+    const typeName = resolveHierarchyType(file.frontmatter, options);
+    const hierarchyFields = getHierarchyFields(typeName, options.schema, hierarchyFieldCache);
+    const parentValue = getHierarchyParentValue(file.frontmatter, hierarchyFields);
 
     if (parentValue) {
-      const parentTarget = extractWikilinkTarget(String(parentValue));
+      const parentTarget = extractLinkTarget(String(parentValue)) ?? String(parentValue).trim();
       if (parentTarget) {
         // Set parent relationship
         parentMap.set(noteName, parentTarget);
@@ -85,6 +93,95 @@ function buildHierarchyDataFromFiles(
   }
 
   return { parentMap, childrenMap };
+}
+
+function resolveHierarchyType(
+  frontmatter: Record<string, unknown>,
+  options: Pick<FrontmatterFilterOptions, 'schema' | 'typePath'>
+): string | undefined {
+  if (options.typePath) {
+    return options.typePath;
+  }
+
+  if (!options.schema) {
+    return undefined;
+  }
+
+  return resolveTypeFromFrontmatter(options.schema, frontmatter);
+}
+
+function getHierarchyFields(
+  typeName: string | undefined,
+  schema: LoadedSchema | undefined,
+  cache: Map<string, string[]>
+): string[] {
+  if (!typeName || !schema) {
+    return ['parent', 'owner'];
+  }
+
+  const cached = cache.get(typeName);
+  if (cached) {
+    return cached;
+  }
+
+  const type = getType(schema, typeName);
+  if (!type) {
+    return ['parent', 'owner'];
+  }
+
+  const fields = new Set<string>(['parent']);
+  const ancestry = new Set(type.ancestors.filter(ancestor => ancestor !== 'meta'));
+
+  if (schema.ownership.canBeOwnedBy.has(typeName)) {
+    fields.add('owner');
+  }
+
+  for (const [fieldName, field] of Object.entries(type.fields)) {
+    if (fieldName === 'parent' || fieldName === 'owner') continue;
+    if (field.prompt !== 'relation' || field.multiple === true || !field.source) continue;
+
+    const sources = Array.isArray(field.source) ? field.source : [field.source];
+    const matchesParentLikeRelation = sources.some(sourceName => {
+      if (fieldName !== sourceName) {
+        return false;
+      }
+
+      if (sourceName === typeName || ancestry.has(sourceName)) {
+        return true;
+      }
+
+      const sourceType = getType(schema, sourceName);
+      if (!sourceType) {
+        return false;
+      }
+
+      return sourceType.ancestors.some(
+        ancestor => ancestor !== 'meta' && ancestry.has(ancestor)
+      );
+    });
+
+    if (matchesParentLikeRelation) {
+      fields.add(fieldName);
+    }
+  }
+
+  const resolved = Array.from(fields);
+  cache.set(typeName, resolved);
+  return resolved;
+}
+
+function getHierarchyParentValue(
+  frontmatter: Record<string, unknown>,
+  hierarchyFields: string[]
+): unknown {
+  for (const fieldName of hierarchyFields) {
+    const value = frontmatter[fieldName];
+    if (typeof value === 'string' && value.trim() !== '') {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 /**
@@ -109,7 +206,7 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
   files: T[],
   options: FrontmatterFilterOptions
 ): Promise<T[]> {
-  const { whereExpressions, vaultDir, knownKeys } = options;
+  const { whereExpressions, vaultDir, knownKeys, schema, typePath } = options;
   const result: T[] = [];
   const effectiveKnownKeys =
     knownKeys ?? collectFrontmatterKeys(files.map(file => file.frontmatter));
@@ -129,7 +226,10 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
     normalizedExpressions.length > 0 &&
     expressionsUseHierarchyFunctions(normalizedExpressions)
   ) {
-    hierarchyData = buildHierarchyDataFromFiles(files);
+    hierarchyData = buildHierarchyDataFromFiles(files, {
+      ...(schema ? { schema } : {}),
+      ...(typePath ? { typePath } : {}),
+    });
   }
 
   for (const file of files) {
