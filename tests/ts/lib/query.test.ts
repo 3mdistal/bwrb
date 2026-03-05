@@ -177,6 +177,26 @@ describe('query', () => {
       expect(result[0]?.frontmatter.deadline).toBe('2025-01-15');
     });
 
+    it('should treat parent-like relation fields as hierarchy for isRoot()', async () => {
+      const files = makeFiles([
+        { path: 'Objectives/Tasks/Standalone Task.md', fm: { type: 'task', status: 'raw' } },
+        {
+          path: 'Objectives/Tasks/Child Task.md',
+          fm: { type: 'task', status: 'raw', milestone: '"[[Alpha Release]]"' },
+        },
+      ]);
+
+      const result = await applyFrontmatterFilters(files, {
+        whereExpressions: ['isRoot()'],
+        vaultDir,
+        schema,
+        typePath: 'task',
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]?.path).toContain('Standalone Task.md');
+    });
+
     it('should throw on invalid expression syntax', async () => {
       const files = makeFiles([
         { path: 'a.md', fm: { status: 'active' } },

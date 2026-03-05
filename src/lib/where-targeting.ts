@@ -43,6 +43,8 @@ export async function applyWhereExpressions<T extends FileWithFrontmatter>(
     const filtered = await applyFrontmatterFilters(files, {
       whereExpressions,
       vaultDir,
+      schema,
+      ...(typePath ? { typePath } : {}),
       ...(knownKeys ? { knownKeys } : {}),
     });
 

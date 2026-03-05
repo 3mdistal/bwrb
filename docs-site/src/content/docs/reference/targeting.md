@@ -69,8 +69,8 @@ bwrb audit --where "isEmpty(tags)"
 - Without `--type`: unknown fields are permissive (no unknown-field validation)
 - In all modes: invalid expression syntax and runtime expression errors are hard errors
 
-**Hierarchy functions** (for recursive types):
-- `isRoot()` — note has no parent
+**Hierarchy functions** (for parent-child note relationships):
+- `isRoot()` — note has no parent-like note link (for example `parent`, `owner`, or a singular relation like `milestone`)
 - `isChildOf('[[Note]]')` — direct child of specified note
 - `isDescendantOf('[[Note]]')` — any descendant of specified note
 

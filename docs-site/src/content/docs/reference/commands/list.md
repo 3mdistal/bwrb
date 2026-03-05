@@ -83,7 +83,7 @@ bwrb list --path "Projects/**" --body "TODO"
 
 ### Hierarchy Functions
 
-For recursive types with parent-child relationships:
+For notes with parent-child relationships:
 
 ```bash
 # Root notes only
@@ -133,4 +133,3 @@ bwrb list --type task --where '!isEmpty(deadline)'
 - [Targeting Model](/reference/targeting/) — Full selector reference
 - [bwrb dashboard](/reference/commands/dashboard/) — Run saved queries
 - [bwrb search](/reference/commands/search/) — Interactive search with picker
-
