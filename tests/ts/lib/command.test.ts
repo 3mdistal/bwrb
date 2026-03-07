@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { getGlobalOpts } from '../../../src/lib/command.js';
+import { getGlobalOpts, resolveGlobalPickerMode } from '../../../src/lib/command.js';
 import type { Command } from 'commander';
 
 describe('getGlobalOpts', () => {
@@ -95,5 +95,29 @@ describe('getGlobalOpts', () => {
     // Only vault should be in result
     expect(result).toEqual({ vault: '/my/vault' });
     expect('type' in result).toBe(false);
+  });
+
+  it('should return nonInteractive when set', () => {
+    const mockCmd = {
+      optsWithGlobals: vi.fn().mockReturnValue({
+        nonInteractive: true,
+      }),
+    } as unknown as Command;
+
+    const result = getGlobalOpts(mockCmd);
+
+    expect(result).toEqual({ nonInteractive: true });
+  });
+
+  it('should force picker mode to none when nonInteractive is set', () => {
+    const result = resolveGlobalPickerMode('fzf', { nonInteractive: true }, 'auto');
+
+    expect(result).toBe('none');
+  });
+
+  it('should preserve requested picker mode when nonInteractive is not set', () => {
+    const result = resolveGlobalPickerMode('numbered', {}, 'auto');
+
+    expect(result).toBe('numbered');
   });
 });

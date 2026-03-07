@@ -266,12 +266,12 @@ async function resolveVaultDirForCompletion(options: { vault?: string }): Promis
  * Only includes options that make sense to complete.
  */
 const COMMAND_OPTIONS: Record<string, string[]> = {
-  new: ['--type', '-t', '--vault', '--template', '--json', '--help'],
-  edit: ['--vault', '--json', '--help'],
-  list: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--output', '-o', '--vault', '--json', '--help'],
-  open: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--app', '--vault', '--help'],
-  search: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--wikilink', '--vault', '--help'],
-  audit: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--text', '--all', '-a', '--strict', '--only', '--ignore', '--output', '--fix', '--auto', '--dry-run', '--execute', '--allow-field', '--vault', '--help'],
+  new: ['--type', '-t', '--vault', '--non-interactive', '--template', '--json', '--help'],
+  edit: ['--vault', '--non-interactive', '--json', '--help'],
+  list: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--output', '-o', '--vault', '--non-interactive', '--json', '--help'],
+  open: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--app', '--vault', '--non-interactive', '--help'],
+  search: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--wikilink', '--vault', '--non-interactive', '--help'],
+  audit: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--text', '--all', '-a', '--strict', '--only', '--ignore', '--output', '--fix', '--auto', '--dry-run', '--execute', '--allow-field', '--vault', '--non-interactive', '--help'],
   bulk: [
     '--type', '-t',
     '--path', '-p',
@@ -294,12 +294,13 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
     '--quiet',
     '--output',
     '--vault',
+    '--non-interactive',
     '--dry-run',
     '--help',
   ],
-  schema: ['--vault', '--help'],
-  template: ['--vault', '--help'],
-  dashboard: ['--output', '-o', '--vault', '--json', '--help'],
+  schema: ['--vault', '--non-interactive', '--help'],
+  template: ['--vault', '--non-interactive', '--help'],
+  dashboard: ['--output', '-o', '--vault', '--non-interactive', '--json', '--help'],
   delete: [
     '--type', '-t',
     '--path', '-p',
@@ -317,7 +318,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
     '--help',
   ],
   completion: ['--help'],
-  config: ['--output', '-o', '--vault', '--json', '--help'],
+  config: ['--output', '-o', '--vault', '--non-interactive', '--json', '--help'],
 };
 
 /**
@@ -446,7 +447,7 @@ export async function handleCompletionRequest(
   if (ctx.current.startsWith('-')) {
     const opts = ctx.command 
       ? getOptionCompletions(ctx.command)
-      : ['--vault', '--help', '--version'];
+      : ['--vault', '--non-interactive', '--help', '--version'];
     return filterByPrefix(opts, ctx.current);
   }
   

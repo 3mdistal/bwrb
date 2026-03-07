@@ -48,6 +48,7 @@ if (completionsIndex !== -1) {
     .description('Schema-driven note management for markdown vaults')
     .version(BWRB_VERSION)
     .option('-v, --vault <path>', 'Path to the vault directory')
+    .option('--non-interactive', 'Disable interactive prompts and require explicit non-interactive flags')
     .enablePositionalOptions();
 
   // Help output order follows registration order.

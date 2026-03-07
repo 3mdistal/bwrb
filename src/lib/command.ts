@@ -7,6 +7,7 @@ import type { Command } from 'commander';
 export interface GlobalOptions {
   vault?: string;
   output?: string;
+  nonInteractive?: boolean;
 }
 
 /**
@@ -32,5 +33,18 @@ export function getGlobalOpts(cmd: Command): GlobalOptions {
   const result: GlobalOptions = {};
   if (typeof opts.vault === 'string') result.vault = opts.vault;
   if (typeof opts.output === 'string') result.output = opts.output;
+  if (opts.nonInteractive === true) result.nonInteractive = true;
   return result;
+}
+
+export function resolveGlobalPickerMode(
+  requestedMode: string | undefined,
+  globalOpts: GlobalOptions,
+  defaultMode: string
+): string {
+  if (globalOpts.nonInteractive) {
+    return 'none';
+  }
+
+  return requestedMode ?? defaultMode;
 }
