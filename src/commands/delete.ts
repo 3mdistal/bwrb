@@ -16,9 +16,10 @@ import { unlink } from 'fs/promises';
 import { spawn } from 'child_process';
 import { isFile } from '../lib/vault.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
-import { getGlobalOpts } from '../lib/command.js';
+import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
 import { loadSchema } from '../lib/schema.js';
 import {
+  configurePromptMode,
   promptConfirm,
   printError,
   printSuccess,
@@ -49,6 +50,7 @@ interface DeleteOptions {
   picker?: string;
   output?: string;
   dryRun?: boolean;
+  nonInteractive?: boolean;
   // Unified targeting selectors
   type?: string;
   path?: string;
@@ -188,7 +190,6 @@ Note: Deletion is permanent. The file is removed from the filesystem.
       Use version control (git) to recover deleted notes if needed.`)
   .action(async (query: string | undefined, options: DeleteOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
-    const pickerMode = parsePickerMode(options.picker);
 
     // Defensive: if `--help` is accidentally parsed as the positional `query`,
     // or help flags slip through parsing, show command help and return success.
@@ -200,6 +201,11 @@ Note: Deletion is permanent. The file is removed from the filesystem.
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use --picker none to fail on ambiguity and add --force to skip delete confirmations.',
+      });
+      const pickerMode = parsePickerMode(resolveGlobalPickerMode(options.picker, globalOpts, 'auto'));
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
@@ -227,11 +233,20 @@ Note: Deletion is permanent. The file is removed from the filesystem.
 
       // If bulk targeting is provided, treat query as scoped resolution
       if (hasBulkTargeting && hasQuery) {
-        await handleScopedDelete(query, vaultDir, schema, targetingOpts, options, jsonMode, pickerMode);
+        await handleScopedDelete(query, vaultDir, schema, targetingOpts, {
+          ...options,
+          nonInteractive: globalOpts.nonInteractive === true,
+        }, jsonMode, pickerMode);
       } else if (hasBulkTargeting) {
-        await handleBulkDelete(vaultDir, schema, targetingOpts, options, jsonMode);
+        await handleBulkDelete(vaultDir, schema, targetingOpts, {
+          ...options,
+          nonInteractive: globalOpts.nonInteractive === true,
+        }, jsonMode);
       } else {
-        await handleSingleDelete(query, vaultDir, schema, options, jsonMode, pickerMode);
+        await handleSingleDelete(query, vaultDir, schema, {
+          ...options,
+          nonInteractive: globalOpts.nonInteractive === true,
+        }, jsonMode, pickerMode);
       }
     } catch (err) {
       // Handle user cancellation cleanly
@@ -589,6 +604,17 @@ async function handleBulkDelete(
   }
 
   // Execute mode: confirm before deleting multiple files
+  if (options.nonInteractive && !options.force) {
+    const error = 'bwrb delete --execute requires --force when --non-interactive is set.';
+    if (jsonMode) {
+      printJson(jsonError(error, { code: ExitCodes.VALIDATION_ERROR }));
+    } else {
+      printError(error);
+    }
+    process.exitCode = ExitCodes.VALIDATION_ERROR;
+    return;
+  }
+
   if (files.length > 1 && !options.force) {
     if (jsonMode) {
       printJson(jsonError('Deleting multiple files requires --force (non-interactive confirmation)', {
@@ -737,6 +763,17 @@ async function deleteResolvedFile({
   }
 
   // Confirm deletion (unless --force)
+  if (options.nonInteractive && !options.force) {
+    const error = 'bwrb delete requires --force when --non-interactive is set.';
+    if (jsonMode) {
+      printJson(jsonError(error, { code: ExitCodes.VALIDATION_ERROR }));
+    } else {
+      printError(error);
+    }
+    process.exitCode = ExitCodes.VALIDATION_ERROR;
+    return;
+  }
+
   if (!options.force) {
     printInfo(`\nFile to delete: ${relativePath}`);
 

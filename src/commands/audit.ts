@@ -12,7 +12,7 @@ import {
 } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
-import { printError } from '../lib/prompt.js';
+import { configurePromptMode, printError } from '../lib/prompt.js';
 import {
   printJson,
   jsonError,
@@ -203,10 +203,18 @@ Examples:
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use --fix --auto for headless previews, and add --execute to apply auto-fixes.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
+
+      if (globalOpts.nonInteractive && fixMode && !autoMode) {
+        exitWithValidationError('bwrb audit --fix requires --auto when --non-interactive is set.');
+      }
 
       // Handle --text deprecation
       if (options.text) {

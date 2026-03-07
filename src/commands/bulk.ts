@@ -23,7 +23,7 @@ import { parseNote } from '../lib/frontmatter.js';
 import { filterByPath } from '../lib/targeting.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
-import { printError, promptConfirm } from '../lib/prompt.js';
+import { configurePromptMode, printError, promptConfirm } from '../lib/prompt.js';
 import { UserCancelledError } from '../lib/errors.js';
 import {
   printJson,
@@ -179,10 +179,24 @@ Examples:
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use --force or --yes to skip confirmation prompts for bulk execution.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
+
+      if (globalOpts.nonInteractive && options.execute && !options.force && !options.yes) {
+        const error = 'bwrb bulk --execute requires --force or --yes when --non-interactive is set.';
+        if (jsonMode) {
+          printJson(jsonError(error));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        printError(error);
+        process.exit(1);
+      }
 
       // Handle --text deprecation
       if (options.text) {
