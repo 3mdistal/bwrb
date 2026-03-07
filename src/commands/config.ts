@@ -17,7 +17,7 @@ import chalk from 'chalk';
 import { loadCurrentSchema, detectObsidianVault } from '../lib/schema.js';
 import { SCHEMA_RELATIVE_PATH } from '../lib/bwrb-paths.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
-import { promptInput, promptSelection } from '../lib/prompt.js';
+import { configurePromptMode, promptInput, promptSelection } from '../lib/prompt.js';
 import { getGlobalOpts } from '../lib/command.js';
 import { ExitCodes } from '../lib/output.js';
 import type { Config } from '../types/schema.js';
@@ -92,6 +92,10 @@ configCommand
     
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use config edit <option> --json <value> to update config without prompts.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
@@ -177,10 +181,18 @@ configCommand
     
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use config edit <option> --json <value> to update config without prompts.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schemaPath = join(vaultDir, SCHEMA_RELATIVE_PATH);
+
+      if (globalOpts.nonInteractive && opts.json === undefined) {
+        throw new Error('bwrb config edit requires an option name and --json <value> when --non-interactive is set.');
+      }
       
       // Load existing schema
       const content = await readFile(schemaPath, 'utf-8');
