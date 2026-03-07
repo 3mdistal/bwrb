@@ -10,7 +10,7 @@ import {
 import { extractWikilinkTarget } from '../lib/links.js';
 
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
-import { getGlobalOpts } from '../lib/command.js';
+import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
 import { printError } from '../lib/prompt.js';
 import {
   printJson,
@@ -294,6 +294,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         // Open options
         open: options.open,
         app: options.app,
+        pickerMode: resolveGlobalPickerMode(undefined, globalOpts, 'auto'),
         // Hierarchy options
         roots: options.roots,
         childrenOf: options.childrenOf,
@@ -364,6 +365,7 @@ export interface ListOptions {
   // Open options
   open?: boolean | undefined;
   app?: string | undefined;
+  pickerMode?: string | undefined;
   // Hierarchy options
   roots?: boolean | undefined;
   childrenOf?: string | undefined;
@@ -462,7 +464,7 @@ export async function listObjects(
         relativePath: relative(vaultDir, f.path),
       }));
       const pickerResult = await pickFile(pickerFiles, {
-        mode: parsePickerMode(undefined),
+        mode: parsePickerMode(options.pickerMode),
         prompt: `${filteredFiles.length} notes - select to open`,
       });
       
@@ -471,8 +473,11 @@ export async function listObjects(
       }
       targetPath = pickerResult.selected.path;
     } else {
-      // Non-interactive with multiple results - open first
-      targetPath = filteredFiles[0]!.path;
+      exitWithResolutionError(
+        `Ambiguous query: ${filteredFiles.length} matches found`,
+        filteredFiles.map(f => ({ relativePath: relative(vaultDir, f.path) })),
+        jsonMode
+      );
     }
     
     await openNote(vaultDir, targetPath, resolveAppMode(options.app, schema.config), schema.config, jsonMode);

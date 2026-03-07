@@ -16,9 +16,10 @@ import { unlink } from 'fs/promises';
 import { spawn } from 'child_process';
 import { isFile } from '../lib/vault.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
-import { getGlobalOpts } from '../lib/command.js';
+import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
 import { loadSchema } from '../lib/schema.js';
 import {
+  configurePromptMode,
   promptConfirm,
   printError,
   printSuccess,
@@ -188,7 +189,6 @@ Note: Deletion is permanent. The file is removed from the filesystem.
       Use version control (git) to recover deleted notes if needed.`)
   .action(async (query: string | undefined, options: DeleteOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
-    const pickerMode = parsePickerMode(options.picker);
 
     // Defensive: if `--help` is accidentally parsed as the positional `query`,
     // or help flags slip through parsing, show command help and return success.
@@ -200,6 +200,11 @@ Note: Deletion is permanent. The file is removed from the filesystem.
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use --picker none to fail on ambiguity and add --force to skip delete confirmations.',
+      });
+      const pickerMode = parsePickerMode(resolveGlobalPickerMode(options.picker, globalOpts, 'auto'));
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);

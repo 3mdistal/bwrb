@@ -3,7 +3,7 @@ import { relative } from 'path';
 import { loadSchema, getTypeDefByPath } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
-import { promptSelection, printError } from '../lib/prompt.js';
+import { configurePromptMode, promptSelection, printError } from '../lib/prompt.js';
 import {
   printJson,
   jsonSuccess,
@@ -77,10 +77,19 @@ Template management:
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use --json <frontmatter> to create notes without prompts.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
+
+      if (globalOpts.nonInteractive && !jsonMode) {
+        printError('bwrb new requires --json <frontmatter> when --non-interactive is set.');
+        process.exit(1);
+      }
 
       if (jsonMode) {
         if (!typePath) {

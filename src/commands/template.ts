@@ -23,6 +23,7 @@ import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
 import { parseNote, writeNote } from '../lib/frontmatter.js';
 import {
+  configurePromptMode,
   promptSelection,
   promptMultiSelect,
   promptInput,
@@ -137,6 +138,10 @@ templateCommand
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use template commands with explicit arguments, or add --json for create/edit flows.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
@@ -460,6 +465,10 @@ templateCommand
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use template commands with explicit arguments, or add --json for create/edit flows.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
@@ -583,10 +592,19 @@ templateCommand
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use template new <type> --json <data> to create templates without prompts.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
+
+      if (globalOpts.nonInteractive && options.json === undefined) {
+        printError('bwrb template new requires --json <data> when --non-interactive is set.');
+        process.exit(1);
+      }
 
       // Prompt for type if not provided
       let resolvedTypePath = typePath;
@@ -1005,10 +1023,19 @@ templateCommand
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use template edit <type> <name> --json <data> to update templates without prompts.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
+
+      if (globalOpts.nonInteractive && options.json === undefined) {
+        printError('bwrb template edit requires --json <data> when --non-interactive is set.');
+        process.exit(1);
+      }
 
       let template: Template | null = null;
 
@@ -1482,9 +1509,18 @@ templateCommand
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Pass the template type/name explicitly and add --force to skip delete confirmation.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
+
+      if (globalOpts.nonInteractive && (!typePath || !templateName)) {
+        printError('bwrb template delete requires both type and template name when --non-interactive is set.');
+        process.exit(1);
+      }
       const schema = await loadSchema(vaultDir);
 
       let template: Template | null = null;

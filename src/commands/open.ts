@@ -12,7 +12,7 @@ import { basename, join } from "node:path";
 import { spawn } from "node:child_process";
 import { loadSchema, detectObsidianVault } from "../lib/schema.js";
 import { resolveVaultDirWithSelection } from "../lib/vaultSelection.js";
-import { getGlobalOpts } from "../lib/command.js";
+import { getGlobalOpts, resolveGlobalPickerMode } from "../lib/command.js";
 import { buildNoteIndex, type ManagedFile } from "../lib/navigation.js";
 import { resolveAndPick, parsePickerMode } from "../lib/picker.js";
 import {
@@ -304,7 +304,7 @@ Examples:
       const schema = await loadSchema(vaultDir);
 
       // Parse picker mode
-      const pickerMode = parsePickerMode(options.picker || "fzf");
+      const pickerMode = parsePickerMode(resolveGlobalPickerMode(options.picker, globalOpts, "fzf"));
 
       // Resolve app mode using precedence: CLI > env > config > default
       const appMode = resolveAppMode(options.app, schema.config);

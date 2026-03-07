@@ -96,4 +96,16 @@ describe('getGlobalOpts', () => {
     expect(result).toEqual({ vault: '/my/vault' });
     expect('type' in result).toBe(false);
   });
+
+  it('should return nonInteractive when set', () => {
+    const mockCmd = {
+      optsWithGlobals: vi.fn().mockReturnValue({
+        nonInteractive: true,
+      }),
+    } as unknown as Command;
+
+    const result = getGlobalOpts(mockCmd);
+
+    expect(result).toEqual({ nonInteractive: true });
+  });
 });

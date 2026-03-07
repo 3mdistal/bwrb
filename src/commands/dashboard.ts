@@ -14,6 +14,7 @@ import { setDefaultDashboard } from '../lib/schema-writer.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
 import {
+  configurePromptMode,
   promptInput,
   promptMultiInput,
   promptSelection,
@@ -104,6 +105,10 @@ async function runDashboard(
 
   try {
     const globalOpts = getGlobalOpts(cmd);
+    configurePromptMode({
+      forcedNonInteractive: globalOpts.nonInteractive === true,
+      bypassHint: 'Specify a dashboard name, or use --output json to list dashboards without prompts.',
+    });
     const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
     if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
     const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
@@ -184,6 +189,10 @@ async function runDashboardPickerOrDefault(
 
   try {
     const globalOpts = getGlobalOpts(cmd);
+    configurePromptMode({
+      forcedNonInteractive: globalOpts.nonInteractive === true,
+      bypassHint: 'Specify a dashboard name, or use --output json to list dashboards without prompts.',
+    });
     const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
     if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
     const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
@@ -433,6 +442,10 @@ Examples:
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use --json <data> or explicit dashboard flags to create dashboards without prompts.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
@@ -472,6 +485,11 @@ Examples:
       // Check if any flags were provided (excluding setDefault which is handled separately)
       const hasFlags = options.type || options.path || options.where || 
                        options.body || options.defaultOutput || options.fields;
+
+      if (globalOpts.nonInteractive && !jsonMode && !hasFlags) {
+        printError('bwrb dashboard new requires --json <data> or explicit query flags when --non-interactive is set.');
+        process.exit(1);
+      }
 
       if (hasFlags) {
         await createDashboardFromFlags(vaultDir, name, options);
@@ -702,10 +720,22 @@ Examples:
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use --json <data> or explicit dashboard flags to edit dashboards without prompts.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
+
+      const hasEditFlags = options.type || options.path || options.where ||
+                           options.body || options.defaultOutput || options.fields;
+
+      if (globalOpts.nonInteractive && !jsonMode && !name && !options.setDefault) {
+        printError('bwrb dashboard edit requires a dashboard name when --non-interactive is set.');
+        process.exit(1);
+      }
 
       // If no name provided, show picker to select dashboard
       let dashboardName: string;
@@ -752,8 +782,10 @@ Examples:
       }
 
       // Check if any flags were provided (excluding setDefault which is handled after)
-      const hasEditFlags = options.type || options.path || options.where || 
-                           options.body || options.defaultOutput || options.fields;
+      if (globalOpts.nonInteractive && !jsonMode && !hasEditFlags && !options.setDefault) {
+        printError('bwrb dashboard edit requires --json <data> or explicit edit flags when --non-interactive is set.');
+        process.exit(1);
+      }
 
       if (hasEditFlags) {
         await editDashboardFromFlags(vaultDir, dashboardName, existing, options);
@@ -1004,9 +1036,18 @@ Examples:
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Pass the dashboard name and add --force to skip delete confirmation.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
+
+      if (globalOpts.nonInteractive && !name) {
+        printError('bwrb dashboard delete requires a dashboard name when --non-interactive is set.');
+        process.exit(1);
+      }
       const schema = await loadSchema(vaultDir);
 
       // Determine which dashboard to delete
