@@ -9,9 +9,9 @@ import { Command } from 'commander';
 import { basename, isAbsolute, relative } from 'path';
 import fs from 'fs/promises';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
-import { getGlobalOpts } from '../lib/command.js';
+import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
 import { loadSchema, getTypeDefByPath } from '../lib/schema.js';
-import { printError, printSuccess } from '../lib/prompt.js';
+import { configurePromptMode, printError, printSuccess } from '../lib/prompt.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError } from '../lib/output.js';
 import { buildNoteIndex, type ManagedFile } from '../lib/navigation.js';
 import { parsePickerMode, resolveAndPick, type PickerMode } from '../lib/picker.js';
@@ -109,10 +109,19 @@ Examples:
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use --json <patch> to update notes without prompts.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
+
+      if (globalOpts.nonInteractive && !jsonMode) {
+        printError('bwrb edit requires --json <patch> when --non-interactive is set.');
+        process.exit(1);
+      }
 
       // Validate type if provided
       if (options.type) {
@@ -169,7 +178,7 @@ Examples:
       const hasTargeting = hasAnyTargeting(targeting);
 
       // Determine picker mode
-      const pickerMode = parsePickerMode(options.picker);
+      const pickerMode = parsePickerMode(resolveGlobalPickerMode(options.picker, globalOpts, 'fzf'));
       const effectivePickerMode: PickerMode = jsonMode ? 'none' : pickerMode;
 
       // In JSON mode without interactive picker, require a query or targeting
