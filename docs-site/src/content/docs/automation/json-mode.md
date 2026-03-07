@@ -5,6 +5,13 @@ description: Scripting and automation with JSON input/output
 
 Every Bowerbird command supports JSON mode for scripting and AI integration.
 
+For commands that normally prompt or open pickers, pair JSON mode with the global `--non-interactive` flag when you want a hard guarantee that the CLI will never drop into interactive UI:
+
+```bash
+bwrb --non-interactive new task --json '{"name":"Fix login","priority":"high"}'
+bwrb --non-interactive edit "My Task" --json '{"status":"done"}'
+```
+
 ## JSON Output
 
 Add `--output json` to any command:

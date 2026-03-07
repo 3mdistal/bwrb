@@ -86,4 +86,58 @@ describe('global --non-interactive', () => {
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain('bwrb init requires --yes');
   });
+
+  it('requires explicit flags for dashboard create and delete flows', async () => {
+    const vaultDir = await makeVault();
+
+    const createResult = await runCLI(['--non-interactive', 'dashboard', 'new', 'triage'], vaultDir);
+    expect(createResult.exitCode).not.toBe(0);
+    expect(createResult.stderr).toContain('bwrb dashboard new requires --json <data> or explicit query flags');
+
+    const seedResult = await runCLI(
+      ['dashboard', 'new', 'triage', '--json', '{"type":"idea"}'],
+      vaultDir
+    );
+    expect(seedResult.exitCode).toBe(0);
+
+    const deleteResult = await runCLI(['--non-interactive', 'dashboard', 'delete', 'triage'], vaultDir);
+    expect(deleteResult.exitCode).not.toBe(0);
+    expect(deleteResult.stderr).toContain('bwrb dashboard delete requires --force');
+  });
+
+  it('requires explicit flags for template create and delete flows', async () => {
+    const vaultDir = await makeVault();
+
+    const createResult = await runCLI(['--non-interactive', 'template', 'new', 'idea'], vaultDir);
+    expect(createResult.exitCode).not.toBe(0);
+    expect(createResult.stderr).toContain('bwrb template new requires --json <data>');
+
+    const seedResult = await runCLI(
+      ['template', 'new', 'idea', '--json', '{"name":"triage-template","body":"# Body"}'],
+      vaultDir
+    );
+    expect(seedResult.exitCode).toBe(0);
+
+    const deleteResult = await runCLI(
+      ['--non-interactive', 'template', 'delete', 'idea', 'triage-template'],
+      vaultDir
+    );
+    expect(deleteResult.exitCode).not.toBe(0);
+    expect(deleteResult.stderr).toContain('bwrb template delete requires --force');
+  });
+
+  it('requires --force for delete execution when non-interactive is set', async () => {
+    const vaultDir = await makeVault();
+
+    const singleResult = await runCLI(['--non-interactive', 'delete', 'Sample Idea'], vaultDir);
+    expect(singleResult.exitCode).not.toBe(0);
+    expect(singleResult.stderr).toContain('bwrb delete requires --force');
+
+    const bulkResult = await runCLI(
+      ['--non-interactive', 'delete', '--type', 'idea', '--execute'],
+      vaultDir
+    );
+    expect(bulkResult.exitCode).not.toBe(0);
+    expect(bulkResult.stderr).toContain('bwrb delete --execute requires --force');
+  });
 });

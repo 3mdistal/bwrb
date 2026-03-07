@@ -1583,6 +1583,11 @@ templateCommand
 
       const relativePath = relative(vaultDir, template.path);
 
+      if (globalOpts.nonInteractive && !options.force) {
+        printError('bwrb template delete requires --force when --non-interactive is set.');
+        process.exit(1);
+      }
+
       // Confirm deletion unless --force
       if (!options.force && !jsonMode) {
         const confirmed = await promptConfirm(

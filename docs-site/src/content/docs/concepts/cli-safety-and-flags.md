@@ -85,6 +85,19 @@ When `stdin` is not a TTY (for example, when piping or running in CI), bwrb **do
 
 If neither is provided, the command fails fast with an error explaining how to proceed.
 
+You can also force this behavior explicitly with the global `--non-interactive` flag, even in a real terminal. This is useful for scripts, CI, and agent workflows where you want commands to fail instead of falling back to any picker or prompt UI.
+
+```bash
+# Force picker-based commands to fail on ambiguity instead of prompting
+bwrb --non-interactive open "Deploy"
+
+# Require explicit JSON input for create/edit flows
+bwrb --non-interactive new task --json '{"name":"Fix login","status":"backlog"}'
+
+# Require explicit bypass flags for destructive flows
+bwrb --non-interactive bulk --all --set reviewed=true --execute --force
+```
+
 ## `--force` for overwrites
 
 In addition to skipping confirmation prompts, `--force` can be used to explicitly allow overwriting an existing saved artifact.
