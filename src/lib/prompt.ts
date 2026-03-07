@@ -42,10 +42,20 @@ import { numberedSelect } from './numberedSelect.js';
  */
 export type PromptResult<T> = T | null;
 
+interface PromptModeContext {
+  forcedNonInteractive: boolean;
+  bypassHint?: string;
+}
+
 const NON_INTERACTIVE_CONFIRM_TIMEOUT_MS = 500;
+let promptModeContext: PromptModeContext = { forcedNonInteractive: false };
+
+export function configurePromptMode(context: PromptModeContext): void {
+  promptModeContext = context;
+}
 
 function isInteractive(): boolean {
-  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  return !promptModeContext.forcedNonInteractive && Boolean(process.stdin.isTTY && process.stdout.isTTY);
 }
 
 export function parseYesNoInput(input: string): boolean | null {
@@ -56,6 +66,12 @@ export function parseYesNoInput(input: string): boolean | null {
 }
 
 function nonInteractivePromptError(message: string): Error {
+  if (promptModeContext.forcedNonInteractive) {
+    const hint = promptModeContext.bypassHint
+      ?? 'Re-run without --non-interactive or provide the command\'s non-interactive flags.';
+    return new Error(`Interactive prompts are disabled by --non-interactive; ${hint}`);
+  }
+
   return new Error(`Non-interactive mode detected (stdin is not a TTY); ${message}`);
 }
 
@@ -250,6 +266,9 @@ export async function promptMultiInput(
  */
 export async function promptConfirm(message: string): Promise<PromptResult<boolean>> {
   if (!isInteractive()) {
+    if (promptModeContext.forcedNonInteractive) {
+      throw nonInteractivePromptError('confirmation required');
+    }
     const line = await readLineFromStdin(NON_INTERACTIVE_CONFIRM_TIMEOUT_MS);
     if (line !== null) {
       const parsed = parseYesNoInput(line);
