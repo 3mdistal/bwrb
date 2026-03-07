@@ -108,6 +108,7 @@ describe('getGlobalOpts', () => {
 
     expect(result).toEqual({ nonInteractive: true });
   });
+<<<<<<< HEAD
 
   it('should force picker mode to none when nonInteractive is set', () => {
     const result = resolveGlobalPickerMode('fzf', { nonInteractive: true }, 'auto');
@@ -120,4 +121,6 @@ describe('getGlobalOpts', () => {
 
     expect(result).toBe('numbered');
   });
+=======
+>>>>>>> ae93a0b (feat: add global non-interactive core flag)
 });
