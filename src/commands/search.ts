@@ -10,9 +10,9 @@ import { Command } from 'commander';
 import { readFile } from 'fs/promises';
 import { basename } from 'path';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
-import { getGlobalOpts } from '../lib/command.js';
+import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
 import { loadSchema, getTypeDefByPath } from '../lib/schema.js';
-import { printError, printSuccess } from '../lib/prompt.js';
+import { configurePromptMode, printError, printSuccess } from '../lib/prompt.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError, warnDeprecated, type SearchOutputFormat } from '../lib/output.js';
 import { openNote, resolveAppMode } from './open.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
@@ -266,16 +266,30 @@ Examples:
 
     try {
       const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use --picker none for selection-only flows, or add --json <patch> with --edit.',
+      });
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
 
+      if (globalOpts.nonInteractive && options.edit && !options.json) {
+        printError('bwrb search --edit requires --json <patch> when --non-interactive is set.');
+        process.exit(1);
+      }
+
+      const effectiveOptions = {
+        ...options,
+        picker: resolveGlobalPickerMode(options.picker, globalOpts, 'auto'),
+      };
+
       // Dispatch to appropriate search mode
-      if (options.body) {
-        await handleContentSearch(query, options, vaultDir, schema, jsonMode, outputFormat);
+      if (effectiveOptions.body) {
+        await handleContentSearch(query, effectiveOptions, vaultDir, schema, jsonMode, outputFormat);
       } else {
-        await handleNameSearch(query, options, vaultDir, schema, jsonMode, outputFormat);
+        await handleNameSearch(query, effectiveOptions, vaultDir, schema, jsonMode, outputFormat);
       }
     } catch (err) {
       if (err instanceof UserCancelledError) {
