@@ -1082,6 +1082,11 @@ Examples:
         process.exit(ExitCodes.VALIDATION_ERROR);
       }
 
+      if (globalOpts.nonInteractive && !options.force) {
+        printError('bwrb dashboard delete requires --force when --non-interactive is set.');
+        process.exit(1);
+      }
+
       // Confirm deletion unless --force
       if (!options.force && !jsonMode) {
         const confirmed = await promptConfirm(

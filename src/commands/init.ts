@@ -19,7 +19,9 @@ import chalk from 'chalk';
 
 import { detectObsidianVault } from '../lib/schema.js';
 import { writeSchema } from '../lib/schema-writer.js';
+import { getGlobalOpts } from '../lib/command.js';
 import {
+  configurePromptMode,
   promptSelection,
   promptInput,
   promptConfirm,
@@ -66,10 +68,20 @@ Examples:
   bwrb init --force            Overwrite existing configuration
   bwrb init --yes --output json   Machine-readable output`
   )
-  .action(async (pathArg: string | undefined, options: InitOptions) => {
+  .action(async (pathArg: string | undefined, options: InitOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
 
     try {
+      const globalOpts = getGlobalOpts(cmd);
+      configurePromptMode({
+        forcedNonInteractive: globalOpts.nonInteractive === true,
+        bypassHint: 'Use --yes to accept defaults, and add --force when reinitializing an existing vault.',
+      });
+
+      if (globalOpts.nonInteractive && !options.yes) {
+        throw new Error('bwrb init requires --yes when --non-interactive is set.');
+      }
+
       // Resolve vault path
       const vaultDir = pathArg ? resolve(pathArg) : process.cwd();
       const bwrbDir = join(vaultDir, BWRB_DIR);
