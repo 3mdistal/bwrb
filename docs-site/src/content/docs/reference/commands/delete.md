@@ -51,9 +51,9 @@ Bulk delete requires **two explicit gates** to prevent accidents:
 3. **Confirmation**: Deleting more than one file requires explicit confirmation (or `--force`)
 
 ```bash
-# Error: no targeting specified
+# No query or selectors: enter single-file picker mode
 bwrb delete
-# "No files selected. Use --type, --path, --where, --body, or --all."
+# Browse notes and select one to preview/delete
 
 # Dry-run: shows what would be deleted
 bwrb delete --type task

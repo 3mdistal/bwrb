@@ -111,7 +111,7 @@ A `task` inherits:
 **Inheritance rules:**
 - Type names must be unique across the entire schema
 - No cycles allowed (a type cannot extend its own descendant)
-- Child types can only override `default` values, not field structure
+- Child types commonly override inherited `default` values. `bwrb schema validate` currently also accepts broader inherited field overrides, so use structural overrides deliberately.
 
 ### Recursive Types
 
@@ -336,7 +336,13 @@ Comma-separated input stored as an array.
 ```
 
 Output format controlled by `list_format`:
-- `yaml-array` (default): `["one", "two", "three"]`
+- `yaml-array` (default):
+  ```yaml
+  aliases:
+    - one
+    - two
+    - three
+  ```
 - `comma-separated`: `"one, two, three"`
 
 ---

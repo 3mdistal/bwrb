@@ -60,7 +60,7 @@ A `task` note gets:
 1. **Single inheritance** — Each type has exactly one parent
 2. **Unique names** — Type names must be unique across the entire schema
 3. **No cycles** — A type cannot extend its own descendant
-4. **Override defaults only** — Child types can override `default` values, but not field structure
+4. **Override defaults by convention** — Child types commonly override `default` values. Broader inherited field overrides are currently accepted by validation, so use structural changes deliberately.
 
 ## Field Types
 

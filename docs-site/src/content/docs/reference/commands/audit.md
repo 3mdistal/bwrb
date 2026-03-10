@@ -74,10 +74,9 @@ Delete semantics in repair mode:
 | `stale-reference` | Wikilink points to non-existent file |
 | `trailing-whitespace` | Trailing spaces/tabs on raw frontmatter `key: value` lines (warning; auto-fixable) |
 | `wrong-scalar-type` | Scalar value has wrong type for schema |
-| `invalid-date-format` | Date value is not in `YYYY-MM-DD` format |
-| `invalid-list-element` | List field contains invalid element |
 
 Note: built-in fields written by `bwrb new` (currently `id` and `name`) are always allowed and do not produce `unknown-field` issues.
+Invalid option values inside list fields are reported as `invalid-option` with `listIndex` metadata, not a separate issue code.
 
 ## Examples
 
@@ -217,8 +216,8 @@ bwrb audit --output json
 # Auto-coerce unambiguous string scalars
 bwrb audit --only wrong-scalar-type --fix --auto --execute --all
 
-# Fix invalid date formats interactively
-bwrb audit --only invalid-date-format --fix --all
+# Fix malformed wikilinks interactively
+bwrb audit --only format-violation --fix --all
 ```
 
 Empty required values ("", whitespace-only strings, or empty lists) are reported as `empty-string-required` and repaired interactively (or auto-filled when a default exists).

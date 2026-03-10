@@ -9,7 +9,7 @@ For commands that normally prompt or open pickers, pair JSON mode with the globa
 
 ```bash
 bwrb --non-interactive new task --json '{"name":"Fix login","priority":"high"}'
-bwrb --non-interactive edit "My Task" --json '{"status":"done"}'
+bwrb --non-interactive edit "My Task" --json '{"status":"settled"}'
 ```
 
 ## JSON Output
@@ -28,7 +28,7 @@ Provide field values without interactive prompts:
 
 ```bash
 bwrb new task --json '{"name": "Fix login", "priority": "high"}'
-bwrb edit "My Task" --json '{"status": "done"}'
+bwrb edit "My Task" --json '{"status": "settled"}'
 bwrb bulk --type task --set status=archived
 ```
 
@@ -56,7 +56,7 @@ Audit JSON is report-only. It never performs fixes or deletes. For delete-eligib
 
 ```bash
 bwrb list task --output json | \
-  jq -r '.[] | select(.status == "done") | ._path' | \
+  jq -r '.[] | select(.status == "settled") | ._path' | \
   xargs -I {} bwrb delete {} --force
 ```
 

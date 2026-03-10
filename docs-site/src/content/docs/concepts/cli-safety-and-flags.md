@@ -32,10 +32,10 @@ This prevents accidental vault-wide mutations.
 
 ```bash
 # Dry-run (shows what would change)
-bwrb bulk --type task --set status=done
+bwrb bulk --type task --set status=settled
 
 # Apply changes
-bwrb bulk --type task --set status=done --execute
+bwrb bulk --type task --set status=settled --execute
 ```
 
 ### Example: bulk `delete`

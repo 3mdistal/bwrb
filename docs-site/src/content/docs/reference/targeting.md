@@ -162,16 +162,16 @@ No selectors = prompt with picker.
 2. **Execution required:** Dry-run by default. Must use `--execute` to apply changes.
 
 ```bash
-bwrb bulk --set status=done
+bwrb bulk --set status=settled
 # Error: No files selected. Use --type, --path, --where, --body, or --all.
 
-bwrb bulk --type task --set status=done
+bwrb bulk --type task --set status=settled
 # Dry-run: shows what would change, but doesn't apply
 
-bwrb bulk --type task --set status=done --execute
+bwrb bulk --type task --set status=settled --execute
 # Actually applies the changes
 
-bwrb bulk --all --set status=done --execute
+bwrb bulk --all --set status=settled --execute
 # Works (explicit targeting + explicit execution)
 ```
 

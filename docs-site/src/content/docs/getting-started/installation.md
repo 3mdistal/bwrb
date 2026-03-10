@@ -125,7 +125,8 @@ pnpm unlink --global  # In the bwrb directory
 Make sure your npm global bin directory is in your PATH:
 
 ```bash
-npm bin -g  # Shows the global bin path
+npm prefix -g                # Shows the global npm prefix
+echo "$(npm prefix -g)/bin"  # Typical global bin path
 ```
 
 Add this path to your shell configuration if needed.
