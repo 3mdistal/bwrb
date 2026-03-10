@@ -307,7 +307,9 @@ Examples:
 
       // Handle fix mode
       if (fixMode) {
-        if (!autoMode && !process.stdin.isTTY && results.length > 0) {
+        const headlessDryRunPreview = dryRunMode && !autoMode && !process.stdin.isTTY;
+
+        if (!autoMode && !headlessDryRunPreview && !process.stdin.isTTY && results.length > 0) {
           exitWithValidationError('audit --fix is interactive and requires a TTY; use --fix --auto or --output json');
         }
 
@@ -318,9 +320,17 @@ Examples:
 
         const fixSummary = autoMode
           ? await runAutoFix(results, schema, vaultDir, { dryRun: autoFixDryRun, dryRunReason: autoFixDryRunReason })
+          : headlessDryRunPreview
+            ? await runAutoFix(results, schema, vaultDir, { dryRun: true, dryRunReason: 'explicit' })
           : await runInteractiveFix(results, schema, vaultDir, { dryRun: dryRunMode });
 
         outputFixResults(fixSummary, autoMode);
+
+        if (headlessDryRunPreview && fixSummary.remaining > 0) {
+          console.log('');
+          console.log('Non-TTY dry-run preview only includes unambiguous fixes.');
+          console.log('Re-run in a TTY to choose fixes for the remaining issues.');
+        }
 
         // Exit with error if there are remaining issues (interactive only)
         if (fixSummary.remaining > 0 && !autoMode) {

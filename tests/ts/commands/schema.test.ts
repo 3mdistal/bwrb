@@ -474,6 +474,54 @@ describe('schema command', () => {
     });
   });
 
+  describe('schema migrate', () => {
+    it('should honor --no-backup in execute mode', async () => {
+      const tempVaultDir = await createTestVault();
+
+      try {
+        await writeFile(
+          join(tempVaultDir, 'Objectives', 'Tasks', 'Sample Task.md'),
+          `---
+type: task
+status: in-flight
+milestone: "[[Active Milestone]]"
+---
+`
+        );
+
+        const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+        const currentSchema = JSON.parse(await readFile(schemaPath, 'utf8'));
+        const snapshotSchema = JSON.parse(JSON.stringify(currentSchema));
+
+        snapshotSchema.config = { ...(snapshotSchema.config ?? {}), link_format: 'wikilink' };
+        currentSchema.config = { ...(currentSchema.config ?? {}), link_format: 'markdown' };
+
+        await writeFile(schemaPath, JSON.stringify(currentSchema, null, 2));
+        await writeFile(
+          join(tempVaultDir, '.bwrb', 'schema.applied.json'),
+          JSON.stringify({
+            schemaVersion: '1.0.0',
+            snapshotAt: new Date().toISOString(),
+            schema: snapshotSchema,
+          }, null, 2)
+        );
+
+        const result = await runCLI(
+          ['schema', 'migrate', '--output', 'json', '--execute', '--no-backup'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const response = JSON.parse(result.stdout);
+        expect(response.success).toBe(true);
+        expect(response.data.affectedFiles).toBeGreaterThan(0);
+        expect(response.data.backupPath).toBeUndefined();
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+  });
+
   describe('schema list type <name> --output json', () => {
     it('should include own_fields and inherited_fields in JSON output', async () => {
       // Create a v2 schema with inheritance
