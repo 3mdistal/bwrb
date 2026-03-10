@@ -489,11 +489,20 @@ export async function listObjects(
 
   switch (options.outputFormat) {
     case 'json': {
-      const jsonOutput = filteredFiles.map(({ path, frontmatter }) => ({
-        _path: relative(vaultDir, path),
-        _name: basename(path, '.md'),
-        ...frontmatter,
-      }));
+      const requestedFields = options.fields;
+      const jsonOutput = filteredFiles.map(({ path, frontmatter }) => {
+        const base: Record<string, unknown> = {
+          _path: relative(vaultDir, path),
+          _name: basename(path, '.md'),
+        };
+        if (requestedFields && requestedFields.length > 0) {
+          for (const field of requestedFields) {
+            base[field] = frontmatter[field];
+          }
+          return base;
+        }
+        return { ...base, ...frontmatter };
+      });
       console.log(JSON.stringify(jsonOutput, null, 2));
       return;
     }

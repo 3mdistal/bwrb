@@ -240,6 +240,64 @@ describe('list command', () => {
       expect(json.success).toBe(false);
       expect(json.error).toContain("Unknown field 'unknown_field'");
     });
+
+    it('should restrict JSON output to requested fields', async () => {
+      const result = await runCLI(
+        ['list', '--type', 'idea', '--fields', 'status', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const items = JSON.parse(result.stdout);
+      expect(Array.isArray(items)).toBe(true);
+      expect(items.length).toBeGreaterThan(0);
+
+      for (const item of items) {
+        // Implicit identifier fields are always included
+        expect(item).toHaveProperty('_path');
+        expect(item).toHaveProperty('_name');
+        // Requested field is present
+        expect(item).toHaveProperty('status');
+        // Non-requested frontmatter fields are excluded
+        expect(item).not.toHaveProperty('type');
+        expect(item).not.toHaveProperty('priority');
+      }
+    });
+
+    it('should restrict JSON output to multiple requested fields', async () => {
+      const result = await runCLI(
+        ['list', '--type', 'idea', '--fields', 'status,priority', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const items = JSON.parse(result.stdout);
+      expect(Array.isArray(items)).toBe(true);
+      expect(items.length).toBeGreaterThan(0);
+
+      for (const item of items) {
+        expect(item).toHaveProperty('_path');
+        expect(item).toHaveProperty('_name');
+        expect(item).toHaveProperty('status');
+        expect(item).toHaveProperty('priority');
+        // Non-requested frontmatter fields are excluded
+        expect(item).not.toHaveProperty('type');
+      }
+    });
+
+    it('should include all frontmatter in JSON output when --fields is not set', async () => {
+      const result = await runCLI(
+        ['list', '--type', 'idea', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const items = JSON.parse(result.stdout);
+      expect(items.length).toBeGreaterThan(0);
+      // Without --fields, all frontmatter is included
+      expect(items[0]).toHaveProperty('type');
+      expect(items[0]).toHaveProperty('status');
+    });
   });
 
   describe('--where filters', () => {
