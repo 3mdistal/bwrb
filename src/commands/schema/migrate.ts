@@ -35,7 +35,7 @@ interface DiffOptions {
 interface MigrateOptions {
   output?: string;
   execute?: boolean;
-  noBackup?: boolean;
+  backup?: boolean;
 }
 
 interface HistoryOptions {
@@ -185,7 +185,7 @@ Examples:
     .action(async (options: MigrateOptions, cmd: Command) => {
       const jsonMode = options.output === 'json';
       const execute = options.execute ?? false;
-      const backup = options.noBackup !== true;
+      const backup = options.backup !== false;
 
       try {
         const globalOpts = getGlobalOpts(cmd);

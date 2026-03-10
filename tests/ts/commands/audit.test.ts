@@ -995,6 +995,18 @@ priority: medium
       expect(result.stdout).toContain("Re-run with '--execute' to apply fixes.");
     });
 
+    it('should allow --fix --dry-run without --auto in non-TTY mode', async () => {
+      const result = await runCLI(
+        ['audit', '--fix', '--dry-run', '--path', 'Ideas/**'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Dry run - no changes written');
+      expect(result.stdout).toContain('Would fix: 1 issues');
+      expect(result.stderr).not.toContain('requires a TTY');
+    });
+
     it('should not mention --execute after applying fixes', async () => {
       const result = await runCLI(
         ['audit', '--fix', '--auto', '--execute', '--path', 'Ideas/**'],
