@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
 
 describe('list command', () => {
@@ -199,6 +199,32 @@ describe('list command', () => {
       expect(result.stdout).toContain('high');
     });
 
+    it('should restrict JSON output to requested fields and allow name', async () => {
+      const result = await runCLI(
+        ['list', '--type', 'idea', '--fields', 'name,status,priority', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json).toEqual([
+        {
+          _path: 'Ideas/Another Idea.md',
+          _name: 'Another Idea',
+          name: 'Another Idea',
+          status: 'backlog',
+          priority: 'high',
+        },
+        {
+          _path: 'Ideas/Sample Idea.md',
+          _name: 'Sample Idea',
+          name: 'Sample Idea',
+          status: 'raw',
+          priority: 'medium',
+        },
+      ]);
+    });
+
     it('should combine --output paths with --fields', async () => {
       // Note: --output paths outputs plain paths, not a table
       // --fields is ignored when output format is paths
@@ -299,6 +325,24 @@ describe('list command', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Active Milestone');
       expect(result.stdout).not.toContain('Settled Milestone');
+    });
+  });
+
+  describe('--body filtering', () => {
+    it('should fall back when ripgrep is unavailable', async () => {
+      const nodeBinDir = dirname(process.execPath);
+      const result = await runCLI(
+        ['list', '--type', 'idea', '--body', 'status', '--output', 'json'],
+        vaultDir,
+        undefined,
+        { env: { PATH: `${nodeBinDir}:/usr/bin:/bin` } }
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json).toHaveLength(2);
+      expect(json[0]).toHaveProperty('_path', 'Ideas/Another Idea.md');
+      expect(json[1]).toHaveProperty('_path', 'Ideas/Sample Idea.md');
     });
   });
 

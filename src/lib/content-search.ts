@@ -6,6 +6,8 @@
  */
 
 import { spawn } from 'child_process';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 import type { LoadedSchema } from '../types/schema.js';
 import type { ManagedFile } from './discovery.js';
 import { discoverManagedFiles } from './discovery.js';
@@ -165,6 +167,77 @@ async function runRipgrep(
   });
 }
 
+function buildLineMatcher(
+  pattern: string,
+  options: {
+    caseSensitive: boolean;
+    regex: boolean;
+  }
+): (line: string) => boolean {
+  if (options.regex) {
+    const flags = options.caseSensitive ? 'g' : 'gi';
+    const matcher = new RegExp(pattern, flags);
+    return (line: string) => {
+      matcher.lastIndex = 0;
+      return matcher.test(line);
+    };
+  }
+
+  const needle = options.caseSensitive ? pattern : pattern.toLowerCase();
+  return (line: string) => {
+    const haystack = options.caseSensitive ? line : line.toLowerCase();
+    return haystack.includes(needle);
+  };
+}
+
+async function runNodeFallbackSearch(
+  pattern: string,
+  files: string[],
+  vaultDir: string,
+  options: {
+    contextLines: number;
+    caseSensitive: boolean;
+    regex: boolean;
+  }
+): Promise<Map<string, LineMatch[]>> {
+  const matchesByFile = new Map<string, LineMatch[]>();
+  const matchesLine = buildLineMatcher(pattern, options);
+
+  await Promise.all(files.map(async (relativePath) => {
+    const content = await readFile(join(vaultDir, relativePath), 'utf8');
+    const lines = content.split(/\r?\n/);
+    const fileMatches: LineMatch[] = [];
+
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index] ?? '';
+      if (!matchesLine(line)) continue;
+
+      const match: LineMatch = {
+        line: index + 1,
+        text: line,
+      };
+
+      if (options.contextLines > 0) {
+        const beforeStart = Math.max(0, index - options.contextLines);
+        const afterEnd = Math.min(lines.length, index + options.contextLines + 1);
+        const before = lines.slice(beforeStart, index);
+        const after = lines.slice(index + 1, afterEnd);
+
+        if (before.length > 0) match.contextBefore = before;
+        if (after.length > 0) match.contextAfter = after;
+      }
+
+      fileMatches.push(match);
+    }
+
+    if (fileMatches.length > 0) {
+      matchesByFile.set(relativePath, fileMatches);
+    }
+  }));
+
+  return matchesByFile;
+}
+
 /**
  * Parse ripgrep JSON output into a map of file -> matches.
  * 
@@ -275,17 +348,6 @@ export async function searchContent(
     limit = 100,
   } = options;
 
-  // Check if ripgrep is available
-  if (!(await isRipgrepAvailable())) {
-    return {
-      success: false,
-      results: [],
-      totalMatches: 0,
-      truncated: false,
-      error: 'ripgrep (rg) is not installed. Please install it to use content search.',
-    };
-  }
-
   // Validate pattern
   if (!pattern || pattern.trim() === '') {
     return {
@@ -313,8 +375,10 @@ export async function searchContent(
     // Get relative paths for ripgrep
     const filePaths = files.map((f) => f.relativePath);
 
-    // Run ripgrep
-    const rgResults = await runRipgrep(pattern, filePaths, vaultDir, {
+    const searchImpl = await isRipgrepAvailable() ? runRipgrep : runNodeFallbackSearch;
+
+    // Run content search
+    const rgResults = await searchImpl(pattern, filePaths, vaultDir, {
       contextLines,
       caseSensitive,
       regex,
