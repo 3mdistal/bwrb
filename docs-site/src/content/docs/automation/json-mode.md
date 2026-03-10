@@ -29,7 +29,7 @@ Provide field values without interactive prompts:
 ```bash
 bwrb new task --json '{"name": "Fix login", "priority": "high"}'
 bwrb edit "My Task" --json '{"status": "done"}'
-bwrb bulk set --json '{"status": "archived"}' --type task
+bwrb bulk --type task --set status=archived
 ```
 
 ## Scripting Examples
