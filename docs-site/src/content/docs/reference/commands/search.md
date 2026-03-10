@@ -88,7 +88,7 @@ bwrb search "My Note" --open --app editor
 bwrb search "My Note" --edit
 
 # Non-interactive edit
-bwrb search "My Note" --edit --json '{"status":"done"}'
+bwrb search "My Note" --edit --json '{"status":"settled"}'
 ```
 
 ### Content Search

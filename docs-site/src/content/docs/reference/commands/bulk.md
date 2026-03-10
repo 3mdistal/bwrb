@@ -63,14 +63,14 @@ Bulk operations require **two explicit gates** to prevent accidents:
 
 ```bash
 # Error: no targeting specified
-bwrb bulk --set status=done
+bwrb bulk --set status=settled
 # "No files selected. Use --type, --path, --where, --body, or --all."
 
 # Dry-run: shows what would change
-bwrb bulk --type task --set status=done
+bwrb bulk --type task --set status=settled
 
 # Actually applies changes
-bwrb bulk --type task --set status=done --execute
+bwrb bulk --type task --set status=settled --execute
 ```
 
 ### Non-interactive Confirmation
@@ -83,13 +83,13 @@ If `stdin` is not a TTY and the operation requires confirmation (cross-type `--a
 
 ```bash
 # Set field on matching notes
-bwrb bulk --type task --where "status == 'in-progress'" --set status=done --execute
+bwrb bulk --type task --where "status == 'in-flight'" --set status=settled --execute
 
 # Clear a field
 bwrb bulk --type task --set old_field= --execute
 
 # Set multiple fields
-bwrb bulk --type task --where "status == 'done'" --set archived=true --set "archived-date=2025-01-15" --execute
+bwrb bulk --type task --where "status == 'settled'" --set archived=true --set "archived-date=2025-01-15" --execute
 ```
 
 ### Field Management
@@ -123,7 +123,7 @@ bwrb bulk --type idea --where "status == 'settled'" --move Archive/Ideas --execu
 
 ```bash
 # By type
-bwrb bulk --type task --set status=done --execute
+bwrb bulk --type task --set status=settled --execute
 
 # By path
 bwrb bulk --path "Archive/**" --set archived=true --execute
@@ -145,10 +145,10 @@ bwrb bulk --all --set reviewed=true --execute
 bwrb bulk --type task --all --set status=archived --execute --backup
 
 # Limit scope
-bwrb bulk --type task --set status=done --execute --limit 10
+bwrb bulk --type task --set status=settled --execute --limit 10
 
 # Preview with verbose output
-bwrb bulk --type task --set status=done --verbose
+bwrb bulk --type task --set status=settled --verbose
 ```
 
 ## Migration Workflows

@@ -45,7 +45,7 @@ For scripting and automation:
 
 ```bash
 # Update a single field
-bwrb edit "My Task" --json '{"status":"done"}'
+bwrb edit "My Task" --json '{"status":"settled"}'
 
 # Update multiple fields
 bwrb edit -t task --where "status == 'active'" "Deploy" --json '{"priority":"high"}'
