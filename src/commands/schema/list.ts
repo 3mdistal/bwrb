@@ -31,7 +31,9 @@ interface ListCommandOptions {
   type?: string;
 }
 
-const RESERVED_LIST_NOUNS = new Set(['types', 'fields', 'type']);
+function getReservedListNouns(): Set<string> {
+  return new Set(listCommand.commands.map((command) => command.name()));
+}
 
 function ensureNoTypeAliasConflict(cmd: Command, usage: string): void {
   const type = (cmd.optsWithGlobals() as ListCommandOptions).type;
@@ -76,7 +78,7 @@ listCommand
 
       const targetType = options.type ?? typePath;
 
-      if (typePath && !options.type && RESERVED_LIST_NOUNS.has(typePath)) {
+      if (typePath && !options.type && getReservedListNouns().has(typePath)) {
         throw new Error(
           `Type path '${typePath}' is reserved by schema list subcommands. ` +
           `Use 'bwrb schema list ${typePath}' for the subcommand, or ` +
