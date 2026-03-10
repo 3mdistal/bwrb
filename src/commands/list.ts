@@ -96,6 +96,8 @@ interface ListCommandOptions {
   force?: boolean;
 }
 
+const RESERVED_DISPLAY_FIELDS = new Set(['name', '_name', '_path']);
+
 export const listCommand = new Command('list')
   .description('List notes with optional filtering')
   .addHelpText('after', `
@@ -260,7 +262,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       if (targeting.type && fields && fields.length > 0) {
         const allFieldNames = getAllFieldsForType(schema, targeting.type);
         for (const field of fields) {
-          if (!allFieldNames.has(field)) {
+          if (!allFieldNames.has(field) && !RESERVED_DISPLAY_FIELDS.has(field)) {
             const fieldList = Array.from(allFieldNames);
             const suggestion = suggestFieldName(field, fieldList);
             let msg = `Unknown field '${field}' for type '${targeting.type}'`;
@@ -489,11 +491,35 @@ export async function listObjects(
 
   switch (options.outputFormat) {
     case 'json': {
-      const jsonOutput = filteredFiles.map(({ path, frontmatter }) => ({
-        _path: relative(vaultDir, path),
-        _name: basename(path, '.md'),
-        ...frontmatter,
-      }));
+      const jsonOutput = filteredFiles.map(({ path, frontmatter }) => {
+        const notePath = relative(vaultDir, path);
+        const noteName = basename(path, '.md');
+        const base = {
+          _path: notePath,
+          _name: noteName,
+        };
+
+        if (!options.fields || options.fields.length === 0) {
+          return {
+            ...base,
+            ...frontmatter,
+          };
+        }
+
+        const selected: Record<string, unknown> = { ...base };
+        for (const field of options.fields) {
+          if (field === '_path') continue;
+          if (field === '_name' || field === 'name') {
+            selected[field] = noteName;
+            continue;
+          }
+          if (Object.prototype.hasOwnProperty.call(frontmatter, field)) {
+            selected[field] = frontmatter[field];
+          }
+        }
+
+        return selected;
+      });
       console.log(JSON.stringify(jsonOutput, null, 2));
       return;
     }
@@ -577,7 +603,11 @@ function printTable(
     };
 
     for (const field of fields) {
-      const value = frontmatter[field];
+      const value = field === 'name' || field === '_name'
+        ? basename(path, '.md')
+        : field === '_path'
+          ? relative(vaultDir, path)
+          : frontmatter[field];
       row[field] = formatValue(value);
     }
 
