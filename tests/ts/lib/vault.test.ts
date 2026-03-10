@@ -109,7 +109,7 @@ describe('vault', () => {
         delete process.env['BWRB_VAULT'];
 
         const result = await resolveVaultDir({});
-        expect(result).toBe(childVault);
+        expect(result).toBe(await realpath(childVault));
       } finally {
         await rm(baseDir, { recursive: true, force: true });
       }
@@ -137,7 +137,10 @@ describe('vault', () => {
 
         expect(error).toBeInstanceOf(VaultResolutionError);
         const resolutionError = error as VaultResolutionError;
-        expect(resolutionError.candidates).toEqual([firstVault, secondVault]);
+        expect(resolutionError.candidates).toEqual([
+          await realpath(firstVault),
+          await realpath(secondVault),
+        ]);
         expect(resolutionError.truncated).toBe(false);
       } finally {
         await rm(baseDir, { recursive: true, force: true });
@@ -169,7 +172,10 @@ describe('vault', () => {
 
         expect(error).toBeInstanceOf(VaultResolutionError);
         const resolutionError = error as VaultResolutionError;
-        expect(resolutionError.candidates).toEqual([firstVault, secondVault]);
+        expect(resolutionError.candidates).toEqual([
+          await realpath(firstVault),
+          await realpath(secondVault),
+        ]);
       } finally {
         await rm(baseDir, { recursive: true, force: true });
       }

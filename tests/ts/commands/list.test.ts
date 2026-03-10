@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { writeFile, mkdir } from 'fs/promises';
+import { writeFile, mkdir, mkdtemp, rm } from 'fs/promises';
 import { dirname, join } from 'path';
+import { tmpdir } from 'os';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
 
 describe('list command', () => {
@@ -15,6 +16,22 @@ describe('list command', () => {
   });
 
   describe('basic listing', () => {
+    it('should resolve the vault from BWRB_VAULT when not running inside a vault', async () => {
+      const cwd = await mkdtemp(join(tmpdir(), 'bwrb-list-env-vault-'));
+
+      try {
+        const result = await runCLI(['list', '--output', 'paths'], undefined, undefined, {
+          cwd,
+          env: { BWRB_VAULT: vaultDir },
+        });
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Ideas/Sample Idea.md');
+      } finally {
+        await rm(cwd, { recursive: true, force: true });
+      }
+    });
+
     it('should list ideas by name', async () => {
       const result = await runCLI(['list', 'idea'], vaultDir);
 
