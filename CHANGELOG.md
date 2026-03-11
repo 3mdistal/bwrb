@@ -4,6 +4,47 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-03-11
+
+Changes since `v0.1.7`.
+
+### Added
+
+- **Global `--non-interactive` mode across the CLI** (#528)
+  - Shared prompt handling now rejects interactive flows when `--non-interactive` is set
+  - Shell completion exposes the new global flag for automation flows
+
+### Changed
+
+- **Read-only commands now honor `--non-interactive` instead of falling back to pickers** (#529)
+  - `list --open`, `open`, and `search` now fail on ambiguity in headless mode instead of prompting
+
+- **Create and edit commands now require explicit inputs in non-interactive mode** (#530)
+  - Applies to `new`, `edit`, `search --edit`, `config edit`, dashboard create/edit flows, and template create/edit flows
+
+- **Destructive commands now require explicit bypass flags in non-interactive mode** (#531)
+  - Applies to `audit --fix`, `bulk --execute`, `init`, `delete`, dashboard delete, and template delete
+
+### Fixed
+
+- **Hierarchy helpers now respect schema-defined parent-like relation fields** (#536)
+  - `isRoot()` and related `--where` filtering now work for fields like `task.milestone`, not just literal `parent`
+
+- **`schema migrate --no-backup` and headless `audit --fix --dry-run` now follow the documented command contracts** (#537, #538)
+
+- **`list --fields` JSON output now respects requested fields and still includes stable identifiers** (#521)
+  - Synthetic `name` remains supported
+  - `_path` and `_name` stay available as implicit identifiers
+
+- **`--body` search now falls back to built-in content scanning when `rg` is unavailable** (#525)
+
+- **`schema list` routing now derives reserved nouns from actual subcommands and vault path resolution is hardened on macOS** (#497, #534, #555)
+
+### Documentation
+
+- **Fixed the canonical `bulk` JSON example to use the supported command shape** (#540)
+- **Cleaned up audit and CLI docs to match current behavior** (#543)
+
 ## [0.1.5] - 2026-02-03
 
 Changes since `v0.1.4`.
