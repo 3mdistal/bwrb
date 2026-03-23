@@ -32,8 +32,29 @@ interface EditOptions {
   id?: string;
   body?: string;
   json?: string;
+  output?: string;
   open?: boolean;
   app?: string;
+}
+
+function resolveEditJsonMode(options: EditOptions, globalOutput?: string): boolean {
+  const requested = options.output ?? globalOutput;
+  if (requested === undefined) {
+    return options.json !== undefined;
+  }
+  return requested === 'json';
+}
+
+function printEditSuccess(path: string, updatedFields: string[], jsonMode: boolean): void {
+  if (jsonMode) {
+    printJson(jsonSuccess({ path, updated: updatedFields }));
+    return;
+  }
+
+  const updatedText = updatedFields.length > 0
+    ? ` (${updatedFields.join(', ')})`
+    : '';
+  printSuccess(`Updated: ${path}${updatedText}`);
 }
 
 function findExactNameMatches(index: { byPath: Map<string, ManagedFile>; byBasename: Map<string, ManagedFile[]> }, query: string): ManagedFile[] {
@@ -80,6 +101,7 @@ export const editCommand = new Command('edit')
   .option('--id <uuid>', 'Filter by stable note id')
   .option('-b, --body <pattern>', 'Filter by body content')
   .option('--json <patch>', 'Non-interactive patch/merge mode')
+  .option('--output <format>', 'Output format: text (default) or json')
   .option('-o, --open', 'Open the note in Obsidian after editing')
   .option('--app <mode>', 'App mode for --open: system (default), editor, visual, obsidian, print')
   .addHelpText('after', `
@@ -99,16 +121,16 @@ Examples:
 
   # Non-interactive JSON mode (scripting)
   bwrb edit "My Task" --json '{"status":"done"}'
+  bwrb edit "My Task" --json '{"status":"done"}' --output json
   bwrb edit -t task --where "status == 'active'" "Deploy" --json '{"priority":"high"}'
 
   # Edit and open
   bwrb edit "My Note" --open                # Open the note after editing
   bwrb edit "My Note" --open --app editor   # Edit then open in $EDITOR`)
   .action(async (query: string | undefined, options: EditOptions, cmd: Command) => {
-    const jsonMode = options.json !== undefined;
-
     try {
       const globalOpts = getGlobalOpts(cmd);
+      const jsonMode = resolveEditJsonMode(options, globalOpts.output);
       configurePromptMode({
         forcedNonInteractive: globalOpts.nonInteractive === true,
         bypassHint: 'Use --json <patch> to update notes without prompts.',
@@ -143,11 +165,8 @@ Examples:
           await fs.access(query);
           // It's a valid absolute path - use it directly
           if (options.json) {
-            const editResult = await editNoteFromJson(schema, vaultDir, query, options.json, { jsonMode: true });
-            printJson(jsonSuccess({
-              path: relative(vaultDir, query),
-              updated: editResult.updatedFields,
-            }));
+            const editResult = await editNoteFromJson(schema, vaultDir, query, options.json, { jsonMode });
+            printEditSuccess(relative(vaultDir, query), editResult.updatedFields, jsonMode);
             if (options.open) {
               const appMode = resolveAppMode(options.app, schema.config);
               await openNote(vaultDir, query, appMode, schema.config, true);
@@ -259,13 +278,9 @@ Examples:
 
       // Perform the edit
       if (options.json) {
-        // JSON mode: non-interactive patch
-        const editResult = await editNoteFromJson(schema, vaultDir, targetFile.path, options.json, { jsonMode: true });
-        
-        printJson(jsonSuccess({
-          path: targetFile.relativePath,
-          updated: editResult.updatedFields,
-        }));
+        // JSON patch mode: non-interactive patch with selectable output format
+        const editResult = await editNoteFromJson(schema, vaultDir, targetFile.path, options.json, { jsonMode });
+        printEditSuccess(targetFile.relativePath, editResult.updatedFields, jsonMode);
 
         // Open after edit if requested
         if (options.open) {

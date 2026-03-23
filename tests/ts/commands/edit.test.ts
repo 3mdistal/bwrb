@@ -177,6 +177,30 @@ status: queued
       expect(updated).toContain('creation-date: 2026-01-08');
       expect(updated).not.toContain('T00:00:00.000Z');
     });
+
+    it('should accept --output json with --json patch mode', async () => {
+      const result = await runCLI(
+        ['edit', 'Ideas/Sample Idea.md', '--json', '{"status": "backlog"}', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.path).toBe('Ideas/Sample Idea.md');
+      expect(json.updated).toContain('status');
+    });
+
+    it('should accept --output text with --json patch mode', async () => {
+      const result = await runCLI(
+        ['edit', 'Ideas/Sample Idea.md', '--json', '{"status": "backlog"}', '--output', 'text'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Updated: Ideas/Sample Idea.md');
+      expect(() => JSON.parse(result.stdout)).toThrow();
+    });
   });
 
   describe('stable ids', () => {
