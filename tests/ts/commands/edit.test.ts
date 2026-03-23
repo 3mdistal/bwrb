@@ -177,6 +177,30 @@ status: queued
       expect(updated).toContain('creation-date: 2026-01-08');
       expect(updated).not.toContain('T00:00:00.000Z');
     });
+
+    it('should accept --output json with --json patch mode', async () => {
+      const result = await runCLI(
+        ['edit', 'Ideas/Sample Idea.md', '--json', '{"status": "backlog"}', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.path).toBe('Ideas/Sample Idea.md');
+      expect(json.updated).toContain('status');
+    });
+
+    it('should accept --output text with --json patch mode', async () => {
+      const result = await runCLI(
+        ['edit', 'Ideas/Sample Idea.md', '--json', '{"status": "backlog"}', '--output', 'text'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Updated: Ideas/Sample Idea.md');
+      expect(() => JSON.parse(result.stdout)).toThrow();
+    });
   });
 
   describe('stable ids', () => {
@@ -398,6 +422,23 @@ Backslash: \\ and \\n
   });
 
   describe('error handling', () => {
+    it('should return JSON error on exception when --output json is set', async () => {
+      // Corrupt the schema so loadSchema throws after jsonMode is resolved
+      const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+      await writeFile(schemaPath, '{ not valid json !!!', 'utf-8');
+
+      const result = await runCLI(
+        ['edit', 'Ideas/Sample Idea.md', '--json', '{"status":"raw"}', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      // Should produce valid JSON error output, not crash with ReferenceError
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(typeof json.error).toBe('string');
+    });
+
 it('should error on file not found', async () => {
       const result = await runCLI(
         ['edit', 'CompletelyUniqueNonexistentFile12345.md', '--json', '{"status": "raw"}'],

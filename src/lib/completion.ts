@@ -267,7 +267,7 @@ async function resolveVaultDirForCompletion(options: { vault?: string }): Promis
  */
 const COMMAND_OPTIONS: Record<string, string[]> = {
   new: ['--type', '-t', '--vault', '--non-interactive', '--template', '--json', '--help'],
-  edit: ['--vault', '--non-interactive', '--json', '--help'],
+  edit: ['--type', '-t', '--path', '-p', '--where', '-w', '--id', '--body', '-b', '--picker', '--json', '--output', '--open', '--app', '--vault', '--non-interactive', '--help'],
   list: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--output', '-o', '--vault', '--non-interactive', '--json', '--help'],
   open: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--app', '--vault', '--non-interactive', '--help'],
   search: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--wikilink', '--vault', '--non-interactive', '--help'],
