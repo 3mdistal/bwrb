@@ -128,9 +128,10 @@ Examples:
   bwrb edit "My Note" --open                # Open the note after editing
   bwrb edit "My Note" --open --app editor   # Edit then open in $EDITOR`)
   .action(async (query: string | undefined, options: EditOptions, cmd: Command) => {
+    let jsonMode = false;
     try {
       const globalOpts = getGlobalOpts(cmd);
-      const jsonMode = resolveEditJsonMode(options, globalOpts.output);
+      jsonMode = resolveEditJsonMode(options, globalOpts.output);
       configurePromptMode({
         forcedNonInteractive: globalOpts.nonInteractive === true,
         bypassHint: 'Use --json <patch> to update notes without prompts.',

@@ -422,6 +422,23 @@ Backslash: \\ and \\n
   });
 
   describe('error handling', () => {
+    it('should return JSON error on exception when --output json is set', async () => {
+      // Corrupt the schema so loadSchema throws after jsonMode is resolved
+      const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+      await writeFile(schemaPath, '{ not valid json !!!', 'utf-8');
+
+      const result = await runCLI(
+        ['edit', 'Ideas/Sample Idea.md', '--json', '{"status":"raw"}', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      // Should produce valid JSON error output, not crash with ReferenceError
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(typeof json.error).toBe('string');
+    });
+
 it('should error on file not found', async () => {
       const result = await runCLI(
         ['edit', 'CompletelyUniqueNonexistentFile12345.md', '--json', '{"status": "raw"}'],
