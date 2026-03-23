@@ -528,11 +528,15 @@ export async function listObjects(
       if (isRecursive) {
         const parentMap = buildParentMap(filteredFiles);
         const tree = buildTree(filteredFiles, parentMap, options.depth);
-        printTree(tree, vaultDir, showPaths);
-        return;
+        if (treeHasNestedNotes(tree)) {
+          printTree(tree, vaultDir, showPaths);
+          return;
+        }
       }
-      // Fall through to default if not recursive
-      break;
+
+      const directoryTree = buildDirectoryTree(filteredFiles, vaultDir, options.depth);
+      printDirectoryTree(directoryTree, showPaths);
+      return;
     }
 
     case 'link': {
@@ -735,6 +739,14 @@ interface TreeNode {
   depth: number;
 }
 
+interface DirectoryTreeNode {
+  name: string;
+  path: string;
+  directories: DirectoryTreeNode[];
+  notes: FileWithFrontmatter[];
+  depth: number;
+}
+
 function buildTree(
   files: FileWithFrontmatter[],
   parentMap: Map<string, string>,
@@ -820,5 +832,112 @@ function printTree(
     const root = roots[i]!;
     const isLast = i === roots.length - 1;
     printNode(root, '', isLast);
+  }
+}
+
+function treeHasNestedNotes(nodes: TreeNode[]): boolean {
+  return nodes.some(node => node.children.length > 0 || treeHasNestedNotes(node.children));
+}
+
+function buildDirectoryTree(
+  files: FileWithFrontmatter[],
+  vaultDir: string,
+  maxDepth?: number | undefined
+): DirectoryTreeNode[] {
+  const root: DirectoryTreeNode = {
+    name: '',
+    path: '',
+    directories: [],
+    notes: [],
+    depth: -1,
+  };
+
+  for (const file of files) {
+    const relativePath = relative(vaultDir, file.path);
+    const segments = relativePath.split('/');
+    const noteName = basename(file.path, '.md');
+    const directorySegments = segments.slice(0, -1);
+
+    let current = root;
+    const traversed: string[] = [];
+
+    for (const segment of directorySegments) {
+      if (maxDepth !== undefined && current.depth + 1 >= maxDepth) {
+        break;
+      }
+
+      traversed.push(segment);
+      let next = current.directories.find(directory => directory.name === segment);
+      if (!next) {
+        next = {
+          name: segment,
+          path: traversed.join('/'),
+          directories: [],
+          notes: [],
+          depth: current.depth + 1,
+        };
+        current.directories.push(next);
+      }
+      current = next;
+    }
+
+    current.notes.push({
+      ...file,
+      path: file.path,
+      frontmatter: {
+        ...file.frontmatter,
+        _displayName: noteName,
+        _relativePath: relativePath,
+      },
+    });
+  }
+
+  const sortNode = (node: DirectoryTreeNode): void => {
+    node.directories.sort((a, b) => a.name.localeCompare(b.name));
+    node.notes.sort((a, b) => basename(a.path, '.md').localeCompare(basename(b.path, '.md')));
+    for (const directory of node.directories) {
+      sortNode(directory);
+    }
+  };
+
+  sortNode(root);
+  return root.directories;
+}
+
+function printDirectoryTree(roots: DirectoryTreeNode[], showPaths: boolean): void {
+  type PrintableNode =
+    | { kind: 'directory'; name: string; children: PrintableNode[] }
+    | { kind: 'note'; name: string };
+
+  const toPrintable = (directory: DirectoryTreeNode): PrintableNode => ({
+    kind: 'directory',
+    name: `${directory.name}/`,
+    children: [
+      ...directory.directories.map(toPrintable),
+      ...directory.notes.map(note => ({
+        kind: 'note' as const,
+        name: showPaths
+          ? String(note.frontmatter._relativePath ?? relative('', note.path))
+          : String(note.frontmatter._displayName ?? basename(note.path, '.md')),
+      })),
+    ],
+  });
+
+  const rootsToPrint = roots.map(toPrintable);
+
+  function printNode(node: PrintableNode, prefix: string, isLast: boolean): void {
+    const connector = isLast ? '└── ' : '├── ';
+    console.log(prefix + connector + node.name);
+
+    if (node.kind === 'directory') {
+      const childPrefix = prefix + (isLast ? '    ' : '│   ');
+      for (let i = 0; i < node.children.length; i++) {
+        printNode(node.children[i]!, childPrefix, i === node.children.length - 1);
+      }
+    }
+  }
+
+  for (let i = 0; i < rootsToPrint.length; i++) {
+    printNode(rootsToPrint[i]!, '', i === rootsToPrint.length - 1);
   }
 }
