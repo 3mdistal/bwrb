@@ -88,6 +88,59 @@ describe('JSON I/O', () => {
       expect(content).toContain('status: raw'); // default value
     });
 
+    it('should report filename transformations and avoid doubled whitespace', async () => {
+      const originalName = 'What if we used / slashes & ampersands?';
+      const result = await runCLI(
+        ['new', 'idea', '--json', JSON.stringify({ name: originalName, status: 'raw' })],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.path).toBe('Ideas/What if we used slashes & ampersands.md');
+      expect(json.nameTransformed).toEqual({
+        original: originalName,
+        sanitized: 'What if we used slashes & ampersands',
+        filename: 'What if we used slashes & ampersands.md',
+      });
+      expect(result.stderr).toBe('');
+      expect(existsSync(join(vaultDir, json.path))).toBe(true);
+    });
+
+    it('should include a path length warning for long portable paths', async () => {
+      const longName = 'L'.repeat(196);
+      const result = await runCLI(
+        ['new', 'idea', '--json', JSON.stringify({ name: longName, status: 'raw' })],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.path.length).toBeGreaterThan(200);
+      expect(json.pathLengthWarning).toEqual({
+        path: json.path,
+        length: json.path.length,
+        threshold: 200,
+        max: 260,
+      });
+      expect(existsSync(join(vaultDir, json.path))).toBe(true);
+    });
+
+    it('should reject paths above the portable path limit', async () => {
+      const tooLongName = 'L'.repeat(252);
+      const result = await runCLI(
+        ['new', 'idea', '--json', JSON.stringify({ name: tooLongName, status: 'raw' })],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('exceeding the portable limit of 260');
+    });
+
     it('should error on unknown type', async () => {
       const result = await runCLI(
         ['new', 'unknown-type', '--json', '{"name": "Test"}'],
@@ -620,6 +673,36 @@ defaults:
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
       expect(json.path).toBe('Ideas/My Great Idea.md');
+    });
+
+    it('should report filename transformations from filename patterns', async () => {
+      await mkdir(join(vaultDir, '.bwrb/templates/idea'), { recursive: true });
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/idea', 'unsafe-title.md'),
+        `---
+type: template
+template-for: idea
+filename-pattern: "{title}"
+defaults:
+  status: raw
+---
+`
+      );
+
+      const result = await runCLI(
+        ['new', 'idea', '--json', '{"title": "A/B  Test?"}', '--template', 'unsafe-title'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.path).toBe('Ideas/AB Test.md');
+      expect(json.nameTransformed).toEqual({
+        original: 'A/B  Test?',
+        sanitized: 'AB Test',
+        filename: 'AB Test.md',
+      });
     });
 
     it('should use filename from combined pattern', async () => {

@@ -169,7 +169,9 @@ bwrb new task --template epic --no-instances --json '{"name": "Ship feature"}'
 
 Some templates and schema types define **instance scaffolding** (child notes created alongside the main note). By default, `bwrb new` creates those instances; pass `--no-instances` to skip child creation.
 
-When `--output json` is used and instance scaffolding runs, the response includes an `instances` object with the created, skipped, and error lists. This object is omitted when `--no-instances` is set.
+When `bwrb new --json` runs instance scaffolding, the response includes an `instances` object with the created, skipped, and error lists. This object is omitted when `--no-instances` is set.
+
+When `bwrb new --json` normalizes a filename (for example removing `/`, `?`, or other non-portable characters), the JSON response includes `nameTransformed` with `original`, `sanitized`, and `filename`. Long relative paths over 200 characters include `pathLengthWarning`; paths over 260 characters are rejected.
 
 ```json
 {

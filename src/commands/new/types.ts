@@ -1,5 +1,6 @@
 import type { LoadedSchema, ResolvedType, Template } from '../../types/schema.js';
 import type { OwnerNoteRef } from '../../lib/vault.js';
+import type { FilenameTransformation } from '../../lib/filename.js';
 
 export interface NewCommandOptions {
   open?: boolean;
@@ -23,10 +24,18 @@ export interface PlannedNoteContent {
   body: string;
   orderedFields: string[];
   itemName: string;
+  nameTransformed?: FilenameTransformation;
 }
 
 export interface NoteCreationResult {
   path: string;
+  nameTransformed?: FilenameTransformation;
+  pathLengthWarning?: {
+    path: string;
+    length: number;
+    threshold: number;
+    max: number;
+  };
   instances?: {
     created: string[];
     skipped: string[];

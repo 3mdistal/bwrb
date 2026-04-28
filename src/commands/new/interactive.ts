@@ -180,6 +180,7 @@ async function buildInteractiveNoteContent(
       return {
         ...content,
         itemName: patternResult.filename,
+        ...(patternResult.nameTransformed ? { nameTransformed: patternResult.nameTransformed } : {}),
       };
     }
 

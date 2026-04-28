@@ -9,6 +9,7 @@ import { matchesExpression, parseExpression, type EvalContext } from './expressi
 import { applyDefaults } from './validation.js';
 import { evaluateTemplateDefault, validateDateExpression, isDateExpression } from './date-expression.js';
 import { formatDateWithPattern, DEFAULT_DATE_FORMAT } from './local-date.js';
+import { sanitizeFilenameBase, type FilenameTransformation } from './filename.js';
 import {
   ensureIdInFieldOrder,
   generateUniqueNoteId,
@@ -715,23 +716,6 @@ function formatDate(date: Date, format: string): string {
 // ============================================================================
 
 /**
- * Characters that are invalid in filenames across common filesystems.
- * Includes: / \ : * ? " < > | and control characters (0x00-0x1F)
- */
-// eslint-disable-next-line no-control-regex
-const INVALID_FILENAME_CHARS = /[/\\:*?"<>|\x00-\x1F]/g;
-
-/**
- * Sanitize a string for use as a filename.
- * Removes invalid characters and trims whitespace.
- */
-function sanitizeFilename(name: string): string {
-  return name
-    .replace(INVALID_FILENAME_CHARS, '')
-    .trim();
-}
-
-/**
  * Result of attempting to resolve a filename pattern.
  */
 export interface FilenamePatternResult {
@@ -741,6 +725,8 @@ export interface FilenamePatternResult {
   filename: string | null;
   /** Fields that were referenced but had no value */
   missingFields: string[];
+  /** Filename transformation metadata, if invalid characters or whitespace were normalized */
+  nameTransformed?: FilenameTransformation;
 }
 
 /**
@@ -835,7 +821,8 @@ export function resolveFilenamePattern(
   }
   
   // Sanitize the result for use as a filename
-  const sanitized = sanitizeFilename(result);
+  const sanitization = sanitizeFilenameBase(result);
+  const sanitized = sanitization.sanitized;
   
   // If sanitization resulted in empty string, treat as unresolved
   if (!sanitized) {
@@ -850,6 +837,7 @@ export function resolveFilenamePattern(
     resolved: true,
     filename: sanitized,
     missingFields: [],
+    ...(sanitization.transformation ? { nameTransformed: sanitization.transformation } : {}),
   };
 }
 
