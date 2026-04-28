@@ -101,7 +101,7 @@ export const editCommand = new Command('edit')
   .option('--id <uuid>', 'Filter by stable note id')
   .option('-b, --body <pattern>', 'Filter by body content')
   .option('--json <patch>', 'Non-interactive patch/merge mode')
-  .option('--output <format>', 'Output format: text (default) or json')
+  .option('--output <format>', 'Output format: text or json (default: json with --json)')
   .option('-o, --open', 'Open the note in Obsidian after editing')
   .option('--app <mode>', 'App mode for --open: system (default), editor, visual, obsidian, print')
   .addHelpText('after', `
@@ -122,16 +122,24 @@ Examples:
   # Non-interactive JSON mode (scripting)
   bwrb edit "My Task" --json '{"status":"done"}'
   bwrb edit "My Task" --json '{"status":"done"}' --output json
+  bwrb edit "My Task" --json '{"status":"done"}' --output text
   bwrb edit -t task --where "status == 'active'" "Deploy" --json '{"priority":"high"}'
 
   # Edit and open
   bwrb edit "My Note" --open                # Open the note after editing
   bwrb edit "My Note" --open --app editor   # Edit then open in $EDITOR`)
   .action(async (query: string | undefined, options: EditOptions, cmd: Command) => {
-    let jsonMode = false;
+    const patchMode = options.json !== undefined;
+    let jsonMode = patchMode;
     try {
       const globalOpts = getGlobalOpts(cmd);
       jsonMode = resolveEditJsonMode(options, globalOpts.output);
+      const outputFormat = options.output ?? globalOpts.output;
+      if (outputFormat !== undefined && outputFormat !== 'json' && outputFormat !== 'text') {
+        printError(`Unknown output format: ${outputFormat}`);
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+
       configurePromptMode({
         forcedNonInteractive: globalOpts.nonInteractive === true,
         bypassHint: 'Use --json <patch> to update notes without prompts.',
@@ -141,7 +149,7 @@ Examples:
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
 
-      if (globalOpts.nonInteractive && !jsonMode) {
+      if (globalOpts.nonInteractive && !patchMode) {
         printError('bwrb edit requires --json <patch> when --non-interactive is set.');
         process.exit(1);
       }
@@ -165,8 +173,8 @@ Examples:
         try {
           await fs.access(query);
           // It's a valid absolute path - use it directly
-          if (options.json) {
-            const editResult = await editNoteFromJson(schema, vaultDir, query, options.json, { jsonMode });
+          if (patchMode) {
+            const editResult = await editNoteFromJson(schema, vaultDir, query, options.json!, { jsonMode });
             printEditSuccess(relative(vaultDir, query), editResult.updatedFields, jsonMode);
             if (options.open) {
               const appMode = resolveAppMode(options.app, schema.config);
@@ -199,11 +207,16 @@ Examples:
 
       // Determine picker mode
       const pickerMode = parsePickerMode(resolveGlobalPickerMode(options.picker, globalOpts, 'fzf'));
-      const effectivePickerMode: PickerMode = jsonMode ? 'none' : pickerMode;
+      const effectivePickerMode: PickerMode = patchMode ? 'none' : pickerMode;
 
       // In JSON mode without interactive picker, require a query or targeting
-      if (jsonMode && !query && !hasTargeting) {
-        printJson(jsonError('Query required when using --json without targeting options'));
+      if (patchMode && !query && !hasTargeting) {
+        const error = 'Query required when using --json without targeting options';
+        if (jsonMode) {
+          printJson(jsonError(error));
+        } else {
+          printError(error);
+        }
         process.exit(ExitCodes.VALIDATION_ERROR);
       }
 
@@ -278,9 +291,9 @@ Examples:
       const targetFile = result.file;
 
       // Perform the edit
-      if (options.json) {
+      if (patchMode) {
         // JSON patch mode: non-interactive patch with selectable output format
-        const editResult = await editNoteFromJson(schema, vaultDir, targetFile.path, options.json, { jsonMode });
+        const editResult = await editNoteFromJson(schema, vaultDir, targetFile.path, options.json!, { jsonMode });
         printEditSuccess(targetFile.relativePath, editResult.updatedFields, jsonMode);
 
         // Open after edit if requested

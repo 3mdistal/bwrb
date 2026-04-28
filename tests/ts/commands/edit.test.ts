@@ -19,6 +19,33 @@ describe('edit command', () => {
   });
 
   describe('file loading and type detection', () => {
+    it('should accept --output json with JSON patch mode', async () => {
+      const result = await runCLI(
+        ['edit', 'Ideas/Sample Idea.md', '--json', '{"status": "backlog"}', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.path).toBe('Ideas/Sample Idea.md');
+      expect(json.updated).toContain('status');
+    });
+
+    it('should accept --output text with JSON patch mode', async () => {
+      const result = await runCLI(
+        ['edit', 'Ideas/Sample Idea.md', '--json', '{"status": "backlog"}', '--output', 'text'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Updated: Ideas/Sample Idea.md');
+      expect(() => JSON.parse(result.stdout)).toThrow();
+
+      const content = await readFile(join(vaultDir, 'Ideas/Sample Idea.md'), 'utf-8');
+      expect(content).toContain('status: backlog');
+    });
+
     it('should detect type from frontmatter type field', async () => {
       const result = await runCLI(
         ['edit', 'Ideas/Sample Idea.md', '--json', '{"status": "backlog"}'],
