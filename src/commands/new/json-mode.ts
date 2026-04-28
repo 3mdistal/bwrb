@@ -79,7 +79,7 @@ async function buildJsonNoteContent(
   await validateJsonFrontmatter(schema, vaultDir, typePath, typeDef, mergedInput, template);
   const resolvedFrontmatter = applyDefaults(schema, typePath, mergedInput);
 
-  const itemName = resolveJsonItemName(schema, typeDef, resolvedFrontmatter, template);
+  const itemNameResult = resolveJsonItemName(schema, typeDef, resolvedFrontmatter, template);
   const body = generateBodyForJson(typeDef, resolvedFrontmatter, template, bodyInput, schema.config.dateFormat);
   const orderedFields = resolveOrderedFields(typeDef, resolvedFrontmatter);
 
@@ -87,7 +87,8 @@ async function buildJsonNoteContent(
     frontmatter: resolvedFrontmatter,
     body,
     orderedFields,
-    itemName,
+    itemName: itemNameResult.itemName,
+    ...(itemNameResult.nameTransformed ? { nameTransformed: itemNameResult.nameTransformed } : {}),
   };
 }
 
@@ -225,14 +226,17 @@ function resolveJsonItemName(
   typeDef: ResolvedType,
   frontmatter: Record<string, unknown>,
   template?: Template | null
-): string {
+): Pick<PlannedNoteContent, 'itemName' | 'nameTransformed'> {
   const filenamePattern = getFilenamePattern(template ?? null, typeDef);
 
   if (filenamePattern) {
     const patternResult = resolveFilenamePattern(filenamePattern, frontmatter, schema.config.dateFormat);
 
     if (patternResult.resolved && patternResult.filename) {
-      return patternResult.filename;
+      return {
+        itemName: patternResult.filename,
+        ...(patternResult.nameTransformed ? { nameTransformed: patternResult.nameTransformed } : {}),
+      };
     }
 
     const nameField = frontmatter.name;
@@ -245,7 +249,7 @@ function resolveJsonItemName(
         ExitCodes.VALIDATION_ERROR
       );
     }
-    return nameField;
+    return { itemName: nameField };
   }
 
   const nameField = frontmatter.name;
@@ -253,7 +257,7 @@ function resolveJsonItemName(
     throwJsonError(jsonError("Missing or invalid 'name' field"), ExitCodes.VALIDATION_ERROR);
   }
 
-  return nameField;
+  return { itemName: nameField };
 }
 
 function resolveOrderedFields(typeDef: ResolvedType, frontmatter: Record<string, unknown>): string[] {

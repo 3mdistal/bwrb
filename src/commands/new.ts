@@ -116,6 +116,12 @@ Template management:
         );
 
         const jsonOutput: Record<string, unknown> = { path: relative(vaultDir, result.path) };
+        if (result.nameTransformed) {
+          jsonOutput.nameTransformed = result.nameTransformed;
+        }
+        if (result.pathLengthWarning) {
+          jsonOutput.pathLengthWarning = result.pathLengthWarning;
+        }
         if (result.instances) {
           jsonOutput.instances = {
             created: result.instances.created.map(p => relative(vaultDir, p)),

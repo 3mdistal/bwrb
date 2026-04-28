@@ -112,6 +112,22 @@ bwrb new project --json '{"name": "My Project"}' --template with-research
 
 The `_body` field accepts section names as keys, with string or string array values.
 
+If the note name or resolved filename pattern contains characters that are not portable in filenames, `bwrb new` normalizes the filename by removing invalid characters, collapsing doubled whitespace, and trimming the result. Interactive creation prints a warning. JSON mode includes `nameTransformed` metadata:
+
+```json
+{
+  "success": true,
+  "path": "Ideas/What if we used slashes.md",
+  "nameTransformed": {
+    "original": "What if we used / slashes?",
+    "sanitized": "What if we used slashes",
+    "filename": "What if we used slashes.md"
+  }
+}
+```
+
+Paths longer than 200 characters include `pathLengthWarning` in JSON mode and print a warning in interactive mode. Paths longer than 260 characters are rejected.
+
 JSON output for templates with instances includes an `instances` object:
 
 ```json

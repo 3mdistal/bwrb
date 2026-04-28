@@ -32,6 +32,8 @@ bwrb edit "My Task" --json '{"status": "settled"}'
 bwrb bulk --type task --set status=archived
 ```
 
+`bwrb new --json` reports filename safety metadata when relevant: `nameTransformed` appears when the requested name is normalized for the filesystem, and `pathLengthWarning` appears for relative paths longer than 200 characters. Paths longer than 260 characters are rejected.
+
 ## Scripting Examples
 
 ### Create Note from Script
