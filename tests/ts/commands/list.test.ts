@@ -402,6 +402,72 @@ describe('list command', () => {
     });
   });
 
+  describe('--limit and --count', () => {
+    it('should limit text output to the first matching notes', async () => {
+      const result = await runCLI(['list', 'idea', '--limit', '1'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Another Idea');
+      expect(result.stdout).not.toContain('Sample Idea');
+    });
+
+    it('should limit JSON output', async () => {
+      const result = await runCLI(['list', 'idea', '--limit', '1', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json).toHaveLength(1);
+      expect(json[0]._name).toBe('Another Idea');
+    });
+
+    it('should limit link and path output formats', async () => {
+      const linkResult = await runCLI(['list', 'idea', '--limit', '1', '--output', 'link'], vaultDir);
+      const pathResult = await runCLI(['list', 'idea', '--limit', '1', '--output', 'paths'], vaultDir);
+
+      expect(linkResult.exitCode).toBe(0);
+      expect(linkResult.stdout.trim()).toBe('[[Another Idea]]');
+      expect(pathResult.exitCode).toBe(0);
+      expect(pathResult.stdout.trim()).toBe('Ideas/Another Idea.md');
+    });
+
+    it('should print only the matching count in text mode', async () => {
+      const result = await runCLI(['list', 'idea', '--count'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('2');
+    });
+
+    it('should print only the matching count in JSON mode', async () => {
+      const result = await runCLI(['list', 'idea', '--count', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({ count: 2 });
+    });
+
+    it('should count matches before applying --limit', async () => {
+      const result = await runCLI(['list', 'idea', '--limit', '1', '--count'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('2');
+    });
+
+    it('should reject invalid limit values', async () => {
+      const result = await runCLI(['list', 'idea', '--limit', '0'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Invalid --limit value');
+    });
+
+    it('should return JSON errors for invalid limit values in JSON mode', async () => {
+      const result = await runCLI(['list', 'idea', '--limit', 'abc', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Invalid --limit value');
+    });
+  });
+
   describe('error handling', () => {
     it('should error on unknown type', async () => {
       const result = await runCLI(['list', '--type', 'nonexistent'], vaultDir);
@@ -876,6 +942,28 @@ status: done
       expect(dashboards.dashboards['task-table']).toEqual({
         type: 'task',
         fields: ['status'],
+      });
+    });
+
+    it('should save query with limit and count options', async () => {
+      const { join } = await import('path');
+
+      const result = await runCLI(
+        ['list', '--type', 'task', '--limit', '1', '--count', '--save-as', 'counted-tasks'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('2');
+      expect(result.stderr).toContain('Dashboard "counted-tasks" saved');
+
+      const dashboardsPath = join(tempVaultDir, '.bwrb', 'dashboards.json');
+      const content = await import('fs/promises').then(fs => fs.readFile(dashboardsPath, 'utf-8'));
+      const dashboards = JSON.parse(content);
+      expect(dashboards.dashboards['counted-tasks']).toEqual({
+        type: 'task',
+        limit: 1,
+        count: true,
       });
     });
 

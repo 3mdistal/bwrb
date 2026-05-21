@@ -71,6 +71,23 @@ function resolveListOutputFormat(options: ListCommandOptions): ListOutputFormat 
   return 'default';
 }
 
+function parseListLimit(value: string | undefined, jsonMode: boolean): number | undefined {
+  if (value === undefined) return undefined;
+
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit <= 0) {
+    const error = 'Invalid --limit value: must be a positive integer';
+    if (jsonMode) {
+      printJson(jsonError(error));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    printError(error);
+    process.exit(1);
+  }
+
+  return limit;
+}
+
 interface ListCommandOptions {
   type?: string;
   path?: string;
@@ -80,6 +97,8 @@ interface ListCommandOptions {
   fields?: string;
   where?: string[];
   id?: string;
+  limit?: string;
+  count?: boolean;
   output?: string;
   json?: boolean; // deprecated
   // Open options
@@ -107,6 +126,8 @@ Targeting Selectors (compose via AND):
   --where <expr>       Filter by frontmatter expression (can repeat)
   --id <uuid>          Filter by stable note id
   --body <query>       Filter by body content (uses ripgrep)
+  --limit <n>          Show only the first n matching notes
+  --count              Print only the number of matching notes
 
 Expression Filters (--where):
   bwrb list --type task --where "status == 'in-progress'"
@@ -122,6 +143,8 @@ Examples:
   bwrb list --type idea
   bwrb list --type task --where "status == 'done'"
   bwrb list --path "Projects/**" --body "TODO"
+  bwrb list --type task --limit 5
+  bwrb list --type task --count
   bwrb list --type task --output json
   bwrb list --type task --open                    # Pick from tasks and open
   bwrb list --type task --where "status=inbox" --open
@@ -159,6 +182,8 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--fields <fields>', 'Show frontmatter fields in a table (comma-separated)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
   .option('--id <uuid>', 'Filter by stable note id')
+  .option('--limit <n>', 'Limit output to the first n matching notes')
+  .option('--count', 'Print only the number of matching notes')
   .option('--output <format>', 'Output format: text (default), paths, tree, link, json')
   // Open options
   .option('-o, --open', 'Open the first result (or pick from results interactively)')
@@ -257,6 +282,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
 
       const fields = options.fields?.split(',').map(f => f.trim());
       const depth = options.depth ? parseInt(options.depth, 10) : undefined;
+      const limit = parseListLimit(options.limit, jsonMode);
 
       // Validate --fields when --type is specified (strict mode)
       if (targeting.type && fields && fields.length > 0) {
@@ -302,6 +328,8 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         childrenOf: options.childrenOf,
         descendantsOf: options.descendantsOf,
         depth,
+        count: options.count,
+        ...(limit !== undefined && { limit }),
       });
 
       // Save as dashboard if --save-as was provided
@@ -315,6 +343,8 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         if (targeting.body) definition.body = targeting.body;
         if (outputFormat !== 'default') definition.output = outputFormat;
         if (fields?.length) definition.fields = fields;
+        if (limit !== undefined) definition.limit = limit;
+        if (options.count) definition.count = true;
 
         try {
           if (options.force) {
@@ -364,6 +394,8 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
 export interface ListOptions {
   outputFormat: ListOutputFormat;
   fields?: string[] | undefined;
+  limit?: number | undefined;
+  count?: boolean | undefined;
   // Open options
   open?: boolean | undefined;
   app?: string | undefined;
@@ -443,6 +475,21 @@ export async function listObjects(
     const nameB = basename(b.path, '.md');
     return nameA.localeCompare(nameB);
   });
+
+  const matchCount = filteredFiles.length;
+
+  if (options.count) {
+    if (jsonMode) {
+      console.log(JSON.stringify({ count: matchCount }, null, 2));
+    } else {
+      console.log(String(matchCount));
+    }
+    return;
+  }
+
+  if (options.limit !== undefined) {
+    filteredFiles = filteredFiles.slice(0, options.limit);
+  }
 
   // Handle no results
   if (filteredFiles.length === 0) {

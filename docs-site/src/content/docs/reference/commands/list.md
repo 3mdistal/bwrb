@@ -30,6 +30,8 @@ The positional argument is auto-detected as type, path (contains `/`), or where 
 |--------|-------------|
 | `--output <format>` | Output format: `text`, `paths`, `tree`, `link`, `json` |
 | `--fields <fields>` | Show frontmatter fields in a table (comma-separated) |
+| `--limit <n>` | Show only the first `n` matching notes |
+| `--count` | Print only the number of matching notes |
 | `-L, --depth <n>` | Limit tree depth |
 
 ### Actions
@@ -104,6 +106,19 @@ bwrb list --type task --output paths
 bwrb list --type task --output link      # [[Task 1]], [[Task 2]], ...
 bwrb list --type task --output tree      # Hierarchical display
 ```
+
+### Limiting and Counting
+
+```bash
+# Show the first five matches after filtering
+bwrb list --type task --where "status == 'in-progress'" --limit 5
+
+# Print only the number of matches
+bwrb list --type task --count
+bwrb list --type task --count --output json  # {"count": 12}
+```
+
+`--count` reports the total number of matching notes before any `--limit` is applied.
 
 ### Open from Results
 
