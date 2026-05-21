@@ -65,7 +65,8 @@ Non-interactive (JSON) mode:
 
 Body sections (JSON mode):
   bwrb new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'
-  The _body field accepts section names as keys, with string or string[] values.
+  bwrb new task --json '{"name": "Quick capture", "_body": "## Notes\\n\\n- Captured from a script."}'
+  The _body field accepts a raw Markdown string or section names as keys, with string or string[] values.
 
 Template management:
   Templates are managed with 'bwrb template' - see 'bwrb template --help'.

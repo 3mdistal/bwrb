@@ -255,6 +255,46 @@ describe('JSON I/O', () => {
         expect(content).toContain('Important notes here');
       });
 
+      it('should create note with raw markdown body from string _body', async () => {
+        const rawBody = '## Notes\n\n- Captured from a script.\n- No section schema needed.\n';
+        const result = await runCLI(
+          ['new', 'task', '--json', JSON.stringify({
+            'name': 'Raw Body Task',
+            _body: rawBody,
+          })],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+
+        const filePath = join(vaultDir, json.path);
+        const content = await readFile(filePath, 'utf-8');
+        expect(content).toContain(`---\n${rawBody}`);
+        expect(content).not.toContain('## Steps');
+      });
+
+      it('should let raw string _body override template body', async () => {
+        const rawBody = '## Custom\n\nRaw body wins over template body.\n';
+        const result = await runCLI(
+          ['new', 'task', '--template', 'bug-report', '--json', JSON.stringify({
+            'name': 'Raw Body Template Task',
+            _body: rawBody,
+          })],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+
+        const filePath = join(vaultDir, json.path);
+        const content = await readFile(filePath, 'utf-8');
+        expect(content).toContain(`---\n${rawBody}`);
+        expect(content).not.toContain('Steps to Reproduce');
+      });
+
       it('should error on unknown body section', async () => {
         const result = await runCLI(
           ['new', 'task', '--json', JSON.stringify({
@@ -273,11 +313,11 @@ describe('JSON I/O', () => {
         expect(json.error).toContain('UnknownSection');
       });
 
-      it('should error when _body is not an object', async () => {
+      it('should error when _body is neither a string nor an object', async () => {
         const result = await runCLI(
           ['new', 'task', '--json', JSON.stringify({
             'name': 'Bad Body Task',
-            _body: 'not an object',
+            _body: 123,
           })],
           vaultDir
         );
@@ -285,7 +325,7 @@ describe('JSON I/O', () => {
         expect(result.exitCode).toBe(1);
         const json = JSON.parse(result.stdout);
         expect(json.success).toBe(false);
-        expect(json.error).toContain('_body must be an object');
+        expect(json.error).toContain('_body must be a string or an object');
       });
 
       it('should error when _body is an array', async () => {
@@ -300,7 +340,7 @@ describe('JSON I/O', () => {
         expect(result.exitCode).toBe(1);
         const json = JSON.parse(result.stdout);
         expect(json.success).toBe(false);
-        expect(json.error).toContain('_body must be an object');
+        expect(json.error).toContain('_body must be a string or an object');
       });
 
       it('should handle empty _body object', async () => {
