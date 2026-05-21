@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFile } from 'fs/promises';
+import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI, waitForFile } from '../fixtures/setup.js';
 import { formatLocalDate } from '../../../src/lib/local-date.js';
@@ -149,6 +149,45 @@ describe('new command', () => {
       const id = extractIdFromFrontmatter(content);
       const registryIds = await readRegistryIds(vaultDir);
       expect(registryIds.has(id)).toBe(true);
+    });
+
+    it('should reject unknown JSON frontmatter fields', async () => {
+      const result = await runCLI(
+        ['new', 'task', '--json', '{"name":"Extra Field","status":"backlog","totally-extra":"yep"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
+      const output = JSON.parse(result.stdout);
+      expect(output.success).toBe(false);
+      expect(output.error).toBe('Validation failed');
+      expect(output.errors[0].field).toBe('totally-extra');
+    });
+
+    it('should reject templates whose defaults are invalid for the target type', async () => {
+      await writeFile(
+        join(vaultDir, '.bwrb', 'templates', 'task', 'invalid-default.md'),
+        `---
+type: template
+template-for: task
+description: Invalid default
+defaults:
+  totally-extra: yep
+---
+`,
+        'utf-8'
+      );
+
+      const result = await runCLI(
+        ['new', 'task', '--template', 'invalid-default', '--json', '{"name":"Invalid Template"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
+      const output = JSON.parse(result.stdout);
+      expect(output.success).toBe(false);
+      expect(output.error).toBe('Validation failed');
+      expect(output.errors[0].field).toBe('totally-extra');
     });
 
     it('should ignore slashes in JSON name when creating filename', async () => {

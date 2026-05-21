@@ -103,6 +103,8 @@ bwrb schema list -t objective/milestone
 
 # JSON output for scripting
 bwrb schema list --output json
+bwrb schema list types --output json
+bwrb schema list fields --output json
 bwrb schema list type task --output json
 bwrb schema list -t task --output json
 ```

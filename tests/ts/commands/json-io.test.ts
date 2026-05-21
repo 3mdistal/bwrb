@@ -15,6 +15,14 @@ describe('JSON I/O', () => {
     await cleanupTestVault(vaultDir);
   });
 
+  async function addIdeaTitleField(): Promise<void> {
+    const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+    const schema = JSON.parse(await readFile(schemaPath, 'utf-8'));
+    schema.types.idea.fields.title = { prompt: 'text' };
+    schema.types.idea.field_order = [...schema.types.idea.field_order, 'title'];
+    await writeFile(schemaPath, JSON.stringify(schema, null, 2), 'utf-8');
+  }
+
   describe('bwrb new --json', () => {
     it('should create a note with JSON frontmatter', async () => {
       const result = await runCLI(
@@ -650,6 +658,8 @@ defaults:
     });
 
     it('should use filename from pattern with frontmatter field', async () => {
+      await addIdeaTitleField();
+
       // Create template with filename pattern referencing a field
       await mkdir(join(vaultDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
@@ -676,6 +686,8 @@ defaults:
     });
 
     it('should report filename transformations from filename patterns', async () => {
+      await addIdeaTitleField();
+
       await mkdir(join(vaultDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(
         join(vaultDir, '.bwrb/templates/idea', 'unsafe-title.md'),
@@ -706,6 +718,8 @@ defaults:
     });
 
     it('should use filename from combined pattern', async () => {
+      await addIdeaTitleField();
+
       // Create template with combined filename pattern
       await mkdir(join(vaultDir, '.bwrb/templates/idea'), { recursive: true });
       await writeFile(

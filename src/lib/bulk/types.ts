@@ -47,6 +47,8 @@ export interface FileChange {
  */
 export interface BulkResult {
   dryRun: boolean;
+  candidateFiles: number;
+  matchedFiles: number;
   totalFiles: number;
   affectedFiles: number;
   changes: FileChange[];

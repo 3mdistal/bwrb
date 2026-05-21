@@ -54,6 +54,12 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `--quiet` | Only show summary |
 | `--output <format>` | Output format: `text`, `json` |
 
+In JSON mode, bulk output reports both discovery stages:
+
+- `candidateFiles`: files selected by type/path/body targeting before `--where`
+- `matchedFiles` / `totalFiles`: files remaining after all filters
+- `filesModified`: files that would change or did change
+
 ## Safety: Two-Gate Model
 
 Bulk operations require **two explicit gates** to prevent accidents:

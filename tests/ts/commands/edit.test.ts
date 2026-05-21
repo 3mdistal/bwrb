@@ -46,6 +46,19 @@ describe('edit command', () => {
       expect(content).toContain('status: backlog');
     });
 
+    it('should reject unknown JSON frontmatter fields', async () => {
+      const result = await runCLI(
+        ['edit', 'Ideas/Sample Idea.md', '--json', '{"totally-extra":"yep"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toBe('Validation failed');
+      expect(json.errors[0].field).toBe('totally-extra');
+    });
+
     it('should detect type from frontmatter type field', async () => {
       const result = await runCLI(
         ['edit', 'Ideas/Sample Idea.md', '--json', '{"status": "backlog"}'],
@@ -845,14 +858,13 @@ describe('edit command --open flag', () => {
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
-      expect(json.error).toMatch(/multiple notes named/i);
-      expect(json.error).toMatch(/--type/);
+      expect(json.error).toMatch(/ambiguous query/i);
       const candidatePaths = json.errors?.map((e: { value: string }) => e.value) ?? [];
       expect(candidatePaths).toContain('Ideas/Sample Idea.md');
       expect(candidatePaths).toContain('Objectives/Tasks/Sample Idea.md');
     });
 
-    it('should include suggestions when no exact match', async () => {
+    it('should return no-match errors when search-like resolution finds no candidates', async () => {
       const result = await runCLI(
         ['edit', 'Missing Note Name', '--json', '{"status":"done"}'],
         vaultDir
@@ -861,9 +873,7 @@ describe('edit command --open flag', () => {
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
-      expect(json.error).toMatch(/try:/i);
-      expect(json.error).toMatch(/--type <type>/i);
-      expect(json.error).toMatch(/bwrb search .*--output paths/i);
+      expect(json.error).toMatch(/no matching notes found/i);
     });
 
     it('should error with unknown type filter', async () => {
