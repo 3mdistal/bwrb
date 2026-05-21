@@ -17,6 +17,7 @@ import {
   parseTemplate,
   getInheritedTemplates,
   type TemplateWithSource,
+  type TemplateValidationResult,
 } from '../lib/template.js';
 import { queryByType, formatValue } from '../lib/vault.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
@@ -61,6 +62,8 @@ interface TemplateNewOptions {
 interface TemplateEditOptions {
   json?: string;
 }
+
+type TemplateHealthStatus = 'valid' | 'warning' | 'invalid';
 
 export const templateCommand = new Command('template')
   .description('Template management commands')
@@ -125,6 +128,64 @@ async function promptTemplatePicker(
   return templates[index] ?? null;
 }
 
+async function validateTemplatesForDisplay(
+  vaultDir: string,
+  schema: LoadedSchema,
+  templates: Template[]
+): Promise<Map<string, TemplateValidationResult>> {
+  const entries = await Promise.all(
+    templates.map(async (template) => [template.path, await validateTemplate(vaultDir, template, schema)] as const)
+  );
+
+  return new Map(entries);
+}
+
+function getTemplateHealthStatus(validation: TemplateValidationResult): TemplateHealthStatus {
+  if (!validation.valid) return 'invalid';
+  return validation.issues.length > 0 ? 'warning' : 'valid';
+}
+
+function formatTemplateHealthStatus(validation: TemplateValidationResult): string {
+  return getTemplateHealthStatus(validation);
+}
+
+function serializeTemplateForList(
+  vaultDir: string,
+  template: Template,
+  validation: TemplateValidationResult,
+  inherited: boolean,
+  inheritedFrom?: string
+): Record<string, unknown> {
+  return {
+    type: template.templateFor,
+    name: template.name,
+    description: template.description,
+    path: relative(vaultDir, template.path),
+    hasDefaults: Boolean(template.defaults && Object.keys(template.defaults).length > 0),
+    promptFields: template.promptFields,
+    filenamePattern: template.filenamePattern,
+    inherited,
+    ...(inheritedFrom ? { inheritedFrom } : {}),
+    valid: validation.valid,
+    status: getTemplateHealthStatus(validation),
+    issues: validation.issues,
+  };
+}
+
+function printValidationIssues(
+  issues: TemplateValidationResult['issues'],
+  indent = '  '
+): void {
+  for (const issue of issues) {
+    const icon = issue.severity === 'error' ? '✗' : '⚠';
+    const color = issue.severity === 'error' ? chalk.red : chalk.yellow;
+    console.log(color(`${indent}${icon} ${issue.message}`));
+    if (issue.suggestion) {
+      console.log(chalk.gray(`${indent}  ${issue.suggestion}`));
+    }
+  }
+}
+
 // ============================================================================
 // template list [type] [name]
 // ============================================================================
@@ -165,7 +226,7 @@ templateCommand
 
       // If both type and name provided, show template details
       if (typePath && templateName) {
-        await showTemplateDetails(vaultDir, typePath, templateName, jsonMode);
+        await showTemplateDetails(vaultDir, schema, typePath, templateName, jsonMode);
         return;
       }
 
@@ -181,33 +242,37 @@ templateCommand
       }
 
       if (jsonMode) {
+        const validationByPath = await validateTemplatesForDisplay(
+          vaultDir,
+          schema,
+          [...ownTemplates, ...inheritedTemplates]
+        );
+
         printJson(jsonSuccess({
           data: {
-            templates: ownTemplates.map(t => ({
-              type: t.templateFor,
-              name: t.name,
-              description: t.description,
-              path: relative(vaultDir, t.path),
-              hasDefaults: Boolean(t.defaults && Object.keys(t.defaults).length > 0),
-              promptFields: t.promptFields,
-              filenamePattern: t.filenamePattern,
-              inherited: false,
-            })),
-            inherited: inheritedTemplates.map(t => ({
-              type: t.templateFor,
-              name: t.name,
-              description: t.description,
-              path: relative(vaultDir, t.path),
-              hasDefaults: Boolean(t.defaults && Object.keys(t.defaults).length > 0),
-              promptFields: t.promptFields,
-              filenamePattern: t.filenamePattern,
-              inherited: true,
-              inheritedFrom: t.inheritedFrom,
-            })),
+            templates: ownTemplates.map((t) => serializeTemplateForList(
+              vaultDir,
+              t,
+              validationByPath.get(t.path)!,
+              false
+            )),
+            inherited: inheritedTemplates.map((t) => serializeTemplateForList(
+              vaultDir,
+              t,
+              validationByPath.get(t.path)!,
+              true,
+              t.inheritedFrom
+            )),
           },
         }));
         return;
       }
+
+      const validationByPath = await validateTemplatesForDisplay(
+        vaultDir,
+        schema,
+        [...ownTemplates, ...inheritedTemplates]
+      );
 
       // Text output
       if (ownTemplates.length === 0 && inheritedTemplates.length === 0) {
@@ -231,6 +296,7 @@ templateCommand
         } else {
           const ownRows = ownTemplates.map((template) => ({
             name: template.name,
+            status: formatTemplateHealthStatus(validationByPath.get(template.path)!),
             description: template.description ?? '(no description)',
           }));
           const ownLines = renderTable({
@@ -242,6 +308,15 @@ templateCommand
                 minWidth: 10,
                 weight: 2,
                 priority: 0,
+                canDrop: false,
+                ...(headerStyle ? { style: headerStyle } : {}),
+              },
+              {
+                key: 'status',
+                title: 'STATUS',
+                minWidth: 7,
+                weight: 1,
+                priority: 1,
                 canDrop: false,
                 ...(headerStyle ? { style: headerStyle } : {}),
               },
@@ -270,6 +345,7 @@ templateCommand
 
           const inheritedRows = inheritedTemplates.map((template) => ({
             name: template.name,
+            status: formatTemplateHealthStatus(validationByPath.get(template.path)!),
             source: `from ${template.inheritedFrom}`,
             description: template.description ?? '',
           }));
@@ -282,6 +358,15 @@ templateCommand
                 minWidth: 10,
                 weight: 2,
                 priority: 0,
+                canDrop: false,
+                ...(headerStyle ? { style: headerStyle } : {}),
+              },
+              {
+                key: 'status',
+                title: 'STATUS',
+                minWidth: 7,
+                weight: 1,
+                priority: 1,
                 canDrop: false,
                 ...(headerStyle ? { style: headerStyle } : {}),
               },
@@ -324,6 +409,7 @@ templateCommand
         const rows = ownTemplates.map(template => ({
           type: template.templateFor,
           name: template.name,
+          status: formatTemplateHealthStatus(validationByPath.get(template.path)!),
           description: template.description ?? '(no description)',
         }));
         const lines = renderTable({
@@ -344,6 +430,15 @@ templateCommand
               minWidth: 10,
               weight: 2,
               priority: 1,
+              canDrop: false,
+              ...(headerStyle ? { style: headerStyle } : {}),
+            },
+            {
+              key: 'status',
+              title: 'STATUS',
+              minWidth: 7,
+              weight: 1,
+              priority: 2,
               canDrop: false,
               ...(headerStyle ? { style: headerStyle } : {}),
             },
@@ -381,6 +476,7 @@ templateCommand
  */
 async function showTemplateDetails(
   vaultDir: string,
+  schema: LoadedSchema,
   typePath: string,
   templateName: string,
   jsonMode: boolean
@@ -397,6 +493,8 @@ async function showTemplateDetails(
     process.exit(1);
   }
 
+  const validation = await validateTemplate(vaultDir, template, schema);
+
   if (jsonMode) {
     printJson(jsonSuccess({
       data: {
@@ -408,6 +506,9 @@ async function showTemplateDetails(
         promptFields: template.promptFields,
         filenamePattern: template.filenamePattern,
         body: template.body,
+        valid: validation.valid,
+        status: getTemplateHealthStatus(validation),
+        issues: validation.issues,
       },
     }));
     return;
@@ -417,9 +518,15 @@ async function showTemplateDetails(
   console.log(chalk.bold(`\nTemplate: ${template.name}\n`));
   console.log(`  ${chalk.cyan('Type:')} ${template.templateFor}`);
   console.log(`  ${chalk.cyan('Path:')} ${relative(vaultDir, template.path)}`);
+  console.log(`  ${chalk.cyan('Status:')} ${formatTemplateHealthStatus(validation)}`);
   
   if (template.description) {
     console.log(`  ${chalk.cyan('Description:')} ${template.description}`);
+  }
+
+  if (validation.issues.length > 0) {
+    console.log(`\n  ${chalk.cyan('Issues:')}`);
+    printValidationIssues(validation.issues, '    ');
   }
 
   if (template.defaults && Object.keys(template.defaults).length > 0) {
@@ -532,30 +639,17 @@ templateCommand
 
       for (const result of results) {
         console.log(result.relativePath);
+        console.log(chalk.gray(`  Type: ${result.templateFor}`));
         
         if (result.valid && result.issues.length === 0) {
           console.log(chalk.green('  ✓ Valid\n'));
         } else if (result.valid) {
           console.log(chalk.green('  ✓ Valid (with warnings)'));
-          for (const issue of result.issues) {
-            if (issue.severity === 'warning') {
-              console.log(chalk.yellow(`  ⚠ ${issue.message}`));
-              if (issue.suggestion) {
-                console.log(chalk.gray(`    ${issue.suggestion}`));
-              }
-            }
-          }
+          printValidationIssues(result.issues.filter(issue => issue.severity === 'warning'));
           console.log('');
         } else {
           console.log(chalk.red('  ✗ Invalid'));
-          for (const issue of result.issues) {
-            const icon = issue.severity === 'error' ? '✗' : '⚠';
-            const color = issue.severity === 'error' ? chalk.red : chalk.yellow;
-            console.log(color(`  ${icon} ${issue.message}`));
-            if (issue.suggestion) {
-              console.log(chalk.gray(`    ${issue.suggestion}`));
-            }
-          }
+          printValidationIssues(result.issues);
           console.log('');
         }
       }

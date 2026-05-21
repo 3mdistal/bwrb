@@ -47,6 +47,29 @@ describe('template command', () => {
       expect(json.data.templates.length).toBeGreaterThan(0);
       expect(json.data.templates[0]).toHaveProperty('type');
       expect(json.data.templates[0]).toHaveProperty('name');
+      expect(json.data.templates[0]).toHaveProperty('status');
+      expect(json.data.templates[0]).toHaveProperty('valid');
+      expect(json.data.templates[0]).toHaveProperty('issues');
+    });
+
+    it('should mark invalid templates with status', async () => {
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/idea', 'bad-default.md'),
+        `---
+type: template
+template-for: idea
+defaults:
+  unknown-field: yep
+---
+Body
+`
+      );
+
+      const result = await runCLI(['template', 'list'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('STATUS');
+      expect(result.stdout).toMatch(/idea\s+bad-default\s+invalid/);
     });
 
     it('should error on unknown type', async () => {
@@ -90,6 +113,8 @@ describe('template command', () => {
       expect(json.data.type).toBe('idea');
       expect(json.data.description).toBe('Default idea template');
       expect(json.data.defaults).toHaveProperty('status');
+      expect(json.data.valid).toBe(true);
+      expect(json.data.status).toBe('valid');
     });
 
     it('should error on unknown template', async () => {
@@ -164,9 +189,10 @@ Body
       expect(result.stdout).toContain('Invalid');
       expect(result.stdout).toContain("Invalid value 'invalid-status'");
       expect(result.stdout).toContain("Invalid value 'super-high'");
+      expect(result.stdout).toContain("Update 'status' in defaults for 'idea' to an allowed value");
     });
 
-    it('should suggest typo corrections', async () => {
+    it('should suggest actionable typo corrections', async () => {
       // Create a template with typo in field name
       await writeFile(
         join(vaultDir, '.bwrb/templates/idea', 'typo.md'),
@@ -184,8 +210,11 @@ Body
       const result = await runCLI(['template', 'validate'], vaultDir);
 
       expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Type: idea');
       expect(result.stdout).toContain("Unknown field 'staus'");
       expect(result.stdout).toContain("Did you mean 'status'");
+      expect(result.stdout).toContain("Remove 'staus' from defaults");
+      expect(result.stdout).toContain("add 'staus' to the 'idea' schema");
     });
 
     it('should accept valid date expressions in defaults', async () => {

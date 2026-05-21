@@ -50,6 +50,12 @@ Templates are stored in `.bwrb/templates/{type}/{subtype}/{name}.md`.
 
 List templates in your vault, optionally filtered by type.
 
+Text output includes a `STATUS` column:
+
+- `valid`: template can be used as-is
+- `warning`: template can be used, but has references worth reviewing
+- `invalid`: template has schema errors and should be fixed before use
+
 ### Synopsis
 
 ```bash
@@ -85,6 +91,8 @@ bwrb template list task bug-report
 # JSON output
 bwrb template list --output json
 ```
+
+JSON output includes `valid`, `status`, and `issues` for each template so scripts can fail early on invalid template configuration.
 
 ---
 
@@ -265,6 +273,16 @@ Checks templates for:
 - Prompt-fields reference existing fields
 - No references to removed schema fields
 
+Validation output includes the template path, target type, issue location, and suggested repair. For example:
+
+```text
+.bwrb/templates/daily-note/default.md
+  Type: daily-note
+  ✗ Invalid
+  ✗ Unknown field 'status' in defaults
+    Remove 'status' from defaults, or add 'status' to the 'daily-note' schema if this template should set it.
+```
+
 ### Examples
 
 ```bash
@@ -294,4 +312,3 @@ bwrb template validate --output json
 - [Templates Overview](/templates/overview/) — Template concepts
 - [Creating Templates](/templates/creating-templates/) — Template authoring guide
 - [bwrb schema validate](/reference/commands/schema/#validate) — Validate schema
-

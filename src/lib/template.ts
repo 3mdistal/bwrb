@@ -931,13 +931,49 @@ function findClosestMatch(target: string, options: string[]): string | undefined
   return closest;
 }
 
+function buildUnknownFieldSuggestion(
+  fieldName: string,
+  location: string,
+  templateFor: string,
+  validFieldNames: string[]
+): string {
+  const suggestion = findClosestMatch(fieldName, validFieldNames);
+  const repair = `Remove '${fieldName}' from ${location}, or add '${fieldName}' to the '${templateFor}' schema if this template should set it.`;
+
+  if (suggestion) {
+    return `Did you mean '${suggestion}'? ${repair}`;
+  }
+
+  const validFields = validFieldNames.length > 0
+    ? ` Valid fields for '${templateFor}': ${validFieldNames.join(', ')}.`
+    : '';
+
+  return `${repair}${validFields}`;
+}
+
+function buildInvalidValueSuggestion(
+  fieldName: string,
+  templateFor: string,
+  fieldOptions: string[],
+  valueSuggestion?: string
+): string {
+  const repair = `Update '${fieldName}' in defaults for '${templateFor}' to an allowed value.`;
+
+  if (valueSuggestion) {
+    return `Did you mean '${valueSuggestion}'? ${repair}`;
+  }
+
+  return `Expected one of: ${fieldOptions.join(', ')}. ${repair}`;
+}
+
 /**
  * Validate field value against its field definition.
  */
 function validateFieldValue(
   fieldName: string,
   field: Field,
-  value: unknown
+  value: unknown,
+  templateFor: string
 ): TemplateValidationIssue[] {
   const issues: TemplateValidationIssue[] = [];
   
@@ -958,9 +994,7 @@ function validateFieldValue(
             severity: 'error',
             message: `Invalid value '${v}' for field '${fieldName}'`,
             field: fieldName,
-            suggestion: suggestion 
-              ? `Did you mean '${suggestion}'?`
-              : `Expected one of: ${fieldOptions.join(', ')}`,
+            suggestion: buildInvalidValueSuggestion(fieldName, templateFor, fieldOptions, suggestion),
           });
         }
       }
@@ -971,9 +1005,7 @@ function validateFieldValue(
           severity: 'error',
           message: `Invalid value '${value}' for field '${fieldName}'`,
           field: fieldName,
-          suggestion: suggestion 
-            ? `Did you mean '${suggestion}'?`
-            : `Expected one of: ${fieldOptions.join(', ')}`,
+          suggestion: buildInvalidValueSuggestion(fieldName, templateFor, fieldOptions, suggestion),
         });
       }
     }
@@ -985,6 +1017,7 @@ function validateFieldValue(
       severity: 'warning',
       message: `Field '${fieldName}' expects an array but got ${typeof value}`,
       field: fieldName,
+      suggestion: `Use a YAML list for '${fieldName}' in defaults for '${templateFor}', or change the schema field if a scalar is intended.`,
     });
   }
   
@@ -1016,7 +1049,7 @@ export async function validateTemplate(
     issues.push({
       severity: 'error',
       message: `Type '${template.templateFor}' not found in schema`,
-      suggestion: 'Check the template-for field matches a valid type name',
+      suggestion: `Set template-for to a valid schema type, or add '${template.templateFor}' to the schema before using this template.`,
     });
     
     // Can't do further validation without a valid type
@@ -1041,16 +1074,12 @@ export async function validateTemplate(
     for (const [fieldName, value] of Object.entries(template.defaults)) {
       // Check field exists
       if (!isKnownField(fieldName)) {
-        const suggestion = findClosestMatch(fieldName, validFieldNames);
-        const issue: TemplateValidationIssue = {
+        issues.push({
           severity: 'error',
           message: `Unknown field '${fieldName}' in defaults`,
           field: fieldName,
-        };
-        if (suggestion) {
-          issue.suggestion = `Did you mean '${suggestion}'?`;
-        }
-        issues.push(issue);
+          suggestion: buildUnknownFieldSuggestion(fieldName, 'defaults', template.templateFor, validFieldNames),
+        });
         continue;
       }
       
@@ -1062,6 +1091,7 @@ export async function validateTemplate(
             severity: 'error',
             message: dateExprError,
             field: fieldName,
+            suggestion: `Fix the date expression for '${fieldName}' in defaults for '${template.templateFor}', or replace it with a literal date.`,
           });
           continue;
         }
@@ -1070,7 +1100,7 @@ export async function validateTemplate(
       // Validate value against field definition (skip for date expressions)
       const field = fields[fieldName];
       if (field && !(typeof value === 'string' && isDateExpression(value))) {
-        const valueIssues = validateFieldValue(fieldName, field, value);
+        const valueIssues = validateFieldValue(fieldName, field, value, template.templateFor);
         issues.push(...valueIssues);
       }
     }
@@ -1080,16 +1110,12 @@ export async function validateTemplate(
   if (template.promptFields) {
     for (const fieldName of template.promptFields) {
       if (!isKnownField(fieldName)) {
-        const suggestion = findClosestMatch(fieldName, validFieldNames);
-        const issue: TemplateValidationIssue = {
+        issues.push({
           severity: 'error',
           message: `Unknown field '${fieldName}' in prompt-fields`,
           field: fieldName,
-        };
-        if (suggestion) {
-          issue.suggestion = `Did you mean '${suggestion}'?`;
-        }
-        issues.push(issue);
+          suggestion: buildUnknownFieldSuggestion(fieldName, 'prompt-fields', template.templateFor, validFieldNames),
+        });
       }
     }
   }
@@ -1108,16 +1134,12 @@ export async function validateTemplate(
         if (fieldName === 'date' || fieldName === 'title') continue;
         
         if (fieldName && !isKnownField(fieldName)) {
-          const suggestion = findClosestMatch(fieldName, validFieldNames);
-          const issue: TemplateValidationIssue = {
+          issues.push({
             severity: 'warning',
             message: `Unknown field '${fieldName}' referenced in filename-pattern`,
             field: fieldName,
-          };
-          if (suggestion) {
-            issue.suggestion = `Did you mean '${suggestion}'?`;
-          }
-          issues.push(issue);
+            suggestion: buildUnknownFieldSuggestion(fieldName, 'filename-pattern', template.templateFor, validFieldNames),
+          });
         }
       }
     }
@@ -1134,16 +1156,12 @@ export async function validateTemplate(
       if (fieldName === 'date' || fieldName === 'title') continue;
       
       if (fieldName && !isKnownField(fieldName)) {
-        const suggestion = findClosestMatch(fieldName, validFieldNames);
-        const issue: TemplateValidationIssue = {
+        issues.push({
           severity: 'warning',
           message: `Unknown field '${fieldName}' referenced in body`,
           field: fieldName,
-        };
-        if (suggestion) {
-          issue.suggestion = `Did you mean '${suggestion}'?`;
-        }
-        issues.push(issue);
+          suggestion: buildUnknownFieldSuggestion(fieldName, 'the template body', template.templateFor, validFieldNames),
+        });
       }
     }
   }
@@ -1153,16 +1171,12 @@ export async function validateTemplate(
     for (const [fieldName, constraint] of Object.entries(template.constraints)) {
       // Check field exists
       if (!isKnownField(fieldName)) {
-        const suggestion = findClosestMatch(fieldName, validFieldNames);
-        const issue: TemplateValidationIssue = {
+        issues.push({
           severity: 'error',
           message: `Unknown field '${fieldName}' in constraints`,
           field: fieldName,
-        };
-        if (suggestion) {
-          issue.suggestion = `Did you mean '${suggestion}'?`;
-        }
-        issues.push(issue);
+          suggestion: buildUnknownFieldSuggestion(fieldName, 'constraints', template.templateFor, validFieldNames),
+        });
         continue;
       }
       
@@ -1175,6 +1189,7 @@ export async function validateTemplate(
             severity: 'error',
             message: `Invalid constraint expression for '${fieldName}': ${(e as Error).message}`,
             field: fieldName,
+            suggestion: `Fix the constraint expression for '${fieldName}' in '${template.templateFor}', or remove that constraint.`,
           });
         }
       }
@@ -1198,9 +1213,9 @@ export async function validateTemplate(
         if (suggestion) {
           issue.suggestion = `Did you mean '${suggestion}'?`;
         } else if (validChildTypes.length > 0) {
-          issue.suggestion = `Valid child types: ${validChildTypes.join(', ')}`;
+          issue.suggestion = `Use one of the valid child types for '${template.templateFor}': ${validChildTypes.join(', ')}.`;
         } else {
-          issue.suggestion = `Type '${template.templateFor}' has no child types`;
+          issue.suggestion = `Type '${template.templateFor}' has no child types; remove this instance scaffold or add a child type to the schema.`;
         }
         issues.push(issue);
         continue;
@@ -1223,16 +1238,12 @@ export async function validateTemplate(
         
         for (const fieldName of Object.keys(instance.defaults)) {
           if (!isKnownInstanceField(fieldName)) {
-            const suggestion = findClosestMatch(fieldName, instanceFieldNames);
-            const issue: TemplateValidationIssue = {
+            issues.push({
               severity: 'warning',
               message: `Unknown field '${fieldName}' in instance defaults for '${instance.type}'`,
               field: fieldName,
-            };
-            if (suggestion) {
-              issue.suggestion = `Did you mean '${suggestion}'?`;
-            }
-            issues.push(issue);
+              suggestion: buildUnknownFieldSuggestion(fieldName, `instance defaults for '${instance.type}'`, instance.type, instanceFieldNames),
+            });
           }
         }
       }
