@@ -532,6 +532,14 @@ export function resolveTypeFromFrontmatter(
   
   // Check if the type exists in the schema
   if (schema.types.has(typeName)) {
+    const legacySubtype = frontmatter[`${typeName}-type`];
+    if (typeof legacySubtype === 'string') {
+      const subtype = schema.types.get(legacySubtype);
+      if (subtype?.parent === typeName) {
+        return legacySubtype;
+      }
+    }
+
     return typeName;
   }
   

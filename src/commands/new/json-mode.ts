@@ -156,7 +156,7 @@ async function validateJsonFrontmatter(
   mergedInput: Record<string, unknown>,
   template?: Template | null
 ): Promise<void> {
-  const validation = validateFrontmatter(schema, typePath, mergedInput);
+  const validation = validateFrontmatter(schema, typePath, mergedInput, { strictFields: true });
   if (!validation.valid) {
     throwJsonError({
       success: false,

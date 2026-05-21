@@ -179,6 +179,25 @@ export async function editNoteFromJson(
     throw new Error(error);
   }
 
+  const patchValidation = validateFrontmatter(schema, typePath, patchData, { strictFields: true });
+  const unknownPatchErrors = patchValidation.errors.filter(error => error.type === 'unknown_field');
+  if (unknownPatchErrors.length > 0) {
+    if (jsonMode) {
+      printJson({
+        success: false,
+        error: 'Validation failed',
+        errors: unknownPatchErrors.map(e => ({
+          field: e.field,
+          message: e.message,
+          ...(e.value !== undefined && { value: e.value }),
+          ...(e.suggestion !== undefined && { suggestion: e.suggestion }),
+        })),
+      });
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    throw new Error(`Validation failed: ${unknownPatchErrors.map(e => e.message).join(', ')}`);
+  }
+
   // Merge patch data into existing frontmatter
   const mergedFrontmatter = mergeFrontmatter(frontmatter, patchData);
   const updatedFields = Object.keys(patchData).filter(k => patchData[k] !== undefined);

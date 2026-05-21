@@ -204,6 +204,7 @@ bwrb edit --type task --where "status == 'active'" "Deploy" --json '{"status": "
 
 Notes:
 - If multiple notes share the same name, `bwrb edit` errors and lists candidates. Disambiguate with `--type`, `--path`, or a vault-relative path.
+- `bwrb new --json` rejects unknown frontmatter fields after merging template defaults. `bwrb edit --json` rejects unknown fields in the patch.
 
 ### Deleting Notes
 
@@ -219,6 +220,9 @@ bwrb delete --type task
 
 # Explicit dry-run preview
 bwrb delete --type task --dry-run
+
+# Single-file JSON dry-run does not need --force
+bwrb delete "Note Name" --dry-run --output json
 
 # Bulk delete with confirmation (skip with --force)
 bwrb delete --type task --execute --force

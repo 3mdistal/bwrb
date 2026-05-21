@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync } from 'fs';
-import { writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI, waitForFile } from '../fixtures/setup.js';
 
@@ -133,6 +133,18 @@ describe('delete command', () => {
       expect(json.error).toContain('--force');
     });
 
+    it('should not require --force for single-file JSON dry-runs', async () => {
+      const filePath = join(vaultDir, 'Ideas', 'Sample Idea.md');
+
+      const result = await runCLI(['delete', 'Sample Idea', '--dry-run', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.data.dryRun).toBe(true);
+      expect(existsSync(filePath)).toBe(true);
+    });
+
     it('should output JSON on success', async () => {
       const filePath = join(vaultDir, 'Ideas', 'Sample Idea.md');
       expect(existsSync(filePath)).toBe(true);
@@ -145,6 +157,22 @@ describe('delete command', () => {
       expect(json.path).toBe('Ideas/Sample Idea.md');
       expect(json.message).toContain('deleted');
       expect(existsSync(filePath)).toBe(false);
+    });
+
+    it('should remove deleted note paths from the id registry', async () => {
+      const createResult = await runCLI(
+        ['new', 'task', '--json', '{"name":"Registry Delete Smoke","status":"backlog"}'],
+        vaultDir
+      );
+      expect(createResult.exitCode).toBe(0);
+      const created = JSON.parse(createResult.stdout) as { path: string };
+
+      const registryPath = join(vaultDir, '.bwrb', 'ids.jsonl');
+      expect(await readFile(registryPath, 'utf-8')).toContain(created.path);
+
+      const deleteResult = await runCLI(['delete', created.path, '--force', '--output', 'json'], vaultDir);
+      expect(deleteResult.exitCode).toBe(0);
+      expect(await readFile(registryPath, 'utf-8')).not.toContain(created.path);
     });
 
     it('should output JSON error on no match', async () => {

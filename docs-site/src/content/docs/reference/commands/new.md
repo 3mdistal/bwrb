@@ -110,6 +110,8 @@ bwrb new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"
 bwrb new project --json '{"name": "My Project"}' --template with-research
 ```
 
+`--json` mode validates the merged frontmatter before writing. Unknown fields in the JSON input or selected template defaults are rejected unless they are built-in bwrb fields such as `name`.
+
 The `_body` field accepts section names as keys, with string or string array values.
 
 If the note name or resolved filename pattern contains characters that are not portable in filenames, `bwrb new` normalizes the filename by removing invalid characters, collapsing doubled whitespace, and trimming the result. Interactive creation prints a warning. JSON mode includes `nameTransformed` metadata:

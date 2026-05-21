@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { appendFile, mkdir, readFile } from 'fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { dirname, join, relative } from 'path';
 
@@ -75,6 +75,34 @@ export async function registerIssuedNoteId(
   };
 
   await appendFile(registryPath, `${JSON.stringify(entry)}\n`, 'utf-8');
+}
+
+export async function unregisterIssuedNotePath(
+  vaultDir: string,
+  relativePath: string
+): Promise<void> {
+  const registryPath = getIdRegistryPath(vaultDir);
+  if (!existsSync(registryPath)) return;
+
+  const content = await readFile(registryPath, 'utf-8');
+  const retained: string[] = [];
+
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    try {
+      const parsed = JSON.parse(trimmed) as Partial<IdRegistryEntry>;
+      if (parsed.path === relativePath) continue;
+    } catch {
+      // Keep legacy/plain lines because they cannot be matched to a path.
+    }
+
+    retained.push(line);
+  }
+
+  const nextContent = retained.length > 0 ? `${retained.join('\n')}\n` : '';
+  await writeFile(registryPath, nextContent, 'utf-8');
 }
 
 export function ensureIdInFieldOrder(order: string[]): string[] {

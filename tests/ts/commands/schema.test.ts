@@ -1048,6 +1048,24 @@ milestone: "[[Active Milestone]]"
       expect(result.stdout).toContain('idea');
     });
 
+    it('should output JSON for "schema list types --output json"', async () => {
+      const result = await runCLI(['schema', 'list', 'types', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.data.types).toContain('idea');
+    });
+
+    it('should output JSON for "schema list fields --output json"', async () => {
+      const result = await runCLI(['schema', 'list', 'fields', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.data.fields.some((field: { field: string }) => field.field === 'status')).toBe(true);
+    });
+
     it('should output JSON when --output json is specified', async () => {
       const result = await runCLI(['schema', 'list', '--output', 'json'], vaultDir);
 
@@ -1564,8 +1582,6 @@ milestone: "[[Active Milestone]]"
     });
 
     it('should pass --vault to schema list fields (3 levels deep)', async () => {
-      // Note: --output json has a pre-existing bug in schema list fields (not related to #134)
-      // so we test text output mode instead
       const result = await runCLI(['schema', 'list', 'fields'], vaultDir);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Fields:');

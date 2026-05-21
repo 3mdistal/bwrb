@@ -140,12 +140,12 @@ listCommand
   .addOption(new Option('-t, --type <typePath>').hideHelp())
   .option('--output <format>', 'Output format: text (default) or json')
   .action(async (options: ListCommandOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
+    const globalOpts = getGlobalOpts(cmd);
+    const jsonMode = options.output === 'json' || globalOpts.output === 'json';
 
     try {
       ensureNoTypeAliasConflict(cmd, 'bwrb schema list types');
 
-      const globalOpts = getGlobalOpts(cmd);
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
@@ -193,12 +193,12 @@ listCommand
   .addOption(new Option('-t, --type <typePath>').hideHelp())
   .option('--output <format>', 'Output format: text (default) or json')
   .action(async (options: ListCommandOptions, cmd: Command) => {
-    const jsonMode = options.output === 'json';
+    const globalOpts = getGlobalOpts(cmd);
+    const jsonMode = options.output === 'json' || globalOpts.output === 'json';
 
     try {
       ensureNoTypeAliasConflict(cmd, 'bwrb schema list fields');
 
-      const globalOpts = getGlobalOpts(cmd);
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);

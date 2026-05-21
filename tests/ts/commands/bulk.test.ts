@@ -948,6 +948,24 @@ creation-date: 2024-01-15
       expect(json.data.filesModified).toBeGreaterThan(0);
     });
 
+    it('should distinguish candidate and matched files in JSON output', async () => {
+      const result = await runCLI([
+        'bulk',
+        '--type', 'idea',
+        '--where', "status == 'raw'",
+        '--set', 'status=settled',
+        '--output', 'json',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.data.candidateFiles).toBe(2);
+      expect(json.data.matchedFiles).toBe(1);
+      expect(json.data.totalFiles).toBe(1);
+      expect(json.data.filesModified).toBe(1);
+    });
+
     it('should show minimal output with --quiet', async () => {
       const result = await runCLI(['bulk', 'idea', '--all', '--set', 'status=settled', '--quiet'], vaultDir);
       

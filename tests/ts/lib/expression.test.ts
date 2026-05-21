@@ -74,6 +74,14 @@ describe('expression', () => {
       expect(matchesExpression("priority >= 2", ctx)).toBe(true);
       expect(matchesExpression("priority < 2", ctx)).toBe(false);
     });
+
+    it('should not match relational comparisons when a field is missing', () => {
+      const ctx = makeContext({});
+      expect(matchesExpression("deadline < today() + '7d'", ctx)).toBe(false);
+      expect(matchesExpression("deadline <= today() + '7d'", ctx)).toBe(false);
+      expect(matchesExpression("deadline > today() + '7d'", ctx)).toBe(false);
+      expect(matchesExpression("deadline >= today() + '7d'", ctx)).toBe(false);
+    });
   });
 
   describe('evaluateExpression - boolean logic', () => {

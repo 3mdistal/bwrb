@@ -529,6 +529,8 @@ function outputJsonResult(result: BulkResult): void {
   const jsonOutput = {
     success: result.errors.length === 0,
     dryRun: result.dryRun,
+    candidateFiles: result.candidateFiles,
+    matchedFiles: result.matchedFiles,
     totalFiles: result.totalFiles,
     filesModified: result.affectedFiles,
     ...(result.backupPath && { backupPath: result.backupPath }),
