@@ -176,6 +176,15 @@ When `bwrb new --json` runs instance scaffolding, the response includes an `inst
 
 When `bwrb new --json` normalizes a filename (for example removing `/`, `?`, or other non-portable characters), the JSON response includes `nameTransformed` with `original`, `sanitized`, and `filename`. Long relative paths over 200 characters include `pathLengthWarning`; paths over 260 characters are rejected.
 
+Before relying on templates in automation, check template health:
+
+```bash
+bwrb template list --output json
+bwrb template validate --output json
+```
+
+`template list --output json` includes `valid`, `status`, and `issues` per template. `template validate` exits non-zero when any template is invalid and includes suggested repairs for unknown fields, invalid defaults, filename-pattern references, body placeholders, constraints, and instance defaults.
+
 ```json
 {
   "path": "Projects/Ship feature.md",
