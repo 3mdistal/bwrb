@@ -406,6 +406,10 @@ export const DashboardDefinitionSchema = z.object({
   output: z.enum(['default', 'text', 'paths', 'tree', 'link', 'json']).optional(),
   /** Fields to display in table output */
   fields: z.array(z.string()).optional(),
+  /** Limit output to the first n matching notes */
+  limit: z.number().int().positive().optional(),
+  /** Print only the number of matching notes */
+  count: z.boolean().optional(),
 });
 
 export type DashboardDefinition = z.infer<typeof DashboardDefinitionSchema>;

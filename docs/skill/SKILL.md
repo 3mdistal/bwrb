@@ -144,6 +144,10 @@ bwrb list task --where "priority == 'high' && status != 'done'" --output json
 # Include specific fields in output
 bwrb list task --fields status,priority --output json
 
+# Limit or count matches
+bwrb list task --limit 5 --output json
+bwrb list task --count --output json
+
 # Target by stable id
 bwrb list --id "<uuid>" --output json
 

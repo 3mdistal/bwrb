@@ -44,7 +44,11 @@ Save any list query as a dashboard:
 ```bash
 bwrb list task --where "status='active'" --save-as "active-tasks"
 bwrb list task --output tree --save-as "task-tree" --force
+bwrb list task --count --save-as "task-count"
 ```
+
+Dashboards saved from `bwrb list` preserve filters, default output settings,
+selected fields, `--limit`, and `--count`.
 
 ### With `dashboard new`
 
@@ -79,4 +83,3 @@ bwrb dashboard edit my-tasks
 - [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — `--execute` vs `--force` semantics
 - [bwrb list](/reference/commands/list/) — List and filter notes
 - [Targeting Model](/reference/targeting/) — Selector reference
-
