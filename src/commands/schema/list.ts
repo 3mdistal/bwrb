@@ -31,6 +31,15 @@ interface ListCommandOptions {
   type?: string;
 }
 
+export interface SchemaListOverviewOptions {
+  output?: string;
+  verbose?: boolean;
+}
+
+export interface SchemaListTypeOptions {
+  output?: string;
+}
+
 function getReservedListNouns(): Set<string> {
   return new Set(listCommand.commands.map((command) => command.name()));
 }
@@ -43,6 +52,51 @@ function ensureNoTypeAliasConflict(cmd: Command, usage: string): void {
     `Cannot use --type with '${usage}'. ` +
     `Use either '${usage}' or 'bwrb schema list --type <typePath>'.`
   );
+}
+
+export async function runSchemaListOverview(
+  options: SchemaListOverviewOptions,
+  cmd: Command
+): Promise<void> {
+  const globalOpts = getGlobalOpts(cmd);
+  const jsonMode = options.output === 'json' || globalOpts.output === 'json';
+  const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
+  if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
+  const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
+  const schema = await loadCurrentSchema(vaultDir);
+  await warnIfPendingMigration(vaultDir, schema, jsonMode);
+
+  if (jsonMode) {
+    if (options.verbose) {
+      outputSchemaVerboseJson(schema);
+    } else {
+      outputSchemaJson(schema);
+    }
+  } else if (options.verbose) {
+    showSchemaTreeVerbose(schema);
+  } else {
+    showSchemaTree(schema);
+  }
+}
+
+export async function runSchemaListTypeDetails(
+  typePath: string,
+  options: SchemaListTypeOptions,
+  cmd: Command
+): Promise<void> {
+  const globalOpts = getGlobalOpts(cmd);
+  const jsonMode = options.output === 'json' || globalOpts.output === 'json';
+  const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
+  if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
+  const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
+  const schema = await loadCurrentSchema(vaultDir);
+  await warnIfPendingMigration(vaultDir, schema, jsonMode);
+
+  if (jsonMode) {
+    outputTypeDetailsJson(schema, typePath);
+  } else {
+    showTypeDetails(schema, typePath);
+  }
 }
 
 export const listCommand = new Command('list')
@@ -86,34 +140,12 @@ listCommand
         );
       }
 
-      const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
-      if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
-      const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
-      const schema = await loadCurrentSchema(vaultDir);
-      await warnIfPendingMigration(vaultDir, schema, jsonMode);
-
       if (targetType) {
-        if (jsonMode) {
-          outputTypeDetailsJson(schema, targetType);
-        } else {
-          showTypeDetails(schema, targetType);
-        }
+        await runSchemaListTypeDetails(targetType, options, cmd);
         return;
       }
 
-      if (jsonMode) {
-        if (options.verbose) {
-          outputSchemaVerboseJson(schema);
-        } else {
-          outputSchemaJson(schema);
-        }
-      } else {
-        if (options.verbose) {
-          showSchemaTreeVerbose(schema);
-        } else {
-          showSchemaTree(schema);
-        }
-      }
+      await runSchemaListOverview(options, cmd);
     } catch (err) {
       if (err instanceof UserCancelledError) {
         if (jsonMode) {
@@ -295,17 +327,7 @@ listCommand
         );
       }
 
-      const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
-      if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
-      const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
-      const schema = await loadCurrentSchema(vaultDir);
-      await warnIfPendingMigration(vaultDir, schema, jsonMode);
-
-      if (jsonMode) {
-        outputTypeDetailsJson(schema, name);
-      } else {
-        showTypeDetails(schema, name);
-      }
+      await runSchemaListTypeDetails(name, options, cmd);
     } catch (err) {
       if (err instanceof UserCancelledError) {
         if (jsonMode) {

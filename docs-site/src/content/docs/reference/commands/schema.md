@@ -15,6 +15,8 @@ bwrb schema <subcommand>
 
 | Subcommand | Description |
 |------------|-------------|
+| [types](#types-alias) | Alias for `schema list` |
+| [fields](#fields-alias) | Alias for `schema list <typePath>` |
 | [list](#list) | List schema contents |
 | [validate](#validate) | Validate schema structure |
 | [diff](#diff) | Show pending schema changes |
@@ -26,9 +28,11 @@ bwrb schema <subcommand>
 ```bash
 # List all types
 bwrb schema list
+bwrb schema types
 
 # Show specific type details
 bwrb schema list type task
+bwrb schema fields task
 
 # Validate schema structure
 bwrb schema validate
@@ -107,6 +111,59 @@ bwrb schema list types --output json
 bwrb schema list fields --output json
 bwrb schema list type task --output json
 bwrb schema list -t task --output json
+```
+
+---
+
+## types alias
+
+`schema types` is a discovery-friendly alias for `schema list`.
+
+### Synopsis
+
+```bash
+bwrb schema types [options]
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--output <format>` | Output format: `text`, `json` |
+| `--verbose` | Show all types with fields inline |
+
+### Examples
+
+```bash
+bwrb schema types
+bwrb schema types --verbose
+bwrb schema types --output json
+```
+
+---
+
+## fields alias
+
+`schema fields <typePath>` is a discovery-friendly alias for `schema list <typePath>`.
+Use `schema list fields` when you want the all-fields overview across every type.
+
+### Synopsis
+
+```bash
+bwrb schema fields <typePath> [options]
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--output <format>` | Output format: `text`, `json` |
+
+### Examples
+
+```bash
+bwrb schema fields task
+bwrb schema fields objective/milestone --output json
 ```
 
 ---

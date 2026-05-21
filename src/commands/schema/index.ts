@@ -12,7 +12,7 @@ import { getGlobalOpts } from '../../lib/command.js';
 import { UserCancelledError } from '../../lib/errors.js';
 
 // Subcommand modules
-import { listCommand } from './list.js';
+import { listCommand, runSchemaListOverview, runSchemaListTypeDetails } from './list.js';
 import { registerNewTypeCommand, registerEditTypeCommand, registerDeleteTypeCommand } from './type.js';
 import { registerNewFieldCommand, registerEditFieldCommand, registerDeleteFieldCommand } from './field.js';
 import { registerMigrationCommands } from './migrate.js';
@@ -28,10 +28,80 @@ export const schemaCommand = new Command('schema')
   .addHelpText('after', `
 Examples:
   bwrb schema list              # List all types
+  bwrb schema types             # Alias for schema list
+  bwrb schema fields task       # Alias for schema list task
   bwrb schema list type objective  # Show objective type details (canonical)
   bwrb schema list objective/task  # Alias for schema list type objective/task
   bwrb schema list -t task --output json  # Type details as JSON for AI/scripting
   bwrb schema validate          # Validate schema structure`);
+
+interface SchemaTypesAliasOptions {
+  output?: string;
+  verbose?: boolean;
+}
+
+interface SchemaFieldsAliasOptions {
+  output?: string;
+}
+
+schemaCommand
+  .command('types')
+  .description('Alias for "schema list"')
+  .option('--output <format>', 'Output format: text (default) or json')
+  .option('--verbose', 'Show all types with their fields inline')
+  .action(async (options: SchemaTypesAliasOptions, cmd: Command) => {
+    const globalOpts = getGlobalOpts(cmd);
+    const jsonMode = options.output === 'json' || globalOpts.output === 'json';
+
+    try {
+      await runSchemaListOverview(options, cmd);
+    } catch (err) {
+      if (err instanceof UserCancelledError) {
+        if (jsonMode) {
+          printJson(jsonError('Cancelled', { code: ExitCodes.VALIDATION_ERROR }));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        console.log('Cancelled.');
+        process.exit(1);
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
+
+schemaCommand
+  .command('fields <typePath>')
+  .description('Alias for "schema list <typePath>"')
+  .option('--output <format>', 'Output format: text (default) or json')
+  .action(async (typePath: string, options: SchemaFieldsAliasOptions, cmd: Command) => {
+    const globalOpts = getGlobalOpts(cmd);
+    const jsonMode = options.output === 'json' || globalOpts.output === 'json';
+
+    try {
+      await runSchemaListTypeDetails(typePath, options, cmd);
+    } catch (err) {
+      if (err instanceof UserCancelledError) {
+        if (jsonMode) {
+          printJson(jsonError('Cancelled', { code: ExitCodes.VALIDATION_ERROR }));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        console.log('Cancelled.');
+        process.exit(1);
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      if (jsonMode) {
+        printJson(jsonError(message));
+        process.exit(ExitCodes.SCHEMA_ERROR);
+      }
+      printError(message);
+      process.exit(1);
+    }
+  });
 
 // ============================================================================
 // Validate Command
