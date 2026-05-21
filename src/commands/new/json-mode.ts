@@ -116,12 +116,15 @@ function parseJsonNoteInput(jsonInput: string): JsonNoteInputResult {
     );
   }
 
-  let bodyInput: Record<string, unknown> | undefined;
+  let bodyInput: string | Record<string, unknown> | undefined;
   if (rawBodyInput !== undefined && rawBodyInput !== null) {
-    if (typeof rawBodyInput !== 'object' || Array.isArray(rawBodyInput)) {
-      throwJsonError(jsonError('_body must be an object with section names as keys'), ExitCodes.VALIDATION_ERROR);
+    if (typeof rawBodyInput === 'string') {
+      bodyInput = rawBodyInput;
+    } else if (typeof rawBodyInput === 'object' && !Array.isArray(rawBodyInput)) {
+      bodyInput = rawBodyInput as Record<string, unknown>;
+    } else {
+      throwJsonError(jsonError('_body must be a string or an object with section names as keys'), ExitCodes.VALIDATION_ERROR);
     }
-    bodyInput = rawBodyInput as Record<string, unknown>;
   }
 
   if (bodyInput === undefined) {
@@ -269,9 +272,13 @@ function generateBodyForJson(
   typeDef: ResolvedType,
   frontmatter: Record<string, unknown>,
   template?: Template | null,
-  bodyInput?: Record<string, unknown>,
+  bodyInput?: string | Record<string, unknown>,
   dateFormat?: string
 ): string {
+  if (typeof bodyInput === 'string') {
+    return bodyInput;
+  }
+
   const sections = typeDef.bodySections ?? [];
 
   let sectionContent: Map<string, string[]> | undefined;

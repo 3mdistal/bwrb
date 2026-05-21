@@ -106,13 +106,16 @@ bwrb new task --json '{"name": "Bug"}' --template bug-report
 # With body sections
 bwrb new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'
 
+# With raw markdown body
+bwrb new task --json '{"name": "Quick capture", "_body": "## Notes\n\n- Captured from a script."}'
+
 # With instance scaffolding (JSON output includes instances)
 bwrb new project --json '{"name": "My Project"}' --template with-research
 ```
 
 `--json` mode validates the merged frontmatter before writing. Unknown fields in the JSON input or selected template defaults are rejected unless they are built-in bwrb fields such as `name`.
 
-The `_body` field accepts section names as keys, with string or string array values.
+The `_body` field accepts either a raw Markdown string or an object whose keys are schema body section names. Section-object values may be strings or string arrays. A raw string is written as the note body as-is and bypasses template/body-section generation.
 
 If the note name or resolved filename pattern contains characters that are not portable in filenames, `bwrb new` normalizes the filename by removing invalid characters, collapsing doubled whitespace, and trimming the result. Interactive creation prints a warning. JSON mode includes `nameTransformed` metadata:
 

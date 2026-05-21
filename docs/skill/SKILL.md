@@ -163,6 +163,9 @@ bwrb new task --no-template --json '{"name": "Quick task"}'
 # Include body sections
 bwrb new task --json '{"name": "Task", "_body": {"Steps": ["Step 1", "Step 2"]}}'
 
+# Include a raw Markdown body
+bwrb new task --json '{"name": "Task", "_body": "## Notes\n\n- Captured from a script."}'
+
 # Skip instance scaffolding for templates that define instances
 bwrb new task --template epic --no-instances --json '{"name": "Ship feature"}'
 ```
