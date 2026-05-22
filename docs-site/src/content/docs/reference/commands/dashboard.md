@@ -48,7 +48,7 @@ bwrb list task --count --save-as "task-count"
 ```
 
 Dashboards saved from `bwrb list` preserve filters, default output settings,
-selected fields, `--limit`, and `--count`.
+selected fields, `--sort`, `--desc`, `--limit`, and `--count`.
 
 ### With `dashboard new`
 

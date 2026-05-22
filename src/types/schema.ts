@@ -410,6 +410,10 @@ export const DashboardDefinitionSchema = z.object({
   limit: z.number().int().positive().optional(),
   /** Print only the number of matching notes */
   count: z.boolean().optional(),
+  /** Sort output by a frontmatter/display field */
+  sort: z.string().optional(),
+  /** Sort descending when sort is present */
+  desc: z.boolean().optional(),
 });
 
 export type DashboardDefinition = z.infer<typeof DashboardDefinitionSchema>;
