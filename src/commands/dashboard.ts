@@ -159,6 +159,8 @@ async function runDashboard(
       fields: dashboard.fields,
       limit: dashboard.limit,
       count: dashboard.count,
+      sortField: dashboard.sort,
+      sortDesc: dashboard.desc,
     };
 
     await listObjects(schema, vaultDir, targeting.type, targetResult.files, listOpts);

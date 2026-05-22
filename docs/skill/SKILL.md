@@ -144,6 +144,10 @@ bwrb list task --where "priority == 'high' && status != 'done'" --output json
 # Include specific fields in output
 bwrb list task --fields status,priority --output json
 
+# Sort matches before reading or limiting output
+bwrb list task --sort deadline --output json
+bwrb list task --sort priority --desc --output json
+
 # Limit or count matches
 bwrb list task --limit 5 --output json
 bwrb list task --count --output json

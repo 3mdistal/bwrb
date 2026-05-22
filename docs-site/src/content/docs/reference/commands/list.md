@@ -30,6 +30,8 @@ The positional argument is auto-detected as type, path (contains `/`), or where 
 |--------|-------------|
 | `--output <format>` | Output format: `text`, `paths`, `tree`, `link`, `json` |
 | `--fields <fields>` | Show frontmatter fields in a table (comma-separated) |
+| `--sort <field>` | Sort by a frontmatter field, `name`, `_name`, or `_path` |
+| `--desc` | Sort descending (requires `--sort`) |
 | `--limit <n>` | Show only the first `n` matching notes |
 | `--count` | Print only the number of matching notes |
 | `-L, --depth <n>` | Limit tree depth |
@@ -110,6 +112,11 @@ bwrb list --type task --output tree      # Hierarchical display
 ### Limiting and Counting
 
 ```bash
+# Sort by frontmatter or display fields
+bwrb list --type task --sort deadline
+bwrb list --type task --sort priority --desc
+bwrb list --sort name
+
 # Show the first five matches after filtering
 bwrb list --type task --where "status == 'in-progress'" --limit 5
 
@@ -118,6 +125,7 @@ bwrb list --type task --count
 bwrb list --type task --count --output json  # {"count": 12}
 ```
 
+Missing sort values are always placed at the end, including with `--desc`.
 `--count` reports the total number of matching notes before any `--limit` is applied.
 
 ### Open from Results
