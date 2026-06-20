@@ -50,6 +50,11 @@ import {
   outputFixResults,
   showAvailableTypes,
 } from '../lib/audit/output.js';
+import {
+  findUndocumentedSchemaEntries,
+  type UndocumentedSchemaEntries,
+} from '../lib/audit/schema-docs.js';
+import chalk from 'chalk';
 
 const FIX_TARGETING_ERROR_SUMMARY =
   'No files selected. Use --type, --path, --where, --body, or --all.';
@@ -62,6 +67,30 @@ const FIX_TARGETING_ERROR_MESSAGE = [
   '  bwrb audit --all --fix',
   '  bwrb audit --path "Ideas/**" --fix --dry-run --auto',
 ].join('\n');
+
+/**
+ * Print the schema documentation coverage report (opt-in --check-schema-docs).
+ */
+function printSchemaDocsCoverage(undocumented: UndocumentedSchemaEntries): void {
+  const { types, fields } = undocumented;
+  console.log('');
+  if (types.length === 0 && fields.length === 0) {
+    console.log(chalk.green('Schema docs: every type and field has a description.'));
+    return;
+  }
+  console.log(chalk.bold('Schema documentation coverage'));
+  if (types.length > 0) {
+    console.log(chalk.yellow(`  ${types.length} type(s) missing a description:`));
+    console.log(chalk.gray(`    ${types.join(', ')}`));
+  }
+  if (fields.length > 0) {
+    console.log(chalk.yellow(`  ${fields.length} field(s) missing a description:`));
+    for (const { type, field } of fields) {
+      console.log(chalk.gray(`    ${type}.${field}`));
+    }
+  }
+  console.log(chalk.dim('  Add one with `bwrb schema edit field` / `bwrb schema edit type`.'));
+}
 
 // ============================================================================
 // Command Definition
@@ -145,11 +174,13 @@ Examples:
   .option('--dry-run', 'With --fix: preview fixes without writing')
   .option('--execute', 'With --fix --auto: apply fixes (omit to preview)')
   .option('--allow-field <fields...>', 'Allow additional fields beyond schema (repeatable)')
+  .option('--check-schema-docs', 'Also report schema types/fields that have no description')
   .action(async (target: string | undefined, options: AuditOptions & {
     type?: string;
     where?: string[];
     body?: string;
     text?: string; // deprecated
+    checkSchemaDocs?: boolean;
   }, cmd: Command) => {
     const jsonMode = options.output === 'json';
     const fixMode = options.fix ?? false;
@@ -342,10 +373,24 @@ Examples:
       // Output results (report mode)
       const summary = calculateSummary(results);
 
+      // Optional schema documentation coverage check (opt-in).
+      const undocumented = options.checkSchemaDocs
+        ? findUndocumentedSchemaEntries(schema)
+        : undefined;
+
       if (jsonMode) {
-        outputJsonResults(results, summary);
+        outputJsonResults(
+          results,
+          summary,
+          undocumented
+            ? { schemaDocs: { types: undocumented.types, fields: undocumented.fields } }
+            : undefined
+        );
       } else {
         outputTextResults(results, summary, vaultDir);
+        if (undocumented) {
+          printSchemaDocsCoverage(undocumented);
+        }
       }
 
       // Exit code based on errors

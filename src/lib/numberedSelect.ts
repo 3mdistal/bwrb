@@ -7,6 +7,12 @@ import chalk from 'chalk';
 export interface NumberedSelectOptions {
   message: string;
   choices: string[];
+  /**
+   * Optional dim hint text rendered after each choice, aligned by index with
+   * `choices`. An empty string means no hint for that choice. Hints are
+   * cosmetic and never affect the returned value.
+   */
+  hints?: string[];
   /** Initial selected index (default: 0) */
   initial?: number;
 }
@@ -50,6 +56,7 @@ function parseNumberKey(char: string): number {
 export class NumberedSelectPrompt {
   private message: string;
   private choices: string[];
+  private hints: string[];
   private cursor: number;
   private currentPage: number;
   private totalPages: number;
@@ -61,6 +68,7 @@ export class NumberedSelectPrompt {
   constructor(options: NumberedSelectOptions) {
     this.message = options.message;
     this.choices = options.choices;
+    this.hints = options.hints ?? [];
     this.cursor = options.initial ?? 0;
     this.totalPages = Math.ceil(this.choices.length / ITEMS_PER_PAGE);
     this.currentPage = Math.floor(this.cursor / ITEMS_PER_PAGE);
@@ -303,11 +311,13 @@ export class NumberedSelectPrompt {
     const keyLabel = getDisplayKey(indexInPage);
     const choice = this.choices[absoluteIndex];
     const isSelected = absoluteIndex === this.cursor;
+    const hint = this.hints[absoluteIndex];
+    const hintSuffix = hint ? `  ${chalk.dim('— ' + hint)}` : '';
 
     if (isSelected) {
-      return `${chalk.cyan('❯')} ${chalk.dim(keyLabel)}  ${chalk.cyan.underline(choice)}`;
+      return `${chalk.cyan('❯')} ${chalk.dim(keyLabel)}  ${chalk.cyan.underline(choice)}${hintSuffix}`;
     } else {
-      return `  ${chalk.dim(keyLabel)}  ${choice}`;
+      return `  ${chalk.dim(keyLabel)}  ${choice}${hintSuffix}`;
     }
   }
 
@@ -375,20 +385,9 @@ export class NumberedSelectPrompt {
     const pageStart = this.currentPage * ITEMS_PER_PAGE;
     const pageEnd = Math.min(pageStart + ITEMS_PER_PAGE, this.choices.length);
 
-    // Render choices
+    // Render choices (single source of truth shared with differential updates)
     for (let i = pageStart; i < pageEnd; i++) {
-      const indexInPage = i - pageStart;
-      const keyLabel = getDisplayKey(indexInPage);
-      const choice = this.choices[i];
-      const isSelected = i === this.cursor;
-
-      let line: string;
-      if (isSelected) {
-        line = `${chalk.cyan('❯')} ${chalk.dim(keyLabel)}  ${chalk.cyan.underline(choice)}`;
-      } else {
-        line = `  ${chalk.dim(keyLabel)}  ${choice}`;
-      }
-      lines.push(line);
+      lines.push(this.renderChoiceLine(i));
     }
 
     // Hint line
@@ -414,9 +413,12 @@ export class NumberedSelectPrompt {
  */
 export async function numberedSelect(
   message: string,
-  choices: string[]
+  choices: string[],
+  hints?: string[]
 ): Promise<string | null> {
-  const prompt = new NumberedSelectPrompt({ message, choices });
+  const options: NumberedSelectOptions = { message, choices };
+  if (hints) options.hints = hints;
+  const prompt = new NumberedSelectPrompt(options);
   const result = await prompt.run();
   if (result.aborted) {
     return null; // User cancelled - signal quit

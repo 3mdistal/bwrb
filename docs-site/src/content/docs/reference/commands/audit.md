@@ -33,6 +33,7 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `--ignore <issue-type>` | Ignore specific issue type |
 | `--strict` | Treat unknown fields as errors instead of warnings |
 | `--allow-field <fields>` | Allow additional fields beyond schema (repeatable) |
+| `--check-schema-docs` | Also report schema types/fields that have no `description` |
 
 ### Repair
 

@@ -13,6 +13,21 @@ export const FilterConditionSchema = z.object({
 });
 
 /**
+ * A single select option.
+ * Either a bare value ("active") or an object that pairs the value with a
+ * description ({ value: "active", description: "currently being worked on" }).
+ * The object form lets the schema document what each option means; the bare
+ * string form is preserved so existing schemas stay valid untouched.
+ */
+export const FieldOptionSchema = z.union([
+  z.string(),
+  z.object({
+    value: z.string(),
+    description: z.string().optional(),
+  }),
+]);
+
+/**
  * Field definition for type frontmatter.
  * Fields can be static values, prompted inputs, or relation queries.
  */
@@ -21,8 +36,13 @@ export const FieldSchema = z.object({
   prompt: z.enum(['text', 'select', 'list', 'date', 'relation', 'boolean', 'number']).optional(),
   // Static value (no prompting)
   value: z.string().optional(),
-  // Inline options for select prompts (replaces global enums)
-  options: z.array(z.string()).optional(),
+  // Human-readable description of what this field is for and when to use it.
+  // Surfaced by `bwrb schema list` (text + JSON); distinct from `label`, which
+  // is the imperative prompt shown during input.
+  description: z.string().optional(),
+  // Inline options for select prompts (replaces global enums).
+  // Each option is a bare value or a { value, description } pair.
+  options: z.array(FieldOptionSchema).optional(),
   // Type name(s) for relation prompts (e.g., "milestone", "objective")
   // When specified, queryByType() fetches notes of this type (and descendants)
   // Can be an array to allow multiple valid types (e.g., for recursive types with extends)
@@ -74,6 +94,9 @@ export const BodySectionSchema: z.ZodType<BodySection, z.ZodTypeDef, BodySection
 export const TypeSchema = z.object({
   // Parent type name (implicit 'meta' if not specified)
   extends: z.string().optional(),
+  // Human-readable description of what this type is for and when to use it.
+  // Surfaced by `bwrb schema list` (text + JSON).
+  description: z.string().optional(),
   // Field definitions (merged with ancestors at load time)
   fields: z.record(FieldSchema).optional(),
   // Explicit field ordering (optional - defaults to definition order)
@@ -173,6 +196,33 @@ export const BwrbSchema = z.object({
 // ============================================================================
 
 export type Field = z.infer<typeof FieldSchema>;
+export type FieldOption = z.infer<typeof FieldOptionSchema>;
+
+/**
+ * Extract the bare value strings from a field's options, regardless of whether
+ * each option is a plain string or a { value, description } object.
+ */
+export function getOptionValues(options: FieldOption[] | undefined): string[] {
+  if (!options) return [];
+  return options.map((option) => (typeof option === 'string' ? option : option.value));
+}
+
+/**
+ * Look up the description for a specific option value, if one was provided.
+ * Returns undefined for bare-string options or unknown values.
+ */
+export function getOptionDescription(
+  options: FieldOption[] | undefined,
+  value: string
+): string | undefined {
+  if (!options) return undefined;
+  for (const option of options) {
+    if (typeof option !== 'string' && option.value === value) {
+      return option.description;
+    }
+  }
+  return undefined;
+}
 export type BodySection = {
   title: string;
   level?: number | undefined;
@@ -205,6 +255,8 @@ export type Schema = z.infer<typeof BwrbSchema>;
 export interface ResolvedType {
   /** Type name (unique identifier) */
   name: string;
+  /** Human-readable description of what this type is for, if declared */
+  description: string | undefined;
   /** Parent type name (undefined only for 'meta') */
   parent: string | undefined;
   /** Direct child type names */

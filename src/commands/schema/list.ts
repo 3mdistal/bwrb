@@ -23,7 +23,7 @@ import {
   getFieldType,
   renderSchemaFieldsTable,
 } from './helpers/output.js';
-import type { Field, LoadedSchema } from '../../types/schema.js';
+import { type Field, type LoadedSchema, getOptionValues } from '../../types/schema.js';
 
 interface ListCommandOptions {
   output?: string;
@@ -261,11 +261,22 @@ listCommand
           allFields.map(({ type, field, definition }) => {
             const details: string[] = [];
             if (definition.options?.length) {
+              const optionValues = getOptionValues(definition.options);
               if (context.isTTY) {
-                details.push(`options=[${definition.options.slice(0, 3).join(', ')}${definition.options.length > 3 ? '...' : ''}]`);
+                details.push(`options=[${optionValues.slice(0, 3).join(', ')}${optionValues.length > 3 ? '...' : ''}]`);
               } else {
-                details.push(`options=[${definition.options.join(', ')}]`);
+                details.push(`options=[${optionValues.join(', ')}]`);
               }
+            }
+            if (definition.description) {
+              // Show a short, unquoted snippet — the full text lives in the
+              // type detail view and JSON. Quotes-in-description must not create
+              // an ambiguous `desc="..."` token, and a long description must not
+              // blow out the table column.
+              const snippet = definition.description.length > 60
+                ? `${definition.description.slice(0, 59)}…`
+                : definition.description;
+              details.push(`desc: ${snippet}`);
             }
             if (definition.required) {
               details.push('required');

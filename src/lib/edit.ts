@@ -34,7 +34,7 @@ import {
   jsonError,
   ExitCodes,
 } from './output.js';
-import type { LoadedSchema, Field, BodySection } from '../types/schema.js';
+import { type LoadedSchema, type Field, type BodySection, getOptionValues } from '../types/schema.js';
 import { UserCancelledError } from './errors.js';
 import { expandStaticValue } from './local-date.js';
 
@@ -418,7 +418,7 @@ async function promptFieldEdit(
   switch (field.prompt) {
     case 'select': {
       if (!field.options || field.options.length === 0) return currentValue;
-      const selectOptions = field.options;
+      const selectOptions = getOptionValues(field.options);
       
       // Multi-select mode
       if (field.multiple) {

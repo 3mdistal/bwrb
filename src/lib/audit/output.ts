@@ -55,7 +55,11 @@ export function calculateSummary(results: FileAuditResult[]): AuditSummary {
 /**
  * Output results as JSON.
  */
-export function outputJsonResults(results: FileAuditResult[], summary: AuditSummary): void {
+export function outputJsonResults(
+  results: FileAuditResult[],
+  summary: AuditSummary,
+  extra?: Record<string, unknown>
+): void {
   const output = {
     ...jsonSuccess(),
     files: results.map(r => ({
@@ -98,6 +102,7 @@ export function outputJsonResults(results: FileAuditResult[], summary: AuditSumm
       })),
     })),
     summary,
+    ...(extra ?? {}),
   };
 
   printJson(output);

@@ -32,6 +32,10 @@ describePty('schema new type PTY tests', () => {
           await proc.waitFor('Add fields', 5000);
           proc.write('n');
 
+          // Skip the optional type description prompt
+          await proc.waitFor('Description', 5000);
+          proc.write('\r');
+
           // Wait for creation
           await proc.waitFor('created', 5000);
 
@@ -62,6 +66,10 @@ describePty('schema new type PTY tests', () => {
           await proc.waitFor('Add fields', 5000);
           proc.write('n');
 
+          // Skip the optional type description prompt
+          await proc.waitFor('Description', 5000);
+          proc.write('\r');
+
           // Wait for creation
           await proc.waitFor('created', 5000);
 
@@ -84,6 +92,10 @@ describePty('schema new type PTY tests', () => {
           // Should NOT prompt for parent type, go straight to fields
           await proc.waitFor('Add fields', 10000);
           proc.write('n');
+
+          // Skip the optional type description prompt
+          await proc.waitFor('Description', 5000);
+          proc.write('\r');
 
           // Wait for creation
           await proc.waitFor('created', 5000);

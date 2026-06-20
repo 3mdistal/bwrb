@@ -219,8 +219,8 @@ export function registerEditFieldCommand(editCommand: Command): void {
         if (currentDef.required) console.log(`Required: yes`);
         if (currentDef.default !== undefined) console.log(`Default: ${currentDef.default}`);
 
-        const editOptions = ['Change prompt type', 'Toggle required', 'Set default', 'Done'];
-        
+        const editOptions = ['Edit description', 'Change prompt type', 'Toggle required', 'Set default', 'Done'];
+
         while (true) {
           const choice = await promptSelection('What would you like to edit?', editOptions);
           if (choice === null || choice === 'Done') {
@@ -234,7 +234,22 @@ export function registerEditFieldCommand(editCommand: Command): void {
             process.exit(1);
           }
 
-          if (choice === 'Change prompt type') {
+          if (choice === 'Edit description') {
+            const fieldEntry = rawTypeEntry.fields?.[fieldName];
+            if (fieldEntry) {
+              const newDesc = await promptInput('Description (blank to clear)', fieldEntry.description ?? '');
+              if (newDesc !== null) {
+                const trimmed = newDesc.trim();
+                if (trimmed) {
+                  fieldEntry.description = trimmed;
+                } else {
+                  delete fieldEntry.description;
+                }
+                await writeSchema(vaultDir, rawSchema);
+                printSuccess('Description updated');
+              }
+            }
+          } else if (choice === 'Change prompt type') {
             const promptOptions = ['text', 'select', 'list', 'date', 'relation', 'boolean', 'number'];
             const newPrompt = await promptSelection('Prompt type', promptOptions);
             const fieldEntry = rawTypeEntry.fields?.[fieldName];

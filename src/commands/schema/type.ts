@@ -37,6 +37,7 @@ interface NewTypeOptions {
   fields?: string;
   directory?: string;
   inherits?: string;
+  description?: string;
 }
 
 interface EditTypeOptions {
@@ -60,6 +61,7 @@ export function registerNewTypeCommand(newCommand: Command): void {
     .option('--fields <fields>', 'Comma-separated field definitions (name:type)')
     .option('--directory <dir>', 'Output directory for notes of this type')
     .option('--inherits <type>', 'Parent type to inherit from')
+    .option('--description <text>', 'Human-readable description of what this type is for')
     .action(async (name: string | undefined, options: NewTypeOptions, cmd: Command) => {
       const jsonMode = options.output === 'json';
 
@@ -157,8 +159,21 @@ export function registerNewTypeCommand(newCommand: Command): void {
           }
         }
 
+        // Description - from option or interactive prompt
+        let description = options.description?.trim();
+        if (description === undefined && !jsonMode) {
+          const descResult = await promptInput('Description (what is this type for? blank to skip)');
+          if (descResult === null) {
+            process.exit(0);
+          }
+          description = descResult.trim() || undefined;
+        }
+
         // Build the type object
         const newType: Type = {};
+        if (description) {
+          newType.description = description;
+        }
         if (inherits) {
           newType.extends = inherits;
         }
@@ -251,8 +266,8 @@ export function registerEditTypeCommand(editCommand: Command): void {
 
         console.log(chalk.bold(`\nEditing type: ${typeName}\n`));
         
-        const editOptions = ['Edit output directory', 'Edit inheritance', 'Add field', 'Done'];
-        
+        const editOptions = ['Edit description', 'Edit output directory', 'Edit inheritance', 'Add field', 'Done'];
+
         while (true) {
           const choice = await promptSelection('What would you like to edit?', editOptions);
           if (choice === null || choice === 'Done') {
@@ -261,7 +276,21 @@ export function registerEditTypeCommand(editCommand: Command): void {
 
           const rawSchema = await loadRawSchemaJson(vaultDir);
 
-          if (choice === 'Edit output directory') {
+          if (choice === 'Edit description') {
+            const resolvedType = schema.types.get(typeName);
+            const currentDesc = resolvedType?.description ?? '';
+            const newDesc = await promptInput('Description (blank to clear)', currentDesc);
+            if (newDesc !== null) {
+              const trimmed = newDesc.trim();
+              if (trimmed) {
+                rawSchema.types[typeName]!.description = trimmed;
+              } else {
+                delete rawSchema.types[typeName]!.description;
+              }
+              await writeSchema(vaultDir, rawSchema);
+              printSuccess('Description updated');
+            }
+          } else if (choice === 'Edit output directory') {
             const resolvedType = schema.types.get(typeName);
             const currentDir = resolvedType?.outputDir || computeDefaultOutputDir(schema, typeName);
             const newDir = await promptInput('Output directory', currentDir);

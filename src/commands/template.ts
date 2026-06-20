@@ -40,7 +40,7 @@ import {
   jsonError,
   ExitCodes,
 } from '../lib/output.js';
-import type { LoadedSchema, Field, Template } from '../types/schema.js';
+import { type LoadedSchema, type Field, type Template, getOptionValues } from '../types/schema.js';
 import { UserCancelledError } from '../lib/errors.js';
 import { getTtyContext } from '../lib/tty/context.js';
 import { renderTable } from '../lib/tty/table.js';
@@ -1038,7 +1038,7 @@ async function promptFieldDefault(
   switch (field.prompt) {
     case 'select': {
       if (!field.options || field.options.length === 0) return undefined;
-      const selectOptions = field.options;
+      const selectOptions = getOptionValues(field.options);
       const options = ['(skip)', ...selectOptions];
       
       const selected = await promptSelection(`Default ${label}:`, options);
@@ -1504,7 +1504,7 @@ async function promptFieldDefaultEdit(
   switch (field.prompt) {
     case 'select': {
       if (!field.options || field.options.length === 0) return currentValue;
-      const selectOptions = field.options;
+      const selectOptions = getOptionValues(field.options);
       const options = ['(keep)', '(clear)', ...selectOptions];
       
       const selected = await promptSelection(`New ${label}:`, options);
