@@ -4,15 +4,35 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-06-20
+
+Changes since `v0.1.8`.
+
 ### Added
 
-- **Self-documenting schema: `description` on types, fields, and select options**
+- **Self-documenting schema: `description` on types, fields, and select options** (#588)
   - Add a `description` to any type or field, and to individual `select` options (via a `{ value, description }` form that coexists with bare-string options)
   - `bwrb schema list` surfaces descriptions — a dim suffix in the overview tree, dedicated lines in `type <name>` detail, and a `description` key in `--output json` — so `bwrb schema list --output json` is a queryable source of what each type/field/option is for
   - Descriptions are inherited like fields and can be overridden by a subtype
   - Interactive `bwrb schema new/edit type` and `new/edit field` now prompt for descriptions; the `bwrb new` select picker shows option descriptions as hints
   - `bwrb audit --check-schema-docs` (opt-in) reports types/fields with no description
   - Description-only edits are treated as cosmetic: they never trigger a schema migration
+
+- **`list --sort`** — sort results by a frontmatter field (#587)
+- **`list --limit` and `list --count`** — cap result rows or print just the match count (#586)
+- **Schema discovery aliases** — shorthand forms for navigating types in `schema list` (#583)
+- **Raw `_body` strings in JSON note creation** — supply a note body directly when creating notes via JSON (#584)
+
+### Changed
+
+- **Actionable template validation** — `template` surfaces concrete, fixable health warnings (#585)
+
+### Fixed
+
+- **Warn on unsafe note filenames** before they create problematic files (#570)
+- **`edit --json` honors the `--output` flag** in JSON mode (#567, #569)
+- **`list` tree output hierarchy** fixed for non-recursive results (#568, issue #524)
+- **May 21 CLI bug batch** (#580, closes #571–#579) — tighter `new`/`edit` JSON validation so unknown fields and invalid template defaults can't create invalid notes, plus fixes to delete dry-run/registry behavior, schema JSON subcommands, search arg handling, edit partial matching, and bulk JSON counts
 
 ## [0.1.8] - 2026-03-11
 
