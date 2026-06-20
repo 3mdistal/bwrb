@@ -71,6 +71,23 @@ function resolveListOutputFormat(options: ListCommandOptions): ListOutputFormat 
   return 'default';
 }
 
+function parseListLimit(value: string | undefined, jsonMode: boolean): number | undefined {
+  if (value === undefined) return undefined;
+
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit <= 0) {
+    const error = 'Invalid --limit value: must be a positive integer';
+    if (jsonMode) {
+      printJson(jsonError(error));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    printError(error);
+    process.exit(1);
+  }
+
+  return limit;
+}
+
 interface ListCommandOptions {
   type?: string;
   path?: string;
@@ -80,6 +97,10 @@ interface ListCommandOptions {
   fields?: string;
   where?: string[];
   id?: string;
+  limit?: string;
+  count?: boolean;
+  sort?: string;
+  desc?: boolean;
   output?: string;
   json?: boolean; // deprecated
   // Open options
@@ -107,6 +128,10 @@ Targeting Selectors (compose via AND):
   --where <expr>       Filter by frontmatter expression (can repeat)
   --id <uuid>          Filter by stable note id
   --body <query>       Filter by body content (uses ripgrep)
+  --sort <field>       Sort by frontmatter field, name, _name, or _path
+  --desc               Sort descending (requires --sort)
+  --limit <n>          Show only the first n matching notes
+  --count              Print only the number of matching notes
 
 Expression Filters (--where):
   bwrb list --type task --where "status == 'in-progress'"
@@ -122,6 +147,10 @@ Examples:
   bwrb list --type idea
   bwrb list --type task --where "status == 'done'"
   bwrb list --path "Projects/**" --body "TODO"
+  bwrb list --type task --sort deadline
+  bwrb list --type task --sort priority --desc
+  bwrb list --type task --limit 5
+  bwrb list --type task --count
   bwrb list --type task --output json
   bwrb list --type task --open                    # Pick from tasks and open
   bwrb list --type task --where "status=inbox" --open
@@ -159,6 +188,10 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--fields <fields>', 'Show frontmatter fields in a table (comma-separated)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
   .option('--id <uuid>', 'Filter by stable note id')
+  .option('--sort <field>', 'Sort by frontmatter field, name, _name, or _path')
+  .option('--desc', 'Sort descending (requires --sort)')
+  .option('--limit <n>', 'Limit output to the first n matching notes')
+  .option('--count', 'Print only the number of matching notes')
   .option('--output <format>', 'Output format: text (default), paths, tree, link, json')
   // Open options
   .option('-o, --open', 'Open the first result (or pick from results interactively)')
@@ -257,11 +290,27 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
 
       const fields = options.fields?.split(',').map(f => f.trim());
       const depth = options.depth ? parseInt(options.depth, 10) : undefined;
+      const limit = parseListLimit(options.limit, jsonMode);
 
-      // Validate --fields when --type is specified (strict mode)
-      if (targeting.type && fields && fields.length > 0) {
+      if (options.desc && !options.sort) {
+        const error = 'Cannot use --desc without --sort';
+        if (jsonMode) {
+          printJson(jsonError(error));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        printError(error);
+        process.exit(1);
+      }
+
+      // Validate display/sort fields when --type is specified (strict mode)
+      if (targeting.type && ((fields && fields.length > 0) || options.sort)) {
         const allFieldNames = getAllFieldsForType(schema, targeting.type);
-        for (const field of fields) {
+        const fieldNamesToValidate = [
+          ...(fields ?? []),
+          ...(options.sort ? [options.sort] : []),
+        ];
+
+        for (const field of fieldNamesToValidate) {
           if (!allFieldNames.has(field) && !RESERVED_DISPLAY_FIELDS.has(field)) {
             const fieldList = Array.from(allFieldNames);
             const suggestion = suggestFieldName(field, fieldList);
@@ -302,6 +351,10 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         childrenOf: options.childrenOf,
         descendantsOf: options.descendantsOf,
         depth,
+        count: options.count,
+        sortField: options.sort,
+        sortDesc: options.desc,
+        ...(limit !== undefined && { limit }),
       });
 
       // Save as dashboard if --save-as was provided
@@ -315,6 +368,10 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         if (targeting.body) definition.body = targeting.body;
         if (outputFormat !== 'default') definition.output = outputFormat;
         if (fields?.length) definition.fields = fields;
+        if (limit !== undefined) definition.limit = limit;
+        if (options.count) definition.count = true;
+        if (options.sort) definition.sort = options.sort;
+        if (options.desc) definition.desc = true;
 
         try {
           if (options.force) {
@@ -364,6 +421,10 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
 export interface ListOptions {
   outputFormat: ListOutputFormat;
   fields?: string[] | undefined;
+  limit?: number | undefined;
+  count?: boolean | undefined;
+  sortField?: string | undefined;
+  sortDesc?: boolean | undefined;
   // Open options
   open?: boolean | undefined;
   app?: string | undefined;
@@ -437,12 +498,23 @@ export async function listObjects(
     }
   }
 
-  // Sort by name
-  filteredFiles.sort((a, b) => {
-    const nameA = basename(a.path, '.md');
-    const nameB = basename(b.path, '.md');
-    return nameA.localeCompare(nameB);
-  });
+  const fileComparator = createFileComparator(vaultDir, options.sortField, options.sortDesc);
+  filteredFiles.sort(fileComparator);
+
+  const matchCount = filteredFiles.length;
+
+  if (options.count) {
+    if (jsonMode) {
+      console.log(JSON.stringify({ count: matchCount }, null, 2));
+    } else {
+      console.log(String(matchCount));
+    }
+    return;
+  }
+
+  if (options.limit !== undefined) {
+    filteredFiles = filteredFiles.slice(0, options.limit);
+  }
 
   // Handle no results
   if (filteredFiles.length === 0) {
@@ -527,14 +599,14 @@ export async function listObjects(
     case 'tree': {
       if (isRecursive) {
         const parentMap = buildParentMap(filteredFiles);
-        const tree = buildTree(filteredFiles, parentMap, options.depth);
+        const tree = buildTree(filteredFiles, parentMap, options.depth, fileComparator);
         if (treeHasNestedNotes(tree)) {
           printTree(tree, vaultDir, showPaths);
           return;
         }
       }
 
-      const directoryTree = buildDirectoryTree(filteredFiles, vaultDir, options.depth);
+      const directoryTree = buildDirectoryTree(filteredFiles, vaultDir, options.depth, fileComparator);
       printDirectoryTree(directoryTree, showPaths);
       return;
     }
@@ -642,6 +714,85 @@ function formatValue(value: unknown): string {
 // ============================================================================
 
 type FileWithFrontmatter = { path: string; frontmatter: Record<string, unknown> };
+type FileComparator = (a: FileWithFrontmatter, b: FileWithFrontmatter) => number;
+
+function compareByName(a: FileWithFrontmatter, b: FileWithFrontmatter): number {
+  return basename(a.path, '.md').localeCompare(basename(b.path, '.md'));
+}
+
+function getSortValue(file: FileWithFrontmatter, vaultDir: string, field: string): unknown {
+  if (field === 'name' || field === '_name') {
+    return basename(file.path, '.md');
+  }
+  if (field === '_path') {
+    return relative(vaultDir, file.path);
+  }
+  return file.frontmatter[field];
+}
+
+function isMissingSortValue(value: unknown): boolean {
+  return value === undefined ||
+    value === null ||
+    value === '' ||
+    (Array.isArray(value) && value.length === 0);
+}
+
+function normalizeSortValue(value: unknown): string | number | boolean {
+  if (Array.isArray(value)) {
+    return value.map(item => String(item)).join(', ');
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  return String(value);
+}
+
+function compareSortValues(a: unknown, b: unknown): number {
+  const normalizedA = normalizeSortValue(a);
+  const normalizedB = normalizeSortValue(b);
+
+  if (typeof normalizedA === 'number' && typeof normalizedB === 'number') {
+    return normalizedA - normalizedB;
+  }
+
+  if (typeof normalizedA === 'boolean' && typeof normalizedB === 'boolean') {
+    return Number(normalizedA) - Number(normalizedB);
+  }
+
+  return String(normalizedA).localeCompare(String(normalizedB), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
+
+function createFileComparator(
+  vaultDir: string,
+  sortField: string | undefined,
+  descending: boolean | undefined
+): FileComparator {
+  if (!sortField) {
+    return compareByName;
+  }
+
+  return (a, b) => {
+    const valueA = getSortValue(a, vaultDir, sortField);
+    const valueB = getSortValue(b, vaultDir, sortField);
+    const missingA = isMissingSortValue(valueA);
+    const missingB = isMissingSortValue(valueB);
+
+    if (missingA && missingB) {
+      return compareByName(a, b);
+    }
+    if (missingA) return 1;
+    if (missingB) return -1;
+
+    const comparison = compareSortValues(valueA, valueB);
+    if (comparison !== 0) {
+      return descending ? -comparison : comparison;
+    }
+    return compareByName(a, b);
+  };
+}
 
 /**
  * Build a map from note name -> parent note name from frontmatter.
@@ -750,7 +901,8 @@ interface DirectoryTreeNode {
 function buildTree(
   files: FileWithFrontmatter[],
   parentMap: Map<string, string>,
-  maxDepth?: number | undefined
+  maxDepth?: number | undefined,
+  fileComparator: FileComparator = compareByName
 ): TreeNode[] {
   // Create nodes for all files
   const nodeMap = new Map<string, TreeNode>();
@@ -780,7 +932,7 @@ function buildTree(
   // Compute depths and sort children
   function computeDepth(node: TreeNode, depth: number): void {
     node.depth = depth;
-    node.children.sort((a, b) => a.name.localeCompare(b.name));
+    node.children.sort((a, b) => fileComparator(a, b));
     for (const child of node.children) {
       computeDepth(child, depth + 1);
     }
@@ -790,7 +942,7 @@ function buildTree(
     computeDepth(root, 0);
   }
   
-  roots.sort((a, b) => a.name.localeCompare(b.name));
+  roots.sort((a, b) => fileComparator(a, b));
   
   // Filter by max depth if specified
   if (maxDepth !== undefined) {
@@ -842,7 +994,8 @@ function treeHasNestedNotes(nodes: TreeNode[]): boolean {
 function buildDirectoryTree(
   files: FileWithFrontmatter[],
   vaultDir: string,
-  maxDepth?: number | undefined
+  maxDepth?: number | undefined,
+  fileComparator: FileComparator = compareByName
 ): DirectoryTreeNode[] {
   const root: DirectoryTreeNode = {
     name: '',
@@ -894,7 +1047,7 @@ function buildDirectoryTree(
 
   const sortNode = (node: DirectoryTreeNode): void => {
     node.directories.sort((a, b) => a.name.localeCompare(b.name));
-    node.notes.sort((a, b) => basename(a.path, '.md').localeCompare(basename(b.path, '.md')));
+    node.notes.sort(fileComparator);
     for (const directory of node.directories) {
       sortNode(directory);
     }

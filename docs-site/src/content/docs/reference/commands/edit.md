@@ -51,6 +51,8 @@ bwrb edit "My Task" --json '{"status":"settled"}'
 bwrb edit -t task --where "status == 'active'" "Deploy" --json '{"priority":"high"}'
 ```
 
+`--json` mode rejects patch fields that are not defined for the resolved note type. Existing legacy or unknown fields in the note are preserved unless the patch changes them.
+
 ### Edit and Open
 
 ```bash
@@ -70,13 +72,13 @@ Edit supports all four targeting selectors. See [Targeting Model](/reference/tar
 bwrb edit -t task -p "Work/**" -w "status == 'active'" "Deploy"
 ```
 
-## Exact-name resolution
+## Query Resolution
 
-When you pass an exact note name and omit `--type`, `edit` searches across all types/paths:
+When you pass a note query and omit `--type`, `edit` uses the same name/path matching behavior as `search`:
 
 - **1 match:** edit proceeds
-- **0 matches:** error with suggestions (try `--type <type>` or `bwrb search --output paths`)
-- **>1 match:** error listing candidates; disambiguate with `--type`, `--path`, or a vault-relative path
+- **0 matches:** error
+- **>1 match with `--picker none` or JSON mode:** error listing candidates; disambiguate with `--type`, `--path`, or a vault-relative path
 
 ## Picker Modes
 

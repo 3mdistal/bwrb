@@ -40,6 +40,7 @@ import {
   hasAnyTargeting,
   type TargetingOptions,
 } from '../lib/targeting.js';
+import { unregisterIssuedNotePath } from '../lib/note-id.js';
 
 // ============================================================================
 // Types
@@ -317,7 +318,7 @@ async function handleSingleDelete(
   const effectivePickerMode: PickerMode = jsonMode ? 'none' : pickerMode;
 
   // JSON mode requires --force (no interactive confirmation)
-  if (jsonMode && !options.force) {
+  if (jsonMode && !options.force && !options.dryRun) {
     printJson(jsonError('JSON mode requires --force flag (no interactive confirmation)', {
       code: ExitCodes.VALIDATION_ERROR,
     }));
@@ -394,7 +395,9 @@ async function handleScopedDelete(
 ): Promise<void> {
   const effectivePickerMode: PickerMode = jsonMode ? 'none' : pickerMode;
 
-  if (jsonMode && !options.force) {
+  const isDryRun = !!options.dryRun || !options.execute;
+
+  if (jsonMode && !options.force && !isDryRun) {
     printJson(jsonError('JSON mode requires --force flag (no interactive confirmation)', {
       code: ExitCodes.VALIDATION_ERROR,
     }));
@@ -486,8 +489,6 @@ async function handleScopedDelete(
     process.exitCode = ExitCodes.VALIDATION_ERROR;
     return;
   }
-
-  const isDryRun = !!options.dryRun || !options.execute;
 
   await deleteResolvedFile({
     file: resolution.file,
@@ -643,6 +644,7 @@ async function handleBulkDelete(
   for (const file of files) {
     try {
       await unlink(file.path);
+      await unregisterIssuedNotePath(vaultDir, file.relativePath);
       deleted.push(file.relativePath);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -802,6 +804,7 @@ async function deleteResolvedFile({
 
   // Delete the file
   await unlink(fullPath);
+  await unregisterIssuedNotePath(vaultDir, relativePath);
 
   // Success output
   if (jsonMode) {

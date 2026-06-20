@@ -69,6 +69,8 @@ describe('help output contract snapshots', () => {
     expect(normalized).toContain('Schema introspection commands');
     expect(normalized).toContain('Commands:');
     expect(commandNames).toEqual([
+      'types',
+      'fields',
       'validate',
       'new',
       'edit',
@@ -79,6 +81,8 @@ describe('help output contract snapshots', () => {
       'history',
       'help',
     ]);
+    expect(normalized).toContain('bwrb schema types');
+    expect(normalized).toContain('bwrb schema fields task');
     expect(normalized).toContain('bwrb schema list objective/task');
     expect(normalized).toContain('bwrb schema list -t task --output json');
   });

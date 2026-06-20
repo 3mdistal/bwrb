@@ -624,6 +624,42 @@ milestone: "[[Active Milestone]]"
   });
 
   describe('schema list shorthand targeting', () => {
+    it('should support schema types as an alias for schema list', async () => {
+      const result = await runCLI(['schema', 'types'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Schema Types');
+      expect(result.stdout).toContain('objective');
+      expect(result.stdout).toContain('idea');
+    });
+
+    it('should support schema types in JSON mode', async () => {
+      const result = await runCLI(['schema', 'types', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.types.objective).toBeDefined();
+      expect(json.types.idea).toBeDefined();
+    });
+
+    it('should support schema fields <type> as an alias for schema list <type>', async () => {
+      const result = await runCLI(['schema', 'fields', 'task'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Type: task');
+      expect(result.stdout).toContain('Own fields:');
+      expect(result.stdout).toContain('status');
+    });
+
+    it('should support schema fields <type> in JSON mode', async () => {
+      const result = await runCLI(['schema', 'fields', 'task', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.type_path).toBe('task');
+      expect(json.fields.status).toBeDefined();
+    });
+
     it('should treat positional typePath as alias for "schema list type <name>"', async () => {
       const result = await runCLI(['schema', 'list', 'idea'], vaultDir);
 
@@ -1048,6 +1084,24 @@ milestone: "[[Active Milestone]]"
       expect(result.stdout).toContain('idea');
     });
 
+    it('should output JSON for "schema list types --output json"', async () => {
+      const result = await runCLI(['schema', 'list', 'types', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.data.types).toContain('idea');
+    });
+
+    it('should output JSON for "schema list fields --output json"', async () => {
+      const result = await runCLI(['schema', 'list', 'fields', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.data.fields.some((field: { field: string }) => field.field === 'status')).toBe(true);
+    });
+
     it('should output JSON when --output json is specified', async () => {
       const result = await runCLI(['schema', 'list', '--output', 'json'], vaultDir);
 
@@ -1339,6 +1393,8 @@ milestone: "[[Active Milestone]]"
       expect(commands).not.toContain('edit-type');
       expect(commands).not.toContain('edit-field');
       // Modern commands should appear
+      expect(commands).toContain('types');
+      expect(commands).toContain('fields');
       expect(commands).toContain('new');
       expect(commands).toContain('edit');
       expect(commands).toContain('delete');
@@ -1564,8 +1620,6 @@ milestone: "[[Active Milestone]]"
     });
 
     it('should pass --vault to schema list fields (3 levels deep)', async () => {
-      // Note: --output json has a pre-existing bug in schema list fields (not related to #134)
-      // so we test text output mode instead
       const result = await runCLI(['schema', 'list', 'fields'], vaultDir);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Fields:');

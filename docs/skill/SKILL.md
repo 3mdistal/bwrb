@@ -57,15 +57,19 @@ Before creating or querying notes, understand the vault's schema:
 ```bash
 # List all types and their structure
 bwrb schema list
+bwrb schema types
 
 # Show all types with fields inline (full overview)
 bwrb schema list --verbose
+bwrb schema types --verbose
 
 # Show specific type definition with fields
 bwrb schema list type task
+bwrb schema fields task
 
 # Get JSON output for parsing
 bwrb schema list type task --output json
+bwrb schema fields task --output json
 bwrb schema list --verbose --output json  # All types with fields as JSON
 ```
 
@@ -140,6 +144,14 @@ bwrb list task --where "priority == 'high' && status != 'done'" --output json
 # Include specific fields in output
 bwrb list task --fields status,priority --output json
 
+# Sort matches before reading or limiting output
+bwrb list task --sort deadline --output json
+bwrb list task --sort priority --desc --output json
+
+# Limit or count matches
+bwrb list task --limit 5 --output json
+bwrb list task --count --output json
+
 # Target by stable id
 bwrb list --id "<uuid>" --output json
 
@@ -163,6 +175,9 @@ bwrb new task --no-template --json '{"name": "Quick task"}'
 # Include body sections
 bwrb new task --json '{"name": "Task", "_body": {"Steps": ["Step 1", "Step 2"]}}'
 
+# Include a raw Markdown body
+bwrb new task --json '{"name": "Task", "_body": "## Notes\n\n- Captured from a script."}'
+
 # Skip instance scaffolding for templates that define instances
 bwrb new task --template epic --no-instances --json '{"name": "Ship feature"}'
 ```
@@ -172,6 +187,15 @@ Some templates and schema types define **instance scaffolding** (child notes cre
 When `bwrb new --json` runs instance scaffolding, the response includes an `instances` object with the created, skipped, and error lists. This object is omitted when `--no-instances` is set.
 
 When `bwrb new --json` normalizes a filename (for example removing `/`, `?`, or other non-portable characters), the JSON response includes `nameTransformed` with `original`, `sanitized`, and `filename`. Long relative paths over 200 characters include `pathLengthWarning`; paths over 260 characters are rejected.
+
+Before relying on templates in automation, check template health:
+
+```bash
+bwrb template list --output json
+bwrb template validate --output json
+```
+
+`template list --output json` includes `valid`, `status`, and `issues` per template. `template validate` exits non-zero when any template is invalid and includes suggested repairs for unknown fields, invalid defaults, filename-pattern references, body placeholders, constraints, and instance defaults.
 
 ```json
 {
@@ -204,6 +228,7 @@ bwrb edit --type task --where "status == 'active'" "Deploy" --json '{"status": "
 
 Notes:
 - If multiple notes share the same name, `bwrb edit` errors and lists candidates. Disambiguate with `--type`, `--path`, or a vault-relative path.
+- `bwrb new --json` rejects unknown frontmatter fields after merging template defaults. `bwrb edit --json` rejects unknown fields in the patch.
 
 ### Deleting Notes
 
@@ -219,6 +244,9 @@ bwrb delete --type task
 
 # Explicit dry-run preview
 bwrb delete --type task --dry-run
+
+# Single-file JSON dry-run does not need --force
+bwrb delete "Note Name" --dry-run --output json
 
 # Bulk delete with confirmation (skip with --force)
 bwrb delete --type task --execute --force

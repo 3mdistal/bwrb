@@ -43,6 +43,8 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
 
   const result: BulkResult = {
     dryRun: !execute,
+    candidateFiles: 0,
+    matchedFiles: 0,
     totalFiles: 0,
     affectedFiles: 0,
     changes: [],
@@ -89,6 +91,7 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
     files = files.filter(file => textMatchingPaths!.has(file.path));
   }
 
+  result.candidateFiles = files.length;
   result.totalFiles = files.length;
 
   const parsedFiles: {
@@ -126,6 +129,8 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
     }
     filteredFiles = whereResult.files;
   }
+  result.matchedFiles = filteredFiles.length;
+  result.totalFiles = filteredFiles.length;
 
   // Filter and collect changes
   const filesToModify: typeof parsedFiles = [];
@@ -218,6 +223,8 @@ async function executeBulkWithMove(
 
   const result: BulkResult = {
     dryRun: !execute,
+    candidateFiles: 0,
+    matchedFiles: 0,
     totalFiles: 0,
     affectedFiles: 0,
     changes: [],
@@ -261,6 +268,7 @@ async function executeBulkWithMove(
     files = files.filter(file => textMatchingPaths!.has(file.path));
   }
 
+  result.candidateFiles = files.length;
   result.totalFiles = files.length;
 
   const parsedFiles: {
@@ -296,6 +304,8 @@ async function executeBulkWithMove(
     }
     filteredFiles = whereResult.files;
   }
+  result.matchedFiles = filteredFiles.length;
+  result.totalFiles = filteredFiles.length;
 
   const filesToMove = filteredFiles.map(file => file.path);
 

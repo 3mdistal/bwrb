@@ -217,7 +217,6 @@ Examples:
   # Content search
   bwrb search "deploy" --body              # Search all notes for "deploy"
   bwrb search "deploy" -b -t task          # Search only in tasks
-  bwrb search "TODO" -b --status!=done     # Simple filter syntax
   bwrb search "TODO" -b --where "status != 'done'"  # Expression filter
   bwrb search "error.*log" -b --regex      # Regex search
   bwrb search "deploy" -b --output json    # JSON output with matches
@@ -225,6 +224,7 @@ Examples:
   
   # Piping
   bwrb search "bug" -t --output paths | xargs -I {} code {}`)
+  .allowExcessArguments(false)
   .action(async (query: string | undefined, options: SearchOptions, cmd: Command) => {
     // Resolve output format from deprecated flags and new --output option
     const outputFormat = resolveSearchOutputFormat(options);

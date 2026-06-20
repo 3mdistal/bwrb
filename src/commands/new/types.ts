@@ -56,7 +56,7 @@ export interface WritePlanArgs {
 
 export interface JsonNoteInputResult {
   frontmatter: Record<string, unknown>;
-  bodyInput?: Record<string, unknown>;
+  bodyInput?: string | Record<string, unknown>;
 }
 
 export interface FileExistsStrategy {

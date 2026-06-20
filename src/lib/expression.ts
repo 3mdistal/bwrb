@@ -155,12 +155,16 @@ function evaluateBinary(expr: BinaryExpression, context: EvalContext): unknown {
     case '=~':
       return matchesRegex(left, right);
     case '<':
+      if (isEmptyComparisonOperand(left) || isEmptyComparisonOperand(right)) return false;
       return compareValues(left, right) < 0;
     case '>':
+      if (isEmptyComparisonOperand(left) || isEmptyComparisonOperand(right)) return false;
       return compareValues(left, right) > 0;
     case '<=':
+      if (isEmptyComparisonOperand(left) || isEmptyComparisonOperand(right)) return false;
       return compareValues(left, right) <= 0;
     case '>=':
+      if (isEmptyComparisonOperand(left) || isEmptyComparisonOperand(right)) return false;
       return compareValues(left, right) >= 0;
     case '&&':
       return Boolean(left) && Boolean(right);
@@ -447,6 +451,13 @@ function compareValues(a: unknown, b: unknown): number {
 
   // Regular string comparison
   return strA.localeCompare(strB);
+}
+
+function isEmptyComparisonOperand(value: unknown): boolean {
+  return value === null ||
+    value === undefined ||
+    value === '' ||
+    (Array.isArray(value) && value.length === 0);
 }
 
 function matchesRegex(value: unknown, pattern: unknown): boolean {

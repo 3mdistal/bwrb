@@ -356,6 +356,23 @@ Some content
       expect(result.stdout).toContain('--preview');
       expect(result.stdout).toContain('fzf picker');
     });
+
+    it('should not advertise unsupported simple filter options', async () => {
+      const result = await runCLI(['search', '--help'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain('--status!=done');
+      expect(result.stdout).toContain('--where "status !=');
+    });
+  });
+
+  describe('argument validation', () => {
+    it('should reject extra positional arguments', async () => {
+      const result = await runCLI(['search', 'TODO', '--body', 'status!=done', '--output', 'json'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toMatch(/too many arguments/i);
+    });
   });
 
   describe('--preview flag', () => {

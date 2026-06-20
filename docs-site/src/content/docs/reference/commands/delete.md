@@ -79,9 +79,11 @@ bwrb delete "My Note" --force
 # Scripting mode
 bwrb delete "My Note" --output json --force
 
-# Preview delete without removing
-bwrb delete "My Note" --dry-run
+# Preview delete without removing (no --force needed)
+bwrb delete "My Note" --dry-run --output json
 ```
+
+When a note is actually deleted, bwrb also removes the matching path from `.bwrb/ids.jsonl`.
 
 ### Bulk Mode
 
