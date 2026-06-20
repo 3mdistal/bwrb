@@ -13,6 +13,7 @@ import {
   type OwnershipMap,
   type OwnedFieldInfo,
   type OwnerInfo,
+  getOptionValues,
 } from '../types/schema.js';
 
 const META_TYPE = 'meta';
@@ -98,6 +99,7 @@ export function resolveSchema(schema: Schema): LoadedSchema {
   for (const [name, typeDef] of Object.entries(schema.types)) {
     types.set(name, {
       name,
+      description: typeDef.description,
       parent: typeDef.extends ?? (name === META_TYPE ? undefined : META_TYPE),
       children: [],
       fields: { ...typeDef.fields },
@@ -173,6 +175,7 @@ export function resolveSchema(schema: Schema): LoadedSchema {
 function createImplicitMeta(): ResolvedType {
   return {
     name: META_TYPE,
+    description: undefined,
     parent: undefined,
     children: [],
     fields: {},
@@ -274,6 +277,11 @@ function computeEffectiveFields(
         // where each type has its own fixed value (e.g., type: task vs type: objective)
         if (fieldDef.value !== undefined) {
           fields[fieldName] = { ...fields[fieldName], value: fieldDef.value };
+        }
+        // Allow 'description' override - a subtype can document an inherited
+        // field with meaning specific to its context.
+        if (fieldDef.description !== undefined) {
+          fields[fieldName] = { ...fields[fieldName], description: fieldDef.description };
         }
       } else {
         // New field
@@ -508,7 +516,7 @@ export function getDescendants(schema: LoadedSchema, typeName: string): string[]
  * Options are defined inline on the field.
  */
 export function getFieldOptions(field: Field): string[] {
-  return field.options ?? [];
+  return getOptionValues(field.options);
 }
 
 /**
@@ -579,7 +587,7 @@ export function getOptionsForField(
   if (!type) return [];
   
   const field = type.fields[fieldName];
-  return field?.options ?? [];
+  return getOptionValues(field?.options);
 }
 
 /**

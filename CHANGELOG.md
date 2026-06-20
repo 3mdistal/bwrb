@@ -4,6 +4,16 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Self-documenting schema: `description` on types, fields, and select options**
+  - Add a `description` to any type or field, and to individual `select` options (via a `{ value, description }` form that coexists with bare-string options)
+  - `bwrb schema list` surfaces descriptions — a dim suffix in the overview tree, dedicated lines in `type <name>` detail, and a `description` key in `--output json` — so `bwrb schema list --output json` is a queryable source of what each type/field/option is for
+  - Descriptions are inherited like fields and can be overridden by a subtype
+  - Interactive `bwrb schema new/edit type` and `new/edit field` now prompt for descriptions; the `bwrb new` select picker shows option descriptions as hints
+  - `bwrb audit --check-schema-docs` (opt-in) reports types/fields with no description
+  - Description-only edits are treated as cosmetic: they never trigger a schema migration
+
 ## [0.1.8] - 2026-03-11
 
 Changes since `v0.1.7`.

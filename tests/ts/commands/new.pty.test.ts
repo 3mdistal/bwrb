@@ -789,4 +789,45 @@ defaults:
       );
     }, 30000);
   });
+
+  describe('select option descriptions', () => {
+    const SCHEMA_WITH_OPTION_DESCRIPTIONS = {
+      version: 2,
+      types: {
+        chore: {
+          output_dir: 'Chores',
+          fields: {
+            type: { value: 'chore' },
+            status: {
+              prompt: 'select',
+              options: [
+                { value: 'active', description: 'currently being worked on' },
+                'backlog',
+              ],
+            },
+          },
+          field_order: ['type', 'status'],
+        },
+      },
+    };
+
+    it('renders a select option description as a picker hint', async () => {
+      await withTempVault(
+        ['new', 'chore'],
+        async (proc) => {
+          await proc.waitFor('Name', 10000);
+          await proc.typeAndEnter('Hint Test');
+
+          // The select picker should render the option's description as a hint
+          await proc.waitFor('status', 10000);
+          await proc.waitFor('currently being worked on', 5000);
+
+          // Choose an option to finish (1 = skip for optional field)
+          proc.write('1');
+          await proc.waitForStable(200);
+        },
+        { schema: SCHEMA_WITH_OPTION_DESCRIPTIONS }
+      );
+    }, 30000);
+  });
 });

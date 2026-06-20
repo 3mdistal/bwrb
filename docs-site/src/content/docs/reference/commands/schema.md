@@ -46,6 +46,13 @@ bwrb schema migrate --execute
 
 List schema contents including types, fields, and detailed type information.
 
+When a type, field, or select option has a [`description`](/reference/schema/#field-properties-reference),
+`schema list` surfaces it — as a dim suffix in the overview tree, on its own line
+in `type <name>` detail view, and as a `description` key in `--output json`. This
+makes the schema self-documenting: agents and humans can run
+`bwrb schema list --output json` to learn what each type and field is for instead
+of relying on out-of-band notes.
+
 ### Synopsis
 
 ```bash

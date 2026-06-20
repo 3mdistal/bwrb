@@ -163,6 +163,10 @@
           }
         },
         "field_order": { "type": "array", "items": { "type": "string" }, "description": "Field ordering (v2 model)" },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this type is for and when to use it. Surfaced by `bwrb schema list`."
+        },
         "recursive": { "type": "boolean", "description": "Whether this type can contain instances of itself" }
       },
       "anyOf": [
@@ -187,15 +191,32 @@
         },
         "label": {
           "type": "string",
-          "description": "Label shown to user for input prompts"
+          "description": "Label shown to user for input prompts (the imperative prompt text, e.g. \"Select status\"). Distinct from `description`, which explains what the field is for."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this field is for and when to use it. Surfaced by `bwrb schema list`; distinct from `label`."
         },
         "options": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Allowed values for select fields (inline options)"
+          "items": {
+            "anyOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["value"],
+                "properties": {
+                  "value": { "type": "string", "description": "The option value stored in frontmatter" },
+                  "description": { "type": "string", "description": "What this option means / when to choose it" }
+                }
+              }
+            ]
+          },
+          "description": "Allowed values for select fields (inline options). Each entry is a bare value or a { value, description } pair that documents what the option means."
         },
         "source": {
-          "description": "Type name(s) for relation prompts",
+          "description": "Type name(s) for relation prompts. When a relation's value is ambiguous because two notes share a name, path-qualify the link (e.g. `[[contexts/Betson]]`); see the search command docs for the shortest-unambiguous-form rule.",
           "anyOf": [
             { "type": "string" },
             { "type": "array", "items": { "type": "string" } }

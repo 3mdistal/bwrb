@@ -12,7 +12,7 @@ import { queryByType, formatValue } from '../../lib/vault.js';
 import { expandStaticValue } from '../../lib/local-date.js';
 import { extractSectionItems } from '../../lib/frontmatter.js';
 import { UserCancelledError } from '../../lib/errors.js';
-import type { BodySection, Field, LoadedSchema } from '../../types/schema.js';
+import { type BodySection, type Field, type LoadedSchema, getOptionValues, getOptionDescription } from '../../types/schema.js';
 
 export async function promptField(
   schema: LoadedSchema,
@@ -27,7 +27,8 @@ export async function promptField(
   switch (field.prompt) {
     case 'select': {
       if (!field.options || field.options.length === 0) return field.default;
-      const selectOptions = field.options;
+      const selectOptions = getOptionValues(field.options);
+      const optionDescriptions = field.options;
 
       if (field.multiple) {
         const selected = await promptMultiSelect(`Select ${fieldName}:`, selectOptions);
@@ -38,16 +39,22 @@ export async function promptField(
       }
 
       let options: string[];
+      let hints: string[];
       let skipLabel: string | undefined;
+      const valueHints = selectOptions.map(
+        (value) => getOptionDescription(optionDescriptions, value) ?? ''
+      );
       if (!field.required) {
         const defaultStr = field.default !== undefined ? String(field.default) : undefined;
         skipLabel = defaultStr ? `(skip) [${defaultStr}]` : '(skip)';
         options = [skipLabel, ...selectOptions];
+        hints = ['', ...valueHints];
       } else {
         options = selectOptions;
+        hints = valueHints;
       }
 
-      const selected = await promptSelection(`Select ${fieldName}:`, options);
+      const selected = await promptSelection(`Select ${fieldName}:`, options, hints);
       if (selected === null) {
         throw new UserCancelledError();
       }

@@ -67,6 +67,7 @@ Types define categories of notes. Each type has a name (the object key) and a de
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `extends` | string | `"meta"` | Parent type name |
+| `description` | string | — | What this type is for and when to use it. Surfaced by `bwrb schema list` |
 | `fields` | object | `{}` | Field definitions |
 | `field_order` | array | — | Order of fields in frontmatter |
 | `body_sections` | array | — | Body structure after frontmatter |
@@ -239,6 +240,26 @@ Choose from predefined options.
 }
 ```
 
+#### Documenting options
+
+Any option can be written as a `{ value, description }` object instead of a bare
+string. The description explains what the value means; it shows up as a hint in
+the `bwrb new` picker and in `bwrb schema list` / its JSON output. Bare strings
+and objects can be mixed freely in the same list:
+
+```json
+{
+  "status": {
+    "prompt": "select",
+    "options": [
+      { "value": "active", "description": "currently being worked on" },
+      { "value": "waiting", "description": "blocked; trigger noted in the body" },
+      "backlog"
+    ]
+  }
+}
+```
+
 For multi-select (array output):
 
 ```json
@@ -269,6 +290,11 @@ Link to other notes in the vault. Shows a picker filtered by type.
 - Specific type: `"source": "milestone"` — only milestones
 - Type branch: `"source": "objective"` — objectives and all descendants (task, milestone, project, etc.)
 - Any note: `"source": "any"` — entire vault
+
+**Name collisions:** when two notes share a name, a relation value is stored in
+its shortest unambiguous form — path-qualified (e.g. `[[contexts/Betson]]`) so it
+resolves to the right note. See the [`search` command](/reference/commands/search/)
+for the full link-resolution rule.
 
 **Filtering results:**
 
@@ -355,10 +381,11 @@ Complete list of field properties:
 |----------|------|------------|-------------|
 | `value` | string | static | Fixed value (mutually exclusive with `prompt`) |
 | `prompt` | string | prompted | Prompt type: `text`, `number`, `boolean`, `date`, `select`, `relation`, `list` |
-| `label` | string | prompted | Custom label shown during prompting |
+| `label` | string | prompted | Custom label shown during prompting (the imperative prompt text) |
+| `description` | string | any | What this field is for and when to use it. Surfaced by `bwrb schema list`; distinct from `label` |
 | `required` | boolean | prompted | Whether field must have a value (default: `false`) |
 | `default` | string | prompted | Default value if user skips prompt |
-| `options` | array | `select` | Allowed values for selection |
+| `options` | array | `select` | Allowed values: bare strings or `{ value, description }` objects |
 | `multiple` | boolean | `select`, `relation` | Allow multiple values (default: `false`) |
 | `source` | string | `relation` | Type name to filter picker, or `"any"` |
 | `filter` | object | `relation` | Filter conditions for source query |

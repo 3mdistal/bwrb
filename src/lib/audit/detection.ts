@@ -38,7 +38,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { suggestOptionValue, suggestFieldName } from '../validation.js';
 import { searchContent } from '../content-search.js';
 import { applyWhereExpressions } from '../where-targeting.js';
-import type { LoadedSchema, Field } from '../../types/schema.js';
+import { type LoadedSchema, type Field, getOptionValues } from '../../types/schema.js';
 import {
   type AuditIssue,
   type FileAuditResult,
@@ -475,7 +475,7 @@ export async function auditFile(
 
     // Check select field options
     if (field.options && field.options.length > 0) {
-      const validOptions = field.options;
+      const validOptions = getOptionValues(field.options);
       if (Array.isArray(value)) {
         value.forEach((item, index) => {
           if (typeof item !== 'string') return;
@@ -1565,7 +1565,7 @@ function checkHygieneIssues(
     
     // Check enum casing for select fields
     if (field?.options && field.options.length > 0) {
-      const enumIssue = checkUnknownEnumCasing(fieldName, value, field.options);
+      const enumIssue = checkUnknownEnumCasing(fieldName, value, getOptionValues(field.options));
       if (enumIssue) {
         issues.push(enumIssue);
       }

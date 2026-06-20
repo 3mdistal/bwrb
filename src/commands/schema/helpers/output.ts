@@ -20,7 +20,7 @@ import {
 } from '../../../lib/schema.js';
 import { printError } from '../../../lib/prompt.js';
 import { printJson, jsonError, ExitCodes } from '../../../lib/output.js';
-import type { LoadedSchema, Field, BodySection, ResolvedType } from '../../../types/schema.js';
+import { type LoadedSchema, type Field, type BodySection, type ResolvedType, getOptionValues } from '../../../types/schema.js';
 import { getTtyContext, type TtyContext } from '../../../lib/tty/context.js';
 import { truncateAnsi, visibleWidth, wrapAnsi } from '../../../lib/tty/layout.js';
 import { renderTable } from '../../../lib/tty/table.js';
@@ -75,6 +75,7 @@ export function outputTypeDetailsJson(schema: LoadedSchema, typePath: string): v
 
   const output: Record<string, unknown> = {
     type_path: typePath,
+    description: typeDef.description,
     extends: typeDef.parent,
     output_dir: getOutputDir(schema, typePath),
     filename: typeDef.filename,
@@ -122,6 +123,8 @@ function formatTypeForJson(
     output_dir: getOutputDir(schema, typePath),
   };
 
+  if (typeDef.description) result.description = typeDef.description;
+
   // Add subtypes if present (children in new model)
   if (hasSubtypes(typeDef)) {
     result.subtypes = Object.fromEntries(
@@ -155,7 +158,11 @@ function formatFieldForJson(field: Field): Record<string, unknown> {
     result.type = 'auto';
   }
 
-  // Add options if applicable
+  // Description (what the field is for); distinct from label
+  if (field.description) result.description = field.description;
+
+  // Add options if applicable. Options retain their { value, description }
+  // shape when annotated, so per-option descriptions flow into JSON verbatim.
   if (field.options && field.options.length > 0) {
     result.options = field.options;
   }
@@ -233,6 +240,9 @@ function printTypeTree(
   // Build type label - always show directory since getOutputDir always returns a value
   let label = chalk.green(typeName);
   label += chalk.gray(` -> ${outputDir}`);
+  if (typeDef.description) {
+    label += chalk.dim(`  — ${typeDef.description}`);
+  }
 
   printTreeLine(indent, label, context);
 
@@ -286,6 +296,11 @@ export function showTypeDetails(schema: LoadedSchema, typePath: string): void {
   }
 
   console.log(chalk.bold(`\nType: ${typePath}\n`));
+
+  // Description (what this type is for), when documented
+  if (typeDef.description) {
+    printLabelValue('Description', typeDef.description, context);
+  }
 
   // Basic info - always show output dir since getOutputDir always returns a value
   const outputDir = getOutputDir(schema, typePath);
@@ -365,10 +380,11 @@ function printFieldDetails(
   const details: string[] = [];
 
   if (field.options && field.options.length > 0) {
+    const optionValues = getOptionValues(field.options);
     if (context.isTTY) {
-      details.push(`options=[${field.options.slice(0, 5).join(', ')}${field.options.length > 5 ? '...' : ''}]`);
+      details.push(`options=[${optionValues.slice(0, 5).join(', ')}${optionValues.length > 5 ? '...' : ''}]`);
     } else {
-      details.push(`options=[${field.options.join(', ')}]`);
+      details.push(`options=[${optionValues.join(', ')}]`);
     }
   }
 
@@ -393,20 +409,54 @@ function printFieldDetails(
   const prefix = `${indent}${chalk.yellow(name)}: ${type}`;
   const suffix = details.length > 0 ? ` ${chalk.gray(details.join(' '))}` : '';
 
+  const content = details.join(' ');
   if (!context.isTTY || !context.width) {
     console.log(prefix + suffix);
-    return;
-  }
-
-  const content = details.join(' ');
-  if (!content) {
+  } else if (!content) {
     console.log(prefix);
-    return;
+  } else {
+    const wrapped = wrapAnsi(content, context.width, {
+      indent: `${prefix} `,
+      hangingIndent: ' '.repeat(visibleWidth(prefix) + 1),
+    });
+    for (const line of wrapped) {
+      console.log(line);
+    }
   }
 
-  const wrapped = wrapAnsi(content, context.width, {
-    indent: `${prefix} `,
-    hangingIndent: ' '.repeat(visibleWidth(prefix) + 1),
+  // Field description on its own dim line, then any per-option descriptions.
+  printFieldDescription(field, indent, context);
+}
+
+/**
+ * Print a field's description and any per-option descriptions as dim, indented
+ * lines beneath the field's main line.
+ */
+function printFieldDescription(field: Field, indent: string, context: TtyContext): void {
+  const descIndent = `${indent}  `;
+  if (field.description) {
+    printDimWrapped(field.description, descIndent, context);
+  }
+  if (field.options) {
+    for (const option of field.options) {
+      if (typeof option !== 'string' && option.description) {
+        printDimWrapped(`${option.value} — ${option.description}`, `${descIndent}  `, context);
+      }
+    }
+  }
+}
+
+/**
+ * Print dim text, wrapped to terminal width when interactive.
+ */
+function printDimWrapped(text: string, indent: string, context: TtyContext): void {
+  if (!context.isTTY || !context.width) {
+    console.log(`${indent}${chalk.dim(text)}`);
+    return;
+  }
+  const wrapped = wrapAnsi(chalk.dim(text), context.width, {
+    indent,
+    hangingIndent: indent,
   });
   for (const line of wrapped) {
     console.log(line);
@@ -480,6 +530,9 @@ function printTypeTreeVerbose(
   }
   const effectiveOutputDir = getOutputDir(schema, typePath);
   header += chalk.gray(` -> ${effectiveOutputDir}`);
+  if (typeDef.description) {
+    header += chalk.dim(`  — ${typeDef.description}`);
+  }
 
   printTreeLine(indent, header, context);
 
@@ -647,6 +700,8 @@ export function outputSchemaVerboseJson(schema: LoadedSchema): void {
     const typeOutput: Record<string, unknown> = {
       name: typeName,
     };
+
+    if (typeDef.description) typeOutput.description = typeDef.description;
 
     // Add extends if present (hide implicit 'meta' parent for cleaner output)
     if (typeDef.parent && typeDef.parent !== 'meta') {

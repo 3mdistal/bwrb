@@ -121,12 +121,13 @@ async function readLineFromStdin(timeoutMs: number): Promise<string | null> {
  */
 export async function promptSelection(
   message: string,
-  options: string[]
+  options: string[],
+  hints?: string[]
 ): Promise<PromptResult<string>> {
   if (!isInteractive()) {
     throw nonInteractivePromptError('interactive prompts are disabled. Re-run in a TTY or use non-interactive flags.');
   }
-  return numberedSelect(message, options);
+  return numberedSelect(message, options, hints);
 }
 
 /**

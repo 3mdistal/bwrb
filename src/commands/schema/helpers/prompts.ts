@@ -11,7 +11,33 @@ import {
 } from '../../../lib/prompt.js';
 import { getTypeNames } from '../../../lib/schema.js';
 import { validateFieldName } from './validation.js';
-import type { LoadedSchema, Field } from '../../../types/schema.js';
+import type { LoadedSchema, Field, FieldOption } from '../../../types/schema.js';
+
+/**
+ * Prompt for an optional field description.
+ * Returns the trimmed description, '' if skipped, or null if the user cancels.
+ */
+async function promptFieldDescription(): Promise<string | null> {
+  const result = await promptInput('Description (what is this field for? blank to skip)');
+  if (result === null) return null;
+  return result.trim();
+}
+
+/**
+ * Given the raw option values, prompt for an optional description per option.
+ * Returns options as bare strings (when skipped) or { value, description }
+ * objects (when described), or null if the user cancels.
+ */
+async function promptOptionDescriptions(values: string[]): Promise<FieldOption[] | null> {
+  const options: FieldOption[] = [];
+  for (const value of values) {
+    const desc = await promptInput(`Description for option "${value}" (blank to skip)`);
+    if (desc === null) return null;
+    const trimmed = desc.trim();
+    options.push(trimmed ? { value, description: trimmed } : value);
+  }
+  return options;
+}
 
 /**
  * Prompt for field definition interactively.
@@ -79,7 +105,9 @@ export async function promptFieldDefinition(
         printError('Select fields require at least one option');
         return promptFieldDefinition(schema);
       }
-      field.options = optionsResult;
+      const annotated = await promptOptionDescriptions(optionsResult);
+      if (annotated === null) return null;
+      field.options = annotated;
     }
     
     // For dynamic, get source type
@@ -109,7 +137,11 @@ export async function promptFieldDefinition(
       }
     }
   }
-  
+
+  const description = await promptFieldDescription();
+  if (description === null) return null;
+  if (description) field.description = description;
+
   return { name, field };
 }
 
@@ -186,7 +218,9 @@ export async function promptSingleFieldDefinition(
       if (optionsResult.length === 0) {
         throw new Error('Select fields require at least one option');
       }
-      field.options = optionsResult;
+      const annotated = await promptOptionDescriptions(optionsResult);
+      if (annotated === null) return null;
+      field.options = annotated;
     }
     
     // For relation, get source type
@@ -215,6 +249,10 @@ export async function promptSingleFieldDefinition(
       }
     }
   }
-  
+
+  const description = await promptFieldDescription();
+  if (description === null) return null;
+  if (description) field.description = description;
+
   return { name, field };
 }

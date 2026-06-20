@@ -3,7 +3,7 @@
  * Compares two schemas and generates a migration plan.
  */
 
-import { Schema, Field } from '../../types/schema.js';
+import { Schema, Field, getOptionValues } from '../../types/schema.js';
 import {
   MigrationPlan,
   MigrationOp,
@@ -199,16 +199,27 @@ function detectFieldChanges(
  */
 function detectFieldPropertyChanges(oldField: Field, newField: Field): string[] {
   const changes: string[] = [];
-  
-  // Properties that matter for migration
-  const props: (keyof Field)[] = ['options', 'source', 'required', 'multiple'];
-  
+
+  // Compare option *values* only. Per-option descriptions are cosmetic metadata
+  // (they document what a value means, not what values are allowed), so adding
+  // or editing a description must not register as a migration-relevant change.
+  if (
+    JSON.stringify(getOptionValues(oldField.options)) !==
+    JSON.stringify(getOptionValues(newField.options))
+  ) {
+    changes.push('options');
+  }
+
+  // Other properties that matter for migration. Note: `description` and `label`
+  // are intentionally excluded — they are documentation, never data shape.
+  const props: (keyof Field)[] = ['source', 'required', 'multiple'];
+
   for (const prop of props) {
     if (JSON.stringify(oldField[prop]) !== JSON.stringify(newField[prop])) {
       changes.push(prop);
     }
   }
-  
+
   return changes;
 }
 
