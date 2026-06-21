@@ -10,6 +10,7 @@ import {
 } from '../../lib/note-id.js';
 import { ensureOwnedOutputDir, formatValue } from '../../lib/vault.js';
 import { getTypeDefByPath } from '../../lib/schema.js';
+import { normalizeDateFields } from '../../lib/validation.js';
 import { ExitCodes, jsonError } from '../../lib/output.js';
 import { printWarning } from '../../lib/prompt.js';
 import type { NoteCreationResult, WritePlanArgs, FileExistsStrategy, OwnershipMode, CreationMode } from './types.js';
@@ -83,6 +84,19 @@ export async function writeNotePlan(
   if (existsSync(filePath)) {
     await fileExistsStrategy.onExists(filePath, args.vaultDir);
   }
+
+  // Normalize date fields to canonical YYYY-MM-DD before writing, using the
+  // same logic as the audit/validation and edit layers. This keeps freshly
+  // created notes passing `bwrb audit` regardless of the accepted input format
+  // (e.g. unambiguous MM/DD/YYYY) while preserving valid partial dates per the
+  // field's granularity. Applies to all create paths (json/interactive),
+  // covering user-supplied values, schema/template defaults, and interpolated
+  // date expressions (today(), @today, {date}).
+  args.content.frontmatter = normalizeDateFields(
+    args.schema,
+    args.typePath,
+    args.content.frontmatter
+  );
 
   const noteId = await generateUniqueNoteId(args.vaultDir);
   args.content.frontmatter.id = noteId;
