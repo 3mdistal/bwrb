@@ -68,6 +68,25 @@ type: idea
 `
   );
 
+  // Tie-break subjects: a real note named "Zed" and a different note whose
+  // alias is "Zed". Both score 1.0 for the query "Zed"; the name match must win.
+  await writeFile(
+    join(vaultDir, 'People', 'Zed.md'),
+    `---
+type: person
+---
+`
+  );
+  await writeFile(
+    join(vaultDir, 'People', 'Zachary.md'),
+    `---
+type: person
+aliases:
+  - Zed
+---
+`
+  );
+
   return vaultDir;
 }
 
@@ -198,6 +217,34 @@ describe('search --fuzzy', () => {
     expect(result.stdout.split('\n')[0]).toBe('[[Steve Yegge]]');
   });
 
+  it('ranks an exact name match above an exact alias match at equal score', async () => {
+    // "Zed" is both the name of one note and the alias of another; both score
+    // 1.0. The documented "exact match ranks first" contract means the real
+    // name match (Zed) must rank above the aliased match (Zachary).
+    const result = await runCLI(
+      ['search', 'Zed', '--fuzzy', '--output', 'json'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    const json = JSON.parse(result.stdout);
+
+    const zed = json.data.find((d: { name: string }) => d.name === 'Zed');
+    const zachary = json.data.find((d: { name: string }) => d.name === 'Zachary');
+    expect(zed).toBeDefined();
+    expect(zachary).toBeDefined();
+    expect(zed.score).toBe(1);
+    expect(zed.matchedField).toBe('name');
+    expect(zachary.score).toBe(1);
+    expect(zachary.matchedField).toBe('alias');
+
+    // Name match must come first overall, and specifically before the alias match.
+    expect(json.data[0].name).toBe('Zed');
+    const zedIdx = json.data.indexOf(zed);
+    const zacharyIdx = json.data.indexOf(zachary);
+    expect(zedIdx).toBeLessThan(zacharyIdx);
+  });
+
   it('rejects an out-of-range threshold', async () => {
     const result = await runCLI(
       ['search', 'Steve', '--fuzzy', '--threshold', '5', '--output', 'json'],
@@ -208,6 +255,62 @@ describe('search --fuzzy', () => {
     const json = JSON.parse(result.stdout);
     expect(json.success).toBe(false);
     expect(json.error).toContain('threshold');
+  });
+
+  it('rejects a malformed --threshold with trailing garbage (json mode)', async () => {
+    const result = await runCLI(
+      ['search', 'Steve', '--fuzzy', '--threshold', '0.5abc', '--output', 'json'],
+      vaultDir
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.success).toBe(false);
+    expect(json.error).toContain('threshold');
+  });
+
+  it('rejects a malformed --threshold in text mode', async () => {
+    const result = await runCLI(
+      ['search', 'Steve', '--fuzzy', '--threshold', '0.5abc'],
+      vaultDir
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr + result.stdout).toContain('threshold');
+  });
+
+  it('rejects a non-integer --limit (2.7)', async () => {
+    const result = await runCLI(
+      ['search', 'Steve', '--fuzzy', '--limit', '2.7', '--output', 'json'],
+      vaultDir
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.success).toBe(false);
+    expect(json.error).toContain('limit');
+  });
+
+  it('rejects an exponent-notation --limit (1e1)', async () => {
+    const result = await runCLI(
+      ['search', 'Steve', '--fuzzy', '--limit', '1e1', '--output', 'json'],
+      vaultDir
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.success).toBe(false);
+    expect(json.error).toContain('limit');
+  });
+
+  it('rejects a malformed --limit with trailing garbage in text mode', async () => {
+    const result = await runCLI(
+      ['search', 'Steve', '--fuzzy', '--limit', '3abc'],
+      vaultDir
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr + result.stdout).toContain('limit');
   });
 
   it('requires a query', async () => {

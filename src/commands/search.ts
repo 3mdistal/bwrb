@@ -577,6 +577,34 @@ async function filterByFrontmatter(
 // ============================================================================
 
 /**
+ * Strictly parse a finite decimal number from a raw flag string.
+ *
+ * Unlike `Number.parseFloat`, this rejects trailing garbage ("0.5abc"),
+ * exponent notation ("1e1"), and other non-decimal forms, returning `null`
+ * for anything that is not a plain finite number.
+ */
+function parseStrictNumber(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!/^[+-]?(\d+\.?\d*|\.\d+)$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Strictly parse an integer from a raw flag string.
+ *
+ * Unlike `Number.parseInt`, this rejects non-integer values ("2.7"), trailing
+ * garbage ("3abc"), and exponent notation ("1e1"), returning `null` for
+ * anything that is not a plain integer.
+ */
+function parseStrictInteger(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!/^[+-]?\d+$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return Number.isInteger(value) ? value : null;
+}
+
+/**
  * Fuzzy search: ranked approximate matching over note names and aliases.
  *
  * Returns scored candidates (best first) so an agent or human can decide
@@ -602,11 +630,13 @@ async function handleFuzzySearch(
     process.exit(1);
   }
 
-  // Parse and validate threshold / limit.
+  // Parse and validate threshold / limit. Use strict format checks so that
+  // malformed values (e.g. "0.5abc", "2.7", "1e1") error cleanly rather than
+  // being silently coerced by parseFloat/parseInt's lenient parsing.
   const threshold = options.threshold !== undefined
-    ? Number.parseFloat(options.threshold)
+    ? parseStrictNumber(options.threshold)
     : DEFAULT_FUZZY_THRESHOLD;
-  if (Number.isNaN(threshold) || threshold < 0 || threshold > 1) {
+  if (threshold === null || threshold < 0 || threshold > 1) {
     const error = `Invalid --threshold "${options.threshold}": must be a number between 0 and 1`;
     if (jsonMode) {
       printJson(jsonError(error));
@@ -617,9 +647,9 @@ async function handleFuzzySearch(
   }
 
   const limit = options.limit !== undefined
-    ? Number.parseInt(options.limit, 10)
+    ? parseStrictInteger(options.limit)
     : DEFAULT_FUZZY_LIMIT;
-  if (Number.isNaN(limit) || limit < 1) {
+  if (limit === null || limit < 1) {
     const error = `Invalid --limit "${options.limit}": must be a positive integer`;
     if (jsonMode) {
       printJson(jsonError(error));

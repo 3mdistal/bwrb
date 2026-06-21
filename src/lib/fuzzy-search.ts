@@ -98,6 +98,14 @@ export function similarityScore(query: string, candidate: string): number {
   return levRatio;
 }
 
+/**
+ * Sort weight for a matched field: a real name match (0) ranks ahead of an
+ * alias match (1) when scores are tied, so an exact name beats an exact alias.
+ */
+function fieldRank(field: FuzzyMatchField): number {
+  return field === 'name' ? 0 : 1;
+}
+
 // ============================================================================
 // Search
 // ============================================================================
@@ -170,8 +178,15 @@ export async function fuzzySearch(
     }
   }
 
-  // Best score first; tie-break by name for deterministic ordering.
-  matches.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'en'));
+  // Best score first; on a score tie prefer a real name match over an alias
+  // match (the "exact match ranks first" contract), then fall back to
+  // alphabetical order for deterministic ordering.
+  matches.sort(
+    (a, b) =>
+      b.score - a.score ||
+      fieldRank(a.matchedField) - fieldRank(b.matchedField) ||
+      a.name.localeCompare(b.name, 'en')
+  );
 
   return matches.slice(0, limit);
 }
