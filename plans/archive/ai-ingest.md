@@ -1,3 +1,7 @@
+> **ARCHIVED — superseded by [`../features/ingest-safety-net.md`](../features/ingest-safety-net.md).**
+> bwrb will not embed an LLM caller. The deterministic kernel of this plan (entity matching,
+> processing-state, web integrity) migrated to the safety-net brief. Kept for history.
+
 # AI Ingest Command
 
 > AI-powered extraction of tasks, ideas, and entities from unstructured notes
