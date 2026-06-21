@@ -17,7 +17,7 @@ Bowerbird's functionality exists in concentric layers:
 
 1. **Schema** (core) — Type enforcement, validation, migration
 2. **PKM** (middle) — Queries, organization, knowledge discovery
-3. **AI** (outer) — Optional automation, never required
+3. **AI safety net** (outer) — Deterministic guarantees *under* the AI agent, never an LLM caller
 
 If the schema layer doesn't work, nothing works.
 
@@ -29,7 +29,7 @@ The schema is the source of truth. Notes must conform.
 
 ### Composable, Not Monolithic
 
-Bowerbird does one thing well. Use Git for version control, ripgrep for search, Neovim for editing.
+Bowerbird does one thing well. Use Git for version control, ripgrep for search, AI agents for authoring.
 
 ### Portable and Offline
 
@@ -49,6 +49,7 @@ Small command surface. Consistent flags. JSON mode everywhere.
 - Not a database
 - Not a sync service
 - Not a web app
+- Not an LLM caller — the AI agent drives bwrb, not the other way around
 
 ## Success Criteria
 

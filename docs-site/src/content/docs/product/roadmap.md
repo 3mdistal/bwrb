@@ -11,7 +11,7 @@ description: Bowerbird development priorities
 - **Inheritance model** — Full, consistent type inheritance
 - **Core commands** — new, edit, list, search, audit, bulk, schema, template
 - **JSON mode** — Every command scriptable
-- **Migration tooling** — Rename fields, change enums, refactor types
+- **Migration tooling** — Rename fields, change select options, refactor types
 
 ### Exit Criteria
 
@@ -23,15 +23,23 @@ description: Bowerbird development priorities
 
 ## Post-V1.0
 
-### Near Term
+### Near Term — Schema Expressiveness
 
-- Schema discovery from existing files
+A richer schema so the AI agent uses it correctly:
 
-### Future
+- Aliases — first-class alias field role
+- Traits — composition alongside inheritance
+- Hierarchical scope — contexts as real notes + `under` join
 
-- AI ingest command
-- Obsidian plugin
-- Cost tracking for AI operations
+### Future — AI Safety Net
+
+bwrb is the deterministic safety net *under* the AI agent, never an LLM caller:
+
+- `search --fuzzy` — scored candidate lookup before writing
+- `audit: unlinked-mention` — flag known entities mentioned but not linked
+- Daily-note sweep — coverage bookkeeping
+- `schema discover` — deterministic field-usage facts over a folder
+- Task recurrence — event-driven spawn + offset templating
 
 ---
 

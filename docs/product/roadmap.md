@@ -7,8 +7,8 @@
 ## Version Philosophy
 
 **v1: Schema + Dashboards** — Rock-solid schema enforcement, inheritance model, type safety, and saved queries
-**v2: PKM** — Plugins, ecosystem, visibility into your knowledge
-**v3: AI** — Built-in AI features, ingest, automation
+**v2: Schema expressiveness + PKM** — A richer schema (aliases, traits, hierarchical scope) so the AI agent uses it correctly, plus deeper queries and visibility
+**v3: AI safety net** — Deterministic primitives *under* the AI agent (no LLM in bwrb): `search --fuzzy`, `audit: unlinked-mention`, daily-note sweep, `schema discover`, event-driven task recurrence
 
 ---
 
@@ -81,43 +81,51 @@ Dashboards are saved `bwrb list` queries that can be recalled by name. This mini
 
 ---
 
-## v2.0: PKM (Future)
+## v2.0: Schema Expressiveness + PKM (Future)
 
-Make the schema useful for knowledge work.
+Make the schema richer so the AI agent uses it correctly, and make queries deeper. The schema is the shared language between the human and the agent; investing here pays off everywhere. See `plans/features/schema-expressiveness.md`.
 
 ### Planned Features
 
 | Feature | Issue | Description |
 |---------|-------|-------------|
+| Aliases | #266 | First-class alias field role; substrate for the ingest safety net |
+| Traits | #442 | Composition (`also-has`) alongside inheritance (`is-a`) |
+| Hierarchical scope | #554 | Contexts as real notes + `under` join; collapses scope + context |
 | Link validation | `bwrb-6f0` | Broken link detection in audit |
 | Command consolidation | `bwrb-fkd` | Merge list/search/open |
 
 ### v2.0 Exit Criteria
 
+- [ ] Alias field role and Obsidian-format validation
+- [ ] Trait composition with deterministic precedence rules
+- [ ] Hierarchical scope with `under` operator
 - [ ] Comprehensive link validation
 - [ ] Polished, consistent CLI surface
 
 ---
 
-## v3.0: AI (Future)
+## v3.0: AI Safety Net (Future)
 
-Optional AI-powered features for automation.
+bwrb is the **deterministic safety net under the AI agent, not an LLM caller.** The AI agent (Claude Code, Codex, etc.) does open-world extraction; bwrb provides closed-world verification — deterministic primitives that guarantee nothing gets swept under the rug. No LLM, no OpenRouter client, no cost tracking in bwrb. See `plans/features/ingest-safety-net.md` and `plans/features/task-system.md`.
 
 ### Planned Features
 
 | Feature | Issue | Description |
 |---------|-------|-------------|
-| AI Ingest | `bwrb-acd` | Extract tasks/ideas/entities from notes |
-| Entity matching | `bwrb-h9o` | Link mentions to existing notes |
-| Agentic workflows | — | Run AI workflows from vault |
-| Cost tracking | — | Monitor AI spend |
+| `search --fuzzy` | #93 | Scored candidate lookup so the agent checks "does X exist?" before writing |
+| `audit: unlinked-mention` | #93 | Flag known-entity names in prose that aren't wikilinked (exact/alias auto-fixable; fuzzy flag-only) |
+| `audit: frequent-unlinked-term` | — | Advisory nudge toward entities mentioned often but with no note yet |
+| Daily-note sweep | #87 | Frontmatter convention + saved query proving every ramble was looked at |
+| Task recurrence | #107 | Event-driven spawn-on-transition + offset templating (no daemon, no cron) |
 
 ### v3.0 Exit Criteria
 
-- [ ] `bwrb ingest` command working
-- [ ] Interactive approval flow for AI suggestions
-- [ ] Entity matching and auto-linking
-- [ ] Optional—works without AI keys
+- [ ] `search --fuzzy` returns scored candidates
+- [ ] `unlinked-mention` audit with exact/alias auto-fix and fuzzy review
+- [ ] Daily-note sweep coverage query
+- [ ] Event-driven recurrence with audit backstop
+- [ ] Zero LLM calls — works entirely offline, no AI keys
 
 ---
 
@@ -125,9 +133,7 @@ Optional AI-powered features for automation.
 
 | Feature | Issue | Notes |
 |---------|-------|-------|
-| Recurrence | `bwrb-yuq` | Recurring task creation |
-| Schema discovery | `bwrb-onp` | Suggest schema from existing files |
-| Obsidian plugin | — | If there's demand |
+| `schema discover` | #97 | Deterministic field-usage facts over a folder (not AI schema generation) |
 
 ---
 
