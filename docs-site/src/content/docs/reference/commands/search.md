@@ -13,9 +13,10 @@ bwrb search [options] [query]
 
 ## Modes
 
-Search operates in two modes:
+Search operates in three modes:
 
 - **Name search** (default): Searches by note name, basename, or path
+- **Fuzzy search** (`--fuzzy`): Ranked approximate matching over note names and aliases, with scores
 - **Content search** (`--body`): Full-text search across note contents using ripgrep
 
 ## Options
@@ -45,6 +46,15 @@ Search operates in two modes:
 | `-p, --path <pattern>` | Filter by file path glob pattern |
 | `-w, --where <expr>` | Filter results by frontmatter expression (repeatable) |
 | `-b, --body` | Enable content search mode |
+| `--fuzzy` | Enable fuzzy ranked matching over names and aliases |
+
+### Fuzzy Search Options
+
+| Option | Description |
+|--------|-------------|
+| `--fuzzy` | Enable fuzzy ranked matching |
+| `--threshold <0-1>` | Minimum similarity score to include a match (default: `0.5`) |
+| `-l, --limit <count>` | Maximum ranked results (default: `10`) |
 
 ### Content Search Options
 
@@ -90,6 +100,62 @@ bwrb search "My Note" --edit
 # Non-interactive edit
 bwrb search "My Note" --edit --json '{"status":"settled"}'
 ```
+
+### Fuzzy Search
+
+Fuzzy search answers "does an entity like X already exist?" before you (or an
+AI agent) create a new note. It returns **ranked** candidates with a visible
+similarity score (`1.0` = exact match), matching against each note's name and
+its declared aliases.
+
+```bash
+# Ranked near-matches by name or alias
+bwrb search "Stephen Yeg" --fuzzy
+
+# Tighten the match cutoff (default threshold is 0.5)
+bwrb search "Steve" --fuzzy --threshold 0.7
+
+# Cap the number of ranked results (default 10)
+bwrb search "Steve" --fuzzy --limit 3
+
+# JSON output with scores for an agent to consume
+bwrb search "Steve" --fuzzy --output json
+```
+
+#### What participates in matching
+
+- The note **name** (file basename, without `.md`) — always.
+- Every declared **alias** (the field carrying the `alias` role) — for
+  schema-typed entities. A note like `Steve Yegge` with aliases `Stevey` /
+  `Steve Y` is matchable by any of those strings.
+
+Each note contributes its single best-scoring field. An exact name match always
+scores `1.0` and ranks first; results below the threshold are dropped, and the
+remainder are returned best-first up to the limit.
+
+#### JSON output shape
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "name": "Steve Yegge",
+      "score": 0.8333,
+      "matchedField": "alias",
+      "matchedValue": "Stevey",
+      "aliases": ["Stevey", "Steve Y"],
+      "wikilink": "[[Steve Yegge]]",
+      "path": "People/Steve Yegge.md",
+      "absolutePath": "/vault/People/Steve Yegge.md"
+    }
+  ]
+}
+```
+
+`matchedField` is `"name"` or `"alias"`; `matchedValue` is the specific string
+that produced the score. An empty `data` array means no candidate met the
+threshold.
 
 ### Content Search
 
