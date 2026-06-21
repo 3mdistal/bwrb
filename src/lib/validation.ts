@@ -36,7 +36,7 @@ function describeGranularityRequirement(granularity: DatePrecision): string {
  * field's `granularity` permits them, and are stored verbatim (ISO partials sort
  * lexically). `granularity` defaults to 'day' (full date required).
  */
-export function normalizeToIsoDate(
+function normalizeToIsoDate(
   value: string,
   granularity: DatePrecision = 'day'
 ): NormalizedDateResult {
@@ -88,6 +88,71 @@ export function normalizeToIsoDate(
   const month = String(parsed.date!.getMonth() + 1).padStart(2, '0');
   const day = String(parsed.date!.getDate()).padStart(2, '0');
   return { valid: true, value: `${year}-${month}-${day}` };
+}
+
+/**
+ * Format a Date to YYYY-MM-DD using UTC components.
+ * Used for YAML-parsed dates which are stored as midnight UTC.
+ */
+function formatUtcDate(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Normalize date fields in a frontmatter object to their canonical stored form.
+ *
+ * For each field whose schema `prompt` is `date`, the value is normalized via
+ * {@link normalizeToIsoDate} using the field's resolved granularity:
+ * - Unambiguous slash-format dates (e.g. `12/25/2026`) become `2026-12-25`.
+ * - ISO datetimes are truncated to their date part.
+ * - Valid partial dates (`2026`, `2026-05`) are preserved verbatim when the
+ *   field's granularity permits them.
+ * - Residual `Date` objects (from YAML parsing) are formatted from UTC.
+ *
+ * Values that fail normalization are left untouched so the validation layer can
+ * surface a clear error. This is the single source of truth for date
+ * normalization on write, shared by both the `new` and `edit` paths.
+ *
+ * @returns A shallow copy of `frontmatter` with date fields normalized.
+ */
+export function normalizeDateFields(
+  schema: LoadedSchema,
+  typePath: string,
+  frontmatter: Record<string, unknown>
+): Record<string, unknown> {
+  const fields = getFieldsForType(schema, typePath);
+  const normalized: Record<string, unknown> = { ...frontmatter };
+
+  for (const [fieldName, field] of Object.entries(fields)) {
+    if (field.prompt !== 'date') continue;
+    if (!(fieldName in normalized)) continue;
+
+    const value = normalized[fieldName];
+    if (value === undefined || value === null || value === '') continue;
+
+    // Handle any residual Date objects (defense-in-depth).
+    // Use UTC components since YAML dates are stored as midnight UTC.
+    if (value instanceof Date) {
+      normalized[fieldName] = formatUtcDate(value);
+      continue;
+    }
+
+    // A bare year (e.g. 2026) may arrive as a number from YAML/JSON; coerce so
+    // it can be normalized against the field's granularity.
+    const dateValue = typeof value === 'number' ? String(value) : value;
+    if (typeof dateValue !== 'string') continue;
+
+    const granularity = resolveDateGranularity(field, schema.config);
+    const result = normalizeToIsoDate(dateValue, granularity);
+    if (result.valid) {
+      normalized[fieldName] = result.value;
+    }
+  }
+
+  return normalized;
 }
 
 

@@ -8,35 +8,63 @@
 
 ```
 src/
-├── index.ts           # CLI entry point (Commander.js)
-├── commands/          # Command implementations
+├── index.ts           # CLI entry point (Commander.js); registers all commands
+├── version.ts         # Resolved CLI version constant
+├── commands/          # Command implementations (one per top-level command)
 │   ├── new.ts         # Create notes with schema-driven prompts
+│   ├── new/           # `new` internals (interactive, json-mode, scaffolding, ownership, …)
 │   ├── edit.ts        # Modify existing notes
+│   ├── delete.ts      # Delete notes
 │   ├── list.ts        # Query and filter notes
 │   ├── open.ts        # Open notes in editor/Obsidian
 │   ├── search.ts      # Search notes, generate wikilinks
+│   ├── schema/        # Schema introspection & editing
+│   │   ├── index.ts   # `schema` parent command (list/types/fields/validate aliases)
+│   │   ├── list.ts    # Schema overview + per-type details
+│   │   ├── type.ts    # `schema new/edit/delete` for types
+│   │   ├── field.ts   # `schema new/edit/delete` for fields
+│   │   ├── migrate.ts # `schema diff/migrate/history`
+│   │   └── helpers/   # Shared output, pickers, prompts, validation
 │   ├── audit.ts       # Validate notes against schema
 │   ├── bulk.ts        # Batch frontmatter operations
-│   ├── schema.ts      # Schema inspection
-│   └── template.ts    # Template management (list, new, edit, delete, validate)
+│   ├── template.ts    # Template management (list, new, edit, delete, validate)
+│   ├── dashboard.ts   # Run saved list queries
+│   ├── init.ts        # Scaffold a new vault (.bwrb/)
+│   ├── config.ts      # Read/write vault config
+│   └── completion.ts  # Shell completion script generation
 ├── lib/               # Shared utilities
-│   ├── schema.ts      # Schema loading & resolution
-│   ├── template.ts    # Template discovery & parsing
-│   ├── frontmatter.ts # YAML frontmatter parsing
-│   ├── query.ts       # Filter expression evaluation
-│   ├── vault.ts       # Vault discovery & file ops
-│   ├── prompt.ts      # Interactive prompts (prompts library)
-│   ├── validation.ts  # Frontmatter validation
-│   ├── audit/         # Audit detection and fix logic
-│   ├── bulk/          # Bulk operation utilities
-│   └── migration/     # Schema migration (diff, execute, history)
-└── types/
-    └── schema.ts      # Zod schemas for type safety
+│   ├── schema.ts          # Schema loading & inheritance resolution
+│   ├── schema-writer.ts   # Persist schema edits back to schema.json
+│   ├── template.ts        # Template discovery & parsing
+│   ├── frontmatter.ts     # YAML frontmatter parsing
+│   ├── frontmatter/       # System field helpers
+│   ├── query.ts           # Filter expression evaluation
+│   ├── expression.ts      # `--where` / validation expression engine
+│   ├── vault.ts           # Vault discovery & file ops
+│   ├── vaultSelection.ts  # Vault resolution + interactive selection
+│   ├── bwrb-paths.ts      # `.bwrb/` path constants
+│   ├── prompt.ts          # Interactive prompts (prompts library)
+│   ├── validation.ts      # Frontmatter validation
+│   ├── output.ts          # JSON/text output + exit codes
+│   ├── completion.ts      # Completion request handling
+│   ├── dashboard.ts       # Dashboard loading
+│   ├── ownership.ts       # Owned-child (colocation) logic
+│   ├── audit/             # Audit detection and fix logic
+│   ├── bulk/              # Bulk operation utilities
+│   ├── migration/         # Schema migration (diff, execute, history, snapshot, status)
+│   └── tty/               # Terminal layout & table rendering
+├── types/
+│   ├── schema.ts      # Zod schemas for type safety (types, fields, options, templates)
+│   └── migration.ts   # Migration-related types
+└── tools/
+    └── docs/          # Repo doc checks (e.g. concepts sidebar guard)
 ```
+
+The tree above lists the load-bearing modules; some smaller helpers under `lib/` are omitted. The authoritative command surface is `src/index.ts`.
 
 ## Key Concepts
 
-- **Schema**: Each vault has `.bwrb/schema.json` defining types, enums, and field definitions
+- **Schema**: Each vault has `.bwrb/schema.json` defining types and their field definitions. `select` fields declare their choices inline via per-field `options` (a bare value or `{ value, description }` pair) — there are no global enums.
 - **Types**: Hierarchical (e.g., `objective/task`) with frontmatter definitions
 - **Templates**: Reusable note templates in `.bwrb/templates/{type}/{subtype}/*.md` with defaults and body structure
 - **Wikilinks**: `[[Note]]` or `"[[Note]]"` format for Obsidian linking
@@ -183,7 +211,7 @@ Track blocking relationships in issue bodies using task lists:
 ```markdown
 ## Blocked by
 - [ ] #12 Schema validation refactor
-- [ ] #15 Add enum support
+- [ ] #15 Add select-option descriptions
 ```
 
 Use the `blocked` label for issues that cannot proceed. When closing an issue, check if it unblocks others.
