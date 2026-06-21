@@ -11,7 +11,6 @@ import {
   resolveTypePathFromFrontmatter,
   getFieldsForType,
   getFrontmatterOrder,
-  resolveDateGranularity,
 } from './schema.js';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
 import { queryByType, formatValue } from './vault.js';
@@ -27,7 +26,7 @@ import {
 import {
   validateFrontmatter,
   validateContextFields,
-  normalizeToIsoDate,
+  normalizeDateFields,
 } from './validation.js';
 import { validateParentNoCycle } from './hierarchy.js';
 import {
@@ -38,57 +37,6 @@ import {
 import { type LoadedSchema, type Field, type BodySection, getOptionValues } from '../types/schema.js';
 import { UserCancelledError } from './errors.js';
 import { expandStaticValue } from './local-date.js';
-
-/**
- * Format a Date to YYYY-MM-DD using UTC components.
- * Used for YAML-parsed dates which are stored as midnight UTC.
- */
-function formatUtcDate(date: Date): string {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-/**
- * Normalize date fields to canonical YYYY-MM-DD strings.
- * Handles both string values (ISO datetimes) and any residual Date objects.
- * Note: frontmatter parsing already normalizes Date objects, but this provides
- * defense-in-depth for any edge cases.
- */
-function normalizeDateFields(
-  schema: LoadedSchema,
-  typePath: string,
-  frontmatter: Record<string, unknown>
-): Record<string, unknown> {
-  const fields = getFieldsForType(schema, typePath);
-  const normalized: Record<string, unknown> = { ...frontmatter };
-
-  for (const [fieldName, field] of Object.entries(fields)) {
-    if (field.prompt !== 'date') continue;
-    if (!(fieldName in normalized)) continue;
-
-    const value = normalized[fieldName];
-    if (value === undefined || value === null || value === '') continue;
-
-    // Handle any residual Date objects (defense-in-depth)
-    // Use UTC components since YAML dates are stored as midnight UTC
-    if (value instanceof Date) {
-      normalized[fieldName] = formatUtcDate(value);
-      continue;
-    }
-
-    if (typeof value === 'string') {
-      const granularity = resolveDateGranularity(field, schema.config);
-      const result = normalizeToIsoDate(value, granularity);
-      if (result.valid) {
-        normalized[fieldName] = result.value;
-      }
-    }
-  }
-
-  return normalized;
-}
 
 // ============================================================================
 // Types

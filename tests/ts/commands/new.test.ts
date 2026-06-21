@@ -506,3 +506,101 @@ describe('new command - date expression evaluation', () => {
     expect(content).toContain('deadline: 2030-01-15');
   });
 });
+
+describe('new command - date normalization (issue #592)', () => {
+  let vaultDir: string;
+
+  beforeEach(async () => {
+    vaultDir = await createTestVault();
+  });
+
+  afterEach(async () => {
+    await cleanupTestVault(vaultDir);
+  });
+
+  it('normalizes unambiguous MM/DD/YYYY input to canonical YYYY-MM-DD', async () => {
+    const result = await runCLI(
+      ['new', 'task', '--json', '{"name": "Slash Date Task", "deadline": "12/25/2026"}', '--no-template'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+    const output = JSON.parse(result.stdout);
+    expect(output.success).toBe(true);
+
+    const content = await readFile(join(vaultDir, output.path), 'utf-8');
+    expect(content).toContain('deadline: 2026-12-25');
+    expect(content).not.toContain('12/25/2026');
+  });
+
+  it('produces a note that passes its own audit (the regression)', async () => {
+    const create = await runCLI(
+      ['new', 'task', '--json', '{"name": "Audit Clean Task", "deadline": "12/25/2026"}', '--no-template'],
+      vaultDir
+    );
+    expect(create.exitCode).toBe(ExitCodes.SUCCESS);
+
+    // Audit the newly created note; it must not report invalid-date errors.
+    const audit = await runCLI(['audit', 'task'], vaultDir);
+    expect(audit.stdout).not.toContain('Invalid date');
+    expect(audit.exitCode).toBe(ExitCodes.SUCCESS);
+  });
+
+  it('normalizes interpolated date defaults (today()) before storing', async () => {
+    // weekly-review template stores deadline via "today() + '7d'".
+    const create = await runCLI(
+      ['new', 'task', '--json', '{"name": "Interpolated Default"}', '--template', 'weekly-review'],
+      vaultDir
+    );
+    expect(create.exitCode).toBe(ExitCodes.SUCCESS);
+    const output = JSON.parse(create.stdout);
+
+    const content = await readFile(join(vaultDir, output.path), 'utf-8');
+    expect(content).toMatch(/deadline: \d{4}-\d{2}-\d{2}/);
+
+    const audit = await runCLI(['audit', 'task'], vaultDir);
+    expect(audit.stdout).not.toContain('Invalid date');
+    expect(audit.exitCode).toBe(ExitCodes.SUCCESS);
+  });
+
+  it('preserves valid partial dates per the field granularity', async () => {
+    // Install a schema with a month-granularity date field.
+    await writeFile(
+      join(vaultDir, '.bwrb', 'schema.json'),
+      JSON.stringify(
+        {
+          config: { link_format: 'wikilink', date_format: 'YYYY-MM-DD' },
+          types: {
+            release: {
+              output_dir: 'Ideas',
+              fields: {
+                type: { value: 'release' },
+                shipped: { prompt: 'date', granularity: 'month' },
+              },
+              field_order: ['type', 'shipped'],
+            },
+          },
+        },
+        null,
+        2
+      )
+    );
+
+    const create = await runCLI(
+      ['new', 'release', '--json', '{"name": "Partial Date Release", "shipped": "2026-05"}', '--no-template'],
+      vaultDir
+    );
+    expect(create.exitCode).toBe(ExitCodes.SUCCESS);
+    const output = JSON.parse(create.stdout);
+
+    const content = await readFile(join(vaultDir, output.path), 'utf-8');
+    // Month-precision partial preserved verbatim, not expanded to a full date.
+    expect(content).toContain('shipped: 2026-05');
+
+    // Scope the audit to the created note; the baseline test vault still
+    // contains sample notes for unrelated types.
+    const audit = await runCLI(['audit', '--path', output.path], vaultDir);
+    expect(audit.stdout).not.toContain('Invalid date');
+    expect(audit.exitCode).toBe(ExitCodes.SUCCESS);
+  });
+});
