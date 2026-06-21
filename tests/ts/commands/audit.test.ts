@@ -3370,6 +3370,135 @@ effort: "3"
     });
   });
 
+  describe('partial date granularity', () => {
+    let tempVaultDir: string;
+
+    const GRANULAR_SCHEMA = {
+      version: 2,
+      config: { date_granularity: 'day' as const },
+      types: {
+        person: {
+          output_dir: 'People',
+          fields: {
+            type: { value: 'person' },
+            'last-contact': { prompt: 'date' as const, granularity: 'month' as const },
+            'first-met': { prompt: 'date' as const, granularity: 'year' as const },
+            deadline: { prompt: 'date' as const },
+          },
+        },
+      },
+    };
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-granularity-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(GRANULAR_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'People'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    async function auditPerson(filename: string, body: string) {
+      await writeFile(join(tempVaultDir, 'People', filename), body);
+      const result = await runCLI(['audit', 'person', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      // Files with no issues may be omitted from the report entirely.
+      const file = output.files.find((f: { path: string }) => f.path.includes(filename));
+      const issues: { code: string; field?: string }[] = file?.issues ?? [];
+      return issues.filter((i) => i.code === 'invalid-date-format');
+    }
+
+    it('accepts YYYY-MM in a month-granularity field', async () => {
+      const issues = await auditPerson(
+        'Ada.md',
+        `---\ntype: person\nlast-contact: 2026-05\n---\n`
+      );
+      expect(issues).toHaveLength(0);
+    });
+
+    it('accepts a bare year in a year-granularity field', async () => {
+      const issues = await auditPerson(
+        'Grace.md',
+        `---\ntype: person\nfirst-met: "2021"\n---\n`
+      );
+      expect(issues).toHaveLength(0);
+    });
+
+    it('flags a YYYY-MM value in a strict (default) date field', async () => {
+      const issues = await auditPerson(
+        'Linus.md',
+        `---\ntype: person\ndeadline: 2026-05\n---\n`
+      );
+      expect(issues).toHaveLength(1);
+      expect(issues[0].field).toBe('deadline');
+    });
+
+    it('flags a bare year in a month-granularity field (too coarse)', async () => {
+      const issues = await auditPerson(
+        'Edsger.md',
+        `---\ntype: person\nlast-contact: "2026"\n---\n`
+      );
+      expect(issues).toHaveLength(1);
+      expect(issues[0].field).toBe('last-contact');
+    });
+
+    it('still flags malformed dates in a relaxed field', async () => {
+      const issues = await auditPerson(
+        'Donald.md',
+        `---\ntype: person\nfirst-met: 2026-13\n---\n`
+      );
+      expect(issues).toHaveLength(1);
+    });
+
+    it('flags calendar-invalid full dates (consistent with partials)', async () => {
+      const badMonth = await auditPerson(
+        'Bjarne.md',
+        `---\ntype: person\ndeadline: 2026-13-01\n---\n`
+      );
+      expect(badMonth).toHaveLength(1);
+
+      const badLeap = await auditPerson(
+        'Ken.md',
+        `---\ntype: person\ndeadline: 2025-02-29\n---\n`
+      );
+      expect(badLeap).toHaveLength(1);
+    });
+
+    it('treats a YAML-numeric bare year as a date, not a generic scalar', async () => {
+      // first-met has year granularity: a numeric 2021 is a valid year, so the
+      // only issue is that it should be quoted as a string (not invalid-date-format).
+      await writeFile(
+        join(tempVaultDir, 'People', 'Rob.md'),
+        `---\ntype: person\nfirst-met: 2021\n---\n`
+      );
+      const result = await runCLI(['audit', 'person', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Rob.md'));
+      const codes: string[] = (file?.issues ?? []).map((i: { code: string }) => i.code);
+      expect(codes).toContain('wrong-scalar-type');
+      expect(codes).not.toContain('invalid-date-format');
+
+      // last-contact has month granularity: numeric 2026 is too coarse → date error,
+      // not a generic "should be a string" scalar error.
+      await writeFile(
+        join(tempVaultDir, 'People', 'James.md'),
+        `---\ntype: person\nlast-contact: 2026\n---\n`
+      );
+      const result2 = await runCLI(['audit', 'person', '--output', 'json'], tempVaultDir);
+      const output2 = JSON.parse(result2.stdout);
+      const file2 = output2.files.find((f: { path: string }) => f.path.includes('James.md'));
+      const issues2: { code: string; field?: string }[] = file2?.issues ?? [];
+      const lastContact = issues2.filter((i) => i.field === 'last-contact');
+      expect(lastContact).toHaveLength(1);
+      expect(lastContact[0].code).toBe('invalid-date-format');
+    });
+  });
+
   describe('unknown-enum-casing detection and fix', () => {
     let tempVaultDir: string;
 

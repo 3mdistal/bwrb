@@ -8,7 +8,7 @@ import {
   suggestFieldName,
   formatValidationErrors,
 } from '../../../src/lib/validation.js';
-import { loadSchema } from '../../../src/lib/schema.js';
+import { loadSchema, resolveSchema } from '../../../src/lib/schema.js';
 import type { LoadedSchema } from '../../../src/types/schema.js';
 import { createTestVault, cleanupTestVault } from '../fixtures/setup.js';
 
@@ -209,6 +209,126 @@ describe('validation', () => {
       });
 
       expect(result.valid).toBe(true);
+    });
+
+    it('should reject partial dates under default (day) granularity', () => {
+      const monthResult = validateFrontmatter(schema, 'task', {
+        type: 'objective',
+        'objective-type': 'task',
+        status: 'raw',
+        deadline: '2024-01',
+      });
+      expect(monthResult.valid).toBe(false);
+      expect(monthResult.errors[0].type).toBe('invalid_date');
+
+      const yearResult = validateFrontmatter(schema, 'task', {
+        type: 'objective',
+        'objective-type': 'task',
+        status: 'raw',
+        deadline: '2024',
+      });
+      expect(yearResult.valid).toBe(false);
+      expect(yearResult.errors[0].type).toBe('invalid_date');
+    });
+  });
+
+  describe('partial date granularity', () => {
+    // Build a focused schema with two date fields: a strict default field and
+    // a per-field-relaxed field, plus an optional global default.
+    function buildSchema(opts: {
+      fieldGranularity?: 'day' | 'month' | 'year';
+      configGranularity?: 'day' | 'month' | 'year';
+    }) {
+      return resolveSchema({
+        version: 1,
+        ...(opts.configGranularity && {
+          config: { date_granularity: opts.configGranularity },
+        }),
+        types: {
+          note: {
+            fields: {
+              type: { value: 'note' },
+              when: {
+                prompt: 'date',
+                ...(opts.fieldGranularity && { granularity: opts.fieldGranularity }),
+              },
+            },
+          },
+        },
+      } as never);
+    }
+
+    it('accepts YYYY-MM when field granularity is month, rejects bare year', () => {
+      const s = buildSchema({ fieldGranularity: 'month' });
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026-05' }).valid).toBe(true);
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026-05-12' }).valid).toBe(true);
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026' }).valid).toBe(false);
+    });
+
+    it('accepts bare year when field granularity is year', () => {
+      const s = buildSchema({ fieldGranularity: 'year' });
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026' }).valid).toBe(true);
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026-05' }).valid).toBe(true);
+    });
+
+    it('uses the global config default when no field granularity is set', () => {
+      const s = buildSchema({ configGranularity: 'month' });
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026-05' }).valid).toBe(true);
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026' }).valid).toBe(false);
+    });
+
+    it('per-field granularity overrides the global default', () => {
+      // Global says month, but the field tightens to day.
+      const s = buildSchema({ fieldGranularity: 'day', configGranularity: 'month' });
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026-05' }).valid).toBe(false);
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026-05-12' }).valid).toBe(true);
+    });
+
+    it('coerces a YAML-numeric bare year and validates it against granularity', () => {
+      const yearSchema = buildSchema({ fieldGranularity: 'year' });
+      expect(validateFrontmatter(yearSchema, 'note', { type: 'note', when: 2026 }).valid).toBe(true);
+
+      const daySchema = buildSchema({ fieldGranularity: 'day' });
+      expect(validateFrontmatter(daySchema, 'note', { type: 'note', when: 2026 }).valid).toBe(false);
+    });
+
+    it('still rejects malformed partial values regardless of granularity', () => {
+      const s = buildSchema({ fieldGranularity: 'year' });
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026-13' }).valid).toBe(false);
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '05/2026' }).valid).toBe(false);
+    });
+
+    it('calendar-validates full dates consistently with partials', () => {
+      const s = buildSchema({ fieldGranularity: 'year' });
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026-13-01' }).valid).toBe(false);
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2025-02-29' }).valid).toBe(false);
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2024-02-29' }).valid).toBe(true);
+    });
+
+    it('lets a child type override an inherited date field granularity', () => {
+      const s = resolveSchema({
+        version: 1,
+        types: {
+          base: {
+            fields: {
+              type: { value: 'base' },
+              when: { prompt: 'date', granularity: 'day' },
+            },
+          },
+          child: {
+            extends: 'base',
+            fields: {
+              type: { value: 'child' },
+              when: { prompt: 'date', granularity: 'year' },
+            },
+          },
+        },
+      } as never);
+
+      // Child relaxed to year — accepts a bare year.
+      expect(validateFrontmatter(s, 'child', { type: 'child', when: '2026' }).valid).toBe(true);
+      // Parent stays strict — rejects it.
+      expect(validateFrontmatter(s, 'base', { type: 'base', when: '2026' }).valid).toBe(false);
     });
   });
 

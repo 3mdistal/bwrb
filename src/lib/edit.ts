@@ -11,6 +11,7 @@ import {
   resolveTypePathFromFrontmatter,
   getFieldsForType,
   getFrontmatterOrder,
+  resolveDateGranularity,
 } from './schema.js';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
 import { queryByType, formatValue } from './vault.js';
@@ -78,7 +79,8 @@ function normalizeDateFields(
     }
 
     if (typeof value === 'string') {
-      const result = normalizeToIsoDate(value);
+      const granularity = resolveDateGranularity(field, schema.config);
+      const result = normalizeToIsoDate(value, granularity);
       if (result.valid) {
         normalized[fieldName] = result.value;
       }

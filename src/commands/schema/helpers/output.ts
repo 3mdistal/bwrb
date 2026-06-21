@@ -173,6 +173,7 @@ function formatFieldForJson(field: Field): Record<string, unknown> {
   if (field.label) result.label = field.label;
   if (field.source) result.source = field.source;
   if (field.list_format) result.list_format = field.list_format;
+  if (field.granularity) result.granularity = field.granularity;
 
   return result;
 }
@@ -404,6 +405,10 @@ function printFieldDetails(
 
   if (field.required) {
     details.push('required');
+  }
+
+  if (field.granularity) {
+    details.push(`granularity=${field.granularity}`);
   }
 
   const prefix = `${indent}${chalk.yellow(name)}: ${type}`;

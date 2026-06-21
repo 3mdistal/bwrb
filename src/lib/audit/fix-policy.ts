@@ -4,6 +4,7 @@
 
 import type { Field } from '../../types/schema.js';
 import { coerceBooleanFromString, coerceNumberFromString } from './coercion.js';
+import { parsePartialIsoDate, isPrecisionAllowed, type DatePrecision } from '../local-date.js';
 
 export type ScalarType = 'string' | 'number' | 'boolean';
 export type ValueShape = 'empty' | 'string' | 'number' | 'boolean' | 'list' | 'object' | 'unknown';
@@ -89,6 +90,19 @@ export function getScalarToList(value: unknown): { ok: true; value: unknown[] } 
 
 export function isCanonicalIsoDate(raw: string): boolean {
   return CANONICAL_DATE.test(raw.trim());
+}
+
+/**
+ * Whether a stored date value is acceptable for a field with the given
+ * granularity. Full canonical dates are always acceptable; partial ISO dates
+ * (YYYY, YYYY-MM) are acceptable only when granularity permits that precision.
+ */
+export function isAcceptableDate(raw: string, granularity: DatePrecision = 'day'): boolean {
+  // parsePartialIsoDate calendar-validates both full (YYYY-MM-DD) and partial
+  // ISO dates, so e.g. 2026-13-01 / 2025-02-29 are rejected consistently with
+  // their partial counterparts.
+  const partial = parsePartialIsoDate(raw.trim());
+  return partial.valid && isPrecisionAllowed(partial.precision, granularity);
 }
 
 function isValidDateParts(year: number, month: number, day: number): boolean {

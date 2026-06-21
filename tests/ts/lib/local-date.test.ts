@@ -6,6 +6,8 @@ import {
   formatDateWithPattern,
   parseDate,
   isValidDate,
+  parsePartialIsoDate,
+  isPrecisionAllowed,
   DEFAULT_DATE_FORMAT,
 } from '../../../src/lib/local-date.js';
 
@@ -319,6 +321,65 @@ describe('local-date', () => {
   describe('DEFAULT_DATE_FORMAT', () => {
     it('should be ISO format', () => {
       expect(DEFAULT_DATE_FORMAT).toBe('YYYY-MM-DD');
+    });
+  });
+
+  describe('parsePartialIsoDate', () => {
+    it('parses a year-only date', () => {
+      const result = parsePartialIsoDate('2026');
+      expect(result).toEqual({ valid: true, value: '2026', precision: 'year' });
+    });
+
+    it('parses a year-month date', () => {
+      const result = parsePartialIsoDate('2026-05');
+      expect(result).toEqual({ valid: true, value: '2026-05', precision: 'month' });
+    });
+
+    it('parses a full date', () => {
+      const result = parsePartialIsoDate('2026-05-12');
+      expect(result).toEqual({ valid: true, value: '2026-05-12', precision: 'day' });
+    });
+
+    it('trims surrounding whitespace but stores the trimmed value', () => {
+      expect(parsePartialIsoDate('  2026-05  ')).toEqual({
+        valid: true,
+        value: '2026-05',
+        precision: 'month',
+      });
+    });
+
+    it('rejects an out-of-range month', () => {
+      expect(parsePartialIsoDate('2026-13').valid).toBe(false);
+    });
+
+    it('rejects an impossible day', () => {
+      expect(parsePartialIsoDate('2026-02-30').valid).toBe(false);
+    });
+
+    it('rejects non-ISO partial formats', () => {
+      expect(parsePartialIsoDate('05/2026').valid).toBe(false);
+      expect(parsePartialIsoDate('May 2026').valid).toBe(false);
+      expect(parsePartialIsoDate('2026-5').valid).toBe(false); // unpadded month
+    });
+  });
+
+  describe('isPrecisionAllowed', () => {
+    it('day granularity allows only day precision', () => {
+      expect(isPrecisionAllowed('day', 'day')).toBe(true);
+      expect(isPrecisionAllowed('month', 'day')).toBe(false);
+      expect(isPrecisionAllowed('year', 'day')).toBe(false);
+    });
+
+    it('month granularity allows day and month, not year', () => {
+      expect(isPrecisionAllowed('day', 'month')).toBe(true);
+      expect(isPrecisionAllowed('month', 'month')).toBe(true);
+      expect(isPrecisionAllowed('year', 'month')).toBe(false);
+    });
+
+    it('year granularity allows all precisions', () => {
+      expect(isPrecisionAllowed('day', 'year')).toBe(true);
+      expect(isPrecisionAllowed('month', 'year')).toBe(true);
+      expect(isPrecisionAllowed('year', 'year')).toBe(true);
     });
   });
 });

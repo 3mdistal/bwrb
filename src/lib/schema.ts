@@ -3,6 +3,7 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { basename } from 'path';
 import { SCHEMA_RELATIVE_PATH } from './bwrb-paths.js';
+import type { DatePrecision } from './local-date.js';
 import {
   BwrbSchema,
   type Schema,
@@ -283,6 +284,11 @@ function computeEffectiveFields(
         if (fieldDef.description !== undefined) {
           fields[fieldName] = { ...fields[fieldName], description: fieldDef.description };
         }
+        // Allow 'granularity' override - a subtype can loosen or tighten the
+        // precision required for an inherited date field.
+        if (fieldDef.granularity !== undefined) {
+          fields[fieldName] = { ...fields[fieldName], granularity: fieldDef.granularity };
+        }
       } else {
         // New field
         fields[fieldName] = { ...fieldDef };
@@ -413,6 +419,7 @@ function resolveConfig(config: Schema['config']): ResolvedConfig {
     obsidianVault: config?.obsidian_vault,
     defaultDashboard: config?.default_dashboard,
     dateFormat: config?.date_format ?? 'YYYY-MM-DD',
+    dateGranularity: config?.date_granularity ?? 'day',
   };
 }
 
@@ -517,6 +524,18 @@ export function getDescendants(schema: LoadedSchema, typeName: string): string[]
  */
 export function getFieldOptions(field: Field): string[] {
   return getOptionValues(field.options);
+}
+
+/**
+ * Resolve the effective date granularity for a field.
+ * A field's own `granularity` overrides the global `config.date_granularity`,
+ * which defaults to 'day' (strict full YYYY-MM-DD).
+ */
+export function resolveDateGranularity(
+  field: Field,
+  config: ResolvedConfig
+): DatePrecision {
+  return field.granularity ?? config.dateGranularity;
 }
 
 /**

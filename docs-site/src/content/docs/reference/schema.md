@@ -214,7 +214,7 @@ Stored as `true` or `false` (YAML booleans).
 
 ### date
 
-Date input with YYYY-MM-DD format.
+Date input. By default a full `YYYY-MM-DD` is required.
 
 ```json
 {
@@ -224,6 +224,31 @@ Date input with YYYY-MM-DD format.
   }
 }
 ```
+
+#### Partial dates and granularity
+
+Many dates are legitimately approximate — you remember the month or year, not the
+day. Set `granularity` on a date field to allow partial ISO dates. `granularity`
+is the *coarsest* precision allowed; finer values are always accepted:
+
+| `granularity` | Accepts |
+| --- | --- |
+| `day` (default) | `2026-05-12` |
+| `month` | `2026-05`, `2026-05-12` |
+| `year` | `2026`, `2026-05`, `2026-05-12` |
+
+```json
+{
+  "last-contact": {
+    "prompt": "date",
+    "granularity": "month"
+  }
+}
+```
+
+Partial dates are stored verbatim (ISO partials still sort lexically). To relax
+the default for *all* date fields at once, set [`date_granularity`](#config) in
+config; a field's own `granularity` overrides that default.
 
 ### select
 
@@ -385,6 +410,7 @@ Complete list of field properties:
 | `description` | string | any | What this field is for and when to use it. Surfaced by `bwrb schema list`; distinct from `label` |
 | `required` | boolean | prompted | Whether field must have a value (default: `false`) |
 | `default` | string | prompted | Default value if user skips prompt |
+| `granularity` | string | `date` | Coarsest precision allowed: `day` (default), `month`, or `year`. Overrides `date_granularity` |
 | `options` | array | `select` | Allowed values: bare strings or `{ value, description }` objects |
 | `multiple` | boolean | `select`, `relation` | Allow multiple values (default: `false`) |
 | `source` | string | `relation` | Type name to filter picker, or `"any"` |
@@ -461,6 +487,8 @@ Vault-wide settings:
 | `editor` | string | `$EDITOR` | Terminal editor command |
 | `visual` | string | `$VISUAL` | GUI editor command |
 | `obsidian_vault` | string | auto | Obsidian vault name for URI scheme |
+| `date_format` | string | `"YYYY-MM-DD"` | Display/parse format for date fields (`YYYY`, `MM`, `DD` tokens) |
+| `date_granularity` | string | `"day"` | Default coarsest date precision for all date fields: `day`, `month`, or `year`. Per-field [`granularity`](#partial-dates-and-granularity) overrides it |
 
 ---
 

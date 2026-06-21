@@ -66,6 +66,81 @@ export function formatDateWithPattern(date: Date = new Date(), format: string = 
 }
 
 /**
+ * Coarsest date precision allowed for a date field.
+ * Ordered from finest to coarsest: day < month < year.
+ */
+export type DatePrecision = 'day' | 'month' | 'year';
+
+/** Numeric rank for comparing precisions (lower = finer). */
+const PRECISION_RANK: Record<DatePrecision, number> = { day: 0, month: 1, year: 2 };
+
+/**
+ * Result of parsing a partial-or-full ISO date.
+ */
+export type PartialDateResult =
+  | { valid: true; value: string; precision: DatePrecision }
+  | { valid: false; error: string };
+
+/**
+ * Parse a partial or full ISO date (YYYY, YYYY-MM, or YYYY-MM-DD).
+ *
+ * Validates component ranges (month 1-12, day valid for the month) and reports
+ * the precision of the supplied value. Does NOT accept non-ISO partial formats
+ * (e.g. "05/2026") — partial dates must be ISO so they remain lexically sortable.
+ *
+ * @example
+ * parsePartialIsoDate('2026')        // { valid: true, value: '2026', precision: 'year' }
+ * parsePartialIsoDate('2026-05')     // { valid: true, value: '2026-05', precision: 'month' }
+ * parsePartialIsoDate('2026-05-12')  // { valid: true, value: '2026-05-12', precision: 'day' }
+ * parsePartialIsoDate('2026-13')     // { valid: false, ... }
+ */
+export function parsePartialIsoDate(value: string): PartialDateResult {
+  const trimmed = value.trim();
+
+  // Year only: YYYY
+  const yearMatch = trimmed.match(/^(\d{4})$/);
+  if (yearMatch) {
+    const error = validateDateComponents(parseInt(yearMatch[1]!, 10), 1, 1);
+    return error ? { valid: false, error } : { valid: true, value: trimmed, precision: 'year' };
+  }
+
+  // Year + month: YYYY-MM
+  const monthMatch = trimmed.match(/^(\d{4})-(\d{2})$/);
+  if (monthMatch) {
+    const error = validateDateComponents(
+      parseInt(monthMatch[1]!, 10),
+      parseInt(monthMatch[2]!, 10),
+      1
+    );
+    return error ? { valid: false, error } : { valid: true, value: trimmed, precision: 'month' };
+  }
+
+  // Full date: YYYY-MM-DD
+  const dayMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dayMatch) {
+    const error = validateDateComponents(
+      parseInt(dayMatch[1]!, 10),
+      parseInt(dayMatch[2]!, 10),
+      parseInt(dayMatch[3]!, 10)
+    );
+    return error ? { valid: false, error } : { valid: true, value: trimmed, precision: 'day' };
+  }
+
+  return {
+    valid: false,
+    error: `Unrecognized partial date: "${value}". Use YYYY, YYYY-MM, or YYYY-MM-DD`,
+  };
+}
+
+/**
+ * Whether a precision is allowed under a granularity setting.
+ * granularity = coarsest precision allowed; anything finer is always allowed.
+ */
+export function isPrecisionAllowed(precision: DatePrecision, granularity: DatePrecision): boolean {
+  return PRECISION_RANK[precision] <= PRECISION_RANK[granularity];
+}
+
+/**
  * Result of parsing a date string.
  */
 export interface ParsedDate {

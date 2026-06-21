@@ -14,6 +14,7 @@ import {
   getOutputDir,
   getTypeFamilies,
   getDescendants,
+  resolveDateGranularity,
 } from '../schema.js';
 import { readStructuralFrontmatter } from './structural.js';
 import {
@@ -29,7 +30,7 @@ import {
   getScalarToList,
   getUnambiguousDateNormalization,
   getValueShape,
-  isCanonicalIsoDate,
+  isAcceptableDate,
 } from './fix-policy.js';
 import { extractYamlNodeValue, isEffectivelyEmpty } from './value-utils.js';
 import { isMap } from 'yaml';
@@ -433,7 +434,13 @@ export async function auditFile(
           expected: 'boolean',
           autoFixable: booleanCoercion.ok,
         });
-      } else if (expectedScalarType === 'string' && (valueShape === 'number' || valueShape === 'boolean')) {
+      } else if (
+        expectedScalarType === 'string' &&
+        (valueShape === 'number' || valueShape === 'boolean') &&
+        // Date fields handle numeric values themselves (a bare year like 2026
+        // is a partial date, not just a mis-typed string) — see date block below.
+        field.prompt !== 'date'
+      ) {
         issues.push({
           severity: 'error',
           code: 'wrong-scalar-type',
@@ -456,19 +463,40 @@ export async function auditFile(
       }
     }
 
-    if (field.prompt === 'date' && typeof value === 'string') {
-      if (!isCanonicalIsoDate(value)) {
-        const normalization = getUnambiguousDateNormalization(value);
+    if (field.prompt === 'date' && (typeof value === 'string' || typeof value === 'number')) {
+      // A bare year (e.g. 2026) is parsed as a number by YAML; treat it as a
+      // partial date string for validation.
+      const dateStr = String(value);
+      const granularity = resolveDateGranularity(field, schema.config);
+      if (!isAcceptableDate(dateStr, granularity)) {
+        const normalization = getUnambiguousDateNormalization(dateStr);
+        const expected =
+          granularity === 'day'
+            ? 'YYYY-MM-DD'
+            : granularity === 'month'
+              ? 'YYYY-MM-DD or YYYY-MM'
+              : 'YYYY-MM-DD, YYYY-MM, or YYYY';
         issues.push({
           severity: 'error',
           code: 'invalid-date-format',
-          message: `Invalid date for ${fieldName}: must be YYYY-MM-DD`,
+          message: `Invalid date for ${fieldName}: must be ${expected}`,
           field: fieldName,
           value,
-          expected: 'YYYY-MM-DD',
+          expected,
           ...(normalization && { suggestion: `Suggested: ${normalization.normalized}` }),
           ...(normalization && { meta: { normalized: normalization.normalized, normalizationKind: normalization.kind } }),
           autoFixable: Boolean(normalization),
+        });
+      } else if (typeof value === 'number') {
+        // Valid date but stored as a YAML number — should be quoted as a string.
+        issues.push({
+          severity: 'error',
+          code: 'wrong-scalar-type',
+          message: `Non-string value for ${fieldName} should be a string`,
+          field: fieldName,
+          value,
+          expected: 'string',
+          autoFixable: true,
         });
       }
     }

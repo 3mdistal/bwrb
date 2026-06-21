@@ -34,6 +34,12 @@ export const FieldOptionSchema = z.union([
 export const FieldSchema = z.object({
   // Prompt type (how the field is collected)
   prompt: z.enum(['text', 'select', 'list', 'date', 'relation', 'boolean', 'number']).optional(),
+  // Coarsest date precision allowed for `date` fields (finer is always allowed).
+  // - day (default): full YYYY-MM-DD only
+  // - month: YYYY-MM or YYYY-MM-DD (e.g. last-contact known to the month)
+  // - year: YYYY, YYYY-MM, or YYYY-MM-DD (e.g. "around 2021")
+  // Overrides the global config.date_granularity for this field.
+  granularity: z.enum(['day', 'month', 'year']).optional(),
   // Static value (no prompting)
   value: z.string().optional(),
   // Human-readable description of what this field is for and when to use it.
@@ -160,6 +166,12 @@ export const ConfigSchema = z.object({
   // DD-MM-YYYY: EU format with dashes
   // Custom patterns using YYYY, MM, DD tokens are also supported
   date_format: z.string().optional(),
+  // Default coarsest date precision allowed for all `date` fields.
+  // - day (default): full YYYY-MM-DD only
+  // - month: YYYY-MM or finer
+  // - year: YYYY or finer
+  // Per-field `granularity` overrides this default.
+  date_granularity: z.enum(['day', 'month', 'year']).optional(),
 });
 
 // ============================================================================
@@ -297,6 +309,8 @@ export interface ResolvedConfig {
   defaultDashboard: string | undefined;
   /** Date format for date fields (defaults to 'YYYY-MM-DD') */
   dateFormat: string;
+  /** Default coarsest date precision allowed for date fields (defaults to 'day') */
+  dateGranularity: 'day' | 'month' | 'year';
 }
 
 /**
