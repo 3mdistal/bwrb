@@ -1,3 +1,7 @@
+> **ARCHIVED — killed.** bwrb is a deterministic CLI, not an agent harness; this reinvents
+> the AI orchestration the agent (Claude Code, Codex, …) already provides. Kept for history.
+> See [`../features/ingest-safety-net.md`](../features/ingest-safety-net.md).
+
 # Agentic Workflows
 
 > AI-powered automation with vault-based prompt and workflow management

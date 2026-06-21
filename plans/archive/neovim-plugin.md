@@ -1,3 +1,7 @@
+> **ARCHIVED — killed.** bwrb is not pursuing editor-plugin or LSP surfaces; focus is honing
+> bwrb-the-system (CLI + schema). Any future "show violations to a human" surface is a thin
+> consumer of `bwrb audit --output json`, not a bundled plugin/LSP. Kept for history.
+
 # Neovim Plugin for Bowerbird
 
 > Native Neovim integration with full CLI feature parity

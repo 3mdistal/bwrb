@@ -25,8 +25,6 @@ description: Bowerbird development priorities
 
 ### Near Term
 
-- Neovim plugin (`bwrb.nvim`)
-- LSP for real-time validation
 - Schema discovery from existing files
 
 ### Future

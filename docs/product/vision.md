@@ -275,24 +275,6 @@ This ordering presents commands as a guided path: create notes → find notes �
 
 ---
 
-## Neovim Plugin
-
-`bwrb.nvim` brings full CLI functionality to Neovim.
-
-**Philosophy:**
-- Feature parity with CLI (for human-usable operations)
-- Lean on existing plugins (Telescope, nvim-cmp, Treesitter)
-- Minimal custom UI
-- CLI is source of truth (plugin wraps `--json` mode)
-
-**Future: LSP**
-- Real-time schema validation in editor
-- Wikilink completion
-- Frontmatter field suggestions
-- Diagnostic integration for type errors
-
----
-
 ## Roadmap Priorities
 
 ### V1.0 (Core)
@@ -302,11 +284,9 @@ This ordering presents commands as a guided path: create notes → find notes �
 3. **Core commands** — new, edit, list, search, audit, bulk, schema, template
 4. **JSON mode** — Every command scriptable
 5. **Migration tooling** — Rename fields, change enums, refactor types
-6. **Neovim plugin (basic)** — Search, create, edit via CLI wrapper
 
 ### Post-V1.0
 
-- LSP for real-time validation
 - AI ingest command
 - Schema discovery from existing files
 - Obsidian plugin
