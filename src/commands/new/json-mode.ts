@@ -5,6 +5,7 @@ import {
   parseBodyInput,
 } from '../../lib/frontmatter.js';
 import {
+  getFieldsForType,
   getFrontmatterOrder,
   getTypeDefByPath,
 } from '../../lib/schema.js';
@@ -75,7 +76,7 @@ async function buildJsonNoteContent(
   template?: Template | null
 ): Promise<PlannedNoteContent> {
   const { frontmatter, bodyInput } = parseJsonNoteInput(jsonInput);
-  const mergedInput = mergeJsonTemplateDefaults(schema, frontmatter, template);
+  const mergedInput = mergeJsonTemplateDefaults(schema, typePath, frontmatter, template);
   await validateJsonFrontmatter(schema, vaultDir, typePath, typeDef, mergedInput, template);
   const resolvedFrontmatter = applyDefaults(schema, typePath, mergedInput);
 
@@ -136,6 +137,7 @@ function parseJsonNoteInput(jsonInput: string): JsonNoteInputResult {
 
 function mergeJsonTemplateDefaults(
   schema: LoadedSchema,
+  typePath: string,
   frontmatterInput: Record<string, unknown>,
   template?: Template | null
 ): Record<string, unknown> {
@@ -143,9 +145,13 @@ function mergeJsonTemplateDefaults(
     return { ...frontmatterInput };
   }
 
+  // Resolved fields gate date-expression evaluation by field type: only
+  // `date`-typed fields evaluate their default; other fields pass through.
+  const fields = getFieldsForType(schema, typePath);
+
   const evaluatedDefaults: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(template.defaults)) {
-    evaluatedDefaults[key] = evaluateTemplateDefault(value, schema.config.dateFormat);
+    evaluatedDefaults[key] = evaluateTemplateDefault(value, schema.config.dateFormat, fields[key]?.prompt);
   }
 
   return { ...evaluatedDefaults, ...frontmatterInput };

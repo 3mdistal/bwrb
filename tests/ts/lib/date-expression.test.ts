@@ -241,22 +241,49 @@ describe('date-expression', () => {
   });
 
   describe('evaluateTemplateDefault', () => {
-    it('should evaluate date expressions', () => {
-      expect(evaluateTemplateDefault('today()')).toBe('2025-06-15');
-      expect(evaluateTemplateDefault("today() + '7d'")).toBe('2025-06-22');
+    it('should evaluate date expressions on date-typed fields', () => {
+      expect(evaluateTemplateDefault('today()', undefined, 'date')).toBe('2025-06-15');
+      expect(evaluateTemplateDefault("today() + '7d'", undefined, 'date')).toBe('2025-06-22');
     });
 
-    it('should pass through regular strings', () => {
-      expect(evaluateTemplateDefault('inbox')).toBe('inbox');
-      expect(evaluateTemplateDefault('2025-01-15')).toBe('2025-01-15');
-      expect(evaluateTemplateDefault('[[Some Link]]')).toBe('[[Some Link]]');
+    it('should pass through regular strings on date-typed fields', () => {
+      expect(evaluateTemplateDefault('inbox', undefined, 'date')).toBe('inbox');
+      expect(evaluateTemplateDefault('2025-01-15', undefined, 'date')).toBe('2025-01-15');
+      expect(evaluateTemplateDefault('[[Some Link]]', undefined, 'date')).toBe('[[Some Link]]');
     });
 
     it('should pass through non-string values', () => {
-      expect(evaluateTemplateDefault(42)).toBe(42);
-      expect(evaluateTemplateDefault(true)).toBe(true);
-      expect(evaluateTemplateDefault(['a', 'b'])).toEqual(['a', 'b']);
-      expect(evaluateTemplateDefault(null)).toBe(null);
+      expect(evaluateTemplateDefault(42, undefined, 'date')).toBe(42);
+      expect(evaluateTemplateDefault(true, undefined, 'date')).toBe(true);
+      expect(evaluateTemplateDefault(['a', 'b'], undefined, 'date')).toEqual(['a', 'b']);
+      expect(evaluateTemplateDefault(null, undefined, 'date')).toBe(null);
+    });
+
+    it('should throw on malformed date expressions on date-typed fields (typo protection)', () => {
+      expect(() => evaluateTemplateDefault('@today+3x', undefined, 'date')).toThrow(
+        /Invalid date expression/
+      );
+    });
+
+    describe('field-type gating (regression: non-date fields must not evaluate)', () => {
+      // A non-date field default that merely starts with @today/@now/today(/now(
+      // must pass through verbatim — never evaluated, never throwing — so prose
+      // like "@today-ish note" does not block note creation.
+      const proseThatLooksLikeDateExpr = ['@today-ish note', '@today note', 'today() later', '@now thoughts'];
+
+      for (const fieldType of [undefined, 'text', 'select', 'list', 'relation', 'boolean', 'number']) {
+        for (const value of proseThatLooksLikeDateExpr) {
+          it(`passes "${value}" through verbatim on a ${fieldType ?? 'static'} field`, () => {
+            expect(evaluateTemplateDefault(value, undefined, fieldType)).toBe(value);
+          });
+        }
+      }
+
+      it('does not evaluate a valid date expression on a non-date field', () => {
+        // Even a strictly-valid expression is literal text on a text field.
+        expect(evaluateTemplateDefault('@today+3d', undefined, 'text')).toBe('@today+3d');
+        expect(evaluateTemplateDefault('today()', undefined, 'select')).toBe('today()');
+      });
     });
   });
 });

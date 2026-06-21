@@ -165,23 +165,58 @@ export function validateDateExpression(value: string): string | null {
 }
 
 /**
+ * Whether a field's declared `prompt` type makes it eligible for
+ * date-expression evaluation of its template default.
+ *
+ * Only `date`-typed fields evaluate date expressions. Every other field type
+ * (text, select, list, relation, boolean, number, or an undefined/static
+ * field) treats its default verbatim, so prose like `@today-ish note` is never
+ * mistaken for a malformed date expression.
+ */
+function isDateTypedFieldPrompt(prompt: string | undefined): boolean {
+  return prompt === 'date';
+}
+
+/**
  * Evaluate a template default value, processing date expressions.
- * For non-string values or non-expression strings, returns the value unchanged.
- * 
+ *
+ * Date-expression evaluation is gated by FIELD TYPE: it is only attempted when
+ * `fieldType` is `date`. For every other field type — and for non-string
+ * values — the value passes through unchanged, so non-date defaults that merely
+ * look like a date expression (e.g. `@today-ish note`) are never evaluated and
+ * never throw.
+ *
+ * On date-typed fields the full grammar (and its typo-protection throwing for
+ * loosely-matching-but-malformed values) is preserved.
+ *
  * @param value - The value to evaluate
  * @param dateFormat - Optional date format pattern (defaults to YYYY-MM-DD)
- * 
+ * @param fieldType - The field's declared `prompt` type. When omitted, the
+ *   value is treated as a non-date field and passed through verbatim. Callers
+ *   that know a value is date-typed must pass `'date'` explicitly.
+ *
  * @example
- * evaluateTemplateDefault("today() + '7d'") // "2026-01-07"
- * evaluateTemplateDefault("inbox") // "inbox"
- * evaluateTemplateDefault(42) // 42
- * evaluateTemplateDefault("today()", "MM/DD/YYYY") // "01/07/2026"
+ * evaluateTemplateDefault("today() + '7d'", undefined, 'date') // "2026-01-07"
+ * evaluateTemplateDefault("@today-ish note", undefined, 'text') // "@today-ish note"
+ * evaluateTemplateDefault("inbox", undefined, 'date') // "inbox"
+ * evaluateTemplateDefault(42, undefined, 'date') // 42
+ * evaluateTemplateDefault("today()", "MM/DD/YYYY", 'date') // "01/07/2026"
  */
-export function evaluateTemplateDefault(value: unknown, dateFormat: string = DEFAULT_DATE_FORMAT): unknown {
+export function evaluateTemplateDefault(
+  value: unknown,
+  dateFormat: string = DEFAULT_DATE_FORMAT,
+  fieldType?: string
+): unknown {
   if (typeof value !== 'string') {
     return value;
   }
-  
+
+  // Only date-typed fields attempt date-expression evaluation. Non-date fields
+  // pass their default through verbatim (no detection, no throwing).
+  if (!isDateTypedFieldPrompt(fieldType)) {
+    return value;
+  }
+
   const evaluated = evaluateDateExpression(value, dateFormat);
   return evaluated !== null ? evaluated : value;
 }
