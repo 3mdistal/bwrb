@@ -95,6 +95,36 @@ export const BodySectionSchema: z.ZodType<BodySection, z.ZodTypeDef, BodySection
 // ============================================================================
 
 /**
+ * Recurrence configuration carried by a trait (the `recurring` trait, #107).
+ *
+ * Declares event-driven, spawn-on-transition recurrence: "when a field
+ * transitions to a value (e.g. `status` enters `done`), spawn a successor note
+ * from a template, with the successor's date field offset from a predecessor
+ * date field." No cron, no daemon, no LLM — the trigger is a field transition,
+ * not a clock.
+ *
+ * Date rule is FIELD-OFFSET ONLY: `successor.<dateField> = <predecessor date
+ * field> + <offset>` (e.g. `deadline + 7d`). The base must be a DATE field.
+ * Transition-time offsets and calendar-anchored bases are intentionally not
+ * supported (they cannot be reproduced identically across both execution paths).
+ */
+export const RecurrenceSchema = z.object({
+  // The trigger transition, written as `<field> = <value>` (e.g. "status = done").
+  // The successor is spawned when the trigger field transitions INTO this value.
+  on: z.string(),
+  // Template name to spawn the successor from. Defaults to the completed note's
+  // type default template (a task begets a task). Naming a template can spawn a
+  // different type (finish "draft" → spawn "review").
+  template: z.string().optional(),
+  // Field-offset assignments for the successor. Each value is a field-offset
+  // expression `<dateField> <+|-> <duration>` (e.g. "deadline + 7d"). The base
+  // must be a date field on the predecessor.
+  set: z.record(z.string()).optional(),
+});
+
+export type Recurrence = z.infer<typeof RecurrenceSchema>;
+
+/**
  * A reusable bundle of fields composed into a type via `traits`.
  *
  * Traits are *composition* ("also-has") alongside `extends` *inheritance*
@@ -103,7 +133,8 @@ export const BodySectionSchema: z.ZodType<BodySection, z.ZodTypeDef, BodySection
  * and mix them into unrelated type families.
  *
  * Traits are flat: a trait carries only `fields` (and an optional
- * `description`). A trait cannot extend a type or compose other traits, which
+ * `description`), plus — for the `recurring` trait — an optional `recurrence`
+ * block (#107). A trait cannot extend a type or compose other traits, which
  * keeps resolution deterministic and easy to reason about.
  */
 export const TraitSchema = z.object({
@@ -112,6 +143,9 @@ export const TraitSchema = z.object({
   description: z.string().optional(),
   // Field definitions contributed by this trait.
   fields: z.record(FieldSchema).optional(),
+  // Recurrence configuration (spawn-on-transition). When present, types that
+  // compose this trait gain event-driven successor spawning. See RecurrenceSchema.
+  recurrence: RecurrenceSchema.optional(),
 });
 
 // ============================================================================

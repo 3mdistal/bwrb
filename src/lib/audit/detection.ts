@@ -15,6 +15,7 @@ import {
   getTypeFamilies,
   getDescendants,
   resolveDateGranularity,
+  getRecurrenceForType,
 } from '../schema.js';
 import { readStructuralFrontmatter } from './structural.js';
 import {
@@ -54,6 +55,15 @@ import {
   isMarkdownLink,
   isWikilink,
 } from '../links.js';
+import {
+  needsSuccessor,
+  validateRecurrenceRule,
+  CHAIN_NEXT_FIELD,
+} from '../recurrence.js';
+import {
+  findDefaultTemplateWithInheritance,
+  findAllTemplates,
+} from '../template.js';
 
 // Import file discovery functions from shared module
 import {
@@ -632,6 +642,28 @@ export async function auditFile(
     }
   }
 
+  // Recurrence backstop + config validation (#107). Skipped when the caller
+  // filtered these issue codes out.
+  const wantMissingSuccessor =
+    options.ignoreIssue !== 'missing-successor' &&
+    (options.onlyIssue === undefined || options.onlyIssue === 'missing-successor');
+  const wantInvalidRecurrence =
+    options.ignoreIssue !== 'invalid-recurrence' &&
+    (options.onlyIssue === undefined || options.onlyIssue === 'invalid-recurrence');
+
+  if (wantInvalidRecurrence || wantMissingSuccessor) {
+    issues.push(
+      ...(await checkRecurrenceIssues(
+        schema,
+        _vaultDir,
+        resolvedTypePath,
+        frontmatter,
+        wantInvalidRecurrence,
+        wantMissingSuccessor
+      ))
+    );
+  }
+
   // Check unknown fields
   for (const fieldName of Object.keys(frontmatter)) {
     // Skip discriminator fields (type, <type>-type, etc.)
@@ -904,6 +936,88 @@ function checkRelationFieldIssues(
       }
     }
 
+  }
+
+  return issues;
+}
+
+/**
+ * Recurrence detection (#107):
+ * - `invalid-recurrence`: the type's recurrence rule is broken at the config
+ *   level (malformed trigger, non-date offset base, or a template that doesn't
+ *   exist). A deterministic config error — config gets the same safety net as
+ *   data. Reported once per recurring note (so it surfaces during normal audits).
+ * - `missing-successor`: the note satisfies the trigger but its chain field
+ *   (`next`) is empty — a successor was never spawned (e.g. completed outside
+ *   bwrb). Auto-fixable: --fix spawns the missing successor (same engine as the
+ *   fast path). Suppressed when the rule is invalid (fixing it would fail).
+ */
+async function checkRecurrenceIssues(
+  schema: LoadedSchema,
+  vaultDir: string,
+  typePath: string,
+  frontmatter: Record<string, unknown>,
+  wantInvalidRecurrence: boolean,
+  wantMissingSuccessor: boolean
+): Promise<AuditIssue[]> {
+  const issues: AuditIssue[] = [];
+
+  const resolved = getRecurrenceForType(schema, typePath);
+  if (!resolved) return issues;
+
+  // Static rule validation (trigger parses; offsets are field-offsets with a
+  // date base; offset target fields exist).
+  const ruleIssues = validateRecurrenceRule(schema, typePath);
+
+  // Template existence (needs vault I/O). The successor template defaults to the
+  // type's own default template; a named template can target any type.
+  if (resolved.recurrence.template) {
+    const all = await findAllTemplates(vaultDir);
+    const named = resolved.recurrence.template;
+    const match = all.find((t) => t.name === named);
+    if (!match) {
+      ruleIssues.push({
+        message: `Recurrence trait '${resolved.trait}' on type '${typePath}' references template '${named}', which does not exist in the vault.`,
+      });
+    } else if (!getType(schema, match.templateFor)) {
+      ruleIssues.push({
+        message: `Recurrence template '${named}' targets unknown type '${match.templateFor}'.`,
+      });
+    }
+  } else {
+    // Default path: the type must have a (possibly inherited) default template
+    // to spawn from.
+    const def = await findDefaultTemplateWithInheritance(vaultDir, typePath, schema);
+    if (!def) {
+      ruleIssues.push({
+        message: `Recurrence trait '${resolved.trait}' on type '${typePath}' spawns from the type's default template, but no default template was found for '${typePath}'.`,
+      });
+    }
+  }
+
+  const ruleInvalid = ruleIssues.length > 0;
+
+  if (wantInvalidRecurrence && ruleInvalid) {
+    for (const ruleIssue of ruleIssues) {
+      issues.push({
+        severity: 'error',
+        code: 'invalid-recurrence',
+        message: ruleIssue.message,
+        autoFixable: false,
+      });
+    }
+  }
+
+  // Missing-successor backstop: only meaningful when the rule is valid (a fix
+  // would otherwise fail). Predicate: trigger satisfied AND `next` empty.
+  if (wantMissingSuccessor && !ruleInvalid && needsSuccessor(schema, typePath, frontmatter)) {
+    issues.push({
+      severity: 'warning',
+      code: 'missing-successor',
+      message: `Recurring note satisfies its trigger but has no successor ('${CHAIN_NEXT_FIELD}' is empty). Run with --fix to spawn it.`,
+      field: CHAIN_NEXT_FIELD,
+      autoFixable: true,
+    });
   }
 
   return issues;

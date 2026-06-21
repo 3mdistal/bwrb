@@ -37,6 +37,7 @@ import {
 import { type LoadedSchema, type Field, type BodySection, getOptionValues } from '../types/schema.js';
 import { UserCancelledError } from './errors.js';
 import { expandStaticValue } from './local-date.js';
+import { applyRecurrenceFastPath } from './recurrence-fast-path.js';
 
 // ============================================================================
 // Types
@@ -229,6 +230,19 @@ export async function editNoteFromJson(
   // Write updated note
   await writeNote(filePath, normalizedFrontmatter, body, orderedFields);
 
+  // Recurrence fast path: if this write completed a recurring note (trigger
+  // transition into the trigger value, chain field empty), spawn the successor
+  // deterministically. Shared engine with the audit backstop → identical result.
+  await applyRecurrenceFastPath(
+    schema,
+    vaultDir,
+    typeDef.name,
+    filePath,
+    frontmatter,
+    normalizedFrontmatter,
+    body
+  );
+
   return { updatedFields, path: filePath };
 }
 
@@ -316,6 +330,21 @@ export async function editNoteInteractive(
   // Write updated file
   await writeNote(filePath, newFrontmatter, updatedBody, orderedFields);
   printSuccess(`\n✓ Updated: ${filePath}`);
+
+  // Recurrence fast path (see editNoteFromJson). Interactive edit reconstructs
+  // the full frontmatter, so `frontmatter` (read at the top) is the old state.
+  const fastPath = await applyRecurrenceFastPath(
+    schema,
+    vaultDir,
+    typeDef.name,
+    filePath,
+    frontmatter,
+    newFrontmatter,
+    updatedBody
+  );
+  if (fastPath.successorPath) {
+    printSuccess(`✓ Spawned recurrence successor: ${fastPath.successorPath}`);
+  }
 }
 
 // ============================================================================

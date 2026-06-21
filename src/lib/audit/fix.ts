@@ -55,6 +55,7 @@ import {
   type FixContext,
 } from './types.js';
 import { toMarkdownLink, toWikilink } from '../links.js';
+import { spawnSuccessor, needsSuccessor, CHAIN_NEXT_FIELD } from '../recurrence.js';
 import { maskNonProse } from './unlinked-mention.js';
 import {
   readStructuralFrontmatterFromRaw,
@@ -176,6 +177,64 @@ async function applyUnlinkedMentionFix(
   }
 
   return { file: filePath, issue, action: 'fixed' };
+}
+
+/**
+ * Apply a `missing-successor` auto-fix (#107): spawn the missing successor for a
+ * recurring note completed outside bwrb. Uses the SAME `spawnSuccessor` engine
+ * as the fast path, so the backstop produces an identical successor.
+ *
+ * Re-reads the note and re-checks `needsSuccessor` so the fix is idempotent: if
+ * the chain field is no longer empty (e.g. fixed earlier in the run, or the rule
+ * changed), it skips rather than spawning a duplicate. Honors dry-run by not
+ * writing — but spawning a file IS a write, so in dry-run we skip the spawn.
+ */
+async function applyMissingSuccessorFix(
+  schema: LoadedSchema,
+  vaultDir: string,
+  filePath: string,
+  issue: AuditIssue
+): Promise<FixResult> {
+  if (isDryRunEnabled()) {
+    return { file: filePath, issue, action: 'skipped', message: 'Dry-run: would spawn successor' };
+  }
+
+  const parsed = await parseNote(filePath);
+  const typePath = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
+  if (!typePath) {
+    return { file: filePath, issue, action: 'failed', message: 'Could not resolve note type' };
+  }
+
+  // Idempotency: only spawn if still needed (trigger satisfied AND next empty).
+  if (!needsSuccessor(schema, typePath, parsed.frontmatter)) {
+    return { file: filePath, issue, action: 'skipped', message: 'Successor no longer needed' };
+  }
+
+  const predecessorName = basename(filePath, '.md');
+  const typeDef = getTypeDefByPath(schema, typePath);
+  const order = typeDef?.fieldOrder;
+
+  try {
+    const successorPath = await spawnSuccessor(
+      schema,
+      vaultDir,
+      typePath,
+      parsed.frontmatter,
+      predecessorName,
+      async (nextLink) => {
+        // Re-read to avoid clobbering any concurrent edits, then set `next`.
+        const latest = await parseNote(filePath);
+        const updated = { ...latest.frontmatter, [CHAIN_NEXT_FIELD]: nextLink };
+        await writeNote(filePath, updated, latest.body, order);
+      }
+    );
+    if (!successorPath) {
+      return { file: filePath, issue, action: 'skipped', message: 'Type does not recur' };
+    }
+    return { file: filePath, issue, action: 'fixed', message: successorPath };
+  } catch (err) {
+    return { file: filePath, issue, action: 'failed', message: (err as Error).message };
+  }
 }
 
 async function applyTrailingWhitespaceFix(filePath: string, issue: AuditIssue): Promise<FixResult> {
@@ -1430,6 +1489,25 @@ export async function runAutoFix(
           console.log(chalk.red(`    ✗ Failed to rename ${issue.field}: ${fixResult.message}`));
           failed++;
         }
+      } else if (issue.code === 'missing-successor') {
+        // Spawn the missing recurrence successor (same engine as the fast path).
+        const fixResult = await applyMissingSuccessorFix(schema, vaultDir, result.path, issue);
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Spawned successor${fixResult.message ? `: ${fixResult.message}` : ''}`));
+          fixed++;
+        } else if (fixResult.action === 'skipped') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+          skipped++;
+          if (!isDryRunEnabled()) {
+            registerManualReview(manualReviewNeeded, result.relativePath, issue);
+          }
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to spawn successor: ${fixResult.message}`));
+          failed++;
+        }
       } else {
         skipped++;
       }
@@ -1614,6 +1692,8 @@ async function handleInteractiveFix(
       return handleKeyCasingFix(schema, result, issue);
     case 'unlinked-mention':
       return handleUnlinkedMentionFix(schema, result, issue);
+    case 'missing-successor':
+      return handleMissingSuccessorFix(context, result, issue);
     default:
       // Truly non-fixable issues
       if (issue.suggestion) {
@@ -1622,6 +1702,42 @@ async function handleInteractiveFix(
       console.log(chalk.dim('    (Manual fix required - skipping)'));
       return 'skipped';
   }
+}
+
+/**
+ * Interactive handler for `missing-successor` (#107): prompt to spawn the
+ * missing recurrence successor, using the shared engine.
+ */
+async function handleMissingSuccessorFix(
+  context: FixContext,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  const { schema, vaultDir, dryRun } = context;
+
+  if (dryRun) {
+    console.log(chalk.yellow('    ⚠ Would spawn missing successor'));
+    return 'fixed';
+  }
+
+  const confirmed = await promptConfirm('    Spawn the missing successor?');
+  if (confirmed === null) return 'quit';
+  if (!confirmed) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  const fixResult = await applyMissingSuccessorFix(schema, vaultDir, result.path, issue);
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Spawned successor${fixResult.message ? `: ${fixResult.message}` : ''}`));
+    return 'fixed';
+  }
+  if (fixResult.action === 'skipped') {
+    console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+    return 'skipped';
+  }
+  console.log(chalk.red(`    ✗ ${fixResult.message}`));
+  return 'failed';
 }
 
 async function deleteNoteWithSafety(

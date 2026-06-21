@@ -96,6 +96,7 @@ export default defineConfig({
 					label: 'Automation',
 					collapsed: true,
 					items: [
+						{ slug: 'automation/task-system' },
 						{ slug: 'automation/json-mode' },
 						{ slug: 'automation/shell-completion' },
 						{ slug: 'automation/ai-integration' },

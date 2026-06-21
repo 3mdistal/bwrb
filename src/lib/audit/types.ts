@@ -56,7 +56,15 @@ export type IssueCode =
   | 'unlinked-mention'
   // Ingest safety net (#601): a proper-noun-ish term mentioned frequently across
   // the vault with no note yet. Advisory-only heuristic; NEVER auto-fixable.
-  | 'frequent-unlinked-term';
+  | 'frequent-unlinked-term'
+  // Task system (#107): a recurring note whose trigger is satisfied but whose
+  // chain field (`next`) is empty — a successor was never spawned (e.g. completed
+  // outside bwrb). Auto-fixable: --fix spawns the missing successor.
+  | 'missing-successor'
+  // Task system (#107): a recurrence rule that is broken at the config level —
+  // a non-date offset base, a malformed trigger, or a template that doesn't
+  // exist. Deterministic config error; NEVER auto-fixable.
+  | 'invalid-recurrence';
 
 /**
  * A single audit issue.

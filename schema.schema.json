@@ -44,7 +44,7 @@
   "definitions": {
     "trait": {
       "type": "object",
-      "description": "A reusable bundle of fields composed into a type. Traits are flat: they carry only fields (and an optional description) and cannot extend types or compose other traits.",
+      "description": "A reusable bundle of fields composed into a type. Traits are flat: they carry only fields (and an optional description, plus an optional recurrence block) and cannot extend types or compose other traits.",
       "additionalProperties": false,
       "properties": {
         "description": {
@@ -57,6 +57,30 @@
           "additionalProperties": {
             "$ref": "#/definitions/frontmatterField"
           }
+        },
+        "recurrence": {
+          "$ref": "#/definitions/recurrence"
+        }
+      }
+    },
+    "recurrence": {
+      "type": "object",
+      "description": "Event-driven, spawn-on-transition recurrence (#107). When a field transitions into a value (e.g. status enters done), spawn a successor note from a template, offsetting the successor's date field from a predecessor date field. No cron, no daemon, no LLM.",
+      "additionalProperties": false,
+      "required": ["on"],
+      "properties": {
+        "on": {
+          "type": "string",
+          "description": "Trigger transition, written as `<field> = <value>` (e.g. \"status = done\"). The successor is spawned when the trigger field transitions INTO this value."
+        },
+        "template": {
+          "type": "string",
+          "description": "Template to spawn the successor from. Defaults to the completed note's type default template (a task begets a task). A named template can spawn a different type (finish \"draft\" -> spawn \"review\")."
+        },
+        "set": {
+          "type": "object",
+          "description": "Field-offset assignments for the successor. Each value is a field-offset expression `<dateField> <+|-> <duration>` (e.g. \"deadline + 7d\"). The base must be a date field on the predecessor. Transition-time offsets and calendar-anchored bases are not supported.",
+          "additionalProperties": { "type": "string" }
         }
       }
     },

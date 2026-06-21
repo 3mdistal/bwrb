@@ -1,4 +1,4 @@
-import { readdir } from 'fs/promises';
+import { readdir, mkdir } from 'fs/promises';
 import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
@@ -1462,7 +1462,11 @@ export async function createScaffoldedInstances(
   const created: string[] = [];
   const skipped: string[] = [];
   const errors: ScaffoldError[] = [];
-  
+
+  // Track filenames chosen during this run, per directory, so multiple
+  // instances of the same type don't collide (#630). Keyed by absolute dir.
+  const usedNames = new Map<string, Set<string>>();
+
   for (const instance of instances) {
     try {
       // Validate type exists
@@ -1475,24 +1479,14 @@ export async function createScaffoldedInstances(
         });
         continue;
       }
-      
-      // Determine filename
-      const filename = instance.filename ?? `${instance.type}.md`;
-      const filePath = join(instanceDir, filename);
-      
-      // Skip if file exists (warn but continue)
-      if (existsSync(filePath)) {
-        skipped.push(filePath);
-        continue;
-      }
-      
+
       // Load instance template if specified
       let instanceTemplate: Template | null = null;
       if (instance.template) {
         instanceTemplate = await findTemplateByName(vaultDir, instance.type, instance.template);
         // If not found, don't error - just continue without template
       }
-      
+
       // Build frontmatter with defaults
       let frontmatter: Record<string, unknown> = {};
 
@@ -1514,9 +1508,33 @@ export async function createScaffoldedInstances(
           frontmatter[key] = evaluateTemplateDefault(value, schema.config.dateFormat, instanceFields[key]?.prompt);
         }
       }
-      
+
       // Apply schema defaults for any missing required fields
       frontmatter = applyDefaults(schema, instance.type, frontmatter);
+
+      // --- Placement (#630) -------------------------------------------------
+      // Disambiguate filenames so multi-spawn of the same type no longer
+      // collapses into a single `<type>.md` (the #630 bug). Instances are
+      // colocated in the parent's instance folder (the scaffold contract), but
+      // each now gets a meaningful, unique filename derived from its filename
+      // pattern / `title` / `name`, falling back to the type name.
+      const targetDir = instanceDir;
+
+      const baseName = resolveInstanceFilenameBase(
+        instance,
+        instanceTemplate,
+        instanceType,
+        frontmatter,
+        schema.config.dateFormat
+      );
+      const filename = ensureUniqueInstanceFilename(targetDir, baseName, usedNames);
+      const filePath = join(targetDir, filename);
+
+      // Skip if file exists on disk (warn but continue)
+      if (existsSync(filePath)) {
+        skipped.push(filePath);
+        continue;
+      }
 
       // System-managed stable note id (v1.0)
       const noteId = await generateUniqueNoteId(vaultDir);
@@ -1542,11 +1560,14 @@ export async function createScaffoldedInstances(
         instanceType.fieldOrder.length > 0 ? instanceType.fieldOrder : Object.keys(frontmatter)
       );
 
+      // Ensure the (possibly new) child output directory exists.
+      await mkdir(targetDir, { recursive: true });
+
       // Write file
       await writeNote(filePath, frontmatter, body, orderedFields);
       await registerIssuedNoteId(vaultDir, noteId, filePath);
       created.push(filePath);
-      
+
     } catch (e) {
       errors.push({
         subtype: instance.type,
@@ -1555,6 +1576,78 @@ export async function createScaffoldedInstances(
       });
     }
   }
-  
+
   return { created, skipped, errors };
+}
+
+/**
+ * Resolve the base filename (without `.md`) for a scaffolded instance (#630).
+ *
+ * Precedence (highest to lowest):
+ * 1. Explicit `instance.filename` (strip a trailing `.md`).
+ * 2. The instance/template filename pattern resolved against frontmatter.
+ * 3. The frontmatter `title` or `name` value (the staggered-task common case).
+ * 4. The type name as a last resort (disambiguated by the caller).
+ */
+function resolveInstanceFilenameBase(
+  instance: InstanceScaffold,
+  instanceTemplate: Template | null,
+  instanceType: ResolvedType,
+  frontmatter: Record<string, unknown>,
+  dateFormat: string
+): string {
+  if (instance.filename) {
+    return instance.filename.replace(/\.md$/, '');
+  }
+
+  const pattern = getFilenamePattern(instanceTemplate, instanceType);
+  if (pattern) {
+    const resolved = resolveFilenamePattern(pattern, frontmatter, dateFormat);
+    if (resolved.resolved && resolved.filename) {
+      return resolved.filename;
+    }
+  }
+
+  const title = frontmatter['title'];
+  if (typeof title === 'string' && title.trim() !== '') {
+    return sanitizeFilenameBase(title).sanitized || instance.type;
+  }
+  const name = frontmatter['name'];
+  if (typeof name === 'string' && name.trim() !== '') {
+    return sanitizeFilenameBase(name).sanitized || instance.type;
+  }
+
+  return instance.type;
+}
+
+/**
+ * Disambiguate a base filename against names already chosen EARLIER IN THIS
+ * scaffold run (#630), so multi-spawn of the same type no longer collapses into
+ * a single `<type>.md`. Appends ` 2`, ` 3`, ... until a free name is found.
+ *
+ * On-disk collisions are intentionally NOT disambiguated here — they are handled
+ * by the caller's skip-if-exists check, preserving the scaffold contract that a
+ * deliberately-named instance pointing at an existing file is skipped, not
+ * duplicated.
+ */
+function ensureUniqueInstanceFilename(
+  targetDir: string,
+  baseName: string,
+  usedNames: Map<string, Set<string>>
+): string {
+  let used = usedNames.get(targetDir);
+  if (!used) {
+    used = new Set<string>();
+    usedNames.set(targetDir, used);
+  }
+
+  let candidate = baseName;
+  let counter = 2;
+  while (used.has(candidate)) {
+    candidate = `${baseName} ${counter}`;
+    counter++;
+  }
+
+  used.add(candidate);
+  return `${candidate}.md`;
 }

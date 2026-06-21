@@ -3,6 +3,8 @@
  */
 
 import { parseNote, writeNote } from '../frontmatter.js';
+import { resolveTypeFromFrontmatter } from '../schema.js';
+import { applyRecurrenceFastPath } from '../recurrence-fast-path.js';
 import { discoverManagedFiles } from '../discovery.js';
 import { searchContent } from '../content-search.js';
 import { filterByPath } from '../targeting.js';
@@ -182,6 +184,28 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
       if (execute && changes.length > 0) {
         await writeNote(file.path, modified, file.body);
         fileChange.applied = true;
+
+        // Recurrence fast path: completing a recurring note via bulk
+        // (e.g. --set status=done) spawns its successor deterministically,
+        // sharing the engine with the audit backstop. No-op for non-recurring
+        // types or non-transitions; a spawn failure is recorded per file.
+        const resolvedType = resolveTypeFromFrontmatter(schema, modified);
+        if (resolvedType) {
+          try {
+            await applyRecurrenceFastPath(
+              schema,
+              vaultDir,
+              resolvedType,
+              file.path,
+              file.frontmatter,
+              modified,
+              file.body
+            );
+          } catch (recErr) {
+            const recMessage = recErr instanceof Error ? recErr.message : String(recErr);
+            result.errors.push(`Recurrence spawn failed for ${file.relativePath}: ${recMessage}`);
+          }
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

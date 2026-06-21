@@ -10,6 +10,7 @@ import {
   type Schema,
   type Field,
   type Trait,
+  type Recurrence,
   type ResolvedType,
   type ResolvedConfig,
   type LoadedSchema,
@@ -1277,4 +1278,38 @@ export function getFieldOrderForTrait(
  */
 export function getTraitNames(schema: LoadedSchema): string[] {
   return Object.keys(schema.raw.traits ?? {});
+}
+
+// ============================================================================
+// Recurrence (Task System, #107)
+// ============================================================================
+
+/**
+ * Resolve the recurrence configuration for a type, if any of its composed
+ * traits carry one.
+ *
+ * Recurrence rides on a trait (the `recurring` trait). A type can compose
+ * multiple traits; if more than one carries a `recurrence` block, the LATER
+ * trait in the type's `traits` array wins — matching the last-wins precedence
+ * used for trait fields. Returns the resolved recurrence config plus the name
+ * of the trait that provided it, or undefined when the type recurs through no
+ * trait.
+ */
+export function getRecurrenceForType(
+  schema: LoadedSchema,
+  typeName: string
+): { recurrence: Recurrence; trait: string } | undefined {
+  const type = getType(schema, typeName);
+  if (!type) return undefined;
+
+  const declared = schema.raw.traits ?? {};
+  // Scan in reverse so the last trait that declares recurrence wins.
+  for (let i = type.traits.length - 1; i >= 0; i--) {
+    const traitName = type.traits[i]!;
+    const recurrence = declared[traitName]?.recurrence;
+    if (recurrence) {
+      return { recurrence, trait: traitName };
+    }
+  }
+  return undefined;
 }

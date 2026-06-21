@@ -174,8 +174,36 @@ A `task` now has every field from `objective` (and its ancestors) **plus** `stat
 |----------|------|-------------|
 | `description` | string | What the trait bundles and when to use it. Surfaced by `bwrb schema list` |
 | `fields` | object | Field definitions contributed by the trait |
+| `recurrence` | object | Spawn-on-transition recurrence config (see [Recurrence](#recurrence)) |
 
-Traits are **flat**: a trait carries only `fields` (and an optional `description`). A trait cannot `extends` a type or compose other traits. This keeps resolution simple and deterministic.
+Traits are **flat**: a trait carries only `fields` (and an optional `description`, plus an optional `recurrence` block). A trait cannot `extends` a type or compose other traits. This keeps resolution simple and deterministic.
+
+### Recurrence
+
+A trait may carry a `recurrence` block. Any type that composes the trait then spawns a successor note when a field transitions into a value — the foundation of the [task system](/automation/task-system/). The trigger is a field transition, **not a clock** (no cron, no daemon).
+
+```json
+"traits": {
+  "recurring": {
+    "fields": {
+      "next": { "prompt": "relation", "source": "task" }
+    },
+    "recurrence": {
+      "on": "status = done",
+      "template": "review-checklist",
+      "set": { "deadline": "deadline + 7d" }
+    }
+  }
+}
+```
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `on` | string | Yes | Trigger transition, `<field> = <value>` (e.g. `"status = done"`). The successor is spawned when the field transitions **into** this value |
+| `template` | string | No | Template to spawn from. Defaults to the type's own default template (a task begets a task); a named template can spawn a different type |
+| `set` | object | No | Field-offset assignments. Each value is `<dateField> + <duration>` (e.g. `"deadline + 7d"`); the base **must** be a date field |
+
+The `next` relation field does triple duty: it is the **chain link** (history), the **idempotency guard** (a successor is spawned only when `next` is empty), and the basis for the audit **backstop** (`missing-successor`). See the [task system guide](/automation/task-system/) for the full two-path execution model and validation rules.
 
 ### Precedence
 

@@ -78,6 +78,8 @@ Delete semantics in repair mode:
 | `illegal-aliases` | An [`alias`-role field](/reference/schema/#alias) has empty or non-string entries (the Obsidian aliases format requires non-empty, unique strings) |
 | `unlinked-mention` | A known entity's name or [registered alias](/reference/schema/#alias) appears in body prose as plain text but is not wikilinked (warning; exact/alias matches auto-fixable, fuzzy/ambiguous matches flag-only — see below) |
 | `frequent-unlinked-term` | A proper-noun-ish term mentioned frequently across the vault that has **no note yet** (warning; **advisory heuristic, never auto-fixable** — see below) |
+| `missing-successor` | A [recurring](/automation/task-system/) note satisfies its trigger (e.g. `status = done`) but its chain field (`next`) is empty — a successor was never spawned (e.g. completed outside bwrb). Warning; **auto-fixable** (`--fix` spawns it, identical to the fast path) |
+| `invalid-recurrence` | A [recurrence](/automation/task-system/) rule is broken at the config level — a malformed trigger, a non-date offset base, or a template that doesn't exist (error; **never auto-fixable** — a config error gets the same safety net as data) |
 
 Note: built-in fields written by `bwrb new` (currently `id` and `name`) are always allowed and do not produce `unknown-field` issues.
 Invalid option values inside list fields are reported as `invalid-option` with `listIndex` metadata, not a separate issue code.

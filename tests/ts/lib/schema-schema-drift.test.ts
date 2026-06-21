@@ -95,6 +95,21 @@ describe('schema.schema.json drift guards', () => {
     );
   });
 
+  it('exposes a recurrence block on the trait definition (#107)', () => {
+    const trait = metaSchema.definitions.trait;
+    expect(trait.properties.recurrence).toBeDefined();
+    expect(trait.properties.recurrence.$ref).toBe('#/definitions/recurrence');
+
+    const recurrence = metaSchema.definitions.recurrence;
+    expect(recurrence).toBeDefined();
+    expect(recurrence.type).toBe('object');
+    expect(recurrence.required).toEqual(expect.arrayContaining(['on']));
+    expect(recurrence.properties.on.type).toBe('string');
+    expect(recurrence.properties.template.type).toBe('string');
+    expect(recurrence.properties.set.type).toBe('object');
+    expect(recurrence.properties.set.additionalProperties.type).toBe('string');
+  });
+
   it('includes filename on type definitions', () => {
     const typeDefProps = metaSchema.definitions.typeDefinition.properties;
     expect(typeDefProps.filename).toBeDefined();
