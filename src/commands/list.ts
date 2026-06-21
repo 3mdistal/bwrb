@@ -23,6 +23,7 @@ import {
 import { UserCancelledError } from '../lib/errors.js';
 import { openNote, resolveAppMode } from './open.js';
 import { pickFile, parsePickerMode } from '../lib/picker.js';
+import { formatDisplayValue } from '../lib/value-format.js';
 import type { LoadedSchema, DashboardDefinition } from '../types/schema.js';
 import {
   resolveTargets,
@@ -684,7 +685,7 @@ function printTable(
         : field === '_path'
           ? relative(vaultDir, path)
           : frontmatter[field];
-      row[field] = formatValue(value);
+      row[field] = formatDisplayValue(value, { empty: '—' });
     }
 
     rows.push(row);
@@ -694,19 +695,6 @@ function printTable(
   for (const line of lines) {
     console.log(line);
   }
-}
-
-/**
- * Format a frontmatter value for display.
- */
-function formatValue(value: unknown): string {
-  if (value === undefined || value === null) {
-    return '—';
-  }
-  if (Array.isArray(value)) {
-    return value.join(', ');
-  }
-  return String(value);
 }
 
 // ============================================================================

@@ -7,6 +7,7 @@ import { discoverManagedFiles } from '../discovery.js';
 import { createBackup } from '../bulk/backup.js';
 import { getFieldsForType, resolveTypeFromFrontmatter } from '../schema.js';
 import { toWikilink, toMarkdownLink, isWikilink, isMarkdownLink } from '../links.js';
+import { formatDisplayValue } from '../value-format.js';
 import type { LoadedSchema } from '../../types/schema.js';
 import type {
   MigrationPlan,
@@ -413,11 +414,8 @@ export function formatMigrationResult(result: MigrationResult): string {
  * Format a single applied change for display.
  */
 function formatAppliedChange(change: AppliedChange): string {
-  const formatValue = (v: unknown): string => {
-    if (v === undefined) return '(empty)';
-    if (Array.isArray(v)) return `[${v.join(', ')}]`;
-    return String(v);
-  };
+  const formatValue = (v: unknown): string =>
+    formatDisplayValue(v, { empty: '(empty)', arrayStyle: 'bracketed', nullIsEmpty: false });
 
   switch (change.kind) {
     case 'set':
