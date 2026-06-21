@@ -98,10 +98,10 @@ export function isCanonicalIsoDate(raw: string): boolean {
  * (YYYY, YYYY-MM) are acceptable only when granularity permits that precision.
  */
 export function isAcceptableDate(raw: string, granularity: DatePrecision = 'day'): boolean {
-  const trimmed = raw.trim();
-  if (CANONICAL_DATE.test(trimmed)) return true;
-  if (granularity === 'day') return false;
-  const partial = parsePartialIsoDate(trimmed);
+  // parsePartialIsoDate calendar-validates both full (YYYY-MM-DD) and partial
+  // ISO dates, so e.g. 2026-13-01 / 2025-02-29 are rejected consistently with
+  // their partial counterparts.
+  const partial = parsePartialIsoDate(raw.trim());
   return partial.valid && isPrecisionAllowed(partial.precision, granularity);
 }
 

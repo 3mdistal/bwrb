@@ -284,6 +284,11 @@ function computeEffectiveFields(
         if (fieldDef.description !== undefined) {
           fields[fieldName] = { ...fields[fieldName], description: fieldDef.description };
         }
+        // Allow 'granularity' override - a subtype can loosen or tighten the
+        // precision required for an inherited date field.
+        if (fieldDef.granularity !== undefined) {
+          fields[fieldName] = { ...fields[fieldName], granularity: fieldDef.granularity };
+        }
       } else {
         // New field
         fields[fieldName] = { ...fieldDef };

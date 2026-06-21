@@ -3454,6 +3454,49 @@ effort: "3"
       );
       expect(issues).toHaveLength(1);
     });
+
+    it('flags calendar-invalid full dates (consistent with partials)', async () => {
+      const badMonth = await auditPerson(
+        'Bjarne.md',
+        `---\ntype: person\ndeadline: 2026-13-01\n---\n`
+      );
+      expect(badMonth).toHaveLength(1);
+
+      const badLeap = await auditPerson(
+        'Ken.md',
+        `---\ntype: person\ndeadline: 2025-02-29\n---\n`
+      );
+      expect(badLeap).toHaveLength(1);
+    });
+
+    it('treats a YAML-numeric bare year as a date, not a generic scalar', async () => {
+      // first-met has year granularity: a numeric 2021 is a valid year, so the
+      // only issue is that it should be quoted as a string (not invalid-date-format).
+      await writeFile(
+        join(tempVaultDir, 'People', 'Rob.md'),
+        `---\ntype: person\nfirst-met: 2021\n---\n`
+      );
+      const result = await runCLI(['audit', 'person', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Rob.md'));
+      const codes: string[] = (file?.issues ?? []).map((i: { code: string }) => i.code);
+      expect(codes).toContain('wrong-scalar-type');
+      expect(codes).not.toContain('invalid-date-format');
+
+      // last-contact has month granularity: numeric 2026 is too coarse → date error,
+      // not a generic "should be a string" scalar error.
+      await writeFile(
+        join(tempVaultDir, 'People', 'James.md'),
+        `---\ntype: person\nlast-contact: 2026\n---\n`
+      );
+      const result2 = await runCLI(['audit', 'person', '--output', 'json'], tempVaultDir);
+      const output2 = JSON.parse(result2.stdout);
+      const file2 = output2.files.find((f: { path: string }) => f.path.includes('James.md'));
+      const issues2: { code: string; field?: string }[] = file2?.issues ?? [];
+      const lastContact = issues2.filter((i) => i.field === 'last-contact');
+      expect(lastContact).toHaveLength(1);
+      expect(lastContact[0].code).toBe('invalid-date-format');
+    });
   });
 
   describe('unknown-enum-casing detection and fix', () => {

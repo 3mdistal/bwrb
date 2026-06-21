@@ -434,7 +434,13 @@ export async function auditFile(
           expected: 'boolean',
           autoFixable: booleanCoercion.ok,
         });
-      } else if (expectedScalarType === 'string' && (valueShape === 'number' || valueShape === 'boolean')) {
+      } else if (
+        expectedScalarType === 'string' &&
+        (valueShape === 'number' || valueShape === 'boolean') &&
+        // Date fields handle numeric values themselves (a bare year like 2026
+        // is a partial date, not just a mis-typed string) — see date block below.
+        field.prompt !== 'date'
+      ) {
         issues.push({
           severity: 'error',
           code: 'wrong-scalar-type',
@@ -457,10 +463,13 @@ export async function auditFile(
       }
     }
 
-    if (field.prompt === 'date' && typeof value === 'string') {
+    if (field.prompt === 'date' && (typeof value === 'string' || typeof value === 'number')) {
+      // A bare year (e.g. 2026) is parsed as a number by YAML; treat it as a
+      // partial date string for validation.
+      const dateStr = String(value);
       const granularity = resolveDateGranularity(field, schema.config);
-      if (!isAcceptableDate(value, granularity)) {
-        const normalization = getUnambiguousDateNormalization(value);
+      if (!isAcceptableDate(dateStr, granularity)) {
+        const normalization = getUnambiguousDateNormalization(dateStr);
         const expected =
           granularity === 'day'
             ? 'YYYY-MM-DD'
@@ -477,6 +486,17 @@ export async function auditFile(
           ...(normalization && { suggestion: `Suggested: ${normalization.normalized}` }),
           ...(normalization && { meta: { normalized: normalization.normalized, normalizationKind: normalization.kind } }),
           autoFixable: Boolean(normalization),
+        });
+      } else if (typeof value === 'number') {
+        // Valid date but stored as a YAML number — should be quoted as a string.
+        issues.push({
+          severity: 'error',
+          code: 'wrong-scalar-type',
+          message: `Non-string value for ${fieldName} should be a string`,
+          field: fieldName,
+          value,
+          expected: 'string',
+          autoFixable: true,
         });
       }
     }

@@ -297,6 +297,39 @@ describe('validation', () => {
       expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026-13' }).valid).toBe(false);
       expect(validateFrontmatter(s, 'note', { type: 'note', when: '05/2026' }).valid).toBe(false);
     });
+
+    it('calendar-validates full dates consistently with partials', () => {
+      const s = buildSchema({ fieldGranularity: 'year' });
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026-13-01' }).valid).toBe(false);
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2025-02-29' }).valid).toBe(false);
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2024-02-29' }).valid).toBe(true);
+    });
+
+    it('lets a child type override an inherited date field granularity', () => {
+      const s = resolveSchema({
+        version: 1,
+        types: {
+          base: {
+            fields: {
+              type: { value: 'base' },
+              when: { prompt: 'date', granularity: 'day' },
+            },
+          },
+          child: {
+            extends: 'base',
+            fields: {
+              type: { value: 'child' },
+              when: { prompt: 'date', granularity: 'year' },
+            },
+          },
+        },
+      } as never);
+
+      // Child relaxed to year — accepts a bare year.
+      expect(validateFrontmatter(s, 'child', { type: 'child', when: '2026' }).valid).toBe(true);
+      // Parent stays strict — rejects it.
+      expect(validateFrontmatter(s, 'base', { type: 'base', when: '2026' }).valid).toBe(false);
+    });
   });
 
   describe('applyDefaults', () => {
