@@ -89,15 +89,11 @@ Make the schema useful for knowledge work.
 
 | Feature | Issue | Description |
 |---------|-------|-------------|
-| Neovim plugin | `bwrb-tic` | Full CLI parity in Neovim |
-| LSP | `bwrb-0wp` | Real-time schema validation in editors |
 | Link validation | `bwrb-6f0` | Broken link detection in audit |
 | Command consolidation | `bwrb-fkd` | Merge list/search/open |
 
 ### v2.0 Exit Criteria
 
-- [ ] Neovim plugin with core functionality
-- [ ] LSP server for schema validation
 - [ ] Comprehensive link validation
 - [ ] Polished, consistent CLI surface
 
