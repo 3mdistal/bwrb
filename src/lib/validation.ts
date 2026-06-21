@@ -165,6 +165,7 @@ type ValidationErrorType =
   | 'invalid_type'
   | 'unknown_field'
   | 'invalid_date'
+  | 'invalid_alias'
   | 'invalid_context_source';
 
 /**
@@ -348,6 +349,12 @@ function validateFieldType(
   field: Field,
   granularity: DatePrecision = 'day'
 ): ValidationError | null {
+  // Alias-role fields: enforce Obsidian `aliases` format regardless of prompt
+  // type — an array of non-empty, unique strings.
+  if (field.alias === true) {
+    return validateAliasValue(fieldName, value);
+  }
+
   // Handle list fields (multi-value arrays or comma-separated strings)
   if (field.prompt === 'list' || field.list_format) {
     // Accept both arrays and strings for list fields
@@ -444,6 +451,62 @@ function validateFieldType(
       message: `Invalid type for ${fieldName}: expected string, got object`,
       expected: 'string',
     };
+  }
+
+  return null;
+}
+
+/**
+ * Validate the value of an alias-role field.
+ *
+ * Aliases must be an array of non-empty, unique strings (Obsidian `aliases`
+ * format). Rejects scalar values, empty/blank entries, non-string entries, and
+ * duplicates. This is the original #266 ask and is enforced uniformly because
+ * aliases are a recognized field role.
+ */
+function validateAliasValue(fieldName: string, value: unknown): ValidationError | null {
+  const expected = 'array of non-empty, unique strings';
+
+  if (!Array.isArray(value)) {
+    return {
+      type: 'invalid_alias',
+      field: fieldName,
+      value,
+      message: `Invalid aliases for ${fieldName}: expected an array, got ${typeof value}`,
+      expected,
+    };
+  }
+
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      return {
+        type: 'invalid_alias',
+        field: fieldName,
+        value: entry,
+        message: `Invalid aliases for ${fieldName}: every alias must be a string, got ${typeof entry}`,
+        expected,
+      };
+    }
+    if (entry.trim() === '') {
+      return {
+        type: 'invalid_alias',
+        field: fieldName,
+        value: entry,
+        message: `Invalid aliases for ${fieldName}: aliases cannot be empty`,
+        expected,
+      };
+    }
+    if (seen.has(entry)) {
+      return {
+        type: 'invalid_alias',
+        field: fieldName,
+        value: entry,
+        message: `Invalid aliases for ${fieldName}: duplicate alias "${entry}"`,
+        expected,
+      };
+    }
+    seen.add(entry);
   }
 
   return null;

@@ -47,6 +47,7 @@ interface TestFieldDefinition {
   format?: string;
   multiple?: boolean;
   owned?: boolean;
+  alias?: boolean;
   label?: string;
   list_format?: string;
 }

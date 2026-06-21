@@ -68,6 +68,12 @@ export const FieldSchema = z.object({
   multiple: z.boolean().optional(),
   // Whether children referenced by this field are owned (colocate with parent)
   owned: z.boolean().optional(),
+  // Field role: marks this field as holding the entity's aliases — alternate
+  // names the entity is also known by. A recognized role (like `owned`) that
+  // name-resolution and linking consult uniformly, so an entity is findable by
+  // its aliases wherever it's findable by its name. The value must be an array
+  // of non-empty, unique strings (Obsidian `aliases` format).
+  alias: z.boolean().optional(),
 });
 
 // Body section definition

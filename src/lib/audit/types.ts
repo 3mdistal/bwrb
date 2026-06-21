@@ -35,6 +35,8 @@ export type IssueCode =
   | 'self-reference'
   | 'ambiguous-link-target'
   | 'invalid-list-element'
+  // Alias field role (#266): aliases must be non-empty, unique strings
+  | 'illegal-aliases'
   // Phase 2: Low-risk hygiene auto-fixes
   | 'trailing-whitespace' // Detected on raw frontmatter lines before YAML parsing
   | 'frontmatter-key-casing'

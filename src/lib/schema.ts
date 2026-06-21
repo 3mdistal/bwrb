@@ -819,6 +819,64 @@ export function getOwnedFields(schema: LoadedSchema, ownerTypeName: string): Own
 }
 
 // ============================================================================
+// Alias Role API
+// ============================================================================
+
+/**
+ * Find the name of the field that carries the `alias` role for a type, if any.
+ *
+ * Aliases are a recognized field role (like `owned`): a type may declare at most
+ * one field with `alias: true`, and that field holds the entity's alternate
+ * names. Resolved fields are consulted so inherited alias fields are honored.
+ *
+ * If more than one field declares the role (a schema mistake), the first in
+ * resolved field order wins, keeping resolution deterministic.
+ */
+export function getAliasFieldName(schema: LoadedSchema, typeName: string): string | undefined {
+  const fields = getFieldsForType(schema, typeName);
+  for (const [fieldName, field] of Object.entries(fields)) {
+    if (field.alias === true) return fieldName;
+  }
+  return undefined;
+}
+
+/**
+ * Extract an entity's declared aliases from its frontmatter.
+ *
+ * Reads the value of the type's alias-role field (see {@link getAliasFieldName})
+ * and returns it as a deduplicated list of non-empty, trimmed strings. Returns
+ * an empty array when the type declares no alias field, the field is absent, or
+ * the value is malformed — callers get a clean list to match against regardless
+ * of how the underlying note is shaped (back-compat safe).
+ *
+ * This is the single accessor that name-resolution and linking use to learn an
+ * entity's aliases, and the hook later work (search --fuzzy, audit
+ * unlinked-mention) builds on.
+ */
+export function getEntityAliases(
+  schema: LoadedSchema,
+  typeName: string,
+  frontmatter: Record<string, unknown>
+): string[] {
+  const aliasField = getAliasFieldName(schema, typeName);
+  if (!aliasField) return [];
+
+  const raw = frontmatter[aliasField];
+  if (!Array.isArray(raw)) return [];
+
+  const seen = new Set<string>();
+  const aliases: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue;
+    const trimmed = entry.trim();
+    if (trimmed === '' || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    aliases.push(trimmed);
+  }
+  return aliases;
+}
+
+// ============================================================================
 // Source Type Resolution (for dynamic fields)
 // ============================================================================
 

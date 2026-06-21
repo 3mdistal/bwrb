@@ -710,7 +710,9 @@ function buildNoteIndexFromFiles(files: ManagedFile[]): NoteIndex {
     byBasename.set(name, existing);
   }
 
-  return { byPath, byBasename, allFiles: files };
+  // This scoped index is built from an already-resolved file list (no parsed
+  // frontmatter), so alias resolution is not available here.
+  return { byPath, byBasename, byAlias: new Map(), allFiles: files };
 }
 
 async function deleteResolvedFile({

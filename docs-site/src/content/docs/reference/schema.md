@@ -398,6 +398,71 @@ Output format controlled by `list_format`:
 
 ---
 
+## Field Roles
+
+A **field role** marks a field as something bwrb understands and acts on, beyond
+just storing a value. Roles are declared with a boolean flag on the field and are
+consulted uniformly wherever the behavior applies — so they are reliable, not a
+loose naming convention.
+
+### `owned`
+
+Marks a `relation` field whose referenced notes are private to the parent and
+colocate in the parent's folder. See [Owned relations](#owned-relations) above.
+
+### `alias`
+
+Marks a field as holding the entity's **aliases** — alternate names the entity is
+also known by. bwrb consults aliases during name resolution and linking, so an
+entity is **findable and linkable by its aliases wherever it is findable by its
+name**:
+
+- `bwrb open`, `bwrb edit`, and `bwrb search` resolve a query to an entity when
+  it matches one of the entity's aliases (a real note name always wins over an
+  alias of the same string).
+- Relation/link targets written as `[[An Alias]]` resolve to the aliased entity.
+
+Declare the role with `alias: true` on a list field:
+
+```json
+{
+  "aliases": {
+    "prompt": "list",
+    "alias": true,
+    "list_format": "yaml-array"
+  }
+}
+```
+
+A note then declares its aliases like any Obsidian `aliases` field:
+
+```yaml
+---
+type: person
+aliases:
+  - Steve
+  - stevey
+---
+```
+
+**Validation.** Because `aliases` is a recognized role, bwrb validates the value
+as an array of **non-empty, unique strings** (the Obsidian `aliases` format).
+`bwrb audit` flags a scalar value, empty entries, non-string entries, or
+duplicates.
+
+**Back-compat.** The role is optional. Types that declare no alias field, and
+notes without an `aliases` value, keep working unchanged.
+
+**Ambiguity is never auto-resolved.** If two entities share an alias, the alias
+resolves to multiple candidates and bwrb surfaces them rather than guessing.
+
+:::note
+At most one field per type should carry the `alias` role. The role is inherited,
+so declaring it on a base type (e.g. `entity`) applies to all descendants.
+:::
+
+---
+
 ## Field Properties Reference
 
 Complete list of field properties:
@@ -416,6 +481,7 @@ Complete list of field properties:
 | `source` | string | `relation` | Type name to filter picker, or `"any"` |
 | `filter` | object | `relation` | Filter conditions for source query |
 | `owned` | boolean | `relation` | Whether referenced notes are owned/colocated (default: `false`) |
+| `alias` | boolean | `list` | Field role: marks this field as the entity's aliases. Value must be an array of non-empty, unique strings. Consulted by name resolution and linking (default: `false`) |
 | `list_format` | string | `list` | Output format: `yaml-array` or `comma-separated` |
 
 ---
