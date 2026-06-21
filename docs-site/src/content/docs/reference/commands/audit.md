@@ -76,6 +76,7 @@ Delete semantics in repair mode:
 | `trailing-whitespace` | Trailing spaces/tabs on raw frontmatter `key: value` lines (warning; auto-fixable) |
 | `wrong-scalar-type` | Scalar value has wrong type for schema |
 | `illegal-aliases` | An [`alias`-role field](/reference/schema/#alias) has empty or non-string entries (the Obsidian aliases format requires non-empty, unique strings) |
+| `unlinked-mention` | A known entity's name or [registered alias](/reference/schema/#alias) appears in body prose as plain text but is not wikilinked (warning; exact/alias matches auto-fixable, fuzzy/ambiguous matches flag-only — see below) |
 
 Note: built-in fields written by `bwrb new` (currently `id` and `name`) are always allowed and do not produce `unknown-field` issues.
 Invalid option values inside list fields are reported as `invalid-option` with `listIndex` metadata, not a separate issue code.
@@ -183,6 +184,51 @@ after:  status: "raw"
 ```
 
 `bwrb audit --fix` refuses to run without a TTY when interactive fixes are needed (use `--fix --auto` for non-interactive previews, and add `--execute` for execute-gated auto-fixes like `trailing-whitespace`).
+
+### Unlinked-mention semantics (web integrity)
+
+`unlinked-mention` is the closed-world web-integrity check: bwrb knows every note (by name) and, via the [`alias`-role field](/reference/schema/#alias), every registered alias. It scans note **bodies** for any known name or alias that appears as plain text but is **not** wikilinked, so the vault stays a connected graph instead of islands.
+
+It enforces a strict **trust line** — only matches bwrb can be certain about are auto-linked; everything uncertain becomes a visible review item that is never silently resolved:
+
+| Tier | What it matches | Behavior |
+|------|-----------------|----------|
+| **Exact / alias** | The literal note name, or a registered alias, present as unlinked plain text and resolving to exactly **one** entity | **Trusted → auto-fixable.** `--fix --auto --execute` converts it to a wikilink (`--fix --auto` alone previews). |
+| **Fuzzy** | A capitalized phrase that is a near (small Levenshtein distance) match to a known name, e.g. `Steve Yeg` ≈ `Steve Yegge` | **Review item ("did you mean?") — never auto-linked.** |
+| **Ambiguous** | A surface that matches **multiple** distinct entities/aliases, e.g. `Mercury` | **Never auto-resolved.** Listed as a review item with all candidates. |
+
+Auto-fix output format:
+
+- When the surface text equals the canonical note name, the fix uses a plain wikilink: `[[Steve Yegge]]`.
+- When the surface differs from the canonical name (an alias, or different casing), the fix preserves the author's text via the Obsidian display-alias form: `[[Entity|surface]]`.
+
+```text
+# Exact name mention
+before: I spoke with Steve Yegge today.
+after:  I spoke with [[Steve Yegge]] today.
+
+# Alias mention (display form preserves the surface)
+before: Notes from Stevey.
+after:  Notes from [[Steve Yegge|Stevey]].
+```
+
+False-positive guards (none of these are scanned or rewritten):
+
+- Text already inside `[[wikilinks]]`, markdown links/images, fenced code blocks, inline code spans, and bare URLs.
+- A note never flags a mention of **its own** name or alias.
+- Matching is word-boundary aware (`Ada` does not match inside `Adafruit` or `Canada`) and case-insensitive, but the original surface casing is preserved in the fix.
+
+Only frontmatter is exempt from scanning — this detection looks at body prose only. Surfaces shorter than three characters are ignored to avoid noise. The entity index is built once per run and each body is scanned in a single pass, so cost scales with body size rather than notes × entities.
+
+```bash
+# Report unlinked mentions only
+bwrb audit --only unlinked-mention
+
+# Auto-link trusted (exact/alias) mentions across the Notes directory
+bwrb audit --path "Notes/**" --fix --auto --execute
+```
+
+Fuzzy and ambiguous mentions are reported with a suggestion but are **never** modified by `--fix --auto`; resolve them with interactive `--fix` (which will skip them with the suggestion) or by editing manually.
 
 ### Non-interactive mode
 

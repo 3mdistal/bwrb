@@ -71,6 +71,14 @@ import {
   type OwnershipIndex,
 } from '../ownership.js';
 
+// Import unlinked-mention detection (ingest safety net, #600)
+import {
+  buildEntityMentionIndex,
+  detectUnlinkedMentions,
+  type EntityMentionIndex,
+} from './unlinked-mention.js';
+import { parseNote } from '../frontmatter.js';
+
 // ============================================================================
 // Main Audit Runner
 // ============================================================================
@@ -161,11 +169,16 @@ export async function runAudit(
   // Build parent map for cycle detection on recursive types
   const parentMap = await buildParentMap(schema, filteredFiles, noteIndex);
 
+  // Build the entity-mention index once for the whole run (#600). The full
+  // vault snapshot (not just the filtered set) is the source of known names so
+  // that, e.g., auditing one daily note still detects mentions of every entity.
+  const entityMentionIndex = buildEntityMentionIndex(noteIndex.snapshot, schema);
+
   // Audit each file
   const results: FileAuditResult[] = [];
 
   for (const file of filteredFiles) {
-    const issues = await auditFile(schema, vaultDir, file, options, noteIndex, ownershipIndex, parentMap);
+    const issues = await auditFile(schema, vaultDir, file, options, noteIndex, ownershipIndex, parentMap, entityMentionIndex);
 
     // Apply issue filters
     let filteredIssues = issues;
@@ -203,6 +216,7 @@ export async function auditFile(
   noteIndex?: import('../discovery.js').VaultNoteIndex,
   ownershipIndex?: OwnershipIndex,
   parentMap?: Map<string, string>,
+  entityMentionIndex?: EntityMentionIndex,
 ): Promise<AuditIssue[]> {
   const issues: AuditIssue[] = [];
 
@@ -601,6 +615,27 @@ export async function auditFile(
 
   // Note: Body stale-reference detection is deferred to v2.0
   // Per product scope, v1.0 only validates frontmatter relation fields
+
+  // Unlinked-mention detection (#600): scan body prose for known entity
+  // names/aliases that are not wikilinked. Skipped entirely when the caller
+  // filtered this issue out, to avoid the extra body read.
+  if (
+    entityMentionIndex &&
+    entityMentionIndex.surfacePattern &&
+    options.ignoreIssue !== 'unlinked-mention' &&
+    (options.onlyIssue === undefined || options.onlyIssue === 'unlinked-mention')
+  ) {
+    try {
+      const { body } = await parseNote(file.path);
+      if (body && body.trim().length > 0) {
+        issues.push(
+          ...detectUnlinkedMentions(body, file.relativePath, entityMentionIndex)
+        );
+      }
+    } catch {
+      // If the body can't be parsed, skip mention detection for this file.
+    }
+  }
 
   // Check for ownership violations
   if (ownershipIndex && noteIndex?.notePathMap) {

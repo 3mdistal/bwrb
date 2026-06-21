@@ -119,6 +119,8 @@ Issue Types:
   frontmatter-not-at-top Frontmatter block is not at top
   duplicate-frontmatter-keys Duplicate YAML keys in frontmatter
   malformed-wikilink    Near-wikilink bracket typo (frontmatter only)
+  unlinked-mention      Known entity name/alias in body prose, not wikilinked
+                        (exact/alias auto-fixable; fuzzy/ambiguous flag-only)
 
 Type Resolution:
   Audit resolves each file's type from its frontmatter 'type' field.

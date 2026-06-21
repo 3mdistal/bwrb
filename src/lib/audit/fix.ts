@@ -55,6 +55,7 @@ import {
   type FixContext,
 } from './types.js';
 import { toMarkdownLink, toWikilink } from '../links.js';
+import { maskNonProse } from './unlinked-mention.js';
 import {
   readStructuralFrontmatterFromRaw,
   movePrimaryBlockToTop,
@@ -120,6 +121,62 @@ function registerManualReview(
   list.push({ file, issue });
 }
 
+
+/**
+ * Apply an `unlinked-mention` auto-fix: rewrite the first unlinked, word-bounded
+ * occurrence of the mention surface in the body to a wikilink.
+ *
+ * The fix re-derives the target position from the live body (rather than a
+ * stored offset) so it stays correct when multiple mentions in the same file are
+ * fixed sequentially — each call re-reads and converges on the next occurrence.
+ * Only exact/alias (auto-fixable) mentions reach here; fuzzy/ambiguous mentions
+ * are flag-only and never dispatched to a fix.
+ */
+async function applyUnlinkedMentionFix(
+  schema: LoadedSchema,
+  filePath: string,
+  issue: AuditIssue
+): Promise<FixResult> {
+  const surface = (issue.meta?.['surface'] as string | undefined) ?? (typeof issue.value === 'string' ? issue.value : undefined);
+  const replacement = issue.meta?.['replacement'] as string | undefined;
+  if (!surface || !replacement) {
+    return { file: filePath, issue, action: 'failed', message: 'Missing mention surface/replacement' };
+  }
+
+  const parsed = await parseNote(filePath);
+  const body = parsed.body;
+
+  // Mask non-prose regions so we never relink inside code/links/existing
+  // wikilinks, then find the first word-bounded occurrence of the surface.
+  const masked = maskNonProse(body);
+  const re = new RegExp(`(?<![\\w'])${escapeRegExp(surface)}(?![\\w'])`, 'g');
+  let match: RegExpExecArray | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(masked)) !== null) {
+    // Confirm the original (unmasked) text at this position is the exact surface.
+    if (body.slice(m.index, m.index + surface.length) === surface) {
+      match = m;
+      break;
+    }
+  }
+
+  if (!match) {
+    return { file: filePath, issue, action: 'skipped', message: `Mention '${surface}' no longer present as plain text` };
+  }
+
+  const newBody =
+    body.slice(0, match.index) + replacement + body.slice(match.index + surface.length);
+
+  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
+  const order = typeDef?.fieldOrder;
+
+  if (!isDryRunEnabled()) {
+    await writeNote(filePath, parsed.frontmatter, newBody, order);
+  }
+
+  return { file: filePath, issue, action: 'fixed' };
+}
 
 async function applyTrailingWhitespaceFix(filePath: string, issue: AuditIssue): Promise<FixResult> {
   const lineNumber = issue.lineNumber;
@@ -307,6 +364,10 @@ async function applyFix(
 
     if (issue.code === 'trailing-whitespace') {
       return await applyTrailingWhitespaceFix(filePath, issue);
+    }
+
+    if (issue.code === 'unlinked-mention') {
+      return await applyUnlinkedMentionFix(schema, filePath, issue);
     }
 
     if (issue.code === 'frontmatter-key-casing') {
@@ -1331,6 +1392,25 @@ export async function runAutoFix(
           console.log(chalk.red(`    ✗ Failed to dedupe ${issue.field}: ${fixResult.message}`));
           failed++;
         }
+      } else if (issue.code === 'unlinked-mention') {
+        // Only exact/alias mentions are auto-fixable (fuzzy/ambiguous are
+        // flag-only and never reach here, since autoFixable is false on them).
+        const fixResult = await applyFix(schema, result.path, issue);
+        if (fixResult.action === 'fixed') {
+          const replacement = (issue.meta?.['replacement'] as string | undefined) ?? '';
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Linked '${String(issue.value)}' → ${replacement}`));
+          fixed++;
+        } else if (fixResult.action === 'skipped') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+          skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to link mention: ${fixResult.message}`));
+          failed++;
+        }
       } else if ((issue.code === 'frontmatter-key-casing' || issue.code === 'singular-plural-mismatch') && issue.field && issue.canonicalKey) {
         // Auto-fix key casing/singular-plural mismatch
         const fixResult = await applyFix(schema, result.path, issue);
@@ -1532,6 +1612,8 @@ async function handleInteractiveFix(
     case 'frontmatter-key-casing':
     case 'singular-plural-mismatch':
       return handleKeyCasingFix(schema, result, issue);
+    case 'unlinked-mention':
+      return handleUnlinkedMentionFix(schema, result, issue);
     default:
       // Truly non-fixable issues
       if (issue.suggestion) {
@@ -3051,6 +3133,50 @@ async function handleTrailingWhitespaceFix(
     return 'fixed';
   } else if (fixResult.action === 'skipped') {
     console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  } else {
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+}
+
+/**
+ * Handle an unlinked-mention fix interactively.
+ *
+ * Exact/alias mentions (autoFixable) offer to convert the plain-text mention to
+ * a wikilink. Fuzzy/ambiguous mentions are flag-only: we surface the suggestion
+ * and skip, honoring the trust line (never auto-resolve fuzziness/ambiguity).
+ */
+async function handleUnlinkedMentionFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.autoFixable) {
+    // Fuzzy / ambiguous — review only.
+    if (issue.suggestion) {
+      console.log(chalk.dim(`    ${issue.suggestion}`));
+    }
+    console.log(chalk.dim('    (Review item — not auto-linked)'));
+    return 'skipped';
+  }
+
+  const replacement = (issue.meta?.['replacement'] as string | undefined) ?? '';
+  const confirm = await promptConfirm(
+    `    → Link '${String(issue.value)}' to ${replacement}?`
+  );
+  if (confirm === null) return 'quit';
+  if (!confirm) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  const fixResult = await applyFix(schema, result.path, issue);
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Linked '${String(issue.value)}' → ${replacement}`));
+    return 'fixed';
+  } else if (fixResult.action === 'skipped') {
+    console.log(chalk.dim(`    → Skipped: ${fixResult.message}`));
     return 'skipped';
   } else {
     console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));

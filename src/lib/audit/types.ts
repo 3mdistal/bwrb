@@ -50,7 +50,10 @@ export type IssueCode =
   // Phase 4: Structural integrity fixes
   | 'frontmatter-not-at-top'
   | 'duplicate-frontmatter-keys'
-  | 'malformed-wikilink';
+  | 'malformed-wikilink'
+  // Ingest safety net (#600): a known entity name/alias mentioned in body prose
+  // but not wikilinked. Exact/alias → auto-fixable; fuzzy/ambiguous → flag-only.
+  | 'unlinked-mention';
 
 /**
  * A single audit issue.
