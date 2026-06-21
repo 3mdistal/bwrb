@@ -34,9 +34,10 @@ Bowerbird's functionality exists in concentric layers of priority:
 │   │   knowledge discovery           │   │
 │   │                                 │   │
 │   └─────────────────────────────────┘   │
-│                  AI                     │
-│   Optional automation, ingest,          │
-│   processing helpers                    │
+│              AI SAFETY NET               │
+│   Deterministic primitives the AI        │
+│   agent relies on (search --fuzzy,       │
+│   unlinked-mention audit)                │
 │                                         │
 └─────────────────────────────────────────┘
 ```
@@ -44,7 +45,7 @@ Bowerbird's functionality exists in concentric layers of priority:
 **Priority order:**
 1. **Schema** (core) — If this doesn't work, nothing works
 2. **PKM** (middle) — Makes the schema useful for knowledge work
-3. **AI** (outer) — Nice-to-have automation, never required
+3. **AI safety net** (outer) — Deterministic guarantees *under* the AI agent, never an LLM caller
 
 ---
 
@@ -54,7 +55,7 @@ Bowerbird's functionality exists in concentric layers of priority:
 
 - Power user, developer, creative
 - Writes in Markdown, lives in the terminal
-- Uses Neovim (or similar) as primary editor
+- Authors and edits notes through AI agents (Claude Code, Codex, etc.)
 - Wants to publish writing to the web
 - Tired of migrating between PKM tools
 - Needs strict organization without manual discipline
@@ -62,9 +63,8 @@ Bowerbird's functionality exists in concentric layers of priority:
 If Bowerbird works for this user, it will work for others. But it must work for this user first.
 
 **Secondary audiences (stretch goals):**
-- Neovim enthusiasts who want Obsidian-like PKM
 - Developers who want schema-enforced Markdown as CMS
-- Obsidian users who want CLI automation
+- Anyone driving a Markdown vault through an AI agent who wants deterministic guardrails
 
 ---
 
@@ -87,7 +87,7 @@ Bowerbird does one thing well: schema enforcement. It uses the existing ecosyste
 - **Git** for version control (Bowerbird doesn't manage commits)
 - **yq/yaql** for raw YAML queries (Bowerbird provides schema-aware queries)
 - **ripgrep** for content search (Bowerbird wraps it with type awareness)
-- **Neovim** for editing (Bowerbird provides a plugin, not an editor)
+- **AI agents** for authoring and editing (Bowerbird enforces the schema, doesn't write prose)
 - **GitHub Actions** for automation (Bowerbird is scriptable, not a scheduler)
 
 ### 3. Portable and Offline
@@ -134,11 +134,12 @@ The CLI should be predictable and learnable.
 - A query engine for typed notes
 - A validator and auditor for note hygiene
 - A migration tool for schema evolution
-- A Neovim plugin for in-editor PKM (secondary)
+- A deterministic safety net under the AI agents that author your notes
 
 ## What Bowerbird Is NOT
 
-- **Not a note-taking app** — Use Neovim, Obsidian, whatever you want
+- **Not a note-taking app** — Author your notes however you like; bwrb enforces the schema
+- **Not an LLM caller** — bwrb runs no model and ships no AI keys; the AI agent drives bwrb, not the other way around
 - **Not a database** — Markdown files are the source of truth
 - **Not a sync service** — Use Git, iCloud, Syncthing
 - **Not version control** — Use Git
@@ -216,7 +217,7 @@ Target: <15 top-level commands that cover all use cases.
 - `bwrb edit` — Modify existing note frontmatter
 - `bwrb list` — Query notes by type and fields
 - `bwrb search` — Find notes by name or content
-- `bwrb open` — Open notes in editor/Obsidian
+- `bwrb open` — Open notes in your configured handler
 - `bwrb delete` — Remove notes with backlink warnings
 - `bwrb audit` — Validate notes against schema
 - `bwrb bulk` — Batch frontmatter operations
@@ -229,10 +230,10 @@ The same verbs that work on notes also work on schema and templates, reducing le
 
 ```bash
 # Schema management
-bwrb schema new [type|field|enum]    # Create (prompts if noun omitted)
-bwrb schema edit [type|field|enum]   # Edit with picker
-bwrb schema delete [type|field|enum] # Delete (dry-run default)
-bwrb schema list [types|fields|enums] # List/show
+bwrb schema new [type|field]    # Create (prompts if noun omitted)
+bwrb schema edit [type|field]   # Edit with picker
+bwrb schema delete [type|field] # Delete (dry-run default)
+bwrb schema list [types|fields] # List/show
 
 # Template management (uses two separate args like schema commands)
 bwrb template new [type]           # Create template (prompts for type if omitted)
@@ -245,7 +246,7 @@ bwrb template list [type] [name]   # List all, or show details if both provided
 - `open` is an alias for `search --open`
 - `edit` is an alias for `search --edit`
 - `list` remains separate (structured query output vs search/action)
-- AI commands deferred to post-V1.0
+- The AI safety-net primitives (`search --fuzzy`, `audit: unlinked-mention`) are deferred to post-V1.0
 
 ### Design Principles
 
@@ -283,14 +284,14 @@ This ordering presents commands as a guided path: create notes → find notes �
 2. **Inheritance model** — Full, consistent type inheritance
 3. **Core commands** — new, edit, list, search, audit, bulk, schema, template
 4. **JSON mode** — Every command scriptable
-5. **Migration tooling** — Rename fields, change enums, refactor types
+5. **Migration tooling** — Rename fields, change select options, refactor types
 
 ### Post-V1.0
 
-- AI ingest command
-- Schema discovery from existing files
-- Obsidian plugin
-- Cost tracking for AI operations
+- Schema expressiveness — aliases, traits, hierarchical scope
+- Ingest safety net — `search --fuzzy`, `audit: unlinked-mention` / `frequent-unlinked-term`, daily-note sweep
+- `schema discover` — deterministic field-usage facts over a folder
+- Task system — event-driven recurrence + offset templating
 
 ---
 
@@ -299,7 +300,6 @@ This ordering presents commands as a guided path: create notes → find notes �
 - **CLI command:** `bwrb`
 - **Product name:** Bowerbird
 - **Config directory:** `.bwrb/`
-- **Neovim plugin:** `bwrb.nvim`
 - **Schema file:** `.bwrb/schema.json`
 
 ---
