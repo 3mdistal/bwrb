@@ -121,6 +121,8 @@ Issue Types:
   malformed-wikilink    Near-wikilink bracket typo (frontmatter only)
   unlinked-mention      Known entity name/alias in body prose, not wikilinked
                         (exact/alias auto-fixable; fuzzy/ambiguous flag-only)
+  frequent-unlinked-term Proper-noun-ish term mentioned often across the vault
+                        with no note yet (advisory heuristic; never auto-fixed)
 
 Type Resolution:
   Audit resolves each file's type from its frontmatter 'type' field.
