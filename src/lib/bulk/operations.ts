@@ -2,6 +2,7 @@
  * Bulk operation logic for modifying frontmatter.
  */
 
+import { formatDisplayValue } from '../value-format.js';
 import type { BulkOperation, FieldChange, OperationType } from './types.js';
 
 /**
@@ -210,16 +211,7 @@ export function applyOperations(
  * Format a value for display.
  */
 function formatValue(value: unknown): string {
-  if (value === undefined || value === null) {
-    return '(empty)';
-  }
-  if (Array.isArray(value)) {
-    if (value.length === 0) {
-      return '[]';
-    }
-    return `[${value.join(', ')}]`;
-  }
-  return String(value);
+  return formatDisplayValue(value, { empty: '(empty)', arrayStyle: 'bracketed' });
 }
 
 /**

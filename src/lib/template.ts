@@ -8,6 +8,7 @@ import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
 import { evaluateTemplateDefault, validateDateExpression, isDateExpression } from './date-expression.js';
+import { formatDisplayValue } from './value-format.js';
 import { formatDateWithPattern, DEFAULT_DATE_FORMAT } from './local-date.js';
 import { sanitizeFilenameBase, type FilenameTransformation } from './filename.js';
 import {
@@ -687,13 +688,7 @@ export function processTemplateBody(
  * Format a frontmatter value for body substitution.
  */
 function formatValueForBody(value: unknown): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  if (Array.isArray(value)) {
-    return value.join(', ');
-  }
-  return String(value);
+  return formatDisplayValue(value);
 }
 
 /**
