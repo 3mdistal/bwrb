@@ -4,6 +4,10 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`new` now normalizes date fields to canonical `YYYY-MM-DD`** (#592) — `bwrb new` previously stored date values verbatim (e.g. `12/25/2026`), so freshly created notes could fail `bwrb audit`. The create path now normalizes dates the same way `edit` does — accepting unambiguous `MM/DD/YYYY`/`DD/MM/YYYY` and interpolated defaults (`today()`), while preserving valid partial dates per the field's granularity. The normalization logic is shared with the audit/validation and `edit` layers.
+
 ## [0.1.9] - 2026-06-20
 
 Changes since `v0.1.8`.
