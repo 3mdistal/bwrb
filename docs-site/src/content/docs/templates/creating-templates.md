@@ -58,22 +58,38 @@ defaults:
 
 ### Dynamic Defaults (Date Expressions)
 
-Use date expressions for dynamic values that evaluate at note creation time:
+Use date expressions for dynamic values that evaluate at note creation time. A
+default value is evaluated as a date expression **only when the entire value
+matches the date-expression grammar** — any other string (links, prose, option
+values, literal dates like `2026-01-07`) is written through unchanged. The
+evaluated date is then normalized to canonical `YYYY-MM-DD` on write (and a
+field's `granularity` is respected), so templated dates pass `bwrb audit`.
+
+There are two interchangeable spellings:
+
+- **Shorthand (recommended):** `@today`, `@today+3d`
+- **Function form:** `today()`, `today() + '7d'`
 
 | Expression | Result | Description |
 |------------|--------|-------------|
-| `today()` | `2026-01-07` | Current date |
-| `today() + '7d'` | `2026-01-14` | 7 days from now |
-| `today() - '1w'` | `2025-12-31` | 1 week ago |
-| `now()` | `2026-01-07 14:30` | Current datetime |
-| `now() + '2h'` | `2026-01-07 16:30` | 2 hours from now |
+| `@today` / `today()` | `2026-01-07` | Current date |
+| `@today+7d` / `today() + '7d'` | `2026-01-14` | 7 days from now |
+| `@today+1w` | `2026-01-14` | 1 week from now |
+| `@today+1m` / `@today+1mon` | `2026-02-06` | 1 month from now (30 days) |
+| `@today-1w` / `today() - '1w'` | `2025-12-31` | 1 week ago |
+| `@now` / `now()` | `2026-01-07 14:30` | Current datetime |
+| `@now+2h` / `now() + '2h'` | `2026-01-07 16:30` | 2 hours from now |
+
+Whitespace around the offset is optional (`@today+3d` and `@today + 3d` are
+equivalent). An offset that looks like a date expression but is malformed (e.g.
+`@today+3x`) raises a clear error rather than being written verbatim.
 
 **Duration units:**
 - `min` — minutes
 - `h` — hours
 - `d` — days
 - `w` — weeks (7 days)
-- `mon` — months (fixed 30 days, not calendar months)
+- `mon` (or `m`) — months (fixed 30 days, not calendar months)
 - `y` — years (fixed 365 days, not calendar years)
 
 **Example:** Weekly review template with auto-deadline:
@@ -85,9 +101,32 @@ template-for: task
 description: Weekly review with auto-deadline
 defaults:
   status: backlog
-  deadline: "today() + '7d'"
+  deadline: "@today+7d"
 ---
 ```
+
+#### Staggered deadlines across spawned tasks
+
+Date offsets shine with [instance scaffolding](#instance-scaffolding): a parent
+template can spawn several tasks at once, each with a deadline staggered from the
+day the parent is created.
+
+```yaml
+---
+type: template
+template-for: project
+description: Write an article — spawns its predictable tasks, staggered from today
+instances:
+  - { type: task, defaults: { name: "Outline", deadline: "@today+1d" } }
+  - { type: task, defaults: { name: "Draft",   deadline: "@today+3d" } }
+  - { type: task, defaults: { name: "Edit",    deadline: "@today+5d" } }
+  - { type: task, defaults: { name: "Publish", deadline: "@today+7d" } }
+---
+```
+
+Running `bwrb new project --template write-an-article` on `2026-01-07` produces
+four tasks with deadlines `2026-01-08`, `2026-01-10`, `2026-01-12`, and
+`2026-01-14` — all stored as canonical ISO dates.
 
 ### Value Precedence
 
@@ -208,11 +247,11 @@ For recurring tasks with relative deadlines:
 ```yaml
 # Weekly review: deadline always 7 days out
 defaults:
-  deadline: "today() + '7d'"
+  deadline: "@today+7d"
 
 # End-of-month report: deadline always 30 days out
 defaults:
-  deadline: "today() + '1mon'"
+  deadline: "@today+1mon"
 ```
 
 ### Validate Templates After Schema Changes

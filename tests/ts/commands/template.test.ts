@@ -264,6 +264,76 @@ Body
       expect(result.stdout).toContain('Invalid date expression');
     });
 
+    it('should pass non-date field defaults that look like date expressions (regression #629)', async () => {
+      // `note` is a text field and `status` is a select field. Values that merely
+      // *start* with @today / today() must be treated as literal text by
+      // `template validate`, matching how `bwrb new` creates the note. Before the
+      // fix, validate ran validateDateExpression on every string default and
+      // falsely reported "Invalid date expression".
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/task', 'prose.md'),
+        `---
+type: template
+template-for: task
+defaults:
+  status: backlog
+  note: "@today-ish note"
+---
+Body
+`
+      );
+
+      const result = await runCLI(['template', 'validate', 'task'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('prose.md');
+      expect(result.stdout).toContain('Valid');
+      expect(result.stdout).not.toContain('Invalid date expression');
+    });
+
+    it('should reject a malformed date expression on a date field', async () => {
+      // `deadline` IS a date field, so a typo like @today+3x must still be
+      // caught as a malformed date expression.
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/task', 'typo-date.md'),
+        `---
+type: template
+template-for: task
+defaults:
+  status: backlog
+  deadline: "@today+3x"
+---
+Body
+`
+      );
+
+      const result = await runCLI(['template', 'validate', 'task'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Invalid date expression');
+    });
+
+    it('should accept a valid @today offset on a date field', async () => {
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/task', 'valid-date.md'),
+        `---
+type: template
+template-for: task
+defaults:
+  status: backlog
+  deadline: "@today+3d"
+---
+Body
+`
+      );
+
+      const result = await runCLI(['template', 'validate', 'task'], vaultDir);
+
+      expect(result.stdout).toContain('valid-date.md');
+      expect(result.stdout).toContain('Valid');
+      expect(result.exitCode).toBe(0);
+    });
+
     it('should output JSON format', async () => {
       const result = await runCLI(['template', 'validate', '--output', 'json'], vaultDir);
 

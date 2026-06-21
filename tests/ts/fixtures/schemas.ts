@@ -112,13 +112,14 @@ export const BASELINE_SCHEMA: TestSchema = {
         },
         'creation-date': { value: '$NOW' },
         deadline: { prompt: 'date', label: 'Deadline (YYYY-MM-DD)' },
+        note: { prompt: 'text' },
         tags: {
           prompt: 'list',
           list_format: 'yaml-array',
           default: [],
         },
       },
-      field_order: ['type', 'status', 'milestone', 'parent', 'creation-date', 'deadline', 'tags'],
+      field_order: ['type', 'status', 'milestone', 'parent', 'creation-date', 'deadline', 'note', 'tags'],
       body_sections: [
         { title: 'Steps', level: 2, content_type: 'checkboxes', prompt: 'list', prompt_label: 'Steps' },
         { title: 'Notes', level: 2, content_type: 'paragraphs' },

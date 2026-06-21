@@ -8,7 +8,7 @@ import { getType, getFieldsForType, getFieldOptions } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
-import { evaluateTemplateDefault, validateDateExpression, isDateExpression } from './date-expression.js';
+import { evaluateTemplateDefault, validateDateExpression, isDateExpression, isDateTypedFieldPrompt } from './date-expression.js';
 import { formatDisplayValue } from './value-format.js';
 import { formatDateWithPattern, DEFAULT_DATE_FORMAT } from './local-date.js';
 import { sanitizeFilenameBase, type FilenameTransformation } from './filename.js';
@@ -382,6 +382,10 @@ export async function getDefaultTemplateChain(
  * 
  * @param templates - Templates ordered root-first (from getDefaultTemplateChain)
  * @param dateFormat - Date format for evaluating date expressions
+ * @param fields - Resolved fields for the target type. Used to gate
+ *   date-expression evaluation by field type: only `date`-typed fields evaluate
+ *   their default as a date expression; every other field passes through
+ *   verbatim. When omitted, no field is treated as date-typed.
  * @returns Merged defaults object
  * 
  * @example
@@ -391,19 +395,20 @@ export async function getDefaultTemplateChain(
  */
 export function mergeTemplateDefaults(
   templates: TemplateWithSource[],
-  dateFormat: string
+  dateFormat: string,
+  fields: Record<string, Field> = {}
 ): Record<string, unknown> {
   const merged: Record<string, unknown> = {};
-  
+
   for (const template of templates) {
     if (template.defaults) {
       for (const [key, value] of Object.entries(template.defaults)) {
-        // Evaluate date expressions as we merge
-        merged[key] = evaluateTemplateDefault(value, dateFormat);
+        // Evaluate date expressions as we merge — but only for date-typed fields.
+        merged[key] = evaluateTemplateDefault(value, dateFormat, fields[key]?.prompt);
       }
     }
   }
-  
+
   return merged;
 }
 
@@ -515,6 +520,10 @@ export async function resolveTemplateWithInheritance(
     return createEmptyTemplateResolution();
   }
   
+  // Resolved fields for the target type — used to gate date-expression
+  // evaluation of template defaults by field type (only `date` fields evaluate).
+  const fields = getFieldsForType(schema, typePath);
+
   // --template <name>: Find specific template (no inheritance for named templates)
   if (options.templateName) {
     const template = await findTemplateByName(vaultDir, typePath, options.templateName);
@@ -523,12 +532,12 @@ export async function resolveTemplateWithInheritance(
       const chain = await getDefaultTemplateChain(vaultDir, typePath, schema);
       // Filter out templates from the same type (we're using the named one instead)
       const ancestorChain = chain.filter(t => t.inheritedFrom !== undefined);
-      
+
       // Merge ancestor defaults, then overlay the selected template's defaults
-      const mergedDefaults = mergeTemplateDefaults(ancestorChain, schema.config.dateFormat);
+      const mergedDefaults = mergeTemplateDefaults(ancestorChain, schema.config.dateFormat, fields);
       if (template.defaults) {
         for (const [key, value] of Object.entries(template.defaults)) {
-          mergedDefaults[key] = evaluateTemplateDefault(value, schema.config.dateFormat);
+          mergedDefaults[key] = evaluateTemplateDefault(value, schema.config.dateFormat, fields[key]?.prompt);
         }
       }
       
@@ -553,7 +562,7 @@ export async function resolveTemplateWithInheritance(
   const ownDefault = ownTemplates.find(t => t.name === 'default');
   if (ownDefault) {
     // Has own default - merge with ancestor chain
-    const mergedDefaults = mergeTemplateDefaults(chain, schema.config.dateFormat);
+    const mergedDefaults = mergeTemplateDefaults(chain, schema.config.dateFormat, fields);
     const mergedConstraints = mergeTemplateConstraints(chain);
     const mergedPromptFields = mergeTemplatePromptFields(chain);
     
@@ -571,7 +580,7 @@ export async function resolveTemplateWithInheritance(
   const inheritedDefault = await findDefaultTemplateWithInheritance(vaultDir, typePath, schema);
   if (inheritedDefault) {
     // Using inherited template - merge with full chain
-    const mergedDefaults = mergeTemplateDefaults(chain, schema.config.dateFormat);
+    const mergedDefaults = mergeTemplateDefaults(chain, schema.config.dateFormat, fields);
     const mergedConstraints = mergeTemplateConstraints(chain);
     const mergedPromptFields = mergeTemplatePromptFields(chain);
     
@@ -1048,8 +1057,16 @@ export async function validateTemplate(
         continue;
       }
       
-      // Validate date expression syntax if it looks like one
-      if (typeof value === 'string') {
+      // Only date-typed fields evaluate (and therefore validate) date
+      // expressions. Non-date fields treat their default verbatim, so prose
+      // like `@today-ish note` must not be flagged as a malformed expression.
+      // This mirrors the creation path, which gates evaluateTemplateDefault on
+      // the field's prompt type.
+      const field = fields[fieldName];
+      const isDateField = isDateTypedFieldPrompt(field?.prompt);
+
+      // Validate date expression syntax if it looks like one (date fields only)
+      if (isDateField && typeof value === 'string') {
         const dateExprError = validateDateExpression(value);
         if (dateExprError) {
           issues.push({
@@ -1061,10 +1078,10 @@ export async function validateTemplate(
           continue;
         }
       }
-      
-      // Validate value against field definition (skip for date expressions)
-      const field = fields[fieldName];
-      if (field && !(typeof value === 'string' && isDateExpression(value))) {
+
+      // Validate value against field definition. Skip only when a date field's
+      // value is a date expression (it resolves at creation time).
+      if (field && !(isDateField && typeof value === 'string' && isDateExpression(value))) {
         const valueIssues = validateFieldValue(fieldName, field, value, template.templateFor);
         issues.push(...valueIssues);
       }
@@ -1478,19 +1495,23 @@ export async function createScaffoldedInstances(
       
       // Build frontmatter with defaults
       let frontmatter: Record<string, unknown> = {};
-      
+
+      // Resolved fields for the instance type — gates date-expression evaluation
+      // by field type (only `date` fields evaluate; others pass through verbatim).
+      const instanceFields = getFieldsForType(schema, instance.type);
+
       // Apply instance-specific defaults first, evaluating date expressions
       if (instance.defaults) {
         for (const [key, value] of Object.entries(instance.defaults)) {
-          frontmatter[key] = evaluateTemplateDefault(value, schema.config.dateFormat);
+          frontmatter[key] = evaluateTemplateDefault(value, schema.config.dateFormat, instanceFields[key]?.prompt);
         }
       }
-      
+
       // Apply template defaults (template overrides instance defaults)
       // Also evaluate date expressions
       if (instanceTemplate?.defaults) {
         for (const [key, value] of Object.entries(instanceTemplate.defaults)) {
-          frontmatter[key] = evaluateTemplateDefault(value, schema.config.dateFormat);
+          frontmatter[key] = evaluateTemplateDefault(value, schema.config.dateFormat, instanceFields[key]?.prompt);
         }
       }
       

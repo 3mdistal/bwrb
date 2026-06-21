@@ -73,6 +73,35 @@ describe('date-expression', () => {
       expect(isDateExpression("today() + '7'")).toBe(false);
     });
 
+    it('should recognize the @today shorthand', () => {
+      expect(isDateExpression('@today')).toBe(true);
+      expect(isDateExpression('@now')).toBe(true);
+    });
+
+    it('should recognize @today with compact (unquoted) offsets', () => {
+      expect(isDateExpression('@today+3d')).toBe(true);
+      expect(isDateExpression('@today+1w')).toBe(true);
+      expect(isDateExpression('@today+1m')).toBe(true);
+      expect(isDateExpression('@today-2mon')).toBe(true);
+      expect(isDateExpression('@now+2h')).toBe(true);
+    });
+
+    it('should allow whitespace around the @today offset', () => {
+      expect(isDateExpression('@today + 3d')).toBe(true);
+      expect(isDateExpression('@today  -  1w')).toBe(true);
+    });
+
+    it('should allow quoted offsets on the @today shorthand', () => {
+      expect(isDateExpression("@today + '7d'")).toBe(true);
+    });
+
+    it('should not match @today with invalid units', () => {
+      expect(isDateExpression('@today+3x')).toBe(false);
+      expect(isDateExpression('@today+3')).toBe(false);
+      expect(isDateExpression('@todayish')).toBe(false);
+      expect(isDateExpression('[[@today note]]')).toBe(false);
+    });
+
     it('should handle non-string input', () => {
       expect(isDateExpression(null as unknown as string)).toBe(false);
       expect(isDateExpression(undefined as unknown as string)).toBe(false);
@@ -151,6 +180,44 @@ describe('date-expression', () => {
       expect(() => evaluateDateExpression('today( + 7d')).toThrow(/Invalid date expression/);
       expect(() => evaluateDateExpression("today() +'7d")).toThrow(/Invalid date expression/);
     });
+
+    it('should throw for a malformed @today shorthand', () => {
+      expect(() => evaluateDateExpression('@today+')).toThrow(/Invalid date expression/);
+      expect(() => evaluateDateExpression('@today+3x')).toThrow(/Invalid date expression/);
+    });
+
+    it('should evaluate the bare @today shorthand', () => {
+      expect(evaluateDateExpression('@today')).toBe('2025-06-15');
+      expect(evaluateDateExpression('@now')).toBe(expectedLocalDateTime(fixedDate));
+    });
+
+    it('should evaluate compact @today offsets (the #603 syntax)', () => {
+      expect(evaluateDateExpression('@today+1d')).toBe('2025-06-16');
+      expect(evaluateDateExpression('@today+3d')).toBe('2025-06-18');
+      expect(evaluateDateExpression('@today+5d')).toBe('2025-06-20');
+      expect(evaluateDateExpression('@today+7d')).toBe('2025-06-22');
+      expect(evaluateDateExpression('@today+1w')).toBe('2025-06-22');
+      expect(evaluateDateExpression('@today-3d')).toBe('2025-06-12');
+    });
+
+    it('should treat the @today `m` unit as months (alias for mon)', () => {
+      expect(evaluateDateExpression('@today+1m')).toBe('2025-07-15');
+      expect(evaluateDateExpression('@today+1mon')).toBe('2025-07-15');
+    });
+
+    it('should honor a custom date format for the @today shorthand', () => {
+      expect(evaluateDateExpression('@today+3d', 'MM/DD/YYYY')).toBe('06/18/2025');
+    });
+
+    it('should stagger multiple @today offsets correctly', () => {
+      const offsets = ['@today+1d', '@today+3d', '@today+5d', '@today+7d'];
+      expect(offsets.map((o) => evaluateDateExpression(o))).toEqual([
+        '2025-06-16',
+        '2025-06-18',
+        '2025-06-20',
+        '2025-06-22',
+      ]);
+    });
   });
 
   describe('formatDate', () => {
@@ -174,22 +241,49 @@ describe('date-expression', () => {
   });
 
   describe('evaluateTemplateDefault', () => {
-    it('should evaluate date expressions', () => {
-      expect(evaluateTemplateDefault('today()')).toBe('2025-06-15');
-      expect(evaluateTemplateDefault("today() + '7d'")).toBe('2025-06-22');
+    it('should evaluate date expressions on date-typed fields', () => {
+      expect(evaluateTemplateDefault('today()', undefined, 'date')).toBe('2025-06-15');
+      expect(evaluateTemplateDefault("today() + '7d'", undefined, 'date')).toBe('2025-06-22');
     });
 
-    it('should pass through regular strings', () => {
-      expect(evaluateTemplateDefault('inbox')).toBe('inbox');
-      expect(evaluateTemplateDefault('2025-01-15')).toBe('2025-01-15');
-      expect(evaluateTemplateDefault('[[Some Link]]')).toBe('[[Some Link]]');
+    it('should pass through regular strings on date-typed fields', () => {
+      expect(evaluateTemplateDefault('inbox', undefined, 'date')).toBe('inbox');
+      expect(evaluateTemplateDefault('2025-01-15', undefined, 'date')).toBe('2025-01-15');
+      expect(evaluateTemplateDefault('[[Some Link]]', undefined, 'date')).toBe('[[Some Link]]');
     });
 
     it('should pass through non-string values', () => {
-      expect(evaluateTemplateDefault(42)).toBe(42);
-      expect(evaluateTemplateDefault(true)).toBe(true);
-      expect(evaluateTemplateDefault(['a', 'b'])).toEqual(['a', 'b']);
-      expect(evaluateTemplateDefault(null)).toBe(null);
+      expect(evaluateTemplateDefault(42, undefined, 'date')).toBe(42);
+      expect(evaluateTemplateDefault(true, undefined, 'date')).toBe(true);
+      expect(evaluateTemplateDefault(['a', 'b'], undefined, 'date')).toEqual(['a', 'b']);
+      expect(evaluateTemplateDefault(null, undefined, 'date')).toBe(null);
+    });
+
+    it('should throw on malformed date expressions on date-typed fields (typo protection)', () => {
+      expect(() => evaluateTemplateDefault('@today+3x', undefined, 'date')).toThrow(
+        /Invalid date expression/
+      );
+    });
+
+    describe('field-type gating (regression: non-date fields must not evaluate)', () => {
+      // A non-date field default that merely starts with @today/@now/today(/now(
+      // must pass through verbatim — never evaluated, never throwing — so prose
+      // like "@today-ish note" does not block note creation.
+      const proseThatLooksLikeDateExpr = ['@today-ish note', '@today note', 'today() later', '@now thoughts'];
+
+      for (const fieldType of [undefined, 'text', 'select', 'list', 'relation', 'boolean', 'number']) {
+        for (const value of proseThatLooksLikeDateExpr) {
+          it(`passes "${value}" through verbatim on a ${fieldType ?? 'static'} field`, () => {
+            expect(evaluateTemplateDefault(value, undefined, fieldType)).toBe(value);
+          });
+        }
+      }
+
+      it('does not evaluate a valid date expression on a non-date field', () => {
+        // Even a strictly-valid expression is literal text on a text field.
+        expect(evaluateTemplateDefault('@today+3d', undefined, 'text')).toBe('@today+3d');
+        expect(evaluateTemplateDefault('today()', undefined, 'select')).toBe('today()');
+      });
     });
   });
 });
