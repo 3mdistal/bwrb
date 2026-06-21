@@ -77,6 +77,7 @@ Delete semantics in repair mode:
 | `wrong-scalar-type` | Scalar value has wrong type for schema |
 | `illegal-aliases` | An [`alias`-role field](/reference/schema/#alias) has empty or non-string entries (the Obsidian aliases format requires non-empty, unique strings) |
 | `unlinked-mention` | A known entity's name or [registered alias](/reference/schema/#alias) appears in body prose as plain text but is not wikilinked (warning; exact/alias matches auto-fixable, fuzzy/ambiguous matches flag-only — see below) |
+| `frequent-unlinked-term` | A proper-noun-ish term mentioned frequently across the vault that has **no note yet** (warning; **advisory heuristic, never auto-fixable** — see below) |
 
 Note: built-in fields written by `bwrb new` (currently `id` and `name`) are always allowed and do not produce `unknown-field` issues.
 Invalid option values inside list fields are reported as `invalid-option` with `listIndex` metadata, not a separate issue code.
@@ -229,6 +230,35 @@ bwrb audit --path "Notes/**" --fix --auto --execute
 ```
 
 Fuzzy and ambiguous mentions are reported with a suggestion but are **never** modified by `--fix --auto`; resolve them with interactive `--fix` (which will skip them with the suggestion) or by editing manually.
+
+### Frequent-unlinked-term semantics (open-world nudge)
+
+`frequent-unlinked-term` is the **open-world** counterpart to `unlinked-mention`. Where `unlinked-mention` keeps *known* entities linked, this detection points at entities that probably *should* exist but don't yet — it surfaces proper-noun-ish terms mentioned a lot across the vault that have **no note**. It attacks the failure mode where the AI agent (or you) never links something because it doesn't know the entity exists in the first place. Create the note, and `unlinked-mention` keeps it wired up forever after.
+
+**Advisory only — this detection NEVER takes action.** It is always reported as a warning and is **never auto-fixable**: there is no `--fix` path for it, `--fix --auto` ignores it, and interactive `--fix` lists it as a manual item only. Because it never acts, it is *allowed* to be a little noisy; the thresholds exist purely to keep the report readable, not for correctness. Just ignore any suggestion that isn't a real entity.
+
+**The heuristic (and its honest limits).** Discovering an unknown "thing" in prose without an LLM is inherently fuzzy. The detection approximates proper nouns with **runs of Capitalized words** (1–3 words: `Rust`, `Steve Yegge`, `New York Times`), counted only in prose. Known limits, stated plainly:
+
+- **No semantic understanding.** A repeated capitalized non-entity (e.g. a recurring section title) can surface. That's expected — ignore it.
+- **Sentence-start noise.** Any word can be capitalized simply by starting a sentence. To suppress this, single-word candidates are held to a stricter bar (longer minimum length, full stopword filtering, and must appear at least once *mid-sentence*), and a small stopword list (days, months, pronouns, common sentence openers) is filtered. Leading filler words are stripped from phrases (`The Rust Foundation` → `Rust Foundation`).
+- **Multi-word phrases are favored** over single words, because a 2–3 word capitalized phrase is far more likely to be a genuine proper noun.
+
+**Thresholds (defaults).** A term is surfaced only when it appears **≥ 4 times in total** across **≥ 2 distinct notes**. These keep one-off capitalizations out of the report. (The thresholds live as documented constants — `FREQUENT_TERM_DEFAULTS` — in `src/lib/audit/frequent-unlinked-term.ts`; tune them there.)
+
+**Exclusions (the closed-world handoff).**
+
+- A term whose text matches an existing **note name** or a **registered alias** is never surfaced — that's `unlinked-mention`'s job. The two detections never overlap.
+- Terms that are already wikilinked are not counted: existing `[[wikilinks]]`, markdown links, fenced code blocks, inline code, and bare URLs are masked out (the same masking `unlinked-mention` uses), so only *prose* mentions count. A term that is always linked has zero prose mentions and can't reach the threshold.
+
+Because the threshold is vault-wide, this detection aggregates across all scanned notes and reports its findings under a single `(vault-wide)` heading rather than against one file. Each finding lists the term, how many times it was mentioned, and the notes it appeared in.
+
+```bash
+# Report frequent unlinked terms only
+bwrb audit --only frequent-unlinked-term
+
+# Suppress them (e.g. while focusing on fixable issues)
+bwrb audit --ignore frequent-unlinked-term
+```
 
 ### Non-interactive mode
 

@@ -53,7 +53,10 @@ export type IssueCode =
   | 'malformed-wikilink'
   // Ingest safety net (#600): a known entity name/alias mentioned in body prose
   // but not wikilinked. Exact/alias → auto-fixable; fuzzy/ambiguous → flag-only.
-  | 'unlinked-mention';
+  | 'unlinked-mention'
+  // Ingest safety net (#601): a proper-noun-ish term mentioned frequently across
+  // the vault with no note yet. Advisory-only heuristic; NEVER auto-fixable.
+  | 'frequent-unlinked-term';
 
 /**
  * A single audit issue.

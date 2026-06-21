@@ -77,7 +77,16 @@ import {
   detectUnlinkedMentions,
   type EntityMentionIndex,
 } from './unlinked-mention.js';
+// Import frequent-unlinked-term detection (ingest safety net, #601)
+import { FrequentTermAccumulator } from './frequent-unlinked-term.js';
 import { parseNote } from '../frontmatter.js';
+
+/**
+ * Synthetic vault-relative path used to group vault-global (aggregate) findings
+ * such as `frequent-unlinked-term`, which belong to no single note. Rendered as
+ * a normal result header by the text/JSON output.
+ */
+const VAULT_GLOBAL_RESULT_PATH = '(vault-wide)';
 
 // ============================================================================
 // Main Audit Runner
@@ -194,6 +203,38 @@ export async function runAudit(
         path: file.path,
         relativePath: file.relativePath,
         issues: filteredIssues,
+      });
+    }
+  }
+
+  // Vault-global post-pass: frequent-unlinked-term (#601). This is an advisory,
+  // never-auto-fixable heuristic that aggregates Capitalized-phrase mentions
+  // across every scanned body and surfaces terms that appear frequently but
+  // have no note yet. Aggregation cannot happen per file (the threshold is
+  // vault-wide), so it runs here after the per-file loop. Skipped entirely when
+  // the caller filtered this issue out, to avoid the extra body reads.
+  const wantFrequentTerm =
+    options.ignoreIssue !== 'frequent-unlinked-term' &&
+    (options.onlyIssue === undefined || options.onlyIssue === 'frequent-unlinked-term');
+
+  if (wantFrequentTerm && entityMentionIndex) {
+    const accumulator = new FrequentTermAccumulator(entityMentionIndex);
+    for (const file of filteredFiles) {
+      try {
+        const { body } = await parseNote(file.path);
+        if (body && body.trim().length > 0) {
+          accumulator.addBody(body, file.relativePath);
+        }
+      } catch {
+        // Skip files whose body can't be parsed.
+      }
+    }
+    const aggregateIssues = accumulator.finish();
+    if (aggregateIssues.length > 0) {
+      results.push({
+        path: VAULT_GLOBAL_RESULT_PATH,
+        relativePath: VAULT_GLOBAL_RESULT_PATH,
+        issues: aggregateIssues,
       });
     }
   }
