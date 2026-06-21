@@ -67,6 +67,34 @@ describe('schema.schema.json drift guards', () => {
     expect(prompt.enum).toEqual(expect.arrayContaining(['none', 'list']));
   });
 
+  it('exposes a top-level traits map and a trait definition', () => {
+    const traits = metaSchema.properties.traits;
+    expect(traits).toBeDefined();
+    expect(traits.type).toBe('object');
+    expect(traits.additionalProperties.$ref).toBe('#/definitions/trait');
+
+    const trait = metaSchema.definitions.trait;
+    expect(trait).toBeDefined();
+    expect(trait.properties.fields).toBeDefined();
+    expect(trait.properties.fields.additionalProperties.$ref).toBe(
+      '#/definitions/frontmatterField'
+    );
+    expect(trait.properties.description).toBeDefined();
+  });
+
+  it('lets a type compose traits via a string array', () => {
+    const traitsProp = metaSchema.definitions.typeNode.properties.traits;
+    expect(traitsProp).toBeDefined();
+    expect(traitsProp.type).toBe('array');
+    expect(traitsProp.items.type).toBe('string');
+
+    // A type may be defined with traits alone (no extends/fields/subtypes).
+    const anyOf = metaSchema.definitions.typeNode.anyOf;
+    expect(anyOf).toEqual(
+      expect.arrayContaining([{ required: ['traits'] }])
+    );
+  });
+
   it('includes filename on type definitions', () => {
     const typeDefProps = metaSchema.definitions.typeDefinition.properties;
     expect(typeDefProps.filename).toBeDefined();

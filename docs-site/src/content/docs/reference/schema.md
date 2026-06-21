@@ -27,6 +27,7 @@ my-vault/
   "$schema": "https://bwrb.dev/schema.schema.json",
   "version": 2,
   "schemaVersion": "1.0.0",
+  "traits": { ... },
   "types": { ... },
   "config": { ... },
   "audit": { ... }
@@ -38,6 +39,7 @@ my-vault/
 | `$schema` | string | No | JSON Schema URI for editor validation |
 | `version` | integer | No | Schema format version (default: `2`) |
 | `schemaVersion` | string | No | User-controlled version for migrations (semver) |
+| `traits` | object | No | Reusable field bundles composed into types (see [Traits](#traits)) |
 | `types` | object | **Yes** | Type definitions |
 | `config` | object | No | Vault-wide settings |
 | `audit` | object | No | Audit command configuration |
@@ -66,7 +68,8 @@ Types define categories of notes. Each type has a name (the object key) and a de
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `extends` | string | `"meta"` | Parent type name |
+| `extends` | string | `"meta"` | Parent type name (single-inheritance) |
+| `traits` | array | — | Trait names composed into this type (see [Traits](#traits)) |
 | `description` | string | — | What this type is for and when to use it. Surfaced by `bwrb schema list` |
 | `fields` | object | `{}` | Field definitions |
 | `field_order` | array | — | Order of fields in frontmatter |
@@ -134,6 +137,68 @@ Types with `recursive: true` can have a `parent` field pointing to the same type
 ```
 
 This enables subtasks, nested chapters, etc. Cycles are prevented—a note cannot be its own ancestor.
+
+---
+
+## Traits
+
+Traits are reusable field bundles a type can compose. Where `extends` models *is-a* inheritance (a `task` is an `objective`), traits model *also-has* composition (a `task` **also has** the `actionable` bundle). Cross-cutting field groups — status + due dates, scope, rating metadata — recur across unrelated type families, which is exactly what single inheritance models badly. Define the bundle once as a trait and mix it into any type.
+
+Declare traits at the top level, then list them on a type with `traits`:
+
+```json
+{
+  "traits": {
+    "actionable": {
+      "description": "Things that can be worked and completed.",
+      "fields": {
+        "status": { "prompt": "select", "options": ["inbox", "next", "done"] },
+        "due": { "prompt": "date" }
+      }
+    }
+  },
+  "types": {
+    "task": {
+      "extends": "objective",
+      "traits": ["actionable"]
+    }
+  }
+}
+```
+
+A `task` now has every field from `objective` (and its ancestors) **plus** `status` and `due` from the `actionable` trait.
+
+### Trait Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `description` | string | What the trait bundles and when to use it. Surfaced by `bwrb schema list` |
+| `fields` | object | Field definitions contributed by the trait |
+
+Traits are **flat**: a trait carries only `fields` (and an optional `description`). A trait cannot `extends` a type or compose other traits. This keeps resolution simple and deterministic.
+
+### Precedence
+
+When the same field name comes from more than one source, resolution layers sources from least- to most-specific, so a more specific layer fully replaces a less specific one. Final precedence, **highest wins**:
+
+```
+own type fields  >  traits  >  inherited (parent chain)
+```
+
+- **Inherited** fields are applied first (root ancestor → parent).
+- **Traits** are composed next, in the order the type lists them. A trait field replaces an inherited field of the same name, and a **later trait in the array wins over an earlier one** (last-wins).
+- **Own fields** are applied last and win over everything. As with inheritance, when an own field collides with a trait- or inherited-provided field only the `default`, `value`, `description`, and `granularity` properties merge onto the existing definition.
+
+Example: if `base` defines `status`, the `actionable` trait defines `status`, and `task` (extends `base`, traits `["actionable"]`) defines its own `status`, the `task`'s `status` is the own definition; without an own `status` it would be the trait's; without the trait it would be the inherited one.
+
+### Validation
+
+- A type composing an **unknown trait** is a deterministic schema error (`bwrb` refuses to load the schema), the same way `extends` pointing at an unknown type fails.
+- Because traits are flat, there is no trait→trait or trait→type resolution to validate.
+
+### Seeing resolved fields
+
+`bwrb schema list type <name>` groups a type's fields by origin — **own**, **trait** (one section per composed trait), and **inherited** (one section per ancestor) — so you can see exactly which trait contributed each field. The verbose tree (`bwrb schema list --verbose`) and JSON output (`--output json`, which adds a `trait_fields` block) carry the same provenance.
 
 ---
 

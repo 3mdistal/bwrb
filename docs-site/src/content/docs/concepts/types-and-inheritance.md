@@ -62,6 +62,43 @@ A `task` note gets:
 3. **No cycles** — A type cannot extend its own descendant
 4. **Override defaults by convention** — Child types commonly override `default` values. Broader inherited field overrides are currently accepted by validation, so use structural changes deliberately.
 
+## Traits — composition alongside inheritance
+
+Inheritance is *is-a*: a `task` **is an** `objective`. But some field groups cut across unrelated type families — status + due dates, scope, rating — and copying them into every type invites drift. **Traits** are *also-has* composition: define a reusable field bundle once and mix it into any type.
+
+```json
+{
+  "traits": {
+    "actionable": {
+      "fields": {
+        "status": { "prompt": "select", "options": ["inbox", "next", "done"] },
+        "due": { "prompt": "date" }
+      }
+    }
+  },
+  "types": {
+    "task": {
+      "extends": "objective",
+      "traits": ["actionable"]
+    }
+  }
+}
+```
+
+A `task` now gets its inherited fields from `objective` **plus** `status` and `due` from the `actionable` trait. A type can compose multiple traits, and the same trait can be reused by any number of unrelated types.
+
+### Precedence
+
+When a field name comes from several sources, the most specific source wins:
+
+```
+own type fields  >  traits  >  inherited (parent chain)
+```
+
+Within `traits`, a **later trait in the array wins over an earlier one**. A type composing an unknown trait is a deterministic error.
+
+Traits are flat — they bundle only fields and cannot extend types or compose other traits. See the [Schema Reference](/reference/schema/#traits) for the full rules, and run `bwrb schema list type <name>` to see which trait contributed each field.
+
 ## Field Types
 
 Fields define what data each note type collects:

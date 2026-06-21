@@ -91,6 +91,30 @@ export const BodySectionSchema: z.ZodType<BodySection, z.ZodTypeDef, BodySection
 
 
 // ============================================================================
+// Trait Definition (Composition Model)
+// ============================================================================
+
+/**
+ * A reusable bundle of fields composed into a type via `traits`.
+ *
+ * Traits are *composition* ("also-has") alongside `extends` *inheritance*
+ * ("is-a"). Cross-cutting field bundles — status + due dates, scope, rating —
+ * are the pattern inheritance models badly, so traits let you define them once
+ * and mix them into unrelated type families.
+ *
+ * Traits are flat: a trait carries only `fields` (and an optional
+ * `description`). A trait cannot extend a type or compose other traits, which
+ * keeps resolution deterministic and easy to reason about.
+ */
+export const TraitSchema = z.object({
+  // Human-readable description of what this trait bundles and when to use it.
+  // Surfaced by `bwrb schema list` (text + JSON).
+  description: z.string().optional(),
+  // Field definitions contributed by this trait.
+  fields: z.record(FieldSchema).optional(),
+});
+
+// ============================================================================
 // Type Definition (New Inheritance Model)
 // ============================================================================
 
@@ -106,6 +130,11 @@ export const BodySectionSchema: z.ZodType<BodySection, z.ZodTypeDef, BodySection
 export const TypeSchema = z.object({
   // Parent type name (implicit 'meta' if not specified)
   extends: z.string().optional(),
+  // Trait names composed into this type (composition, alongside `extends`).
+  // `extends` is *is-a* (single-parent inheritance); `traits` are *also-has*
+  // (multiple reusable field bundles). Resolved at load time into the type's
+  // effective fields. See `TraitSchema` and the resolver for precedence.
+  traits: z.array(z.string()).optional(),
   // Human-readable description of what this type is for and when to use it.
   // Surfaced by `bwrb schema list` (text + JSON).
   description: z.string().optional(),
@@ -203,6 +232,9 @@ export const BwrbSchema = z.object({
   schemaVersion: z.string().optional(),
   // Vault-wide configuration
   config: ConfigSchema.optional(),
+  // Reusable field bundles composed into types via each type's `traits` array.
+  // Optional: schemas without traits are unchanged.
+  traits: z.record(TraitSchema).optional(),
   // Type definitions (flat with 'extends')
   types: z.record(TypeSchema),
   // Audit configuration
@@ -258,6 +290,7 @@ export type BodySectionInput = {
   children?: BodySectionInput[] | undefined;
 };
 export type FilterCondition = z.infer<typeof FilterConditionSchema>;
+export type Trait = z.infer<typeof TraitSchema>;
 export type Type = z.infer<typeof TypeSchema>;
 export type Config = z.infer<typeof ConfigSchema>;
 export type Schema = z.infer<typeof BwrbSchema>;
@@ -277,6 +310,8 @@ export interface ResolvedType {
   description: string | undefined;
   /** Parent type name (undefined only for 'meta') */
   parent: string | undefined;
+  /** Trait names composed into this type, in declaration order */
+  traits: string[];
   /** Direct child type names */
   children: string[];
   /** Computed effective fields (merged from ancestors) */
