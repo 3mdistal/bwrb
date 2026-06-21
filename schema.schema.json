@@ -23,6 +23,13 @@
     "config": {
       "$ref": "#/definitions/config"
     },
+    "traits": {
+      "type": "object",
+      "description": "Reusable field bundles composed into types via each type's `traits` array. Composition (`also-has`) alongside `extends` inheritance (`is-a`). Optional; schemas without traits are unchanged.",
+      "additionalProperties": {
+        "$ref": "#/definitions/trait"
+      }
+    },
     "types": {
       "type": "object",
       "description": "Type definitions with inheritance support",
@@ -35,6 +42,24 @@
     }
   },
   "definitions": {
+    "trait": {
+      "type": "object",
+      "description": "A reusable bundle of fields composed into a type. Traits are flat: they carry only fields (and an optional description) and cannot extend types or compose other traits.",
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this trait bundles and when to use it. Surfaced by `bwrb schema list`."
+        },
+        "fields": {
+          "type": "object",
+          "description": "Field definitions contributed by this trait",
+          "additionalProperties": {
+            "$ref": "#/definitions/frontmatterField"
+          }
+        }
+      }
+    },
     "config": {
       "type": "object",
       "description": "Vault-wide configuration options",
@@ -155,6 +180,11 @@
           "type": "string",
           "description": "Parent type name (v2 inheritance model)"
         },
+        "traits": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Trait names composed into this type (composition alongside `extends`). Precedence: own fields > traits > inherited; later traits in the array win over earlier ones."
+        },
         "fields": {
           "type": "object",
           "description": "Field definitions (v2 model, replaces frontmatter)",
@@ -173,7 +203,8 @@
         { "required": ["subtypes"] },
         { "required": ["output_dir", "frontmatter"] },
         { "required": ["extends"] },
-        { "required": ["fields"] }
+        { "required": ["fields"] },
+        { "required": ["traits"] }
       ]
     },
     "frontmatterField": {

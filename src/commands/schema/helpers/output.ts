@@ -16,6 +16,7 @@ import {
   getFieldsForType,
   getFieldsByOrigin,
   getFieldOrderForOrigin,
+  getFieldOrderForTrait,
   getOutputDir,
 } from '../../../lib/schema.js';
 import { printError } from '../../../lib/prompt.js';
@@ -59,8 +60,8 @@ export function outputTypeDetailsJson(schema: LoadedSchema, typePath: string): v
   // Get all fields (merged) for backwards compatibility
   const allFields = getFieldsForType(schema, typePath);
 
-  // Get fields grouped by origin for inheritance display
-  const { ownFields, inheritedFields } = getFieldsByOrigin(schema, typePath);
+  // Get fields grouped by origin for inheritance/trait display
+  const { ownFields, inheritedFields, traitFields } = getFieldsByOrigin(schema, typePath);
 
   // Format inherited fields as object keyed by origin type
   const inheritedFieldsObj: Record<string, Record<string, unknown>> = {};
@@ -73,10 +74,22 @@ export function outputTypeDetailsJson(schema: LoadedSchema, typePath: string): v
     );
   }
 
+  // Format trait fields as object keyed by trait name
+  const traitFieldsObj: Record<string, Record<string, unknown>> = {};
+  for (const [traitName, fields] of traitFields) {
+    traitFieldsObj[traitName] = Object.fromEntries(
+      Object.entries(fields).map(([name, field]) => [
+        name,
+        formatFieldForJson(field),
+      ])
+    );
+  }
+
   const output: Record<string, unknown> = {
     type_path: typePath,
     description: typeDef.description,
     extends: typeDef.parent,
+    traits: typeDef.traits.length > 0 ? typeDef.traits : undefined,
     output_dir: getOutputDir(schema, typePath),
     filename: typeDef.filename,
     // Own fields defined on this type
@@ -86,6 +99,10 @@ export function outputTypeDetailsJson(schema: LoadedSchema, typePath: string): v
         formatFieldForJson(field),
       ])
     ),
+    // Trait fields grouped by trait name
+    trait_fields: Object.keys(traitFieldsObj).length > 0
+      ? traitFieldsObj
+      : undefined,
     // Inherited fields grouped by origin type
     inherited_fields: Object.keys(inheritedFieldsObj).length > 0
       ? inheritedFieldsObj
@@ -312,14 +329,17 @@ export function showTypeDetails(schema: LoadedSchema, typePath: string): void {
   if (typeDef.parent) {
     printLabelValue('Extends', typeDef.parent, context);
   }
+  if (typeDef.traits.length > 0) {
+    printLabelValue('Traits', typeDef.traits.join(', '), context);
+  }
 
   // Subtypes (children in new model) - show before fields for better overview
   if (hasSubtypes(typeDef)) {
     printLabelValue('Subtypes', getSubtypeKeys(typeDef).join(', '), context);
   }
 
-  // Fields grouped by origin (own vs inherited)
-  const { ownFields, inheritedFields } = getFieldsByOrigin(schema, typePath);
+  // Fields grouped by origin (own vs trait vs inherited)
+  const { ownFields, inheritedFields, traitFields } = getFieldsByOrigin(schema, typePath);
 
   // Own fields section
   console.log(`\n  ${chalk.cyan('Own fields:')}`);
@@ -331,6 +351,30 @@ export function showTypeDetails(schema: LoadedSchema, typePath: string): void {
     const orderedOwnFields = getFieldOrderForOrigin(schema, typeDef.name, ownFieldNames);
     for (const name of orderedOwnFields) {
       printFieldDetails(name, ownFields[name]!, '    ', context);
+    }
+  }
+
+  // Trait fields sections - one per composed trait that contributed fields.
+  // Shown in the type's trait declaration order (later traits win precedence).
+  // A type may list the same trait more than once; dedupe so each trait's
+  // fields render exactly once (mirrors the resolver's last-wins dedup).
+  if (traitFields.size > 0) {
+    const seenTraits = new Set<string>();
+    for (const traitName of typeDef.traits) {
+      if (seenTraits.has(traitName)) continue;
+      seenTraits.add(traitName);
+      const fields = traitFields.get(traitName);
+      if (fields && Object.keys(fields).length > 0) {
+        console.log(`\n  ${chalk.cyan(`Trait fields (from ${traitName}):`)}`);
+        const orderedFields = getFieldOrderForTrait(
+          schema,
+          traitName,
+          Object.keys(fields)
+        );
+        for (const name of orderedFields) {
+          printFieldDetails(name, fields[name]!, '    ', context);
+        }
+      }
     }
   }
 
@@ -533,6 +577,9 @@ function printTypeTreeVerbose(
   if (typeDef.parent && typeDef.parent !== 'meta') {
     header += chalk.gray(` (extends ${typeDef.parent})`);
   }
+  if (typeDef.traits.length > 0) {
+    header += chalk.gray(` (traits: ${typeDef.traits.join(', ')})`);
+  }
   const effectiveOutputDir = getOutputDir(schema, typePath);
   header += chalk.gray(` -> ${effectiveOutputDir}`);
   if (typeDef.description) {
@@ -542,10 +589,10 @@ function printTypeTreeVerbose(
   printTreeLine(indent, header, context);
 
   // Get fields grouped by origin
-  const { ownFields, inheritedFields } = getFieldsByOrigin(schema, typePath);
+  const { ownFields, inheritedFields, traitFields } = getFieldsByOrigin(schema, typePath);
 
   // Collect all fields in order with their origin info
-  const fieldsToShow: Array<{ name: string; field: Field; inherited?: string }> = [];
+  const fieldsToShow: Array<{ name: string; field: Field; inherited?: string; trait?: string }> = [];
 
   // Add inherited fields first (in ancestor order: parent first, then grandparent)
   for (const ancestorName of typeDef.ancestors) {
@@ -562,6 +609,22 @@ function printTypeTreeVerbose(
     }
   }
 
+  // Add trait fields next (in trait declaration order). A type may list the
+  // same trait more than once; dedupe so its fields render once (matching the
+  // resolver's dedup in computeFieldOrder).
+  const seenVerboseTraits = new Set<string>();
+  for (const traitName of typeDef.traits) {
+    if (seenVerboseTraits.has(traitName)) continue;
+    seenVerboseTraits.add(traitName);
+    const fields = traitFields.get(traitName);
+    if (fields) {
+      const orderedFields = getFieldOrderForTrait(schema, traitName, Object.keys(fields));
+      for (const name of orderedFields) {
+        fieldsToShow.push({ name, field: fields[name]!, trait: traitName });
+      }
+    }
+  }
+
   // Add own fields
   const ownFieldNames = Object.keys(ownFields);
   if (ownFieldNames.length > 0) {
@@ -574,7 +637,7 @@ function printTypeTreeVerbose(
   // Print fields with tree characters
   const fieldIndent = indent + '  ';
   for (let i = 0; i < fieldsToShow.length; i++) {
-    const { name, field, inherited } = fieldsToShow[i]!;
+    const { name, field, inherited, trait } = fieldsToShow[i]!;
     const isLast = i === fieldsToShow.length - 1;
     const prefix = isLast ? '└─' : '├─';
 
@@ -584,6 +647,8 @@ function printTypeTreeVerbose(
     }
     if (inherited) {
       content += chalk.gray(' (inherited)');
+    } else if (trait) {
+      content += chalk.gray(` (trait: ${trait})`);
     }
     printTreeLine(`${fieldIndent}${prefix} `, content, context);
   }
@@ -689,12 +754,23 @@ export function outputSchemaVerboseJson(schema: LoadedSchema): void {
     if (!typeDef) return;
 
     // Get fields grouped by origin
-    const { ownFields, inheritedFields } = getFieldsByOrigin(schema, typeName);
+    const { ownFields, inheritedFields, traitFields } = getFieldsByOrigin(schema, typeName);
 
     // Format inherited fields as object keyed by origin type
     const inheritedFieldsObj: Record<string, Record<string, unknown>> = {};
     for (const [origin, fields] of inheritedFields) {
       inheritedFieldsObj[origin] = Object.fromEntries(
+        Object.entries(fields).map(([name, field]) => [
+          name,
+          formatFieldForJson(field),
+        ])
+      );
+    }
+
+    // Format trait fields as object keyed by trait name
+    const traitFieldsObj: Record<string, Record<string, unknown>> = {};
+    for (const [traitName, fields] of traitFields) {
+      traitFieldsObj[traitName] = Object.fromEntries(
         Object.entries(fields).map(([name, field]) => [
           name,
           formatFieldForJson(field),
@@ -713,6 +789,11 @@ export function outputSchemaVerboseJson(schema: LoadedSchema): void {
       typeOutput.extends = typeDef.parent;
     }
 
+    // Add traits if composed
+    if (typeDef.traits.length > 0) {
+      typeOutput.traits = typeDef.traits;
+    }
+
     // Add output_dir - always show since getOutputDir always returns a value
     typeOutput.output_dir = getOutputDir(schema, typeName);
 
@@ -723,6 +804,11 @@ export function outputSchemaVerboseJson(schema: LoadedSchema): void {
         formatFieldForJson(field),
       ])
     );
+
+    // Add trait fields if any
+    if (Object.keys(traitFieldsObj).length > 0) {
+      typeOutput.trait_fields = traitFieldsObj;
+    }
 
     // Add inherited fields if any
     if (Object.keys(inheritedFieldsObj).length > 0) {

@@ -9,6 +9,7 @@ import {
   BwrbSchema,
   type Schema,
   type Field,
+  type Trait,
   type ResolvedType,
   type ResolvedConfig,
   type LoadedSchema,
@@ -103,6 +104,7 @@ export function resolveSchema(schema: Schema): LoadedSchema {
       name,
       description: typeDef.description,
       parent: typeDef.extends ?? (name === META_TYPE ? undefined : META_TYPE),
+      traits: typeDef.traits ?? [],
       children: [],
       fields: { ...typeDef.fields },
       fieldOrder: typeDef.field_order ?? (typeDef.fields ? Object.keys(typeDef.fields) : []),
@@ -117,6 +119,9 @@ export function resolveSchema(schema: Schema): LoadedSchema {
   
   // Validate inheritance relationships
   validateInheritance(types);
+
+  // Validate trait references: every trait a type composes must be declared.
+  validateTraits(types, schema.traits);
   
   // Second pass: build children lists and ancestor chains
   for (const [name, type] of types) {
@@ -129,10 +134,13 @@ export function resolveSchema(schema: Schema): LoadedSchema {
     type.ancestors = computeAncestors(types, name);
   }
   
-  // Third pass: compute effective fields (inherit from ancestors)
+  // Third pass: compute effective fields (inherit from ancestors, then compose
+  // traits, then apply the type's own fields). See computeEffectiveFields for
+  // the exact precedence order.
+  const traits = schema.traits ?? {};
   for (const type of types.values()) {
-    type.fields = computeEffectiveFields(types, type);
-    type.fieldOrder = computeFieldOrder(types, type);
+    type.fields = computeEffectiveFields(types, type, traits);
+    type.fieldOrder = computeFieldOrder(types, type, traits);
   }
   
   // Fourth pass: add implied parent field for recursive types
@@ -179,6 +187,7 @@ function createImplicitMeta(): ResolvedType {
     name: META_TYPE,
     description: undefined,
     parent: undefined,
+    traits: [],
     children: [],
     fields: {},
     fieldOrder: [],
@@ -225,6 +234,35 @@ function validateInheritance(types: Map<string, ResolvedType>): void {
 }
 
 /**
+ * Validate trait references.
+ *
+ * A type that composes an unknown trait is a deterministic schema error — the
+ * same class of failure as `extends` pointing at an unknown type. Traits are
+ * flat (a trait cannot compose other traits or extend a type), so the only
+ * thing to check here is that every referenced trait is declared.
+ */
+function validateTraits(
+  types: Map<string, ResolvedType>,
+  traits: Record<string, Trait> | undefined
+): void {
+  const declared = traits ?? {};
+  const available = Object.keys(declared);
+
+  for (const [name, type] of types) {
+    for (const traitName of type.traits) {
+      if (!(traitName in declared)) {
+        const hint = available.length > 0
+          ? `Available traits: ${available.join(', ')}`
+          : 'No traits are declared. Add a top-level "traits" object to the schema.';
+        throw new Error(
+          `Type "${name}" composes unknown trait "${traitName}". ${hint}`
+        );
+      }
+    }
+  }
+}
+
+/**
  * Compute the ancestor chain for a type (parent first, meta last).
  */
 function computeAncestors(types: Map<string, ResolvedType>, typeName: string): string[] {
@@ -240,18 +278,48 @@ function computeAncestors(types: Map<string, ResolvedType>, typeName: string): s
 }
 
 /**
- * Compute effective fields by merging ancestor fields.
- * Ancestor fields come first, child fields override.
+ * Compute effective fields for a type.
+ *
+ * Resolution layers fields from least- to most-specific source, so a later
+ * layer fully replaces a same-named field from an earlier one. Final precedence
+ * (highest wins):
+ *
+ *   own type fields  >  traits  >  inherited (parent chain)
+ *
+ * - **Inherited** fields come first (root ancestor → parent). Within the chain,
+ *   a closer ancestor's field replaces a farther one (existing behavior).
+ * - **Traits** are composed next, in the order the type lists them. A trait
+ *   field fully replaces an inherited field of the same name, and a *later*
+ *   trait in the array fully replaces an earlier trait's field (last-wins).
+ * - **Own fields** are applied last and depend on what the colliding field's
+ *   origin is:
+ *   - colliding field came from a **trait** → own **fully replaces** it (the
+ *     "own wins over traits" guarantee — own's `prompt`/`options`/`label`/etc.
+ *     all win).
+ *   - colliding field came from **inheritance** (parent chain, no trait
+ *     involved) → keep the historical **restricted merge**: only
+ *     `default`/`value`/`description`/`granularity` merge onto the inherited
+ *     definition; structural keys stay inherited.
+ *   - no collision → it is simply a new field.
+ *
+ *   Note: when a trait already fully replaced a parent field, that field's
+ *   tracked origin is `trait`, so an own field full-overrides it (own's label
+ *   wins, no trait leak).
  */
 function computeEffectiveFields(
   types: Map<string, ResolvedType>,
-  type: ResolvedType
+  type: ResolvedType,
+  traits: Record<string, Trait>
 ): Record<string, Field> {
   const fields: Record<string, Field> = {};
-  
+  // Track the origin of each accumulated field so own-field collisions can
+  // distinguish "came from a trait" (full override) from "came from
+  // inheritance" (restricted merge). Own fields never land here mid-loop.
+  const origin = new Map<string, 'inherited' | 'trait'>();
+
   // Start from the root and work down (so child fields override)
   const chain = [...type.ancestors].reverse();
-  
+
   for (const ancestorName of chain) {
     const ancestor = types.get(ancestorName);
     if (ancestor?.fields) {
@@ -260,18 +328,34 @@ function computeEffectiveFields(
       for (const [fieldName, fieldDef] of Object.entries(ancestor.fields)) {
         if (!fields[fieldName]) {
           fields[fieldName] = { ...fieldDef };
+          origin.set(fieldName, 'inherited');
         }
       }
     }
   }
-  
-  // Apply type's own fields (can override inherited fields in specific ways)
+
+  // Compose traits in declaration order. A trait field fully replaces a
+  // same-named inherited field; later traits replace earlier ones (last-wins).
+  for (const traitName of type.traits) {
+    const trait = traits[traitName];
+    if (trait?.fields) {
+      for (const [fieldName, fieldDef] of Object.entries(trait.fields)) {
+        fields[fieldName] = { ...fieldDef };
+        origin.set(fieldName, 'trait');
+      }
+    }
+  }
+
+  // Apply type's own fields.
   const rawType = type as { fields?: Record<string, Field> };
   if (rawType.fields) {
     for (const [fieldName, fieldDef] of Object.entries(rawType.fields)) {
-      if (fields[fieldName]) {
-        // Field exists from ancestor
-        // Allow 'default' override per spec
+      const existingOrigin = fields[fieldName] ? origin.get(fieldName) : undefined;
+
+      if (existingOrigin === 'inherited') {
+        // Collision with an INHERITED field → historical restricted merge:
+        // only default/value/description/granularity merge; structural keys
+        // (prompt/options/label/...) stay inherited.
         if (fieldDef.default !== undefined) {
           fields[fieldName] = { ...fields[fieldName], default: fieldDef.default };
         }
@@ -291,21 +375,28 @@ function computeEffectiveFields(
           fields[fieldName] = { ...fields[fieldName], granularity: fieldDef.granularity };
         }
       } else {
-        // New field
+        // Collision with a TRAIT field (existingOrigin === 'trait') → own FULLY
+        // replaces it. Also the no-collision case → new own field. Either way
+        // the own definition stands on its own.
         fields[fieldName] = { ...fieldDef };
       }
     }
   }
-  
+
   return fields;
 }
 
 /**
  * Compute field order by combining ancestor field orders.
+ *
+ * Order follows resolution layering: inherited (root → parent), then
+ * trait-contributed fields (in trait declaration order), then the type's own
+ * fields. An explicit, complete `field_order` on the type overrides all of this.
  */
 function computeFieldOrder(
   types: Map<string, ResolvedType>,
-  type: ResolvedType
+  type: ResolvedType,
+  traits: Record<string, Trait>
 ): string[] {
   // If type has explicit order, use it
   const rawType = types.get(type.name);
@@ -317,11 +408,11 @@ function computeFieldOrder(
       return explicitOrder;
     }
   }
-  
+
   // Otherwise, build order from ancestor chain
   const order: string[] = [];
   const seen = new Set<string>();
-  
+
   // Start from root, add fields in order
   const chain = [...type.ancestors].reverse();
   for (const ancestorName of chain) {
@@ -335,7 +426,20 @@ function computeFieldOrder(
       }
     }
   }
-  
+
+  // Add trait-contributed fields next, in trait declaration order.
+  for (const traitName of type.traits) {
+    const trait = traits[traitName];
+    if (trait?.fields) {
+      for (const fieldName of Object.keys(trait.fields)) {
+        if (!seen.has(fieldName) && type.fields[fieldName]) {
+          order.push(fieldName);
+          seen.add(fieldName);
+        }
+      }
+    }
+  }
+
   // Add type's own fields
   if (type.fieldOrder) {
     for (const fieldName of type.fieldOrder) {
@@ -986,6 +1090,13 @@ export interface FieldsByOrigin {
   ownFields: Record<string, Field>;
   /** Fields inherited from ancestors, grouped by the type that defined them */
   inheritedFields: Map<string, Record<string, Field>>;
+  /**
+   * Fields contributed by composed traits, grouped by the trait that provided
+   * the effective definition. A field appears under exactly one trait — the one
+   * that won precedence (later traits in the array win) — and only when no own
+   * field of the same name shadowed it.
+   */
+  traitFields: Map<string, Record<string, Field>>;
 }
 
 /**
@@ -994,8 +1105,15 @@ export interface FieldsByOrigin {
  * This function analyzes where each field in a type's effective field set
  * was originally defined, grouping them into:
  * - ownFields: fields defined directly in this type's raw schema
+ * - traitFields: fields contributed by a composed trait, keyed by the winning
+ *   trait (last in the array for a colliding name)
  * - inheritedFields: fields from ancestors, keyed by the ancestor that defined them
- * 
+ *
+ * Attribution priority matches resolution precedence (own > trait > inherited):
+ * a field declared on the type itself is always attributed to `own` (even when
+ * it restricted-merged onto an inherited field), and the field OBJECT returned
+ * for every group is the resolved *winner's* definition from `type.fields`.
+ *
  * @param schema The loaded schema
  * @param typeName The type to analyze
  * @returns Fields grouped by origin
@@ -1006,7 +1124,7 @@ export function getFieldsByOrigin(
 ): FieldsByOrigin {
   const type = getType(schema, typeName);
   if (!type) {
-    return { ownFields: {}, inheritedFields: new Map() };
+    return { ownFields: {}, inheritedFields: new Map(), traitFields: new Map() };
   }
 
   // Get raw type definition to find own fields
@@ -1015,6 +1133,7 @@ export function getFieldsByOrigin(
 
   const ownFields: Record<string, Field> = {};
   const inheritedFields = new Map<string, Record<string, Field>>();
+  const traitFields = new Map<string, Record<string, Field>>();
 
   // Get effective (merged) fields from the resolved type
   const effectiveFields = type.fields;
@@ -1022,19 +1141,53 @@ export function getFieldsByOrigin(
   for (const [fieldName, field] of Object.entries(effectiveFields)) {
     if (ownFieldNames.has(fieldName)) {
       ownFields[fieldName] = field;
-    } else {
-      // Find which ancestor defined this field
-      const origin = findFieldOrigin(schema, type.ancestors, fieldName);
-      if (origin) {
-        if (!inheritedFields.has(origin)) {
-          inheritedFields.set(origin, {});
-        }
-        inheritedFields.get(origin)![fieldName] = field;
+      continue;
+    }
+
+    // Traits take precedence over inheritance, so attribute to the winning
+    // trait (last in the array) before falling back to an ancestor.
+    const traitOrigin = findTraitOrigin(schema, type.traits, fieldName);
+    if (traitOrigin) {
+      if (!traitFields.has(traitOrigin)) {
+        traitFields.set(traitOrigin, {});
       }
+      traitFields.get(traitOrigin)![fieldName] = field;
+      continue;
+    }
+
+    // Find which ancestor defined this field
+    const origin = findFieldOrigin(schema, type.ancestors, fieldName);
+    if (origin) {
+      if (!inheritedFields.has(origin)) {
+        inheritedFields.set(origin, {});
+      }
+      inheritedFields.get(origin)![fieldName] = field;
     }
   }
 
-  return { ownFields, inheritedFields };
+  return { ownFields, inheritedFields, traitFields };
+}
+
+/**
+ * Find which composed trait provides a field, honoring precedence.
+ *
+ * Later traits in the array win, so we scan the type's trait list in reverse
+ * and return the first trait that declares the field. Returns undefined when no
+ * composed trait contributes the field.
+ */
+function findTraitOrigin(
+  schema: LoadedSchema,
+  typeTraits: string[],
+  fieldName: string
+): string | undefined {
+  const declared = schema.raw.traits ?? {};
+  for (let i = typeTraits.length - 1; i >= 0; i--) {
+    const traitName = typeTraits[i]!;
+    if (declared[traitName]?.fields?.[fieldName]) {
+      return traitName;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -1087,4 +1240,41 @@ export function getFieldOrderForOrigin(
   }
 
   return orderedFields;
+}
+
+/**
+ * Order a trait's contributed field names by the trait's own declaration order.
+ * Mirrors {@link getFieldOrderForOrigin} but resolves against the trait map
+ * rather than the type map. Fields not present in the trait definition are
+ * appended in their incoming order to stay deterministic.
+ */
+export function getFieldOrderForTrait(
+  schema: LoadedSchema,
+  traitName: string,
+  fieldNames: string[]
+): string[] {
+  const trait = schema.raw.traits?.[traitName];
+  if (!trait?.fields) {
+    return fieldNames;
+  }
+
+  const ordered: string[] = [];
+  for (const fieldName of Object.keys(trait.fields)) {
+    if (fieldNames.includes(fieldName)) {
+      ordered.push(fieldName);
+    }
+  }
+  for (const fieldName of fieldNames) {
+    if (!ordered.includes(fieldName)) {
+      ordered.push(fieldName);
+    }
+  }
+  return ordered;
+}
+
+/**
+ * Get all declared trait names in the schema.
+ */
+export function getTraitNames(schema: LoadedSchema): string[] {
+  return Object.keys(schema.raw.traits ?? {});
 }
