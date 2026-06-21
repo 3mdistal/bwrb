@@ -2,6 +2,7 @@ import { readdir } from 'fs/promises';
 import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
+import { levenshteinDistance } from './levenshtein.js';
 import { TemplateFrontmatterSchema, type Template, type LoadedSchema, type Field, type Constraint, type InstanceScaffold, type ResolvedType } from '../types/schema.js';
 import { getType, getFieldsForType, getFieldOptions } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
@@ -874,37 +875,6 @@ export interface TemplateValidationResult {
   valid: boolean;
   /** All validation issues found */
   issues: TemplateValidationIssue[];
-}
-
-/**
- * Calculate Levenshtein distance between two strings.
- * Used for typo suggestions.
- */
-function levenshteinDistance(a: string, b: string): number {
-  const matrix: number[][] = [];
-  
-  for (let i = 0; i <= b.length; i++) {
-    matrix[i] = [i];
-  }
-  for (let j = 0; j <= a.length; j++) {
-    matrix[0]![j] = j;
-  }
-  
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      if (b.charAt(i - 1) === a.charAt(j - 1)) {
-        matrix[i]![j] = matrix[i - 1]![j - 1]!;
-      } else {
-        matrix[i]![j] = Math.min(
-          matrix[i - 1]![j - 1]! + 1, // substitution
-          matrix[i]![j - 1]! + 1,     // insertion
-          matrix[i - 1]![j]! + 1      // deletion
-        );
-      }
-    }
-  }
-  
-  return matrix[b.length]![a.length]!;
 }
 
 /**

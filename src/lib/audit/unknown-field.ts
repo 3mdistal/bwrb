@@ -1,5 +1,5 @@
 import { getFieldsForType, resolveTypeFromFrontmatter } from '../schema.js';
-import { levenshteinDistance } from '../discovery.js';
+import { levenshteinDistance } from '../levenshtein.js';
 import type { LoadedSchema, Field } from '../../types/schema.js';
 
 export type ValueShape = 'empty' | 'string' | 'number' | 'boolean' | 'array' | 'object' | 'unknown';

@@ -3,6 +3,7 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { basename } from 'path';
 import { SCHEMA_RELATIVE_PATH } from './bwrb-paths.js';
+import { levenshteinDistance } from './levenshtein.js';
 import type { DatePrecision } from './local-date.js';
 import {
   BwrbSchema,
@@ -827,42 +828,6 @@ export function getOwnedFields(schema: LoadedSchema, ownerTypeName: string): Own
 export type SourceTypeResolution =
   | { success: true; typeName: string }
   | { success: false; error: string; suggestions?: string[] };
-
-/**
- * Calculate Levenshtein distance between two strings.
- * Used for fuzzy matching to suggest corrections for typos.
- */
-function levenshteinDistance(a: string, b: string): number {
-  // Create matrix with proper initialization
-  const matrix: number[][] = Array.from({ length: a.length + 1 }, () =>
-    Array.from({ length: b.length + 1 }, () => 0)
-  );
-
-  // Initialize first column
-  for (let i = 0; i <= a.length; i++) {
-    matrix[i]![0] = i;
-  }
-  // Initialize first row
-  for (let j = 0; j <= b.length; j++) {
-    matrix[0]![j] = j;
-  }
-
-  // Fill in the rest of the matrix
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      const row = matrix[i]!;
-      const prevRow = matrix[i - 1]!;
-      row[j] = Math.min(
-        prevRow[j]! + 1,        // deletion
-        row[j - 1]! + 1,        // insertion
-        prevRow[j - 1]! + cost  // substitution
-      );
-    }
-  }
-
-  return matrix[a.length]![b.length]!;
-}
 
 /**
  * Find close matches for a string within a list of candidates.

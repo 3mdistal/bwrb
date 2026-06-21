@@ -32,7 +32,7 @@ import {
   isCanonicalIsoDate,
 } from './fix-policy.js';
 import { parseNote, writeNote } from '../frontmatter.js';
-import { levenshteinDistance } from '../discovery.js';
+import { levenshteinDistance } from '../levenshtein.js';
 import { promptSelection, promptConfirm, promptInput } from '../prompt.js';
 import type { LoadedSchema, Field } from '../../types/schema.js';
 import {
