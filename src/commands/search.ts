@@ -29,6 +29,12 @@ import {
   formatResultsJson,
   type ContentMatch,
 } from '../lib/content-search.js';
+import {
+  fuzzySearch,
+  DEFAULT_FUZZY_LIMIT,
+  DEFAULT_FUZZY_THRESHOLD,
+  type FuzzyMatch,
+} from '../lib/fuzzy-search.js';
 import { parseNote } from '../lib/frontmatter.js';
 import { applyWhereExpressions } from '../lib/where-targeting.js';
 import { minimatch } from 'minimatch';
@@ -66,6 +72,9 @@ interface SearchOptions {
   caseSensitive?: boolean;
   regex?: boolean;
   limit?: string;
+  // Fuzzy search options
+  fuzzy?: boolean;
+  threshold?: string;
 }
 
 interface SearchResultData {
@@ -153,6 +162,9 @@ export const searchCommand = new Command('search')
   .option('-S, --case-sensitive', 'Case-sensitive search (default: case-insensitive)')
   .option('-E, --regex', 'Treat pattern as regex (default: literal)')
   .option('-l, --limit <count>', 'Maximum files to return (default: 100)')
+  // Fuzzy search options
+  .option('--fuzzy', 'Fuzzy name/alias search: ranked approximate matches with scores')
+  .option('--threshold <score>', 'Minimum similarity 0-1 for --fuzzy (default: 0.5)')
   .addHelpText('after', `
 Name Search (default):
   Searches by note name, basename, or path.
@@ -169,6 +181,18 @@ Name Search (default):
     fzf         Force fzf (error if unavailable)
     numbered    Force numbered select
     none        Error on ambiguity (for non-interactive use)
+
+Fuzzy Search (--fuzzy):
+  Ranked approximate matching over note names and aliases. Use this to ask
+  "does an entity like X already exist?" before creating a new note.
+
+  Options:
+    --fuzzy              Enable fuzzy ranked matching
+    --threshold <0-1>    Minimum similarity score (default: 0.5)
+    -l, --limit <n>      Max ranked results (default: 10)
+
+  Each result carries a similarity score (1.0 = exact). Use --output json to
+  consume scores programmatically.
 
 Content Search (--body):
   Full-text search across note contents using ripgrep.
@@ -221,7 +245,12 @@ Examples:
   bwrb search "error.*log" -b --regex      # Regex search
   bwrb search "deploy" -b --output json    # JSON output with matches
   bwrb search "deploy" -b --open           # Search and open first match
-  
+
+  # Fuzzy search (ranked candidates with scores)
+  bwrb search "Stephen Yeg" --fuzzy        # Ranked near-matches by name/alias
+  bwrb search "Steve" --fuzzy --output json  # Scores for an agent to consume
+  bwrb search "Steve" --fuzzy --threshold 0.7  # Tighter match cutoff
+
   # Piping
   bwrb search "bug" -t --output paths | xargs -I {} code {}`)
   .allowExcessArguments(false)
@@ -286,7 +315,9 @@ Examples:
       };
 
       // Dispatch to appropriate search mode
-      if (effectiveOptions.body) {
+      if (effectiveOptions.fuzzy) {
+        await handleFuzzySearch(query, effectiveOptions, vaultDir, schema, jsonMode, outputFormat);
+      } else if (effectiveOptions.body) {
         await handleContentSearch(query, effectiveOptions, vaultDir, schema, jsonMode, outputFormat);
       } else {
         await handleNameSearch(query, effectiveOptions, vaultDir, schema, jsonMode, outputFormat);
@@ -539,6 +570,152 @@ async function filterByFrontmatter(
 
   // Return the original ContentMatch objects
   return filtered.files.map(f => f.original);
+}
+
+// ============================================================================
+// Fuzzy Search Handler
+// ============================================================================
+
+/**
+ * Strictly parse a finite decimal number from a raw flag string.
+ *
+ * Unlike `Number.parseFloat`, this rejects trailing garbage ("0.5abc"),
+ * exponent notation ("1e1"), and other non-decimal forms, returning `null`
+ * for anything that is not a plain finite number.
+ */
+function parseStrictNumber(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!/^[+-]?(\d+\.?\d*|\.\d+)$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Strictly parse an integer from a raw flag string.
+ *
+ * Unlike `Number.parseInt`, this rejects non-integer values ("2.7"), trailing
+ * garbage ("3abc"), and exponent notation ("1e1"), returning `null` for
+ * anything that is not a plain integer.
+ */
+function parseStrictInteger(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!/^[+-]?\d+$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return Number.isInteger(value) ? value : null;
+}
+
+/**
+ * Fuzzy search: ranked approximate matching over note names and aliases.
+ *
+ * Returns scored candidates (best first) so an agent or human can decide
+ * whether an entity like the query already exists before creating a note.
+ * Always non-interactive; honors the existing --output json contract by
+ * exposing the score on each result.
+ */
+async function handleFuzzySearch(
+  query: string | undefined,
+  options: SearchOptions,
+  vaultDir: string,
+  schema: import('../types/schema.js').LoadedSchema,
+  jsonMode: boolean,
+  outputFormat: SearchOutputFormat
+): Promise<void> {
+  if (!query) {
+    const error = 'Search query is required for fuzzy search (--fuzzy)';
+    if (jsonMode) {
+      printJson(jsonError(error));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    printError(error);
+    process.exit(1);
+  }
+
+  // Parse and validate threshold / limit. Use strict format checks so that
+  // malformed values (e.g. "0.5abc", "2.7", "1e1") error cleanly rather than
+  // being silently coerced by parseFloat/parseInt's lenient parsing.
+  const threshold = options.threshold !== undefined
+    ? parseStrictNumber(options.threshold)
+    : DEFAULT_FUZZY_THRESHOLD;
+  if (threshold === null || threshold < 0 || threshold > 1) {
+    const error = `Invalid --threshold "${options.threshold}": must be a number between 0 and 1`;
+    if (jsonMode) {
+      printJson(jsonError(error));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    printError(error);
+    process.exit(1);
+  }
+
+  const limit = options.limit !== undefined
+    ? parseStrictInteger(options.limit)
+    : DEFAULT_FUZZY_LIMIT;
+  if (limit === null || limit < 1) {
+    const error = `Invalid --limit "${options.limit}": must be a positive integer`;
+    if (jsonMode) {
+      printJson(jsonError(error));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    printError(error);
+    process.exit(1);
+  }
+
+  const index = await buildNoteIndex(schema, vaultDir);
+  const matches = await fuzzySearch(index, query, schema, vaultDir, { threshold, limit });
+
+  if (jsonMode) {
+    printJson(jsonSuccess({
+      data: matches.map(m => ({
+        name: m.name,
+        score: Number(m.score.toFixed(4)),
+        matchedField: m.matchedField,
+        matchedValue: m.matchedValue,
+        aliases: m.aliases,
+        wikilink: generateWikilink(index, m.file),
+        path: m.file.relativePath,
+        absolutePath: m.file.path,
+      })),
+    }));
+    return;
+  }
+
+  if (matches.length === 0) {
+    // Silent for no matches (consistent with content search / grep behavior).
+    return;
+  }
+
+  for (const match of matches) {
+    outputFuzzyResult(index, match, outputFormat);
+  }
+}
+
+/**
+ * Output a single fuzzy match in the requested text format.
+ *
+ * The default format shows the score so ranking is visible; pipe-friendly
+ * formats (paths, link) stay clean for scripting.
+ */
+function outputFuzzyResult(
+  index: NoteIndex,
+  match: FuzzyMatch,
+  format: SearchOutputFormat
+): void {
+  switch (format) {
+    case 'paths':
+      console.log(match.file.relativePath);
+      break;
+    case 'link':
+      console.log(generateWikilink(index, match.file));
+      break;
+    case 'default':
+    default: {
+      const score = match.score.toFixed(2);
+      const via = match.matchedField === 'alias'
+        ? ` (alias: ${match.matchedValue})`
+        : '';
+      console.log(`${score}  ${match.name}${via}`);
+      break;
+    }
+  }
 }
 
 // ============================================================================
