@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { join } from 'path';
 import { mkdir, writeFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -24,6 +24,7 @@ import {
   createEmptyTemplateResolution,
 } from '../../../src/lib/template.js';
 import { resolveSchema } from '../../../src/lib/schema.js';
+import { normalizeDateFields, validateFrontmatter } from '../../../src/lib/validation.js';
 import type { Schema, LoadedSchema } from '../../../src/types/schema.js';
 
 describe('template library', () => {
@@ -1439,6 +1440,79 @@ defaults:
       const merged = mergeTemplateDefaults([], 'YYYY-MM-DD');
       expect(merged).toEqual({});
     });
+
+    it('evaluates @today offset date expressions in defaults', () => {
+      const originalDate = Date;
+      const fixedDate = new Date('2025-06-15T10:30:00.000Z');
+      global.Date = class extends originalDate {
+        constructor(...args: [] | [string | number | Date]) {
+          if (args.length === 0) super(fixedDate.getTime());
+          else super(args[0]);
+        }
+        static now() { return fixedDate.getTime(); }
+      } as DateConstructor;
+
+      try {
+        const templates = [
+          {
+            name: 'default',
+            templateFor: 'task',
+            path: '/path/task/default.md',
+            body: '',
+            // @today shorthand (#603) alongside the legacy today() form and a
+            // plain non-date string that must pass through untouched.
+            defaults: {
+              deadline: '@today+3d',
+              start: 'today()',
+              status: 'not-started',
+            },
+            inheritedFrom: undefined,
+          },
+        ];
+
+        const merged = mergeTemplateDefaults(templates, 'YYYY-MM-DD');
+
+        expect(merged.deadline).toBe('2025-06-18');
+        expect(merged.start).toBe('2025-06-15');
+        expect(merged.status).toBe('not-started');
+      } finally {
+        global.Date = originalDate;
+      }
+    });
+
+    it('staggers multiple @today offsets across fields', () => {
+      const originalDate = Date;
+      const fixedDate = new Date('2025-06-15T10:30:00.000Z');
+      global.Date = class extends originalDate {
+        constructor(...args: [] | [string | number | Date]) {
+          if (args.length === 0) super(fixedDate.getTime());
+          else super(args[0]);
+        }
+        static now() { return fixedDate.getTime(); }
+      } as DateConstructor;
+
+      try {
+        const merged = mergeTemplateDefaults(
+          [
+            {
+              name: 'default',
+              templateFor: 'task',
+              path: '/path/task/default.md',
+              body: '',
+              defaults: { d1: '@today+1d', d2: '@today+1w', d3: '@today+1m' },
+              inheritedFrom: undefined,
+            },
+          ],
+          'YYYY-MM-DD'
+        );
+
+        expect(merged.d1).toBe('2025-06-16');
+        expect(merged.d2).toBe('2025-06-22');
+        expect(merged.d3).toBe('2025-07-15');
+      } finally {
+        global.Date = originalDate;
+      }
+    });
   });
 
   describe('resolveTemplateWithInheritance', () => {
@@ -1657,5 +1731,116 @@ describe('createEmptyTemplateResolution', () => {
     expect(result.mergedConstraints).toEqual({});
     expect(result.mergedPromptFields).toEqual([]);
     expect(result.availableTemplates).toEqual([]);
+  });
+});
+
+/**
+ * End-to-end coverage for #603: a templated `@today+Nd` value must flow through
+ * the same normalization (#592) the `new` command applies on write, land as a
+ * canonical YYYY-MM-DD date, and pass validation (so `bwrb audit` stays clean).
+ */
+describe('template date expressions through normalization (#603)', () => {
+  const baseSchema: Schema = {
+    version: 2,
+    types: {
+      task: {
+        output_dir: 'Tasks',
+        fields: {
+          title: { prompt: 'text', required: true },
+          deadline: { prompt: 'date' },
+          // Coarse field: granularity must be respected by normalization.
+          quarter: { prompt: 'date', granularity: 'month' },
+          status: { prompt: 'select', options: ['todo', 'doing', 'done'], default: 'todo' },
+        },
+      },
+    },
+  };
+
+  const fixedDate = new Date('2025-06-15T10:30:00.000Z');
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedDate);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function makeTemplate(defaults: Record<string, unknown>): Parameters<typeof mergeTemplateDefaults>[0][number] {
+    return {
+      name: 'default',
+      templateFor: 'task',
+      path: '/path/task/default.md',
+      body: '',
+      defaults,
+      inheritedFrom: undefined,
+    };
+  }
+
+  it('normalizes a templated @today+3d deadline to canonical ISO and passes validation', () => {
+    const schema = resolveSchema(baseSchema);
+
+    const merged = mergeTemplateDefaults(
+      [makeTemplate({ title: 'Draft', deadline: '@today+3d' })],
+      schema.config.dateFormat
+    );
+
+    // Evaluated, but not yet normalized.
+    expect(merged.deadline).toBe('2025-06-18');
+
+    const normalized = normalizeDateFields(schema, 'task', merged);
+    expect(normalized.deadline).toBe('2025-06-18');
+
+    const result = validateFrontmatter(schema, 'task', normalized);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('normalizes a non-ISO date format back to canonical ISO on write', () => {
+    const schema = resolveSchema(baseSchema);
+    // Template author runs with a US display format; the evaluated value is
+    // MM/DD/YYYY, but normalization must store canonical ISO.
+    const merged = mergeTemplateDefaults(
+      [makeTemplate({ title: 'Draft', deadline: '@today+3d' })],
+      'MM/DD/YYYY'
+    );
+    expect(merged.deadline).toBe('06/18/2025');
+
+    const normalized = normalizeDateFields(schema, 'task', merged);
+    expect(normalized.deadline).toBe('2025-06-18');
+    expect(validateFrontmatter(schema, 'task', normalized).valid).toBe(true);
+  });
+
+  it('respects granularity: a month-granularity field keeps a coarse evaluated value valid', () => {
+    const schema = resolveSchema(baseSchema);
+    // A full date assigned to a month-granularity field is still a valid full
+    // date (granularity is a *minimum* precision), and stays canonical ISO.
+    const merged = mergeTemplateDefaults(
+      [makeTemplate({ title: 'Plan', quarter: '@today+1m' })],
+      schema.config.dateFormat
+    );
+    expect(merged.quarter).toBe('2025-07-15');
+
+    const normalized = normalizeDateFields(schema, 'task', merged);
+    expect(normalized.quarter).toBe('2025-07-15');
+    expect(validateFrontmatter(schema, 'task', normalized).valid).toBe(true);
+  });
+
+  it('does not mangle non-date string defaults', () => {
+    const schema = resolveSchema(baseSchema);
+    const merged = mergeTemplateDefaults(
+      // status/title carry text that superficially mentions today; they must
+      // not be evaluated because they do not match the anchored grammar.
+      [makeTemplate({ title: 'todo @today review', status: 'doing' })],
+      schema.config.dateFormat
+    );
+
+    expect(merged.title).toBe('todo @today review');
+    expect(merged.status).toBe('doing');
+
+    const normalized = normalizeDateFields(schema, 'task', merged);
+    expect(normalized.title).toBe('todo @today review');
+    expect(validateFrontmatter(schema, 'task', normalized).valid).toBe(true);
   });
 });

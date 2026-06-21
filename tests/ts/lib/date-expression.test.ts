@@ -73,6 +73,35 @@ describe('date-expression', () => {
       expect(isDateExpression("today() + '7'")).toBe(false);
     });
 
+    it('should recognize the @today shorthand', () => {
+      expect(isDateExpression('@today')).toBe(true);
+      expect(isDateExpression('@now')).toBe(true);
+    });
+
+    it('should recognize @today with compact (unquoted) offsets', () => {
+      expect(isDateExpression('@today+3d')).toBe(true);
+      expect(isDateExpression('@today+1w')).toBe(true);
+      expect(isDateExpression('@today+1m')).toBe(true);
+      expect(isDateExpression('@today-2mon')).toBe(true);
+      expect(isDateExpression('@now+2h')).toBe(true);
+    });
+
+    it('should allow whitespace around the @today offset', () => {
+      expect(isDateExpression('@today + 3d')).toBe(true);
+      expect(isDateExpression('@today  -  1w')).toBe(true);
+    });
+
+    it('should allow quoted offsets on the @today shorthand', () => {
+      expect(isDateExpression("@today + '7d'")).toBe(true);
+    });
+
+    it('should not match @today with invalid units', () => {
+      expect(isDateExpression('@today+3x')).toBe(false);
+      expect(isDateExpression('@today+3')).toBe(false);
+      expect(isDateExpression('@todayish')).toBe(false);
+      expect(isDateExpression('[[@today note]]')).toBe(false);
+    });
+
     it('should handle non-string input', () => {
       expect(isDateExpression(null as unknown as string)).toBe(false);
       expect(isDateExpression(undefined as unknown as string)).toBe(false);
@@ -150,6 +179,44 @@ describe('date-expression', () => {
     it('should throw for malformed expressions', () => {
       expect(() => evaluateDateExpression('today( + 7d')).toThrow(/Invalid date expression/);
       expect(() => evaluateDateExpression("today() +'7d")).toThrow(/Invalid date expression/);
+    });
+
+    it('should throw for a malformed @today shorthand', () => {
+      expect(() => evaluateDateExpression('@today+')).toThrow(/Invalid date expression/);
+      expect(() => evaluateDateExpression('@today+3x')).toThrow(/Invalid date expression/);
+    });
+
+    it('should evaluate the bare @today shorthand', () => {
+      expect(evaluateDateExpression('@today')).toBe('2025-06-15');
+      expect(evaluateDateExpression('@now')).toBe(expectedLocalDateTime(fixedDate));
+    });
+
+    it('should evaluate compact @today offsets (the #603 syntax)', () => {
+      expect(evaluateDateExpression('@today+1d')).toBe('2025-06-16');
+      expect(evaluateDateExpression('@today+3d')).toBe('2025-06-18');
+      expect(evaluateDateExpression('@today+5d')).toBe('2025-06-20');
+      expect(evaluateDateExpression('@today+7d')).toBe('2025-06-22');
+      expect(evaluateDateExpression('@today+1w')).toBe('2025-06-22');
+      expect(evaluateDateExpression('@today-3d')).toBe('2025-06-12');
+    });
+
+    it('should treat the @today `m` unit as months (alias for mon)', () => {
+      expect(evaluateDateExpression('@today+1m')).toBe('2025-07-15');
+      expect(evaluateDateExpression('@today+1mon')).toBe('2025-07-15');
+    });
+
+    it('should honor a custom date format for the @today shorthand', () => {
+      expect(evaluateDateExpression('@today+3d', 'MM/DD/YYYY')).toBe('06/18/2025');
+    });
+
+    it('should stagger multiple @today offsets correctly', () => {
+      const offsets = ['@today+1d', '@today+3d', '@today+5d', '@today+7d'];
+      expect(offsets.map((o) => evaluateDateExpression(o))).toEqual([
+        '2025-06-16',
+        '2025-06-18',
+        '2025-06-20',
+        '2025-06-22',
+      ]);
     });
   });
 

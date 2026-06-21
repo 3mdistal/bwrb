@@ -104,7 +104,7 @@ bwrb template validate
 |---------|-------------|
 | **defaults** | Pre-fill field values (skip prompting) |
 | **prompt-fields** | Always prompt for these fields, even with defaults |
-| **Date expressions** | Dynamic values like `today() + '7d'` |
+| **Date expressions** | Dynamic values like `@today+7d` (or `today() + '7d'`) |
 | **Body variables** | `{fieldName}`, `{date}` replaced at creation |
 
 ## Next Steps
