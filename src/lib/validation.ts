@@ -3,6 +3,7 @@ import { getFieldsForType, getDescendants, getType, getFieldOptions, resolveDate
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { queryByType } from './vault.js';
 import { extractWikilinkTarget } from './links.js';
+import { levenshteinDistance } from './levenshtein.js';
 import {
   expandStaticValue,
   parseDate,
@@ -392,46 +393,6 @@ function getFieldExpected(_schema: LoadedSchema, field: Field): string[] | undef
     return options;
   }
   return undefined;
-}
-
-/**
- * Calculate Levenshtein distance between two strings.
- */
-function levenshteinDistance(a: string, b: string): number {
-  const aLen = a.length;
-  const bLen = b.length;
-  
-  // Create a 2D array with proper initialization
-  const matrix: number[][] = Array.from({ length: aLen + 1 }, () => 
-    Array.from({ length: bLen + 1 }, () => 0)
-  );
-
-  // Initialize first column
-  for (let i = 0; i <= aLen; i++) {
-    matrix[i]![0] = i;
-  }
-  
-  // Initialize first row
-  for (let j = 0; j <= bLen; j++) {
-    matrix[0]![j] = j;
-  }
-
-  // Fill in the rest of the matrix
-  for (let i = 1; i <= aLen; i++) {
-    for (let j = 1; j <= bLen; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        matrix[i]![j] = matrix[i - 1]![j - 1]!;
-      } else {
-        matrix[i]![j] = Math.min(
-          matrix[i - 1]![j - 1]! + 1, // substitution
-          matrix[i]![j - 1]! + 1,     // insertion
-          matrix[i - 1]![j]! + 1      // deletion
-        );
-      }
-    }
-  }
-
-  return matrix[aLen]![bLen]!;
 }
 
 export interface InvalidSelectOptionValue {

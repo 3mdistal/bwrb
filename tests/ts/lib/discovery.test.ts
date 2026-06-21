@@ -19,7 +19,6 @@ import {
   collectFilesForType,
   collectPooledFiles,
   findSimilarFiles,
-  levenshteinDistance,
   getTypeOutputDirs,
   isInTypeOutputDir,
   discoverAllTypeFiles,
@@ -443,27 +442,6 @@ describe('Discovery', () => {
       // "Jailbirds" shares word "birds" - should match
       const birdsMatches = findSimilarFiles('Jailbirds', allFiles);
       expect(birdsMatches).toContain('birds whose bones are empty');
-    });
-  });
-
-  describe('levenshteinDistance', () => {
-    it('should return 0 for identical strings', () => {
-      expect(levenshteinDistance('test', 'test')).toBe(0);
-    });
-
-    it('should return string length for empty comparison', () => {
-      expect(levenshteinDistance('test', '')).toBe(4);
-      expect(levenshteinDistance('', 'test')).toBe(4);
-    });
-
-    it('should calculate single character changes', () => {
-      expect(levenshteinDistance('test', 'tast')).toBe(1); // substitution
-      expect(levenshteinDistance('test', 'tests')).toBe(1); // insertion
-      expect(levenshteinDistance('tests', 'test')).toBe(1); // deletion
-    });
-
-    it('should calculate multiple character changes', () => {
-      expect(levenshteinDistance('kitten', 'sitting')).toBe(3);
     });
   });
 

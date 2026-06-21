@@ -21,6 +21,7 @@ import {
 } from './schema.js';
 import { parseNote } from './frontmatter.js';
 import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
+import { levenshteinDistance } from './levenshtein.js';
 import type { LoadedSchema, OwnedFieldInfo } from '../types/schema.js';
 
 // ============================================================================
@@ -953,38 +954,3 @@ export function findSimilarFiles(target: string, allFiles: Set<string>, maxResul
   return results.slice(0, maxResults).map(r => r.file);
 }
 
-/**
- * Calculate Levenshtein distance between two strings.
- */
-export function levenshteinDistance(a: string, b: string): number {
-  const aLen = a.length;
-  const bLen = b.length;
-  
-  const matrix: number[][] = Array.from({ length: aLen + 1 }, () => 
-    Array.from({ length: bLen + 1 }, () => 0)
-  );
-
-  for (let i = 0; i <= aLen; i++) {
-    matrix[i]![0] = i;
-  }
-  
-  for (let j = 0; j <= bLen; j++) {
-    matrix[0]![j] = j;
-  }
-
-  for (let i = 1; i <= aLen; i++) {
-    for (let j = 1; j <= bLen; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        matrix[i]![j] = matrix[i - 1]![j - 1]!;
-      } else {
-        matrix[i]![j] = Math.min(
-          matrix[i - 1]![j - 1]! + 1,
-          matrix[i]![j - 1]! + 1,
-          matrix[i - 1]![j]! + 1
-        );
-      }
-    }
-  }
-
-  return matrix[aLen]![bLen]!;
-}
