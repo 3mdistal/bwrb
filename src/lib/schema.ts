@@ -291,10 +291,20 @@ function computeAncestors(types: Map<string, ResolvedType>, typeName: string): s
  * - **Traits** are composed next, in the order the type lists them. A trait
  *   field fully replaces an inherited field of the same name, and a *later*
  *   trait in the array fully replaces an earlier trait's field (last-wins).
- * - **Own fields** are applied last. When an own field collides with an
- *   inherited- or trait-provided field it follows the same restricted-override
- *   rules as inheritance (only `default`/`value`/`description`/`granularity`
- *   merge onto the existing definition); otherwise it is a new field.
+ * - **Own fields** are applied last and depend on what the colliding field's
+ *   origin is:
+ *   - colliding field came from a **trait** → own **fully replaces** it (the
+ *     "own wins over traits" guarantee — own's `prompt`/`options`/`label`/etc.
+ *     all win).
+ *   - colliding field came from **inheritance** (parent chain, no trait
+ *     involved) → keep the historical **restricted merge**: only
+ *     `default`/`value`/`description`/`granularity` merge onto the inherited
+ *     definition; structural keys stay inherited.
+ *   - no collision → it is simply a new field.
+ *
+ *   Note: when a trait already fully replaced a parent field, that field's
+ *   tracked origin is `trait`, so an own field full-overrides it (own's label
+ *   wins, no trait leak).
  */
 function computeEffectiveFields(
   types: Map<string, ResolvedType>,
@@ -302,6 +312,10 @@ function computeEffectiveFields(
   traits: Record<string, Trait>
 ): Record<string, Field> {
   const fields: Record<string, Field> = {};
+  // Track the origin of each accumulated field so own-field collisions can
+  // distinguish "came from a trait" (full override) from "came from
+  // inheritance" (restricted merge). Own fields never land here mid-loop.
+  const origin = new Map<string, 'inherited' | 'trait'>();
 
   // Start from the root and work down (so child fields override)
   const chain = [...type.ancestors].reverse();
@@ -314,6 +328,7 @@ function computeEffectiveFields(
       for (const [fieldName, fieldDef] of Object.entries(ancestor.fields)) {
         if (!fields[fieldName]) {
           fields[fieldName] = { ...fieldDef };
+          origin.set(fieldName, 'inherited');
         }
       }
     }
@@ -326,17 +341,21 @@ function computeEffectiveFields(
     if (trait?.fields) {
       for (const [fieldName, fieldDef] of Object.entries(trait.fields)) {
         fields[fieldName] = { ...fieldDef };
+        origin.set(fieldName, 'trait');
       }
     }
   }
 
-  // Apply type's own fields (can override inherited fields in specific ways)
+  // Apply type's own fields.
   const rawType = type as { fields?: Record<string, Field> };
   if (rawType.fields) {
     for (const [fieldName, fieldDef] of Object.entries(rawType.fields)) {
-      if (fields[fieldName]) {
-        // Field exists from ancestor
-        // Allow 'default' override per spec
+      const existingOrigin = fields[fieldName] ? origin.get(fieldName) : undefined;
+
+      if (existingOrigin === 'inherited') {
+        // Collision with an INHERITED field → historical restricted merge:
+        // only default/value/description/granularity merge; structural keys
+        // (prompt/options/label/...) stay inherited.
         if (fieldDef.default !== undefined) {
           fields[fieldName] = { ...fields[fieldName], default: fieldDef.default };
         }
@@ -356,12 +375,14 @@ function computeEffectiveFields(
           fields[fieldName] = { ...fields[fieldName], granularity: fieldDef.granularity };
         }
       } else {
-        // New field
+        // Collision with a TRAIT field (existingOrigin === 'trait') → own FULLY
+        // replaces it. Also the no-collision case → new own field. Either way
+        // the own definition stands on its own.
         fields[fieldName] = { ...fieldDef };
       }
     }
   }
-  
+
   return fields;
 }
 
@@ -1084,8 +1105,15 @@ export interface FieldsByOrigin {
  * This function analyzes where each field in a type's effective field set
  * was originally defined, grouping them into:
  * - ownFields: fields defined directly in this type's raw schema
+ * - traitFields: fields contributed by a composed trait, keyed by the winning
+ *   trait (last in the array for a colliding name)
  * - inheritedFields: fields from ancestors, keyed by the ancestor that defined them
- * 
+ *
+ * Attribution priority matches resolution precedence (own > trait > inherited):
+ * a field declared on the type itself is always attributed to `own` (even when
+ * it restricted-merged onto an inherited field), and the field OBJECT returned
+ * for every group is the resolved *winner's* definition from `type.fields`.
+ *
  * @param schema The loaded schema
  * @param typeName The type to analyze
  * @returns Fields grouped by origin

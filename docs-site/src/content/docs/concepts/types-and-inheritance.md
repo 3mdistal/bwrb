@@ -95,7 +95,11 @@ When a field name comes from several sources, the most specific source wins:
 own type fields  >  traits  >  inherited (parent chain)
 ```
 
-Within `traits`, a **later trait in the array wins over an earlier one**. A type composing an unknown trait is a deterministic error.
+The override is **full** at the trait boundary: a trait field fully replaces an inherited field of the same name (every key, not just `default`), a **later trait in the array fully replaces an earlier one**, and an **own field fully replaces a trait field** — own's `prompt`, `options`, and `label` all win, with no trait values leaking through.
+
+The one place the override is *partial* is **own-vs-parent inheritance** (no trait involved): there an own field only merges `default`, `value`, `description`, and `granularity` onto the inherited definition, leaving structural keys as inherited. This is the long-standing inheritance behavior and is unchanged by traits.
+
+A type composing an unknown trait is a deterministic error.
 
 Traits are flat — they bundle only fields and cannot extend types or compose other traits. See the [Schema Reference](/reference/schema/#traits) for the full rules, and run `bwrb schema list type <name>` to see which trait contributed each field.
 

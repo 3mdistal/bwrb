@@ -1244,6 +1244,38 @@ milestone: "[[Active Milestone]]"
       }
     });
 
+    it('renders a duplicated trait reference only once in the verbose tree', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-verbose-dup-trait-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          traits: {
+            actionable: {
+              fields: {
+                dupTraitField: { prompt: 'select', options: ['a', 'b'] },
+              },
+            },
+          },
+          types: {
+            // Same trait listed twice; its field must render exactly once.
+            task: { traits: ['actionable', 'actionable'] },
+          },
+        })
+      );
+
+      try {
+        const result = await runCLI(['schema', 'list', '--verbose'], tempVaultDir);
+        expect(result.exitCode).toBe(0);
+
+        const occurrences = result.stdout.split('dupTraitField').length - 1;
+        expect(occurrences).toBe(1);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
     describe('--output json', () => {
       it('should return verbose structured data', async () => {
         const result = await runCLI(['schema', 'list', '--verbose', '--output', 'json'], vaultDir);

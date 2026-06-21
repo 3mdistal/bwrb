@@ -185,11 +185,21 @@ When the same field name comes from more than one source, resolution layers sour
 own type fields  >  traits  >  inherited (parent chain)
 ```
 
-- **Inherited** fields are applied first (root ancestor → parent).
-- **Traits** are composed next, in the order the type lists them. A trait field replaces an inherited field of the same name, and a **later trait in the array wins over an earlier one** (last-wins).
-- **Own fields** are applied last and win over everything. As with inheritance, when an own field collides with a trait- or inherited-provided field only the `default`, `value`, `description`, and `granularity` properties merge onto the existing definition.
+- **Inherited** fields are applied first (root ancestor → parent). A closer ancestor's field fully replaces a farther one.
+- **Traits** are composed next, in the order the type lists them. A trait field **fully replaces** an inherited field of the same name (all keys — `prompt`, `options`, `label`, everything), and a **later trait in the array fully replaces an earlier one** (last-wins).
+- **Own fields** are applied last, and how they override depends on where the colliding field came from:
+  - **vs a trait field** → own **fully replaces** it (all keys). This is the "own wins over traits" guarantee: own's `prompt`, `options`, and `label` all win, and validation uses own's options. Because a trait already fully replaced any inherited field of that name, a field that arrived through a trait is always full-overridden here — no trait values leak through.
+  - **vs an inherited field** (parent chain, no trait involved) → only the `default`, `value`, `description`, and `granularity` properties merge onto the inherited definition; structural keys (`prompt`, `options`, `label`, …) stay as inherited. This is the long-standing inheritance override behavior and is unchanged.
 
-Example: if `base` defines `status`, the `actionable` trait defines `status`, and `task` (extends `base`, traits `["actionable"]`) defines its own `status`, the `task`'s `status` is the own definition; without an own `status` it would be the trait's; without the trait it would be the inherited one.
+Worked example — `status` defined in three places:
+
+| Setup | Resolved `status` |
+|-------|-------------------|
+| `base.status` + `task` own `status` (no trait) | inherited definition with only `default`/`value`/`description`/`granularity` merged from own |
+| `actionable.status` (trait) + `task` own `status` | own definition, in full (trait's `options`/`label` dropped) |
+| `base.status` + `actionable.status` (trait), no own | trait definition, in full (inherited dropped) |
+| `base.status` + `actionable.status` (trait) + `task` own `status` | own definition, in full (the trait first fully replaced `base`, then own fully replaced the trait — no inherited or trait leak) |
+| `first.status` + `second.status`, `traits: ["first","second"]` | `second`'s definition, in full (last trait wins) |
 
 ### Validation
 

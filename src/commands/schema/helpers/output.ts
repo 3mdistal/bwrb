@@ -356,8 +356,13 @@ export function showTypeDetails(schema: LoadedSchema, typePath: string): void {
 
   // Trait fields sections - one per composed trait that contributed fields.
   // Shown in the type's trait declaration order (later traits win precedence).
+  // A type may list the same trait more than once; dedupe so each trait's
+  // fields render exactly once (mirrors the resolver's last-wins dedup).
   if (traitFields.size > 0) {
+    const seenTraits = new Set<string>();
     for (const traitName of typeDef.traits) {
+      if (seenTraits.has(traitName)) continue;
+      seenTraits.add(traitName);
       const fields = traitFields.get(traitName);
       if (fields && Object.keys(fields).length > 0) {
         console.log(`\n  ${chalk.cyan(`Trait fields (from ${traitName}):`)}`);
@@ -604,8 +609,13 @@ function printTypeTreeVerbose(
     }
   }
 
-  // Add trait fields next (in trait declaration order)
+  // Add trait fields next (in trait declaration order). A type may list the
+  // same trait more than once; dedupe so its fields render once (matching the
+  // resolver's dedup in computeFieldOrder).
+  const seenVerboseTraits = new Set<string>();
   for (const traitName of typeDef.traits) {
+    if (seenVerboseTraits.has(traitName)) continue;
+    seenVerboseTraits.add(traitName);
     const fields = traitFields.get(traitName);
     if (fields) {
       const orderedFields = getFieldOrderForTrait(schema, traitName, Object.keys(fields));
