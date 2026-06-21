@@ -3370,6 +3370,92 @@ effort: "3"
     });
   });
 
+  describe('partial date granularity', () => {
+    let tempVaultDir: string;
+
+    const GRANULAR_SCHEMA = {
+      version: 2,
+      config: { date_granularity: 'day' as const },
+      types: {
+        person: {
+          output_dir: 'People',
+          fields: {
+            type: { value: 'person' },
+            'last-contact': { prompt: 'date' as const, granularity: 'month' as const },
+            'first-met': { prompt: 'date' as const, granularity: 'year' as const },
+            deadline: { prompt: 'date' as const },
+          },
+        },
+      },
+    };
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-granularity-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(GRANULAR_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'People'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    async function auditPerson(filename: string, body: string) {
+      await writeFile(join(tempVaultDir, 'People', filename), body);
+      const result = await runCLI(['audit', 'person', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      // Files with no issues may be omitted from the report entirely.
+      const file = output.files.find((f: { path: string }) => f.path.includes(filename));
+      const issues: { code: string; field?: string }[] = file?.issues ?? [];
+      return issues.filter((i) => i.code === 'invalid-date-format');
+    }
+
+    it('accepts YYYY-MM in a month-granularity field', async () => {
+      const issues = await auditPerson(
+        'Ada.md',
+        `---\ntype: person\nlast-contact: 2026-05\n---\n`
+      );
+      expect(issues).toHaveLength(0);
+    });
+
+    it('accepts a bare year in a year-granularity field', async () => {
+      const issues = await auditPerson(
+        'Grace.md',
+        `---\ntype: person\nfirst-met: "2021"\n---\n`
+      );
+      expect(issues).toHaveLength(0);
+    });
+
+    it('flags a YYYY-MM value in a strict (default) date field', async () => {
+      const issues = await auditPerson(
+        'Linus.md',
+        `---\ntype: person\ndeadline: 2026-05\n---\n`
+      );
+      expect(issues).toHaveLength(1);
+      expect(issues[0].field).toBe('deadline');
+    });
+
+    it('flags a bare year in a month-granularity field (too coarse)', async () => {
+      const issues = await auditPerson(
+        'Edsger.md',
+        `---\ntype: person\nlast-contact: "2026"\n---\n`
+      );
+      expect(issues).toHaveLength(1);
+      expect(issues[0].field).toBe('last-contact');
+    });
+
+    it('still flags malformed dates in a relaxed field', async () => {
+      const issues = await auditPerson(
+        'Donald.md',
+        `---\ntype: person\nfirst-met: 2026-13\n---\n`
+      );
+      expect(issues).toHaveLength(1);
+    });
+  });
+
   describe('unknown-enum-casing detection and fix', () => {
     let tempVaultDir: string;
 

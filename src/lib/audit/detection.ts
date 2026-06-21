@@ -14,6 +14,7 @@ import {
   getOutputDir,
   getTypeFamilies,
   getDescendants,
+  resolveDateGranularity,
 } from '../schema.js';
 import { readStructuralFrontmatter } from './structural.js';
 import {
@@ -29,7 +30,7 @@ import {
   getScalarToList,
   getUnambiguousDateNormalization,
   getValueShape,
-  isCanonicalIsoDate,
+  isAcceptableDate,
 } from './fix-policy.js';
 import { extractYamlNodeValue, isEffectivelyEmpty } from './value-utils.js';
 import { isMap } from 'yaml';
@@ -457,15 +458,22 @@ export async function auditFile(
     }
 
     if (field.prompt === 'date' && typeof value === 'string') {
-      if (!isCanonicalIsoDate(value)) {
+      const granularity = resolveDateGranularity(field, schema.config);
+      if (!isAcceptableDate(value, granularity)) {
         const normalization = getUnambiguousDateNormalization(value);
+        const expected =
+          granularity === 'day'
+            ? 'YYYY-MM-DD'
+            : granularity === 'month'
+              ? 'YYYY-MM-DD or YYYY-MM'
+              : 'YYYY-MM-DD, YYYY-MM, or YYYY';
         issues.push({
           severity: 'error',
           code: 'invalid-date-format',
-          message: `Invalid date for ${fieldName}: must be YYYY-MM-DD`,
+          message: `Invalid date for ${fieldName}: must be ${expected}`,
           field: fieldName,
           value,
-          expected: 'YYYY-MM-DD',
+          expected,
           ...(normalization && { suggestion: `Suggested: ${normalization.normalized}` }),
           ...(normalization && { meta: { normalized: normalization.normalized, normalizationKind: normalization.kind } }),
           autoFixable: Boolean(normalization),

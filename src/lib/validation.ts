@@ -1,16 +1,61 @@
 import type { LoadedSchema, Field } from '../types/schema.js';
-import { getFieldsForType, getDescendants, getType, getFieldOptions } from './schema.js';
+import { getFieldsForType, getDescendants, getType, getFieldOptions, resolveDateGranularity } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { queryByType } from './vault.js';
 import { extractWikilinkTarget } from './links.js';
-import { expandStaticValue, parseDate } from './local-date.js';
+import {
+  expandStaticValue,
+  parseDate,
+  parsePartialIsoDate,
+  isPrecisionAllowed,
+  type DatePrecision,
+} from './local-date.js';
 
 export type NormalizedDateResult =
   | { valid: true; value: string }
   | { valid: false; error: string };
 
-export function normalizeToIsoDate(value: string): NormalizedDateResult {
+/** Human-readable description of the minimum precision a granularity requires. */
+function describeGranularityRequirement(granularity: DatePrecision): string {
+  switch (granularity) {
+    case 'day':
+      return 'a full date (YYYY-MM-DD)';
+    case 'month':
+      return 'at least month precision (YYYY-MM)';
+    case 'year':
+      return 'at least year precision (YYYY)';
+  }
+}
+
+/**
+ * Normalize a user-supplied date value to its canonical stored form.
+ *
+ * Full dates accept ISO, ISO datetime, and unambiguous US/EU formats and are
+ * stored as YYYY-MM-DD. Partial dates (YYYY, YYYY-MM) are accepted only when the
+ * field's `granularity` permits them, and are stored verbatim (ISO partials sort
+ * lexically). `granularity` defaults to 'day' (full date required).
+ */
+export function normalizeToIsoDate(
+  value: string,
+  granularity: DatePrecision = 'day'
+): NormalizedDateResult {
   const trimmed = value.trim();
+
+  // Partial ISO dates (YYYY or YYYY-MM). Full YYYY-MM-DD is handled by the
+  // canonical/format-agnostic paths below.
+  if (/^\d{4}(-\d{2})?$/.test(trimmed)) {
+    const partial = parsePartialIsoDate(trimmed);
+    if (!partial.valid) {
+      return { valid: false, error: partial.error };
+    }
+    if (!isPrecisionAllowed(partial.precision, granularity)) {
+      return {
+        valid: false,
+        error: `"${trimmed}" is too coarse: this field requires ${describeGranularityRequirement(granularity)}`,
+      };
+    }
+    return { valid: true, value: partial.value };
+  }
 
   // Already ISO date
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
@@ -158,7 +203,8 @@ export function validateFrontmatter(
 
     // Type checking
     if (hasValue) {
-      const typeError = validateFieldType(fieldName, value, field);
+      const granularity = resolveDateGranularity(field, schema.config);
+      const typeError = validateFieldType(fieldName, value, field, granularity);
       if (typeError) {
         errors.push(typeError);
       }
@@ -233,7 +279,8 @@ export function applyDefaults(
 function validateFieldType(
   fieldName: string,
   value: unknown,
-  field: Field
+  field: Field,
+  granularity: DatePrecision = 'day'
 ): ValidationError | null {
   // Handle list fields (multi-value arrays or comma-separated strings)
   if (field.prompt === 'list' || field.list_format) {
@@ -257,7 +304,11 @@ function validateFieldType(
       return null;
     }
 
-    if (typeof value !== 'string') {
+    // A bare year (e.g. 2026) is parsed as a number by YAML; coerce so it can
+    // be validated against the field's granularity.
+    const dateValue = typeof value === 'number' ? String(value) : value;
+
+    if (typeof dateValue !== 'string') {
       return {
         type: 'invalid_type',
         field: fieldName,
@@ -267,7 +318,7 @@ function validateFieldType(
       };
     }
 
-    const normalized = normalizeToIsoDate(value);
+    const normalized = normalizeToIsoDate(dateValue, granularity);
     if (!normalized.valid) {
       return {
         type: 'invalid_date',

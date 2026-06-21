@@ -113,7 +113,7 @@ Issue Types:
   ambiguous-link-target Relation target matches multiple files
   invalid-list-element  List field contains non-string values
   wrong-scalar-type     Scalar value has wrong type for schema
-  invalid-date-format   Date value is not in YYYY-MM-DD format
+  invalid-date-format   Date value too imprecise or malformed for field granularity
   format-violation      Field value doesn't match expected format (wikilink, etc.)
   stale-reference       Wikilink points to non-existent file
   frontmatter-not-at-top Frontmatter block is not at top

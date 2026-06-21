@@ -67,6 +67,22 @@
         "default_dashboard": {
           "type": "string",
           "description": "Default dashboard to run when `bwrb dashboard` is called without arguments"
+        },
+        "excluded_directories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Vault-root-relative directory prefixes excluded from all discovery/targeting"
+        },
+        "date_format": {
+          "type": "string",
+          "default": "YYYY-MM-DD",
+          "description": "Display/parse format for date fields (YYYY, MM, DD tokens), e.g. MM/DD/YYYY"
+        },
+        "date_granularity": {
+          "type": "string",
+          "enum": ["day", "month", "year"],
+          "default": "day",
+          "description": "Default coarsest date precision for all date fields; per-field `granularity` overrides it"
         }
       }
     },
@@ -142,6 +158,11 @@
           "type": "string",
           "enum": ["text", "select", "list", "date", "relation", "boolean", "number"],
           "description": "Prompt type (how the field is collected)"
+        },
+        "granularity": {
+          "type": "string",
+          "enum": ["day", "month", "year"],
+          "description": "Coarsest date precision allowed for date fields (day=full YYYY-MM-DD, month=YYYY-MM, year=YYYY); overrides config.date_granularity"
         },
         "value": {
           "type": "string",
