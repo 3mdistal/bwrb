@@ -237,6 +237,10 @@
           "type": "boolean",
           "description": "Whether children referenced by this field are owned (colocate with parent)"
         },
+        "alias": {
+          "type": "boolean",
+          "description": "Field role: marks this field as holding the entity's aliases (alternate names). bwrb consults aliases during name resolution and linking, so an entity is findable by its aliases wherever it is findable by its name. The value must be an array of non-empty, unique strings (Obsidian `aliases` format)."
+        },
         "default": {
           "description": "Default value if user skips the prompt",
           "anyOf": [

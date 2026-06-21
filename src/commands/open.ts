@@ -342,7 +342,12 @@ Examples:
           byBasename.set(name, existing);
         }
 
-        filteredIndex = { byPath, byBasename, allFiles: targetResult.files as ManagedFile[] };
+        filteredIndex = {
+          byPath,
+          byBasename,
+          byAlias: new Map(),
+          allFiles: targetResult.files as ManagedFile[],
+        };
       } else {
         // No targeting - use full note index
         filteredIndex = await buildNoteIndex(schema, vaultDir);

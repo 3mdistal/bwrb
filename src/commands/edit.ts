@@ -214,6 +214,14 @@ Examples:
           [...index.byPath].filter(([path]) => candidatePaths.has(path))
         ),
         byBasename: new Map<string, ManagedFile[]>(),
+        byAlias: new Map(
+          [...index.byAlias]
+            .map(([alias, files]): [string, ManagedFile[]] => [
+              alias,
+              files.filter((file) => candidatePaths.has(file.relativePath)),
+            ])
+            .filter(([, files]) => files.length > 0)
+        ),
       };
       // Rebuild byBasename for filtered candidates
       for (const file of candidates) {

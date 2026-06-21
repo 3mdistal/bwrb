@@ -1606,7 +1606,17 @@ function checkHygieneIssues(
         issues.push(dupIssue);
       }
     }
-    
+
+    // Alias-role fields: flag empty/blank entries. Scalar values and duplicates
+    // are already covered by wrong-scalar-type and duplicate-list-values; this
+    // closes the remaining gap in the Obsidian aliases format (#266).
+    if (field?.alias === true && Array.isArray(value)) {
+      const emptyAliasIssue = checkEmptyAliasEntries(fieldName, value);
+      if (emptyAliasIssue) {
+        issues.push(emptyAliasIssue);
+      }
+    }
+
     // Check for key casing mismatch (only for known fields with wrong case)
     const keyCasingIssue = checkFrontmatterKeyCasing(
       fieldName, value, frontmatter, schemaKeyMap
@@ -1777,6 +1787,33 @@ function checkDuplicateListValues(
   }
   
   return null;
+}
+
+/**
+ * Check an alias-role field for empty or non-string entries.
+ *
+ * Scalar values and duplicates are caught elsewhere (wrong-scalar-type and
+ * duplicate-list-values); this covers the remaining illegal-aliases cases:
+ * empty/blank strings and non-string entries. Flagged for human review rather
+ * than auto-fixed, since dropping entries could lose intent.
+ */
+function checkEmptyAliasEntries(
+  fieldName: string,
+  value: unknown[]
+): AuditIssue | null {
+  const hasEmpty = value.some(
+    (item) => typeof item !== 'string' || item.trim() === ''
+  );
+  if (!hasEmpty) return null;
+
+  return {
+    severity: 'error',
+    code: 'illegal-aliases',
+    message: `Invalid aliases in '${fieldName}': entries must be non-empty strings`,
+    field: fieldName,
+    value,
+    autoFixable: false,
+  };
 }
 
 /**

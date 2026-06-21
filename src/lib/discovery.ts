@@ -18,6 +18,7 @@ import {
   resolveTypeFromFrontmatter,
   getConcreteTypeNames,
   getTypeFamilies,
+  getEntityAliases,
 } from './schema.js';
 import { parseNote } from './frontmatter.js';
 import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
@@ -447,15 +448,40 @@ export function deriveAllFiles(snapshot: VaultNoteSnapshot): Set<string> {
 
 /**
  * Derive note path map from snapshot data.
+ *
+ * When a schema is supplied, an entity's declared aliases are also registered as
+ * resolution keys, so a reference written as `[[An Alias]]` resolves to the
+ * entity's note wherever its basename does. Aliases never shadow a real
+ * basename/path key (those win), and the first entity to claim an alias keeps it
+ * — deterministic given the snapshot's stable ordering.
  */
-export function deriveNotePathMap(snapshot: VaultNoteSnapshot): Map<string, string> {
+export function deriveNotePathMap(
+  snapshot: VaultNoteSnapshot,
+  schema?: LoadedSchema
+): Map<string, string> {
   const pathMap = new Map<string, string>();
+  const realKeys = new Set<string>();
 
   for (const note of snapshot.notes) {
     const noteName = basename(note.relativePath, '.md');
     const pathKey = note.relativePath.replace(/\.md$/, '');
     pathMap.set(noteName, note.relativePath);
     pathMap.set(pathKey, note.relativePath);
+    realKeys.add(noteName);
+    realKeys.add(pathKey);
+  }
+
+  if (schema) {
+    for (const note of snapshot.notes) {
+      if (!note.resolvedType || !note.frontmatter) continue;
+      const aliases = getEntityAliases(schema, note.resolvedType, note.frontmatter);
+      for (const alias of aliases) {
+        // Never let an alias shadow a real note name/path, and keep the first
+        // claimant when two entities share an alias.
+        if (realKeys.has(alias) || pathMap.has(alias)) continue;
+        pathMap.set(alias, note.relativePath);
+      }
+    }
   }
 
   return pathMap;
@@ -481,11 +507,23 @@ export function deriveNoteTypeMap(snapshot: VaultNoteSnapshot): Map<string, stri
 
 /**
  * Derive relation target index from snapshot data.
+ *
+ * When a schema is supplied, an entity's declared aliases are registered as
+ * relation targets, so a relation/link written as `[[An Alias]]` resolves to the
+ * aliased entity — making an entity linkable by its aliases wherever it is
+ * linkable by its name. Aliases are added as additional candidates: an alias
+ * shared by two entities surfaces as an ambiguous (multi-candidate) target,
+ * which callers already refuse to auto-resolve, preserving the deterministic
+ * "never auto-resolve ambiguity" guarantee.
  */
-export function deriveNoteTargetIndex(snapshot: VaultNoteSnapshot): NoteTargetIndex {
+export function deriveNoteTargetIndex(
+  snapshot: VaultNoteSnapshot,
+  schema?: LoadedSchema
+): NoteTargetIndex {
   const targetToPaths = new Map<string, string[]>();
   const pathToType = new Map<string, string>();
   const pathNoExtToType = new Map<string, string>();
+  const realKeys = new Set<string>();
 
   const addTarget = (key: string, relativePath: string) => {
     const existing = targetToPaths.get(key);
@@ -505,10 +543,24 @@ export function deriveNoteTargetIndex(snapshot: VaultNoteSnapshot): NoteTargetIn
 
     addTarget(basenameKey, relativePath);
     addTarget(pathKey, relativePath);
+    realKeys.add(basenameKey);
+    realKeys.add(pathKey);
 
     if (note.resolvedType) {
       pathToType.set(relativePath, note.resolvedType);
       pathNoExtToType.set(pathKey, note.resolvedType);
+    }
+  }
+
+  if (schema) {
+    for (const note of snapshot.notes) {
+      if (!note.resolvedType || !note.frontmatter) continue;
+      const aliases = getEntityAliases(schema, note.resolvedType, note.frontmatter);
+      for (const alias of aliases) {
+        // Never let an alias shadow a real note name/path key.
+        if (realKeys.has(alias)) continue;
+        addTarget(alias, note.relativePath);
+      }
     }
   }
 
@@ -526,9 +578,9 @@ export async function buildVaultNoteIndex(
   return {
     snapshot,
     allFiles: deriveAllFiles(snapshot),
-    notePathMap: deriveNotePathMap(snapshot),
+    notePathMap: deriveNotePathMap(snapshot, schema),
     noteTypeMap: deriveNoteTypeMap(snapshot),
-    noteTargetIndex: deriveNoteTargetIndex(snapshot),
+    noteTargetIndex: deriveNoteTargetIndex(snapshot, schema),
   };
 }
 

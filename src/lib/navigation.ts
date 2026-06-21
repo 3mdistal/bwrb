@@ -10,10 +10,12 @@
 import { basename } from 'path';
 import type { LoadedSchema } from '../types/schema.js';
 import {
+  buildVaultNoteSnapshot,
   discoverFilesForNavigation,
   findSimilarFiles,
   type ManagedFile
 } from './discovery.js';
+import { getEntityAliases } from './schema.js';
 
 // ============================================================================
 // Types
@@ -24,6 +26,8 @@ export interface NoteIndex {
   byPath: Map<string, ManagedFile>;
   /** Map of basename (no extension) to list of files */
   byBasename: Map<string, ManagedFile[]>;
+  /** Map of declared alias to the entity files it resolves to */
+  byAlias: Map<string, ManagedFile[]>;
   /** All discovered files */
   allFiles: ManagedFile[];
 }
@@ -52,20 +56,39 @@ export type { ManagedFile };
   */
 export async function buildNoteIndex(schema: LoadedSchema, vaultDir: string): Promise<NoteIndex> {
   const files = await discoverFilesForNavigation(schema, vaultDir);
-  
+
   const byPath = new Map<string, ManagedFile>();
   const byBasename = new Map<string, ManagedFile[]>();
-  
+
   for (const file of files) {
     byPath.set(file.relativePath, file);
-    
+
     const name = basename(file.relativePath, '.md');
     const existing = byBasename.get(name) || [];
     existing.push(file);
     byBasename.set(name, existing);
   }
-  
-  return { byPath, byBasename, allFiles: files };
+
+  // Index entity aliases as additional resolution keys, so notes are findable by
+  // their declared aliases. Reuses the single parse pass from the vault snapshot;
+  // aliases only exist on schema-typed entities.
+  const byAlias = new Map<string, ManagedFile[]>();
+  const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
+  for (const note of snapshot.notes) {
+    if (!note.resolvedType || !note.frontmatter) continue;
+    const file = byPath.get(note.relativePath);
+    if (!file) continue;
+    const aliases = getEntityAliases(schema, note.resolvedType, note.frontmatter);
+    for (const alias of aliases) {
+      // A real note name always wins over an alias of the same string.
+      if (byBasename.has(alias)) continue;
+      const existing = byAlias.get(alias) || [];
+      existing.push(file);
+      byAlias.set(alias, existing);
+    }
+  }
+
+  return { byPath, byBasename, byAlias, allFiles: files };
 }
 
 // ============================================================================
@@ -79,8 +102,34 @@ export async function buildNoteIndex(schema: LoadedSchema, vaultDir: string): Pr
  * 1. Exact path match (with or without extension)
  * 2. Exact basename match (case-sensitive)
  * 3. Case-insensitive basename match
- * 4. Fuzzy/Partial match
+ * 4. Alias match (case-sensitive, then case-insensitive)
+ * 5. Fuzzy/Partial match
  */
+function resolveByAlias(index: NoteIndex, cleanQuery: string): ManagedFile[] {
+  const direct = index.byAlias.get(cleanQuery);
+  if (direct && direct.length > 0) return dedupeFiles(direct);
+
+  const lowerQuery = cleanQuery.toLowerCase();
+  const matches: ManagedFile[] = [];
+  for (const [alias, files] of index.byAlias.entries()) {
+    if (alias.toLowerCase() === lowerQuery) {
+      matches.push(...files);
+    }
+  }
+  return dedupeFiles(matches);
+}
+
+function dedupeFiles(files: ManagedFile[]): ManagedFile[] {
+  const seen = new Set<string>();
+  const result: ManagedFile[] = [];
+  for (const file of files) {
+    if (seen.has(file.path)) continue;
+    seen.add(file.path);
+    result.push(file);
+  }
+  return result;
+}
+
 export function resolveNoteQuery(index: NoteIndex, query: string): ResolutionResult {
   const cleanQuery = query.replace(/\.md$/, '');
   const cleanQueryWithExt = cleanQuery + '.md';
@@ -120,8 +169,20 @@ export function resolveNoteQuery(index: NoteIndex, query: string): ResolutionRes
       return { exact: null, candidates: caseInsensitiveMatches, isAmbiguous: true };
     }
   }
-  
-  // 4. Fuzzy / Partial match
+
+  // 4. Alias match (entity declared this query as one of its aliases).
+  // Real note names always win over aliases, so this only runs once basename
+  // matching has failed. An alias claimed by multiple entities is ambiguous and
+  // is never auto-resolved.
+  const aliasMatches = resolveByAlias(index, cleanQuery);
+  if (aliasMatches.length > 0) {
+    if (aliasMatches.length === 1) {
+      return { exact: aliasMatches[0]!, candidates: [], isAmbiguous: false };
+    }
+    return { exact: null, candidates: aliasMatches, isAmbiguous: true };
+  }
+
+  // 5. Fuzzy / Partial match
   const allBasenames = new Set(index.byBasename.keys());
   const similarNames = findSimilarFiles(cleanQuery, allBasenames, 10);
   

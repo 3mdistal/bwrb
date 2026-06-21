@@ -55,6 +55,12 @@ describe('schema.schema.json drift guards', () => {
     );
   });
 
+  it('exposes the alias field role on frontmatter fields', () => {
+    const alias = metaSchema.definitions.frontmatterField.properties.alias;
+    expect(alias).toBeDefined();
+    expect(alias.type).toBe('boolean');
+  });
+
   it('allows body section prompt to be none or list', () => {
     const prompt = metaSchema.definitions.bodySection.properties.prompt;
     expect(prompt).toBeDefined();
