@@ -8,7 +8,7 @@ import { getType, getFieldsForType, getFieldOptions } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
-import { evaluateTemplateDefault, validateDateExpression, isDateExpression } from './date-expression.js';
+import { evaluateTemplateDefault, validateDateExpression, isDateExpression, isDateTypedFieldPrompt } from './date-expression.js';
 import { formatDisplayValue } from './value-format.js';
 import { formatDateWithPattern, DEFAULT_DATE_FORMAT } from './local-date.js';
 import { sanitizeFilenameBase, type FilenameTransformation } from './filename.js';
@@ -1057,8 +1057,16 @@ export async function validateTemplate(
         continue;
       }
       
-      // Validate date expression syntax if it looks like one
-      if (typeof value === 'string') {
+      // Only date-typed fields evaluate (and therefore validate) date
+      // expressions. Non-date fields treat their default verbatim, so prose
+      // like `@today-ish note` must not be flagged as a malformed expression.
+      // This mirrors the creation path, which gates evaluateTemplateDefault on
+      // the field's prompt type.
+      const field = fields[fieldName];
+      const isDateField = isDateTypedFieldPrompt(field?.prompt);
+
+      // Validate date expression syntax if it looks like one (date fields only)
+      if (isDateField && typeof value === 'string') {
         const dateExprError = validateDateExpression(value);
         if (dateExprError) {
           issues.push({
@@ -1070,10 +1078,10 @@ export async function validateTemplate(
           continue;
         }
       }
-      
-      // Validate value against field definition (skip for date expressions)
-      const field = fields[fieldName];
-      if (field && !(typeof value === 'string' && isDateExpression(value))) {
+
+      // Validate value against field definition. Skip only when a date field's
+      // value is a date expression (it resolves at creation time).
+      if (field && !(isDateField && typeof value === 'string' && isDateExpression(value))) {
         const valueIssues = validateFieldValue(fieldName, field, value, template.templateFor);
         issues.push(...valueIssues);
       }

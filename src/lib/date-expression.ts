@@ -173,7 +173,7 @@ export function validateDateExpression(value: string): string | null {
  * field) treats its default verbatim, so prose like `@today-ish note` is never
  * mistaken for a malformed date expression.
  */
-function isDateTypedFieldPrompt(prompt: string | undefined): boolean {
+export function isDateTypedFieldPrompt(prompt: string | undefined): boolean {
   return prompt === 'date';
 }
 
