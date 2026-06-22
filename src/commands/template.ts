@@ -19,17 +19,14 @@ import {
   type TemplateWithSource,
   type TemplateValidationResult,
 } from '../lib/template.js';
-import { queryByType, formatValue } from '../lib/vault.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
 import { parseNote, writeNote } from '../lib/frontmatter.js';
 import {
   configurePromptMode,
   promptSelection,
-  promptMultiSelect,
   promptInput,
   promptConfirm,
-  promptMultiInput,
   printError,
   printSuccess,
   printWarning,
@@ -40,8 +37,9 @@ import {
   jsonError,
   ExitCodes,
 } from '../lib/output.js';
-import { type LoadedSchema, type Field, type Template, getOptionValues } from '../types/schema.js';
+import { type LoadedSchema, type Template } from '../types/schema.js';
 import { UserCancelledError } from '../lib/errors.js';
+import { promptField, CLEAR } from '../lib/field-prompt.js';
 import { getTtyContext } from '../lib/tty/context.js';
 import { renderTable } from '../lib/tty/table.js';
 
@@ -938,7 +936,7 @@ async function createTemplateInteractive(
       // Skip static value fields
       if (field.value !== undefined) continue;
 
-      const defaultValue = await promptFieldDefault(schema, vaultDir, fieldName, field);
+      const defaultValue = await promptField(schema, vaultDir, fieldName, field, { mode: 'template-default' });
       if (defaultValue !== undefined && defaultValue !== '') {
         defaults[fieldName] = defaultValue;
       }
@@ -1022,59 +1020,6 @@ async function createTemplateInteractive(
   }
 
   printSuccess(`\n✓ Created: ${relative(vaultDir, templatePath)}`);
-}
-
-/**
- * Prompt for a field default value.
- */
-async function promptFieldDefault(
-  schema: LoadedSchema,
-  vaultDir: string,
-  fieldName: string,
-  field: Field
-): Promise<unknown> {
-  const label = field.label ?? fieldName;
-
-  switch (field.prompt) {
-    case 'select': {
-      if (!field.options || field.options.length === 0) return undefined;
-      const selectOptions = getOptionValues(field.options);
-      const options = ['(skip)', ...selectOptions];
-      
-      const selected = await promptSelection(`Default ${label}:`, options);
-      if (selected === null) throw new UserCancelledError();
-      if (selected === '(skip)') return undefined;
-      return selected;
-    }
-
-    case 'relation': {
-      if (!field.source) return undefined;
-      const dynamicOptions = await queryByType(schema, vaultDir, field.source, field.filter);
-      if (dynamicOptions.length === 0) return undefined;
-      
-      const options = ['(skip)', ...dynamicOptions];
-      const selected = await promptSelection(`Default ${label}:`, options);
-      if (selected === null) throw new UserCancelledError();
-      if (selected === '(skip)') return undefined;
-      return formatValue(selected, schema.config.linkFormat);
-    }
-
-    case 'list': {
-      console.log(`Default ${label} (comma-separated values, or Enter to skip):`);
-      const values = await promptMultiInput('');
-      if (values === null) throw new UserCancelledError();
-      if (values.length === 0) return undefined;
-      return values;
-    }
-
-    case 'text':
-    case 'date':
-    default: {
-      const input = await promptInput(`Default ${label} (or Enter to skip)`);
-      if (input === null) throw new UserCancelledError();
-      return input.trim() || undefined;
-    }
-  }
 }
 
 /**
@@ -1367,8 +1312,8 @@ async function editTemplateInteractive(
       const currentStr = formatDefaultValue(currentValue);
       console.log(`Current ${fieldName}: ${currentStr}`);
 
-      const newValue = await promptFieldDefaultEdit(schema, vaultDir, fieldName, field, currentValue);
-      if (newValue === 'CLEAR') {
+      const newValue = await promptField(schema, vaultDir, fieldName, field, { mode: 'template-edit', currentValue });
+      if (newValue === CLEAR) {
         delete currentDefaults[fieldName];
       } else if (newValue !== undefined) {
         currentDefaults[fieldName] = newValue;
@@ -1486,102 +1431,6 @@ function formatDefaultValue(value: unknown): string {
     return `[${value.join(', ')}]`;
   }
   return String(value);
-}
-
-/**
- * Prompt for editing a field default value.
- * Returns 'CLEAR' if user wants to remove the default.
- */
-async function promptFieldDefaultEdit(
-  schema: LoadedSchema,
-  vaultDir: string,
-  fieldName: string,
-  field: Field,
-  currentValue: unknown
-): Promise<unknown | 'CLEAR'> {
-  const label = field.label ?? fieldName;
-
-  switch (field.prompt) {
-    case 'select': {
-      if (!field.options || field.options.length === 0) return currentValue;
-      const selectOptions = getOptionValues(field.options);
-      const options = ['(keep)', '(clear)', ...selectOptions];
-      
-      const selected = await promptSelection(`New ${label}:`, options);
-      if (selected === null) throw new UserCancelledError();
-      if (selected === '(keep)') return currentValue;
-      if (selected === '(clear)') return 'CLEAR';
-      return selected;
-    }
-
-    case 'relation': {
-      if (!field.source) return currentValue;
-      const dynamicOptions = await queryByType(schema, vaultDir, field.source, field.filter);
-
-      if (field.multiple) {
-        const actionOptions = ['(keep)', '(clear)', '(set empty [])'];
-        if (dynamicOptions.length > 0) {
-          actionOptions.push('(select values)');
-        }
-
-        const action = await promptSelection(`How to update ${label}:`, actionOptions);
-        if (action === null) throw new UserCancelledError();
-        if (action === '(keep)') return currentValue;
-        if (action === '(clear)') return 'CLEAR';
-        if (action === '(set empty [])') return [];
-
-        const selected = await promptMultiSelect(`Select ${label}:`, dynamicOptions);
-        if (selected === null) throw new UserCancelledError();
-        return formatUniqueRelationValues(selected, schema.config.linkFormat);
-      }
-
-      if (dynamicOptions.length === 0) return currentValue;
-
-      const options = ['(keep)', '(clear)', ...dynamicOptions];
-      const selected = await promptSelection(`New ${label}:`, options);
-      if (selected === null) throw new UserCancelledError();
-      if (selected === '(keep)') return currentValue;
-      if (selected === '(clear)') return 'CLEAR';
-      return formatValue(selected, schema.config.linkFormat);
-    }
-
-    case 'list': {
-      console.log(`New ${label} (comma-separated, Enter to keep, "clear" to remove):`);
-      const input = await promptInput('');
-      if (input === null) throw new UserCancelledError();
-      if (!input.trim()) return currentValue;
-      if (input.toLowerCase() === 'clear') return 'CLEAR';
-      return input.split(',').map(s => s.trim()).filter(Boolean);
-    }
-
-    case 'text':
-    case 'date':
-    default: {
-      const input = await promptInput(`New ${label} (Enter to keep, "clear" to remove)`);
-      if (input === null) throw new UserCancelledError();
-      if (!input.trim()) return currentValue;
-      if (input.toLowerCase() === 'clear') return 'CLEAR';
-      return input.trim();
-    }
-  }
-}
-
-function formatUniqueRelationValues(
-  values: string[],
-  linkFormat: 'wikilink' | 'markdown'
-): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-
-  for (const value of values) {
-    const formatted = formatValue(value, linkFormat);
-    if (!seen.has(formatted)) {
-      seen.add(formatted);
-      result.push(formatted);
-    }
-  }
-
-  return result;
 }
 
 // ============================================================================
