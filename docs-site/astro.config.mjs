@@ -70,6 +70,7 @@ export default defineConfig({
 								{ slug: 'reference/commands/edit' },
 								{ slug: 'reference/commands/delete' },
 								{ slug: 'reference/commands/list' },
+								{ slug: 'reference/commands/recent' },
 								{ slug: 'reference/commands/open' },
 								{ slug: 'reference/commands/search' },
 								{ slug: 'reference/commands/schema' },
