@@ -3,6 +3,7 @@ const CANONICAL_HELP_COMMAND_ORDER = [
   'edit',
   'delete',
   'list',
+  'recent',
   'open',
   'search',
   'schema',

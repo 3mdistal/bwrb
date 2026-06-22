@@ -5,6 +5,7 @@ import { newCommand } from './commands/new.js';
 import { editCommand } from './commands/edit.js';
 import { deleteCommand } from './commands/delete.js';
 import { listCommand } from './commands/list.js';
+import { recentCommand } from './commands/recent.js';
 import { openCommand } from './commands/open.js';
 import { searchCommand } from './commands/search.js';
 import { schemaCommand } from './commands/schema/index.js';
@@ -61,6 +62,7 @@ if (completionsIndex !== -1) {
 
   // Query operations
   program.addCommand(listCommand);
+  program.addCommand(recentCommand);
   program.addCommand(openCommand);
   program.addCommand(searchCommand);
 
