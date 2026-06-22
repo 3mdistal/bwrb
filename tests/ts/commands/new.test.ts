@@ -350,8 +350,10 @@ describe('new command - instance scaffolding', () => {
     expect(parentContent).toContain('status: in-flight');
     expect(parentContent).toContain('# Project Overview');
 
-    // Verify instance files exist and have correct content
-    const instanceDir = join(vaultDir, 'Projects');
+    // Verify instance files exist and have correct content. Scaffolded instances
+    // are filed in the CHILD type's output_dir (#107/#630): `research` →
+    // `Research/`, NOT the parent project's `Projects/` directory.
+    const instanceDir = join(vaultDir, 'Research');
     const bgResearchPath = join(instanceDir, 'Background Research.md');
     await waitForFile(bgResearchPath);
     const bgResearch = await readFile(bgResearchPath, 'utf-8');
@@ -394,20 +396,22 @@ describe('new command - instance scaffolding', () => {
     const parentContent = await readFile(join(vaultDir, output.path), 'utf-8');
     expect(parentContent).toContain('status: in-flight');
 
-    // Verify instance files were NOT created
+    // Verify instance files were NOT created (in either parent or child dirs).
     const { existsSync } = await import('fs');
-    const instanceDir = join(vaultDir, 'Projects');
-    expect(existsSync(join(instanceDir, 'Background Research.md'))).toBe(false);
-    expect(existsSync(join(instanceDir, 'Competitor Analysis.md'))).toBe(false);
+    expect(existsSync(join(vaultDir, 'Research', 'Background Research.md'))).toBe(false);
+    expect(existsSync(join(vaultDir, 'Research', 'Competitor Analysis.md'))).toBe(false);
+    expect(existsSync(join(vaultDir, 'Projects', 'Background Research.md'))).toBe(false);
+    expect(existsSync(join(vaultDir, 'Projects', 'Competitor Analysis.md'))).toBe(false);
   });
 
   it('should skip existing instance files without error', async () => {
-    // Create one of the instance files first
+    // Create one of the instance files first, in the CHILD type's output_dir
+    // (`Research/`) where the instance would be filed.
     const { mkdir, writeFile } = await import('fs/promises');
-    const projectsDir = join(vaultDir, 'Projects');
-    await mkdir(projectsDir, { recursive: true });
+    const researchDir = join(vaultDir, 'Research');
+    await mkdir(researchDir, { recursive: true });
     await writeFile(
-      join(projectsDir, 'Background Research.md'),
+      join(researchDir, 'Background Research.md'),
       '---\ntype: research\nstatus: settled\n---\nExisting content',
       'utf-8'
     );
@@ -430,7 +434,7 @@ describe('new command - instance scaffolding', () => {
     expect(output.instances.errors).toHaveLength(0);
 
     // Existing file should not be overwritten
-    const existing = await readFile(join(projectsDir, 'Background Research.md'), 'utf-8');
+    const existing = await readFile(join(researchDir, 'Background Research.md'), 'utf-8');
     expect(existing).toContain('status: settled'); // Original content preserved
     expect(existing).toContain('Existing content');
   });

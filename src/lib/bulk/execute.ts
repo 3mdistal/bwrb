@@ -3,6 +3,8 @@
  */
 
 import { parseNote, writeNote } from '../frontmatter.js';
+import { resolveTypeFromFrontmatter } from '../schema.js';
+import { prepareRecurrenceFastPath, commitRecurrenceFastPath } from '../recurrence-fast-path.js';
 import { discoverManagedFiles } from '../discovery.js';
 import { searchContent } from '../content-search.js';
 import { filterByPath } from '../targeting.js';
@@ -180,8 +182,48 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
       fileChange.changes = changes;
 
       if (execute && changes.length > 0) {
-        await writeNote(file.path, modified, file.body);
-        fileChange.applied = true;
+        // Recurrence fast path (atomicity, #107): VALIDATE + COMPUTE the
+        // successor BEFORE writing the predecessor's change, so a spawn that
+        // cannot succeed (missing template, partial/unparseable offset base)
+        // leaves the predecessor UNMUTATED. A spawn failure is recorded per file
+        // and the predecessor's bulk change is skipped (not half-applied).
+        const resolvedType = resolveTypeFromFrontmatter(schema, modified);
+        let recError: string | null = null;
+        let fastPathPlan = null;
+        if (resolvedType) {
+          try {
+            fastPathPlan = await prepareRecurrenceFastPath(
+              schema,
+              vaultDir,
+              resolvedType,
+              file.path,
+              file.frontmatter,
+              modified,
+              file.body
+            );
+          } catch (recErr) {
+            recError = recErr instanceof Error ? recErr.message : String(recErr);
+          }
+        }
+
+        if (recError) {
+          // Do NOT mutate the predecessor when its successor can't be produced.
+          fileChange.error = recError;
+          result.errors.push(`Recurrence spawn failed for ${file.relativePath}: ${recError}`);
+        } else {
+          await writeNote(file.path, modified, file.body);
+          fileChange.applied = true;
+
+          // Commit the prepared spawn (create successor + back-link `next`).
+          if (fastPathPlan) {
+            try {
+              await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+            } catch (recErr) {
+              const recMessage = recErr instanceof Error ? recErr.message : String(recErr);
+              result.errors.push(`Recurrence spawn failed for ${file.relativePath}: ${recMessage}`);
+            }
+          }
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
 import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI, TEST_SCHEMA } from '../fixtures/setup.js';
 
@@ -914,5 +915,176 @@ describe('edit command --open flag', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
     });
+  });
+});
+
+// ============================================================================
+// Recurrence completion: atomicity + error surfacing (#107 blocker 2)
+// ============================================================================
+
+describe('edit command: recurrence completion atomicity (#107)', () => {
+  // A recurring `task` schema whose successor template is MISSING, so completing
+  // a task cannot spawn a successor.
+  const RECURRING_NO_TEMPLATE = {
+    version: 2,
+    traits: {
+      recurring: {
+        fields: {
+          next: { prompt: 'relation', source: 'task' },
+          prev: { prompt: 'relation', source: 'task' },
+        },
+        recurrence: {
+          on: 'status = done',
+          template: 'does-not-exist',
+          set: { deadline: 'deadline + 7d' },
+        },
+      },
+    },
+    types: {
+      task: {
+        output_dir: 'tasks',
+        traits: ['recurring'],
+        fields: {
+          name: { prompt: 'text', required: true },
+          status: { prompt: 'select', options: ['todo', 'doing', 'done'], default: 'todo' },
+          deadline: { prompt: 'date' },
+        },
+      },
+    },
+  };
+
+  // A recurring `task` schema with a partial-date base that cannot be offset.
+  const RECURRING_PARTIAL_BASE = {
+    version: 2,
+    traits: {
+      recurring: {
+        fields: {
+          next: { prompt: 'relation', source: 'task' },
+          prev: { prompt: 'relation', source: 'task' },
+        },
+        recurrence: {
+          on: 'status = done',
+          set: { deadline: 'deadline + 7d' },
+        },
+      },
+    },
+    types: {
+      task: {
+        output_dir: 'tasks',
+        traits: ['recurring'],
+        fields: {
+          name: { prompt: 'text', required: true },
+          status: { prompt: 'select', options: ['todo', 'doing', 'done'], default: 'todo' },
+          deadline: { prompt: 'date', granularity: 'month' },
+        },
+      },
+    },
+  };
+
+  async function setupRecurringVault(schema: unknown): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), 'edit-recur-'));
+    await mkdir(join(dir, '.bwrb'), { recursive: true });
+    await writeFile(join(dir, '.bwrb', 'schema.json'), JSON.stringify(schema, null, 2));
+    await mkdir(join(dir, 'tasks'), { recursive: true });
+    return dir;
+  }
+
+  async function writeTask(dir: string, name: string, fm: string): Promise<string> {
+    const p = join(dir, 'tasks', `${name}.md`);
+    await writeFile(p, fm);
+    return p;
+  }
+
+  it('missing template: leaves predecessor UNMUTATED + surfaces the real error (by-name branch)', async () => {
+    const dir = await setupRecurringVault(RECURRING_NO_TEMPLATE);
+    try {
+      const taskPath = await writeTask(
+        dir,
+        'ByName',
+        `---\ntype: task\nname: ByName\nstatus: doing\ndeadline: 2026-03-01\n---\n`
+      );
+
+      const result = await runCLI(
+        ['edit', 'ByName', '--json', '{"status":"done"}', '--picker', 'none'],
+        dir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      const combined = result.stdout + result.stderr;
+      expect(combined).toMatch(/template 'does-not-exist'|was not found/i);
+      // NOT the misleading "No matching notes found".
+      expect(combined).not.toMatch(/No matching notes found/i);
+
+      // Predecessor must NOT have been mutated to done.
+      const content = await readFile(taskPath, 'utf-8');
+      expect(content).toContain('status: doing');
+      expect(content).not.toContain('status: done');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('missing template: leaves predecessor UNMUTATED + surfaces the real error (absolute-path branch)', async () => {
+    const dir = await setupRecurringVault(RECURRING_NO_TEMPLATE);
+    try {
+      const taskPath = await writeTask(
+        dir,
+        'ByPath',
+        `---\ntype: task\nname: ByPath\nstatus: doing\ndeadline: 2026-03-01\n---\n`
+      );
+
+      const result = await runCLI(
+        ['edit', taskPath, '--json', '{"status":"done"}'],
+        dir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      const combined = result.stdout + result.stderr;
+      // The absolute-path branch must surface the REAL error, not swallow it.
+      expect(combined).toMatch(/template 'does-not-exist'|was not found/i);
+      expect(combined).not.toMatch(/No matching notes found/i);
+
+      const content = await readFile(taskPath, 'utf-8');
+      expect(content).toContain('status: doing');
+      expect(content).not.toContain('status: done');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('partial-date offset base: clear deterministic error, predecessor unmutated', async () => {
+    const dir = await setupRecurringVault(RECURRING_PARTIAL_BASE);
+    try {
+      // A default task template exists so template resolution succeeds; the
+      // failure is the un-offsettable partial (month-granularity) base date.
+      const tplDir = join(dir, '.bwrb', 'templates', 'task');
+      await mkdir(tplDir, { recursive: true });
+      await writeFile(
+        join(tplDir, 'default.md'),
+        `---\ntype: template\ntemplate-for: task\n---\n\n# {name}\n`
+      );
+
+      const taskPath = await writeTask(
+        dir,
+        'Partial',
+        `---\ntype: task\nname: Partial\nstatus: doing\ndeadline: 2026-03\n---\n`
+      );
+
+      const result = await runCLI(
+        ['edit', taskPath, '--json', '{"status":"done"}'],
+        dir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      const combined = result.stdout + result.stderr;
+      expect(combined).toMatch(/Cannot compute recurrence offset/i);
+      expect(combined).toMatch(/partial date|granularity/i);
+
+      const content = await readFile(taskPath, 'utf-8');
+      expect(content).toContain('status: doing');
+      expect(content).not.toContain('status: done');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

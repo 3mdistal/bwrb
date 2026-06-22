@@ -202,9 +202,11 @@ status: in-flight
           const exitCode = await proc.waitForExit(10000);
           expect(exitCode).toBe(0);
 
+          // Parent note in the project's output_dir; scaffolded research
+          // instances in the CHILD type's output_dir (`Research/`), per #107/#630.
           const parentExists = await vaultFileExists(vaultPath, 'Projects/Test.md');
-          const backgroundExists = await vaultFileExists(vaultPath, 'Projects/Background Research.md');
-          const competitorExists = await vaultFileExists(vaultPath, 'Projects/Competitor Analysis.md');
+          const backgroundExists = await vaultFileExists(vaultPath, 'Research/Background Research.md');
+          const competitorExists = await vaultFileExists(vaultPath, 'Research/Competitor Analysis.md');
 
           expect(parentExists).toBe(true);
           expect(backgroundExists).toBe(true);
@@ -212,8 +214,8 @@ status: in-flight
 
           const output = proc.getOutput().replace(/\\/g, '/');
           expect(output).toContain('Instances created:');
-          expect(output).toContain('Projects/Background Research.md');
-          expect(output).toContain('Projects/Competitor Analysis.md');
+          expect(output).toContain('Research/Background Research.md');
+          expect(output).toContain('Research/Competitor Analysis.md');
           expect(output).toContain('Created 3 files (1 parent + 2 instances)');
         },
         { schema: INSTANCE_SCAFFOLD_SCHEMA, includeTemplates: ['project'] }

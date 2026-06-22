@@ -37,6 +37,7 @@ import {
 import { type LoadedSchema, type Field, type BodySection, getOptionValues } from '../types/schema.js';
 import { UserCancelledError } from './errors.js';
 import { expandStaticValue } from './local-date.js';
+import { prepareRecurrenceFastPath, commitRecurrenceFastPath } from './recurrence-fast-path.js';
 
 // ============================================================================
 // Types
@@ -226,8 +227,27 @@ export async function editNoteFromJson(
   const fieldOrder = getFrontmatterOrder(typeDef);
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(normalizedFrontmatter);
 
-  // Write updated note
+  // Recurrence fast path (atomicity, #107): VALIDATE + COMPUTE the successor
+  // BEFORE mutating the predecessor. If this completion would spawn a successor
+  // but the spawn can't succeed (missing template, partial/unparseable offset
+  // base), prepare throws here and we abort WITHOUT writing the predecessor —
+  // never leaving it `done` with no successor.
+  const fastPathPlan = await prepareRecurrenceFastPath(
+    schema,
+    vaultDir,
+    typeDef.name,
+    filePath,
+    frontmatter,
+    normalizedFrontmatter,
+    body
+  );
+
+  // Write updated note (predecessor status change is now safe to commit).
   await writeNote(filePath, normalizedFrontmatter, body, orderedFields);
+
+  // Commit the prepared spawn (create successor + back-link `next`). Identical
+  // result to the audit backstop, which shares the same engine.
+  await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
 
   return { updatedFields, path: filePath };
 }
@@ -313,9 +333,28 @@ export async function editNoteInteractive(
     }
   }
 
-  // Write updated file
+  // Recurrence fast path (atomicity, #107): VALIDATE + COMPUTE before mutating
+  // the predecessor (see editNoteFromJson). Interactive edit reconstructs the
+  // full frontmatter, so `frontmatter` (read at the top) is the old state.
+  const fastPathPlan = await prepareRecurrenceFastPath(
+    schema,
+    vaultDir,
+    typeDef.name,
+    filePath,
+    frontmatter,
+    newFrontmatter,
+    updatedBody
+  );
+
+  // Write updated file (predecessor change is now safe to commit).
   await writeNote(filePath, newFrontmatter, updatedBody, orderedFields);
   printSuccess(`\n✓ Updated: ${filePath}`);
+
+  // Commit the prepared spawn.
+  const fastPath = await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+  if (fastPath.successorPath) {
+    printSuccess(`✓ Spawned recurrence successor: ${fastPath.successorPath}`);
+  }
 }
 
 // ============================================================================
