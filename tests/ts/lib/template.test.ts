@@ -820,14 +820,19 @@ describe('createScaffoldedInstances', () => {
     expect(result.created).toHaveLength(2);
     expect(result.errors).toHaveLength(0);
     expect(result.skipped).toHaveLength(0);
-    expect(existsSync(join(tempDir, 'Drafts', 'My Project', 'Draft v1.md'))).toBe(true);
-    expect(existsSync(join(tempDir, 'Drafts', 'My Project', 'Research.md'))).toBe(true);
+    // Instances are filed in each child type's own output_dir (#107/#630).
+    // `version` and `research` both extend `draft` (output_dir 'Drafts'), so they
+    // land in 'Drafts/', NOT the parent instance folder 'Drafts/My Project/'.
+    expect(existsSync(join(tempDir, 'Drafts', 'Draft v1.md'))).toBe(true);
+    expect(existsSync(join(tempDir, 'Drafts', 'Research.md'))).toBe(true);
   });
 
   it('skips existing files and reports them', async () => {
-    // Create an existing file
+    // Create an existing file in the CHILD type's output_dir (where the instance
+    // would be filed), so the on-disk collision is detected.
+    await mkdir(join(tempDir, 'Drafts'), { recursive: true });
     await writeFile(
-      join(tempDir, 'Drafts', 'My Project', 'Existing.md'),
+      join(tempDir, 'Drafts', 'Existing.md'),
       '---\ntype: notes\n---\n'
     );
 
@@ -867,9 +872,9 @@ describe('createScaffoldedInstances', () => {
 
     expect(result.created).toHaveLength(1);
     
-    // Read the file and check frontmatter
-    const content = await import('fs/promises').then(fs => 
-      fs.readFile(join(tempDir, 'Drafts', 'My Project', 'SEO.md'), 'utf-8')
+    // Read the file (filed in the child `research` type's output_dir) and check.
+    const content = await import('fs/promises').then(fs =>
+      fs.readFile(join(tempDir, 'Drafts', 'SEO.md'), 'utf-8')
     );
     expect(content).toContain('topic: SEO Analysis');
   });
@@ -909,8 +914,8 @@ describe('createScaffoldedInstances', () => {
     );
 
     expect(result.created).toHaveLength(1);
-    // Default filename should be "{type}.md"
-    expect(existsSync(join(tempDir, 'Drafts', 'My Project', 'version.md'))).toBe(true);
+    // Default filename should be "{type}.md", filed in the child output_dir.
+    expect(existsSync(join(tempDir, 'Drafts', 'version.md'))).toBe(true);
   });
 
   it('loads and applies template if specified', async () => {
@@ -946,9 +951,9 @@ Template body here.
 
     expect(result.created).toHaveLength(1);
     
-    // Read the file and check it has template defaults and body
-    const content = await import('fs/promises').then(fs => 
-      fs.readFile(join(tempDir, 'Drafts', 'My Project', 'SEO Research.md'), 'utf-8')
+    // Read the file (filed in the child `research` type's output_dir).
+    const content = await import('fs/promises').then(fs =>
+      fs.readFile(join(tempDir, 'Drafts', 'SEO Research.md'), 'utf-8')
     );
     expect(content).toContain('topic: SEO Template Default');
     expect(content).toContain('## SEO Research');
@@ -993,9 +998,9 @@ Template body here.
 
       expect(result.created).toHaveLength(1);
       
-      // Read the file and check the date expression was evaluated
-      const content = await import('fs/promises').then(fs => 
-        fs.readFile(join(tempDir, 'Drafts', 'My Project', 'Dated Research.md'), 'utf-8')
+      // Read the file (filed in the child `research` type's output_dir).
+      const content = await import('fs/promises').then(fs =>
+        fs.readFile(join(tempDir, 'Drafts', 'Dated Research.md'), 'utf-8')
       );
       // today() + '7d' from 2025-06-15 = 2025-06-22 (date field evaluates)
       // YAML serializes simple strings without quotes

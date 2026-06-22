@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'path';
-import { mkdtemp, mkdir, writeFile, readdir, rm } from 'fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'fs/promises';
 import { existsSync } from 'fs';
 import { tmpdir } from 'os';
 
@@ -100,6 +100,14 @@ async function listTasks(vaultDir: string): Promise<string[]> {
   const dir = join(vaultDir, 'tasks');
   if (!existsSync(dir)) return [];
   return (await readdir(dir)).filter((f) => f.endsWith('.md')).sort();
+}
+
+/** Extract the raw text after `<key>:` on its frontmatter line (verbatim). */
+async function rawFieldLine(filePath: string, key: string): Promise<string> {
+  const content = await readFile(filePath, 'utf-8');
+  const line = content.split('\n').find((l) => l.startsWith(`${key}:`));
+  if (!line) throw new Error(`No '${key}:' line in ${filePath}`);
+  return line.slice(`${key}:`.length).trim();
 }
 
 describe('recurrence: pure helpers', () => {
@@ -212,6 +220,67 @@ deadline: 2026-03-01
     expect(succFm['next'] ?? '').toBe('');
   });
 
+  it('writes a CLEAN, byte-symmetric next/prev; audit clean; --fix converges (#107 blocker 1)', async () => {
+    const taskPath = join(vaultDir, 'tasks', 'Symmetric.md');
+    await writeFile(
+      taskPath,
+      `---
+type: task
+name: Symmetric
+status: doing
+deadline: 2026-03-01
+---
+
+# Symmetric
+`
+    );
+
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(schema, vaultDir, taskPath, JSON.stringify({ status: 'done' }), {
+      jsonMode: false,
+    });
+
+    const tasks = await listTasks(vaultDir);
+    expect(tasks).toHaveLength(2);
+    const successorName = tasks.find((f) => f !== 'Symmetric.md')!;
+    const succPath = join(vaultDir, 'tasks', successorName);
+
+    // Predecessor's `next` must be a CLEAN wikilink — exactly one quoting layer,
+    // NO embedded literal quote characters. The double-wrap bug produced
+    // `'"[[Successor]]"'` (YAML single-quoted around a literal `"[[...]]"`) or
+    // `"\"[[Successor]]\""`. The clean form is `"[[Successor]]"`.
+    const rawNext = await rawFieldLine(taskPath, 'next');
+    expect(rawNext.startsWith("'")).toBe(false); // not YAML single-quoted (double-wrap)
+    expect(rawNext).not.toContain('\\"'); // no escaped embedded quote
+    expect(rawNext).toMatch(/^"\[\[[^"\\]+\]\]"$/); // single YAML quote layer, no inner quote
+
+    // The parsed value is the bare wikilink (no embedded quote characters).
+    const nextValue = String((await readFrontmatter(taskPath))['next']);
+    expect(nextValue).toMatch(/^\[\[.+\]\]$/);
+    expect(nextValue).not.toContain('"');
+
+    // Byte-symmetric with the successor's `prev`: same shape, same quoting.
+    const rawPrev = await rawFieldLine(succPath, 'prev');
+    expect(rawPrev).toMatch(/^"\[\[[^"\\]+\]\]"$/);
+    const prevValue = String((await readFrontmatter(succPath))['prev']);
+    // next points at successor, prev points at predecessor; strip the names and
+    // confirm the LINK SHELL is byte-identical.
+    expect(nextValue.replace(/\[\[.*\]\]/, '[[X]]')).toBe(prevValue.replace(/\[\[.*\]\]/, '[[X]]'));
+
+    // Audit is clean immediately after the spawn: no format-violation on `next`.
+    const results = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    const issues = results.flatMap((r) => r.issues);
+    expect(issues.some((i) => i.code === 'format-violation')).toBe(false);
+
+    // `--fix` converges: a second run reports 0 fixes (non-converging double-wrap
+    // would re-report "Fixed next format" forever).
+    const r1 = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    await runAutoFix(r1, schema, vaultDir, { dryRun: false });
+    const r2 = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    const summary2 = await runAutoFix(r2, schema, vaultDir, { dryRun: false });
+    expect(summary2.fixed).toBe(0);
+  });
+
   it('is idempotent: re-completing a task with a `next` does NOT spawn a duplicate', async () => {
     const taskPath = join(vaultDir, 'tasks', 'Recur.md');
     await writeFile(
@@ -306,6 +375,58 @@ deadline: 2026-05-10
     const successorName = tasks.find((f) => f !== 'Bulk task.md')!;
     const succFm = await readFrontmatter(join(vaultDir, 'tasks', successorName));
     expect(succFm['deadline']).toBe('2026-05-17');
+
+    // The bulk-written `next` is also a clean, single-quoted wikilink (#107).
+    const rawNext = await rawFieldLine(join(vaultDir, 'tasks', 'Bulk task.md'), 'next');
+    expect(rawNext.startsWith("'")).toBe(false);
+    expect(rawNext).toMatch(/^"\[\[[^"\\]+\]\]"$/);
+  });
+
+  it('atomic: a bulk completion whose spawn fails leaves the predecessor UNMUTATED', async () => {
+    // Point the recurrence at a missing template so the spawn cannot succeed.
+    const badSchema: Schema = JSON.parse(JSON.stringify(RECURRING_SCHEMA));
+    badSchema.traits!.recurring!.recurrence!.template = 'does-not-exist';
+    const badVault = await setupVault(badSchema);
+    await mkdir(join(badVault, 'tasks'), { recursive: true });
+    const taskPath = join(badVault, 'tasks', 'Bulk atomic.md');
+    await writeFile(
+      taskPath,
+      `---
+type: task
+name: Bulk atomic
+status: doing
+deadline: 2026-05-10
+---
+`
+    );
+
+    try {
+      const schema = await loadSchema(badVault);
+      const result = await executeBulk({
+        typePath: 'task',
+        operations: [{ type: 'set', field: 'status', value: 'done' }],
+        whereExpressions: [],
+        execute: true,
+        backup: false,
+        verbose: false,
+        quiet: true,
+        jsonMode: true,
+        vaultDir: badVault,
+        schema,
+      });
+
+      // The spawn failure is reported...
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors.join(' ')).toMatch(/does-not-exist|was not found/);
+
+      // ...and the predecessor was NOT mutated (still doing, no successor).
+      const fm = await readFrontmatter(taskPath);
+      expect(fm['status']).toBe('doing');
+      expect(fm['next'] ?? '').toBe('');
+      expect(await listTasks(badVault)).toEqual(['Bulk atomic.md']);
+    } finally {
+      await rm(badVault, { recursive: true, force: true });
+    }
   });
 });
 
@@ -361,6 +482,47 @@ deadline: 2026-07-01
     const results2 = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
     const taskResult2 = results2.find((r) => r.relativePath.endsWith('Hand done.md'));
     expect(taskResult2?.issues.some((i) => i.code === 'missing-successor') ?? false).toBe(false);
+  });
+
+  it('backstop spawn writes a CLEAN, symmetric next/prev; audit clean; --fix converges (#107 blocker 1)', async () => {
+    const taskPath = join(vaultDir, 'tasks', 'Backstop clean.md');
+    await writeFile(
+      taskPath,
+      `---
+type: task
+name: Backstop clean
+status: done
+deadline: 2026-08-01
+---
+`
+    );
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    await runAutoFix(results, schema, vaultDir, { dryRun: false });
+
+    const tasks = await listTasks(vaultDir);
+    expect(tasks).toHaveLength(2);
+    const successorName = tasks.find((f) => f !== 'Backstop clean.md')!;
+    const succPath = join(vaultDir, 'tasks', successorName);
+
+    const rawNext = await rawFieldLine(taskPath, 'next');
+    expect(rawNext.startsWith("'")).toBe(false);
+    expect(rawNext).not.toContain('\\"');
+    expect(rawNext).toMatch(/^"\[\[[^"\\]+\]\]"$/);
+    const nextValue = String((await readFrontmatter(taskPath))['next']);
+    expect(nextValue).not.toContain('"');
+
+    const rawPrev = await rawFieldLine(succPath, 'prev');
+    expect(rawPrev).toMatch(/^"\[\[[^"\\]+\]\]"$/);
+
+    // Audit clean post-spawn (no format-violation), and --fix converges.
+    const after = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    expect(after.flatMap((r) => r.issues).some((i) => i.code === 'format-violation')).toBe(false);
+
+    const r2 = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    const summary2 = await runAutoFix(r2, schema, vaultDir, { dryRun: false });
+    expect(summary2.fixed).toBe(0);
   });
 
   it('fast path and backstop produce the SAME successor deadline', async () => {
@@ -460,6 +622,82 @@ deadline: 2026-01-01
   });
 });
 
+describe('recurrence: atomic spawn failure (#107 blocker 2)', () => {
+  let vaultDir: string;
+  afterEach(async () => {
+    if (vaultDir) await rm(vaultDir, { recursive: true, force: true });
+  });
+
+  it('missing template: predecessor stays UNMUTATED and the real error surfaces', async () => {
+    const schemaWithNamedTemplate: Schema = JSON.parse(JSON.stringify(RECURRING_SCHEMA));
+    schemaWithNamedTemplate.traits!.recurring!.recurrence!.template = 'does-not-exist';
+    vaultDir = await setupVault(schemaWithNamedTemplate);
+    await mkdir(join(vaultDir, 'tasks'), { recursive: true });
+
+    const taskPath = join(vaultDir, 'tasks', 'Atomic.md');
+    await writeFile(
+      taskPath,
+      `---
+type: task
+name: Atomic
+status: doing
+deadline: 2026-03-01
+---
+`
+    );
+    const schema = await loadSchema(vaultDir);
+
+    // Completing must throw the real error...
+    await expect(
+      editNoteFromJson(schema, vaultDir, taskPath, JSON.stringify({ status: 'done' }), {
+        jsonMode: false,
+      })
+    ).rejects.toThrow(/does-not-exist|was not found/);
+
+    // ...and must NOT have mutated the predecessor (still doing, no `next`).
+    const fm = await readFrontmatter(taskPath);
+    expect(fm['status']).toBe('doing');
+    expect(fm['next'] ?? '').toBe('');
+
+    // No successor was created.
+    expect(await listTasks(vaultDir)).toEqual(['Atomic.md']);
+  });
+
+  it('partial-date offset base: clear deterministic error, predecessor unmutated', async () => {
+    // deadline granularity = month, so "2026-03" is a valid value that cannot be
+    // offset by "deadline + 7d".
+    const partialSchema: Schema = JSON.parse(JSON.stringify(RECURRING_SCHEMA));
+    partialSchema.types!.task!.fields!.deadline = { prompt: 'date', granularity: 'month' };
+    vaultDir = await setupVault(partialSchema);
+    await writeDefaultTaskTemplate(vaultDir);
+    await mkdir(join(vaultDir, 'tasks'), { recursive: true });
+
+    const taskPath = join(vaultDir, 'tasks', 'PartialBase.md');
+    await writeFile(
+      taskPath,
+      `---
+type: task
+name: PartialBase
+status: doing
+deadline: 2026-03
+---
+`
+    );
+    const schema = await loadSchema(vaultDir);
+
+    await expect(
+      editNoteFromJson(schema, vaultDir, taskPath, JSON.stringify({ status: 'done' }), {
+        jsonMode: false,
+      })
+    ).rejects.toThrow(/Cannot compute recurrence offset.*partial date|partial date.*cannot be offset/i);
+
+    const fm = await readFrontmatter(taskPath);
+    expect(fm['status']).toBe('doing');
+    expect(fm['next'] ?? '').toBe('');
+    expect(await listTasks(vaultDir)).toEqual(['PartialBase.md']);
+  });
+});
+
 describe('recurrence: back-compat (non-recurring type)', () => {
   let vaultDir: string;
   beforeEach(async () => {
@@ -502,8 +740,10 @@ describe('recurrence: multi-spawn template (#630)', () => {
     if (vaultDir) await rm(vaultDir, { recursive: true, force: true });
   });
 
-  it('spawns N correctly-placed staggered notes from a parent template', async () => {
+  it('files staggered instances in the CHILD type output_dir and audits clean', async () => {
     // A `project` parent type whose default template scaffolds 4 staggered tasks.
+    // The child `task` type has a DIFFERENT output_dir than the parent — so the
+    // instances must land in `tasks/`, not `projects/` (the deferred #630 half).
     const schema: Schema = {
       version: 2,
       types: {
@@ -517,7 +757,6 @@ describe('recurrence: multi-spawn template (#630)', () => {
           output_dir: 'tasks',
           fields: {
             name: { prompt: 'text', required: true },
-            title: { prompt: 'text' },
             deadline: { prompt: 'date' },
             status: { prompt: 'select', options: ['todo', 'done'], default: 'todo' },
           },
@@ -526,7 +765,8 @@ describe('recurrence: multi-spawn template (#630)', () => {
     };
     vaultDir = await setupVault(schema);
 
-    // Parent template with staggered instances (date expressions via #603).
+    // Parent template with staggered instances (date expressions via #603). The
+    // `defaults` use the child type's REAL field (`name`), not `title`.
     const projTplDir = join(vaultDir, '.bwrb', 'templates', 'project');
     await mkdir(projTplDir, { recursive: true });
     await writeFile(
@@ -535,10 +775,10 @@ describe('recurrence: multi-spawn template (#630)', () => {
 type: template
 template-for: project
 instances:
-  - { type: task, defaults: { title: "Outline", deadline: "@today+1d" } }
-  - { type: task, defaults: { title: "Draft",   deadline: "@today+3d" } }
-  - { type: task, defaults: { title: "Edit",    deadline: "@today+5d" } }
-  - { type: task, defaults: { title: "Publish", deadline: "@today+7d" } }
+  - { type: task, defaults: { name: "Outline", deadline: "@today+1d" } }
+  - { type: task, defaults: { name: "Draft",   deadline: "@today+3d" } }
+  - { type: task, defaults: { name: "Edit",    deadline: "@today+5d" } }
+  - { type: task, defaults: { name: "Publish", deadline: "@today+7d" } }
 ---
 
 # {name}
@@ -551,7 +791,7 @@ instances:
     );
     expect(tpl).not.toBeNull();
 
-    const parent = await createNoteFromJson(
+    await createNoteFromJson(
       loaded,
       vaultDir,
       'project',
@@ -559,23 +799,31 @@ instances:
       tpl
     );
 
-    // Instances are colocated alongside the parent note (parent's directory).
-    const parentDir = join(vaultDir, 'projects');
-    const parentName = parent.path.split('/').pop()!;
-    const instanceFiles = (await readdir(parentDir))
-      .filter((f) => f.endsWith('.md') && f !== parentName)
+    // The parent's directory holds ONLY the project note — no task instances.
+    const projectFiles = (await readdir(join(vaultDir, 'projects')))
+      .filter((f) => f.endsWith('.md'))
       .sort();
+    expect(projectFiles).toEqual(['My Article.md']);
 
-    // Exactly 4 task instances, each a distinct file with a meaningful,
-    // disambiguated name (no `task.md` collapse — the #630 bug).
+    // The 4 task instances are filed in the CHILD type's output_dir (`tasks/`),
+    // each a distinct, disambiguated file (no `task.md` collapse — #630).
+    const instanceFiles = await listTasks(vaultDir);
     expect(instanceFiles).toEqual(['Draft.md', 'Edit.md', 'Outline.md', 'Publish.md'].sort());
 
     // Deadlines are staggered (4 distinct values).
     const deadlines = new Set<string>();
     for (const f of instanceFiles) {
-      const fm = await readFrontmatter(join(parentDir, f));
+      const fm = await readFrontmatter(join(vaultDir, 'tasks', f));
       deadlines.add(String(fm['deadline']));
     }
     expect(deadlines.size).toBe(4);
+
+    // `bwrb audit` is clean: no wrong-directory (correct output_dir), no
+    // unknown-field/missing-required (correct child field `name`).
+    const results = await runAudit(loaded, vaultDir, { strict: false, vaultDir, schema: loaded });
+    const issues = results.flatMap((r) => r.issues);
+    expect(issues.some((i) => i.code === 'wrong-directory')).toBe(false);
+    expect(issues.some((i) => i.code === 'unknown-field')).toBe(false);
+    expect(issues.some((i) => i.code === 'missing-required')).toBe(false);
   });
 });

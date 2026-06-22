@@ -150,10 +150,10 @@ deadlines computed from today via [date expressions](/templates/creating-templat
 type: template
 template-for: project
 instances:
-  - { type: task, defaults: { title: "Outline", deadline: "@today+1d" } }
-  - { type: task, defaults: { title: "Draft",   deadline: "@today+3d" } }
-  - { type: task, defaults: { title: "Edit",    deadline: "@today+5d" } }
-  - { type: task, defaults: { title: "Publish", deadline: "@today+7d" } }
+  - { type: task, defaults: { name: "Outline", deadline: "@today+1d" } }
+  - { type: task, defaults: { name: "Draft",   deadline: "@today+3d" } }
+  - { type: task, defaults: { name: "Edit",    deadline: "@today+5d" } }
+  - { type: task, defaults: { name: "Publish", deadline: "@today+7d" } }
 ---
 ```
 
@@ -162,8 +162,18 @@ bwrb new project --template write-an-article
 ```
 
 This creates the project **and four staggered task notes**, each with a distinct,
-meaningful filename derived from its `title` (no more collapsing into a single
+meaningful filename derived from its `name` (no more collapsing into a single
 `task.md`). Multiple instances of the same type are automatically disambiguated.
+
+> [!IMPORTANT]
+> `defaults` must use the child type's **real fields**. Here the `task` type's
+> required field is `name`, so each instance sets `name` (not `title`). Using a
+> field the child type doesn't declare would make every scaffolded note fail
+> `bwrb audit` with `unknown-field` and `missing-required`.
+
+Each scaffolded instance is filed in **its own child type's `output_dir`** (here
+`tasks/`), not the parent project's directory — so the multi-spawn workflow stays
+`bwrb audit`-clean (no `wrong-directory`).
 
 ## Synthesis
 

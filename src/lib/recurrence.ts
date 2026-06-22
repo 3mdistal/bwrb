@@ -12,7 +12,8 @@
  *
  * - Fast path: completing via `bwrb edit` / `bwrb bulk --set status=done`
  *   spawns the successor immediately as a deterministic side-effect of the
- *   write (see `maybeSpawnSuccessor`, called from the edit layer).
+ *   write (see `prepareRecurrenceFastPath` / `commitRecurrenceFastPath`, called
+ *   from the edit and bulk layers).
  * - Backstop: completing OUTSIDE bwrb (hand-edited frontmatter) is caught on
  *   the next `bwrb audit` — "trigger satisfied AND chain field empty AND type
  *   recurs" → `missing-successor`, auto-fixable via the same spawn.
@@ -24,15 +25,32 @@
 
 import { basename, join } from 'path';
 import { existsSync } from 'fs';
-import type { LoadedSchema } from '../types/schema.js';
+import type { LoadedSchema, Template } from '../types/schema.js';
 import { getRecurrenceForType, getFieldsForType, getType, getOutputDir } from './schema.js';
-import { parseDate } from './local-date.js';
+import { parseDate, parsePartialIsoDate } from './local-date.js';
 import { formatDateWithPattern } from './local-date.js';
 import { formatValue } from './vault.js';
 import { getFilenamePattern } from './template.js';
 import { createNoteFromJson } from '../commands/new/json-mode.js';
 import { findDefaultTemplateWithInheritance } from './template.js';
 import type { NoteCreationResult } from '../commands/new/types.js';
+
+/**
+ * Build a CLEAN chain link value for a note name — i.e. an UN-pre-quoted link
+ * (`[[name]]` or `[name](name.md)`), NOT the raw-YAML pre-quoted string that
+ * `formatValue` returns (`"[[name]]"`).
+ *
+ * This is the value to place into a frontmatter OBJECT before YAML serialization:
+ * the serializer quotes it exactly once, producing `"[[name]]"` on disk. Using
+ * `formatValue` here instead would double-wrap (`'"[[name]]"'`) — the corrupted
+ * `next` bug (#107). The successor's `prev` link is symmetric: it flows through
+ * `createNoteFromJson`, whose `stripRedundantWikilinkQuotes` strips the
+ * pre-quoting before serialization, so both links end up byte-identical.
+ */
+function cleanChainLink(name: string, linkFormat: 'wikilink' | 'markdown'): string {
+  if (!name) return '';
+  return linkFormat === 'markdown' ? `[${name}](${name}.md)` : `[[${name}]]`;
+}
 
 /** The forward chain field. Empty `next` is the idempotency guard. */
 export const CHAIN_NEXT_FIELD = 'next';
@@ -260,11 +278,20 @@ export function computeOffsetFields(
     }
     const baseRaw = predecessor[offset.baseField];
     if (baseRaw === undefined || baseRaw === null || String(baseRaw).trim() === '') {
-      throw new Error(`Recurrence set.${field}: base date field '${offset.baseField}' is empty on the predecessor.`);
+      throw new Error(`Cannot compute recurrence offset: '${offset.baseField}' has no date value on the predecessor.`);
     }
     const parsed = parseDate(String(baseRaw));
     if (!parsed.valid || !parsed.date) {
-      throw new Error(`Recurrence set.${field}: base date field '${offset.baseField}' value "${String(baseRaw)}" is not a valid date.`);
+      // A partial date (year or year-month granularity) is a valid value but
+      // cannot be offset by a day/week rule — surface a clear, deterministic
+      // error rather than the generic "not a valid date".
+      const partial = parsePartialIsoDate(String(baseRaw));
+      if (partial.valid && partial.precision !== 'day') {
+        throw new Error(
+          `Cannot compute recurrence offset: '${offset.baseField}' has a partial date value "${String(baseRaw)}" (${partial.precision} granularity) that cannot be offset by "${expr}".`
+        );
+      }
+      throw new Error(`Cannot compute recurrence offset: '${offset.baseField}' value "${String(baseRaw)}" is not a valid date.`);
     }
     const next = addOffset(parsed.date, offset);
     out[field] = formatDateWithPattern(next, schema.config.dateFormat);
@@ -402,36 +429,44 @@ function resolveSuccessorName(
 }
 
 /**
- * Spawn a successor for a recurring note, then back-link the predecessor's
- * `next` field to it. Shared by the fast path and the backstop so both produce
- * identical successors.
- *
- * IDEMPOTENCY: callers MUST confirm the chain field is empty before calling
- * (the fast path checks the transition; the backstop checks `needsSuccessor`).
- * This function does not re-check, so it is the single spawn primitive.
- *
- * Returns the created successor path, or null when the rule produces no
- * successor (e.g. type does not recur).
- *
- * @param writePredecessorNext - callback to persist the predecessor's `next`
- *   link. The two paths persist differently (edit layer rewrites the note it
- *   already holds; the backstop writes the file directly), so the caller owns
- *   the write while this function owns the value.
+ * A validated, ready-to-commit successor spawn. Produced by `prepareSuccessor`
+ * WITHOUT mutating anything; committed by `commitSuccessor`. Splitting the two
+ * phases lets a caller validate the spawn (template exists, offsets compute to
+ * real dates) BEFORE writing the predecessor's status change, so a spawn that
+ * cannot succeed never leaves the predecessor `done` with no successor (#107).
  */
-export async function spawnSuccessor(
+export interface PreparedSuccessor {
+  spawnType: string;
+  template: Template | null;
+  input: Record<string, unknown>;
+}
+
+/**
+ * Validate and compute a successor spawn WITHOUT writing anything.
+ *
+ * Resolves the successor template (throws if a named template is missing or
+ * targets an unknown type) and computes the offset date fields (throws if the
+ * offset base is missing, partial, or unparseable). Returns null only when the
+ * type does not recur.
+ *
+ * This is the atomicity guard: callers run this BEFORE mutating the predecessor,
+ * so any failure aborts the whole operation with the real error and the
+ * predecessor is left untouched.
+ */
+export async function prepareSuccessor(
   schema: LoadedSchema,
   vaultDir: string,
   typeName: string,
   predecessor: Record<string, unknown>,
-  predecessorName: string,
-  writePredecessorNext: (nextLink: string) => Promise<void>
-): Promise<string | null> {
+  predecessorName: string
+): Promise<PreparedSuccessor | null> {
   const resolved = getRecurrenceForType(schema, typeName);
   if (!resolved) return null;
 
   const { template, spawnType } = await resolveSuccessorTemplate(schema, vaultDir, typeName);
 
-  // Offset fields are computed against the recurring type's date fields.
+  // Offset fields are computed against the recurring type's date fields. This
+  // throws a clear, deterministic error for a missing/partial/unparseable base.
   const offsetFields = computeOffsetFields(schema, typeName, predecessor);
 
   // Resolve a successor name that won't collide with the predecessor's filename.
@@ -453,14 +488,33 @@ export async function spawnSuccessor(
     offsetFields
   );
 
+  return { spawnType, template, input };
+}
+
+/**
+ * Commit a previously-prepared successor: create the successor note, then
+ * back-link the predecessor's `next` field to it.
+ *
+ * @param writePredecessorNext - callback to persist the predecessor's `next`
+ *   link. The two paths persist differently (edit layer rewrites the note it
+ *   already holds; the backstop writes the file directly), so the caller owns
+ *   the write while this function owns the value.
+ */
+export async function commitSuccessor(
+  schema: LoadedSchema,
+  vaultDir: string,
+  predecessorName: string,
+  prepared: PreparedSuccessor,
+  writePredecessorNext: (nextLink: string) => Promise<void>
+): Promise<string> {
   let result: NoteCreationResult;
   try {
     result = await createNoteFromJson(
       schema,
       vaultDir,
-      spawnType,
-      JSON.stringify(input),
-      template,
+      prepared.spawnType,
+      JSON.stringify(prepared.input),
+      prepared.template,
       { noInstances: true }
     );
   } catch (err) {
@@ -468,10 +522,45 @@ export async function spawnSuccessor(
   }
 
   // Back-link the predecessor's `next` to the freshly created successor (using
-  // the actual created filename, in case a filename pattern reshaped it).
+  // the actual created filename, in case a filename pattern reshaped it). Write
+  // a CLEAN link (`[[name]]`) — NOT a pre-quoted `formatValue` string — so the
+  // YAML serializer quotes it exactly once, byte-symmetric with the successor's
+  // `prev` (which flows through createNoteFromJson's quote-stripping).
   const createdName = basenameNoExt(result.path);
-  const nextLink = formatValue(createdName, schema.config.linkFormat);
+  const nextLink = cleanChainLink(createdName, schema.config.linkFormat);
   await writePredecessorNext(nextLink);
 
   return result.path;
+}
+
+/**
+ * Spawn a successor for a recurring note, then back-link the predecessor's
+ * `next` field to it. Shared by the fast path and the backstop so both produce
+ * identical successors.
+ *
+ * IDEMPOTENCY: callers MUST confirm the chain field is empty before calling
+ * (the fast path checks the transition; the backstop checks `needsSuccessor`).
+ * This function does not re-check, so it is the single spawn primitive.
+ *
+ * Returns the created successor path, or null when the rule produces no
+ * successor (e.g. type does not recur).
+ *
+ * NOTE: this is a convenience wrapper that prepares and commits in one step. For
+ * ATOMIC completion (validate before mutating the predecessor), callers should
+ * use `prepareSuccessor` first and only `commitSuccessor` after writing.
+ *
+ * @param writePredecessorNext - callback to persist the predecessor's `next`
+ *   link.
+ */
+export async function spawnSuccessor(
+  schema: LoadedSchema,
+  vaultDir: string,
+  typeName: string,
+  predecessor: Record<string, unknown>,
+  predecessorName: string,
+  writePredecessorNext: (nextLink: string) => Promise<void>
+): Promise<string | null> {
+  const prepared = await prepareSuccessor(schema, vaultDir, typeName, predecessor, predecessorName);
+  if (!prepared) return null;
+  return commitSuccessor(schema, vaultDir, predecessorName, prepared, writePredecessorNext);
 }

@@ -4,7 +4,7 @@
 
 import { parseNote, writeNote } from '../frontmatter.js';
 import { resolveTypeFromFrontmatter } from '../schema.js';
-import { applyRecurrenceFastPath } from '../recurrence-fast-path.js';
+import { prepareRecurrenceFastPath, commitRecurrenceFastPath } from '../recurrence-fast-path.js';
 import { discoverManagedFiles } from '../discovery.js';
 import { searchContent } from '../content-search.js';
 import { filterByPath } from '../targeting.js';
@@ -182,17 +182,17 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
       fileChange.changes = changes;
 
       if (execute && changes.length > 0) {
-        await writeNote(file.path, modified, file.body);
-        fileChange.applied = true;
-
-        // Recurrence fast path: completing a recurring note via bulk
-        // (e.g. --set status=done) spawns its successor deterministically,
-        // sharing the engine with the audit backstop. No-op for non-recurring
-        // types or non-transitions; a spawn failure is recorded per file.
+        // Recurrence fast path (atomicity, #107): VALIDATE + COMPUTE the
+        // successor BEFORE writing the predecessor's change, so a spawn that
+        // cannot succeed (missing template, partial/unparseable offset base)
+        // leaves the predecessor UNMUTATED. A spawn failure is recorded per file
+        // and the predecessor's bulk change is skipped (not half-applied).
         const resolvedType = resolveTypeFromFrontmatter(schema, modified);
+        let recError: string | null = null;
+        let fastPathPlan = null;
         if (resolvedType) {
           try {
-            await applyRecurrenceFastPath(
+            fastPathPlan = await prepareRecurrenceFastPath(
               schema,
               vaultDir,
               resolvedType,
@@ -202,8 +202,26 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
               file.body
             );
           } catch (recErr) {
-            const recMessage = recErr instanceof Error ? recErr.message : String(recErr);
-            result.errors.push(`Recurrence spawn failed for ${file.relativePath}: ${recMessage}`);
+            recError = recErr instanceof Error ? recErr.message : String(recErr);
+          }
+        }
+
+        if (recError) {
+          // Do NOT mutate the predecessor when its successor can't be produced.
+          fileChange.error = recError;
+          result.errors.push(`Recurrence spawn failed for ${file.relativePath}: ${recError}`);
+        } else {
+          await writeNote(file.path, modified, file.body);
+          fileChange.applied = true;
+
+          // Commit the prepared spawn (create successor + back-link `next`).
+          if (fastPathPlan) {
+            try {
+              await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+            } catch (recErr) {
+              const recMessage = recErr instanceof Error ? recErr.message : String(recErr);
+              result.errors.push(`Recurrence spawn failed for ${file.relativePath}: ${recMessage}`);
+            }
           }
         }
       }

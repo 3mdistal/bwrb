@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
 import { levenshteinDistance } from './levenshtein.js';
 import { TemplateFrontmatterSchema, type Template, type LoadedSchema, type Field, type Constraint, type InstanceScaffold, type ResolvedType } from '../types/schema.js';
-import { getType, getFieldsForType, getFieldOptions } from './schema.js';
+import { getType, getFieldsForType, getFieldOptions, getOutputDir } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
@@ -1433,7 +1433,9 @@ export interface ScaffoldResult {
  * @param schema - The vault schema
  * @param vaultDir - Path to vault directory
  * @param _parentTypeName - Type name of parent (e.g., "draft") - unused in new model
- * @param instanceDir - Path to instance folder
+ * @param instanceDir - Fallback instance folder (used only if a child type has
+ *   no resolvable output_dir; normally each instance is filed in its own child
+ *   type's output_dir per #107/#630)
  * @param instances - Instance definitions from template
  * @param parentFrontmatter - Frontmatter from parent note (for variable substitution)
  * @returns Result with created files, skipped files, and any errors
@@ -1512,13 +1514,18 @@ export async function createScaffoldedInstances(
       // Apply schema defaults for any missing required fields
       frontmatter = applyDefaults(schema, instance.type, frontmatter);
 
-      // --- Placement (#630) -------------------------------------------------
-      // Disambiguate filenames so multi-spawn of the same type no longer
-      // collapses into a single `<type>.md` (the #630 bug). Instances are
-      // colocated in the parent's instance folder (the scaffold contract), but
-      // each now gets a meaningful, unique filename derived from its filename
-      // pattern / `title` / `name`, falling back to the type name.
-      const targetDir = instanceDir;
+      // --- Placement (#630 / #107) ------------------------------------------
+      // Each scaffolded instance is placed in ITS OWN child type's output_dir,
+      // NOT the parent template's directory (the deferred half of #630). Filing a
+      // child-type task under the parent's directory makes `bwrb audit` flag it
+      // `wrong-directory`; resolving the child type's own output dir keeps the
+      // multi-spawn workflow audit-clean.
+      //
+      // Filenames are still disambiguated (derived from filename pattern /
+      // `title` / `name`, falling back to the type name) so multiple instances of
+      // the same type don't collapse into a single `<type>.md`.
+      const childOutputDir = getOutputDir(schema, instance.type);
+      const targetDir = childOutputDir ? join(vaultDir, childOutputDir) : instanceDir;
 
       const baseName = resolveInstanceFilenameBase(
         instance,

@@ -140,9 +140,21 @@ Examples:
 
       // Check if query is an absolute path to an existing file
       if (query && isAbsolute(query)) {
+        // Only the existence check may fall through to name resolution. Once we
+        // know the file exists, edit errors (e.g. a recurrence spawn failure:
+        // "Recurrence template 'X' was not found", "Cannot compute recurrence
+        // offset: ...") MUST propagate to the outer catch so the user sees the
+        // real message — never swallowed into a misleading "No matching notes".
+        let fileExists = false;
         try {
           await fs.access(query);
-          // It's a valid absolute path - use it directly
+          fileExists = true;
+        } catch {
+          // File doesn't exist or isn't accessible - fall through to normal resolution.
+        }
+
+        if (fileExists) {
+          // It's a valid absolute path - use it directly.
           if (patchMode) {
             const editResult = await editNoteFromJson(schema, vaultDir, query, options.json!, { jsonMode });
             printEditSuccess(relative(vaultDir, query), editResult.updatedFields, jsonMode);
@@ -159,8 +171,6 @@ Examples:
             }
           }
           process.exit(0);
-        } catch {
-          // File doesn't exist or isn't accessible - fall through to normal resolution
         }
       }
 
