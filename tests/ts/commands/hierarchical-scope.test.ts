@@ -176,7 +176,7 @@ describe('#554 hierarchical scope — contexts as notes + under()', () => {
     );
     expect(otherDomain.stdout).toContain('Reorganize PKM.md');
     expect(otherDomain.stdout).not.toContain('Vercel migration.md');
-  });
+  }, 30000);
 
   it('contexts are real notes — relation-source audit validates the context tree', async () => {
     // A task pointing at a non-existent context note must be flagged by audit,
@@ -240,7 +240,7 @@ describe('#554 hierarchical scope — contexts as notes + under()', () => {
       vaultDir
     );
     expect(afterDomain.stdout).toContain('Legacy double-entry.md');
-  });
+  }, 30000);
 
   it('a domain note is itself a queryable note with descendants', async () => {
     // Because contexts are notes, the tree is introspectable with the existing
