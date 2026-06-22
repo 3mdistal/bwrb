@@ -170,6 +170,63 @@ export function wikilinkMatchesFile(
 }
 
 /**
+ * Scan a single file's content for wikilinks that reference a specific target.
+ *
+ * Extracted from {@link findWikilinksToFile} so callers that already hold the
+ * file content (e.g. a cached backlink index) can compute references without
+ * re-reading from disk, while producing byte-for-byte identical results.
+ */
+export function scanWikilinkReferencesInContent(
+  content: string,
+  sourceFile: string,
+  sourceRelativePath: string,
+  targetFilePath: string,
+  vaultDir: string
+): WikilinkReference[] {
+  // Skip the target file itself
+  if (sourceFile === targetFilePath) {
+    return [];
+  }
+
+  const references: WikilinkReference[] = [];
+
+  // Determine where frontmatter ends
+  let frontmatterEnd = 0;
+  if (content.startsWith('---')) {
+    const endMatch = content.indexOf('\n---', 3);
+    if (endMatch !== -1) {
+      frontmatterEnd = endMatch + 4; // Include the closing ---\n
+    }
+  }
+
+  // Find all wikilinks
+  const regex = new RegExp(WIKILINK_REGEX.source, 'g');
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(content)) !== null) {
+    const linkTarget = match[1]!;
+
+    if (wikilinkMatchesFile(linkTarget, targetFilePath, vaultDir)) {
+      // Calculate line number
+      const lineNumber = content.slice(0, match.index).split('\n').length;
+      const inFrontmatter = match.index < frontmatterEnd;
+
+      references.push({
+        sourceFile,
+        sourceRelativePath,
+        match: match[0],
+        linkTarget,
+        position: match.index,
+        lineNumber,
+        inFrontmatter,
+      });
+    }
+  }
+
+  return references;
+}
+
+/**
  * Find all wikilinks in the vault that reference a specific file.
  */
 export async function findWikilinksToFile(
@@ -178,50 +235,27 @@ export async function findWikilinksToFile(
   allFiles: string[]
 ): Promise<WikilinkReference[]> {
   const references: WikilinkReference[] = [];
-  
+
   for (const sourceFile of allFiles) {
     // Skip the target file itself
     if (sourceFile === targetFilePath) {
       continue;
     }
-    
+
     const content = await readFile(sourceFile, 'utf-8');
     const sourceRelativePath = relative(vaultDir, sourceFile);
-    
-    // Determine where frontmatter ends
-    let frontmatterEnd = 0;
-    if (content.startsWith('---')) {
-      const endMatch = content.indexOf('\n---', 3);
-      if (endMatch !== -1) {
-        frontmatterEnd = endMatch + 4; // Include the closing ---\n
-      }
-    }
-    
-    // Find all wikilinks
-    const regex = new RegExp(WIKILINK_REGEX.source, 'g');
-    let match: RegExpExecArray | null;
-    
-    while ((match = regex.exec(content)) !== null) {
-      const linkTarget = match[1]!;
-      
-      if (wikilinkMatchesFile(linkTarget, targetFilePath, vaultDir)) {
-        // Calculate line number
-        const lineNumber = content.slice(0, match.index).split('\n').length;
-        const inFrontmatter = match.index < frontmatterEnd;
-        
-        references.push({
-          sourceFile,
-          sourceRelativePath,
-          match: match[0],
-          linkTarget,
-          position: match.index,
-          lineNumber,
-          inFrontmatter,
-        });
-      }
-    }
+
+    references.push(
+      ...scanWikilinkReferencesInContent(
+        content,
+        sourceFile,
+        sourceRelativePath,
+        targetFilePath,
+        vaultDir
+      )
+    );
   }
-  
+
   return references;
 }
 

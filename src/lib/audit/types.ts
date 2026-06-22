@@ -6,6 +6,7 @@
 
 import type { LoadedSchema } from '../../types/schema.js';
 import type { NoteTargetIndex } from '../discovery.js';
+import type { BacklinkScanner } from './backlink-index.js';
 // Issue Types
 // ============================================================================
 
@@ -235,6 +236,13 @@ export interface FixContext {
   dryRun: boolean;
   /** Precomputed note target index for relation fixes. */
   noteTargetIndex?: NoteTargetIndex;
+  /**
+   * Per-run backlink scanner. Caches vault file contents so repeated
+   * delete-safety / move backlink lookups in one run avoid re-reading the whole
+   * vault per operation. Kept correct across deletes/moves via its mutation
+   * hooks (`noteDeleted` / `invalidate`).
+   */
+  backlinkScanner?: BacklinkScanner;
 }
 
 // ============================================================================
