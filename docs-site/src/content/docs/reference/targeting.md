@@ -126,6 +126,10 @@ Notes:
 - **Robustness.** A dangling (unresolvable) relation target simply doesn't
   match; a malformed `parent` cycle is walked safely and never loops forever.
 
+For the full pattern — modelling life domains and projects as a `parent` tree of
+context notes and collapsing a redundant `scope` field into it — see
+[Hierarchical Scope (Contexts as Notes)](/concepts/hierarchical-scope/).
+
 ### Body (`-b, --body <query>`)
 
 Filter by body content (full-text search via ripgrep).
