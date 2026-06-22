@@ -396,6 +396,10 @@ tags:
   - good
   - 42
 ---
+## Steps
+- [ ] Step 1
+
+## Notes
 `,
       };
 
@@ -449,6 +453,10 @@ type: task
 status: backlog
 parent: "[[Self Task]]"
 ---
+## Steps
+- [ ] Step 1
+
+## Notes
 `,
       };
 
@@ -459,6 +467,10 @@ type: task
 status: backlog
 parent: "[[Self Task]]"
 ---
+## Steps
+- [ ] Step 1
+
+## Notes
 `,
       };
 

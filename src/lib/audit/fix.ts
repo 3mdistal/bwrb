@@ -31,10 +31,10 @@ import {
   getUnambiguousDateNormalization,
   isCanonicalIsoDate,
 } from './fix-policy.js';
-import { parseNote, writeNote } from '../frontmatter.js';
+import { parseNote, writeNote, generateBodySections } from '../frontmatter.js';
 import { levenshteinDistance } from '../levenshtein.js';
 import { promptSelection, promptConfirm, promptInput } from '../prompt.js';
-import type { LoadedSchema, Field } from '../../types/schema.js';
+import type { LoadedSchema, Field, BodySection } from '../../types/schema.js';
 import {
   findAllMarkdownFiles,
   findWikilinksToFile,
@@ -174,6 +174,103 @@ async function applyUnlinkedMentionFix(
   const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
   const order = typeDef?.fieldOrder;
 
+  if (!isDryRunEnabled()) {
+    await writeNote(filePath, parsed.frontmatter, newBody, order);
+  }
+
+  return { file: filePath, issue, action: 'fixed' };
+}
+
+/**
+ * Find a declared body section by title anywhere in a (possibly nested) section
+ * tree. Returns the full `BodySection` so the fix can regenerate the canonical
+ * scaffold (heading + content_type placeholder), not just a bare heading line.
+ */
+function findBodySectionByTitle(
+  sections: BodySection[],
+  title: string
+): BodySection | undefined {
+  for (const section of sections) {
+    if (section.title === title) return section;
+    if (section.children && section.children.length > 0) {
+      const found = findBodySectionByTitle(section.children, title);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Whether a heading at the given level/title already exists in the body. Mirrors
+ * the detector's matcher so the fix is idempotent: if a prior fix (or the user)
+ * already added the heading, we skip rather than appending a duplicate.
+ */
+function bodyHasSectionHeading(body: string, level: number, title: string): boolean {
+  const masked = maskNonProse(body);
+  const prefix = '#'.repeat(level);
+  const pattern = new RegExp(
+    `^[ \\t]*${prefix} ${escapeRegExp(title)}[ \\t]*#*[ \\t]*$`,
+    'm'
+  );
+  return pattern.test(masked);
+}
+
+/**
+ * Apply a `missing-body-section` auto-fix (#510): append the declared heading
+ * section (with its canonical content-type placeholder) to the end of the body.
+ *
+ * Deterministic and additive — it only appends the missing heading using the
+ * SAME `generateBodySections` scaffold that `new`/`edit` emit, so it never
+ * deletes or rewrites existing prose. Re-reads + re-checks before writing so the
+ * fix is idempotent (a now-present heading is skipped, never duplicated).
+ */
+async function applyBodySectionFix(
+  schema: LoadedSchema,
+  filePath: string,
+  issue: AuditIssue
+): Promise<FixResult> {
+  const title = issue.meta?.['title'] as string | undefined;
+  const level = (issue.meta?.['level'] as number | undefined) ?? 2;
+  if (!title) {
+    return { file: filePath, issue, action: 'failed', message: 'Missing section title' };
+  }
+
+  const parsed = await parseNote(filePath);
+  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
+  if (!typeDef) {
+    return { file: filePath, issue, action: 'failed', message: 'Could not resolve note type' };
+  }
+
+  const section = findBodySectionByTitle(typeDef.bodySections, title);
+  if (!section) {
+    return {
+      file: filePath,
+      issue,
+      action: 'skipped',
+      message: `Section "${title}" no longer declared in schema`,
+    };
+  }
+
+  // Idempotency: skip if the heading is already present at its declared level.
+  if (bodyHasSectionHeading(parsed.body, section.level ?? level, title)) {
+    return {
+      file: filePath,
+      issue,
+      action: 'skipped',
+      message: `Section "${title}" already present`,
+    };
+  }
+
+  // Append just this section (without its children — children get their own
+  // issues/fixes), using the canonical scaffold.
+  const sectionScaffold = generateBodySections([{ ...section, children: undefined }]);
+  const existing = parsed.body.replace(/\s*$/, '');
+  const newBody = existing.length > 0
+    ? `${existing}\n\n${sectionScaffold}`
+    : sectionScaffold;
+
+  const order = typeDef.fieldOrder;
   if (!isDryRunEnabled()) {
     await writeNote(filePath, parsed.frontmatter, newBody, order);
   }
@@ -429,6 +526,10 @@ async function applyFix(
 
     if (issue.code === 'unlinked-mention') {
       return await applyUnlinkedMentionFix(schema, filePath, issue);
+    }
+
+    if (issue.code === 'missing-body-section') {
+      return await applyBodySectionFix(schema, filePath, issue);
     }
 
     if (issue.code === 'frontmatter-key-casing') {
@@ -1499,6 +1600,24 @@ export async function runAutoFix(
           console.log(chalk.red(`    ✗ Failed to rename ${issue.field}: ${fixResult.message}`));
           failed++;
         }
+      } else if (issue.code === 'missing-body-section') {
+        // Append the canonical heading scaffold for a declared body section.
+        const fixResult = await applyFix(schema, result.path, issue);
+        if (fixResult.action === 'fixed') {
+          const title = (issue.meta?.['title'] as string | undefined) ?? '';
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Added body section: ${title}`));
+          fixed++;
+        } else if (fixResult.action === 'skipped') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+          skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to add body section: ${fixResult.message}`));
+          failed++;
+        }
       } else if (issue.code === 'missing-successor') {
         // Spawn the missing recurrence successor (same engine as the fast path).
         const fixResult = await applyMissingSuccessorFix(schema, vaultDir, result.path, issue);
@@ -1703,6 +1822,8 @@ async function handleInteractiveFix(
       return handleKeyCasingFix(schema, result, issue);
     case 'unlinked-mention':
       return handleUnlinkedMentionFix(schema, result, issue);
+    case 'missing-body-section':
+      return handleBodySectionFix(schema, result, issue);
     case 'missing-successor':
       return handleMissingSuccessorFix(context, result, issue);
     default:
@@ -3368,6 +3489,25 @@ async function handleUnlinkedMentionFix(
     console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
     return 'failed';
   }
+}
+
+/**
+ * Handle a missing body section interactively (#510): confirm, then append the
+ * canonical heading scaffold.
+ */
+async function handleBodySectionFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  const title = (issue.meta?.['title'] as string | undefined) ?? '';
+  return confirmAndApplyFix(
+    schema,
+    result,
+    issue,
+    `    → Add body section "${title}"?`,
+    `Added body section: ${title}`
+  );
 }
 
 /**

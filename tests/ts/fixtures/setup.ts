@@ -117,6 +117,7 @@ deadline: "2024-01-15"
 type: milestone
 status: in-flight
 ---
+## Tasks
 `
   );
 
@@ -126,6 +127,7 @@ status: in-flight
 type: milestone
 status: settled
 ---
+## Tasks
 `
   );
 

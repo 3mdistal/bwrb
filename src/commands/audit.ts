@@ -123,6 +123,8 @@ Issue Types:
                         (exact/alias auto-fixable; fuzzy/ambiguous flag-only)
   frequent-unlinked-term Proper-noun-ish term mentioned often across the vault
                         with no note yet (advisory heuristic; never auto-fixed)
+  missing-body-section  Heading section declared in the type's body_sections is
+                        missing from the note body (auto-fixable: appends it)
 
 Type Resolution:
   Audit resolves each file's type from its frontmatter 'type' field.
