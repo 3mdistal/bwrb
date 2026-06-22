@@ -343,6 +343,53 @@ export function applyDefaults(
 /**
  * Validate field type against expected types.
  */
+/**
+ * Validate a single date value against a field's granularity. Used for both
+ * scalar date fields and per-element validation of list/multiple date fields.
+ * When `listIndex` is supplied, the error message identifies the offending
+ * element.
+ */
+function validateDateValue(
+  fieldName: string,
+  value: unknown,
+  granularity: DatePrecision,
+  listIndex?: number
+): ValidationError | null {
+  // Accept Date objects surfaced by YAML parsing, normalize elsewhere.
+  if (value instanceof Date) {
+    return null;
+  }
+
+  // A bare year (e.g. 2026) is parsed as a number by YAML; coerce so it can
+  // be validated against the field's granularity.
+  const dateValue = typeof value === 'number' ? String(value) : value;
+
+  const location = listIndex === undefined ? fieldName : `${fieldName} at index ${listIndex}`;
+
+  if (typeof dateValue !== 'string') {
+    return {
+      type: 'invalid_type',
+      field: fieldName,
+      value,
+      message: `Invalid type for ${location}: expected date string, got ${typeof value}`,
+      expected: 'date string (YYYY-MM-DD)',
+    };
+  }
+
+  const normalized = normalizeToIsoDate(dateValue, granularity);
+  if (!normalized.valid) {
+    return {
+      type: 'invalid_date',
+      field: fieldName,
+      value,
+      message: `Invalid date for ${location}: ${normalized.error}`,
+      expected: 'YYYY-MM-DD (recommended), or unambiguous MM/DD/YYYY or DD/MM/YYYY',
+    };
+  }
+
+  return null;
+}
+
 function validateFieldType(
   fieldName: string,
   value: unknown,
@@ -372,37 +419,21 @@ function validateFieldType(
 
   // Date fields
   if (field.prompt === 'date') {
-    // Accept Date objects surfaced by YAML parsing, normalize elsewhere.
-    if (value instanceof Date) {
+    // A list/multiple date field holds an array; validate each element against
+    // the field's granularity, reporting the first invalid element.
+    if (field.multiple && Array.isArray(value)) {
+      for (let index = 0; index < value.length; index++) {
+        const element = value[index];
+        // Skip structural gaps (null/empty); those are reported separately.
+        if (element === null || element === undefined) continue;
+        if (typeof element === 'string' && element.trim().length === 0) continue;
+        const elementError = validateDateValue(fieldName, element, granularity, index);
+        if (elementError) return elementError;
+      }
       return null;
     }
 
-    // A bare year (e.g. 2026) is parsed as a number by YAML; coerce so it can
-    // be validated against the field's granularity.
-    const dateValue = typeof value === 'number' ? String(value) : value;
-
-    if (typeof dateValue !== 'string') {
-      return {
-        type: 'invalid_type',
-        field: fieldName,
-        value,
-        message: `Invalid type for ${fieldName}: expected date string, got ${typeof value}`,
-        expected: 'date string (YYYY-MM-DD)',
-      };
-    }
-
-    const normalized = normalizeToIsoDate(dateValue, granularity);
-    if (!normalized.valid) {
-      return {
-        type: 'invalid_date',
-        field: fieldName,
-        value,
-        message: `Invalid date for ${fieldName}: ${normalized.error}`,
-        expected: 'YYYY-MM-DD (recommended), or unambiguous MM/DD/YYYY or DD/MM/YYYY',
-      };
-    }
-
-    return null;
+    return validateDateValue(fieldName, value, granularity);
   }
 
   // Boolean fields

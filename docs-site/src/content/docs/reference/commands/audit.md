@@ -83,6 +83,7 @@ Delete semantics in repair mode:
 
 Note: built-in fields written by `bwrb new` (currently `id` and `name`) are always allowed and do not produce `unknown-field` issues.
 Invalid option values inside list fields are reported as `invalid-option` with `listIndex` metadata, not a separate issue code.
+For a [`date`](/reference/schema/) field with `multiple: true` (a list of dates), each element is validated against the field's granularity and an invalid element is reported as `invalid-date-format` with `listIndex` metadata identifying the offending value. List elements are reported for manual correction (not auto-fixed); only scalar date values are auto-normalized.
 
 ## Examples
 
