@@ -19,6 +19,7 @@ bwrb schema <subcommand>
 | [fields](#fields-alias) | Alias for `schema list <typePath>` |
 | [list](#list) | List schema contents |
 | [validate](#validate) | Validate schema structure |
+| [discover](#discover) | Report frontmatter field-usage facts (descriptive) |
 | [diff](#diff) | Show pending schema changes |
 | [migrate](#migrate) | Apply schema changes to notes |
 | [history](#history) | Show migration history |
@@ -36,6 +37,9 @@ bwrb schema fields task
 
 # Validate schema structure
 bwrb schema validate
+
+# Report frontmatter field-usage facts over a folder (descriptive)
+bwrb schema discover ./notes
 
 # Preview migration
 bwrb schema diff
@@ -219,6 +223,119 @@ bwrb schema validate --output json
 |------|---------|
 | `0` | Schema is valid |
 | `1` | Validation errors found |
+
+---
+
+## discover
+
+Report **descriptive** facts about the frontmatter across a folder of Markdown
+notes. `discover` reports what is there — every field, how often it appears, the
+value-types it holds, and which files diverge. It never passes or fails, never
+prescribes, and is safe to run anytime, including on a messy folder that has no
+schema yet.
+
+It works on an **arbitrary folder path**, not only a managed vault, so you can
+point it at unmanaged Markdown during onboarding.
+
+### Descriptive vs. audit
+
+`discover` is **descriptive**: it states facts and exits non-zero only for a real
+error (such as an unreadable path), never for "non-conforming" data.
+[`bwrb audit`](/reference/commands/audit/) is **prescriptive**: it reports what is
+*wrong* relative to the schema, with exit codes and `--fix`. Use `discover` to
+understand a folder; use `audit` to enforce the schema.
+
+### Two roles
+
+| Role | When | What it surfaces |
+|------|------|------------------|
+| Onboarding | Before a schema exists | Every field, its frequency, value-type consistency, and which files diverge — raw material for designing types. |
+| Drift detection | After a schema exists | Additionally: fields **used but not defined**, fields **defined but unused**, and values **diverging from declared `select` options**. |
+
+A schema is used automatically when a `.bwrb/schema.json` is found at or above the
+scanned folder (or via `--vault`). When none is found, `discover` runs in the
+onboarding role. Use `--no-schema` to force the onboarding view even when a schema
+is present.
+
+### Synopsis
+
+```bash
+bwrb schema discover [path] [options]
+```
+
+`path` defaults to the current directory.
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--output <format>` | Output format: `text` (default), `json` |
+| `--no-schema` | Skip drift detection; report raw field facts only |
+
+### Examples
+
+```bash
+# Scan the current directory
+bwrb schema discover
+
+# Scan an arbitrary folder (onboarding)
+bwrb schema discover ./notes
+
+# Structured facts for scripting or agents
+bwrb schema discover ./notes --output json
+
+# Skip drift even if a schema is present
+bwrb schema discover ./notes --no-schema
+```
+
+### JSON output
+
+`--output json` emits the standard `{ "success": true, "data": ... }` envelope.
+The `data` object has this shape:
+
+```jsonc
+{
+  "root": "/abs/path/scanned",
+  "totalFiles": 4,
+  "filesWithFrontmatter": 3,
+  "unreadable": [],                 // { file, error } for files skipped (never fatal)
+  "schemaPresent": true,            // whether a schema was loaded for drift
+  "fields": [
+    {
+      "field": "status",
+      "count": 3,                   // notes in which the field appears
+      "frequency": 1,               // count / filesWithFrontmatter (0..1)
+      "types": [                    // observed value-types, by descending count
+        { "type": "string", "count": 3 }
+      ],
+      "mixedTypes": false,          // true when >1 non-empty value-type
+      "divergingFiles": [],         // files whose type differs from the most common
+      "defined": true,              // schema role: declared by any type?
+      "divergingOptions": [         // schema role: values outside declared options
+        { "value": "wibble", "files": ["c.md"] }
+      ]
+    }
+  ],
+  "drift": {                        // present only when a schema was loaded
+    "usedButUndefined": ["deadline"],
+    "definedButUnused": ["rating"],
+    "optionDivergences": [
+      { "field": "status", "values": [ { "value": "wibble", "files": ["c.md"] } ] }
+    ]
+  }
+}
+```
+
+Value-types are coarse, frontmatter-shaped buckets: `string`, `number`,
+`boolean`, `date` (an ISO-ish date string), `list`, `object`, and `empty`
+(null / empty string / empty list).
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Report produced (including for non-conforming data) |
+| `2` | Real error (for example, the path is missing or unreadable) |
 
 ---
 

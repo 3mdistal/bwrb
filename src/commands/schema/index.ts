@@ -16,6 +16,7 @@ import { listCommand, runSchemaListOverview, runSchemaListTypeDetails } from './
 import { registerNewTypeCommand, registerEditTypeCommand, registerDeleteTypeCommand } from './type.js';
 import { registerNewFieldCommand, registerEditFieldCommand, registerDeleteFieldCommand } from './field.js';
 import { registerMigrationCommands } from './migrate.js';
+import { discoverCommand } from './discover.js';
 import { promptSchemaEntityType, inferSchemaEntity, getTypesWithOwnField } from './helpers/pickers.js';
 import { promptSelection } from '../../lib/prompt.js';
 
@@ -33,7 +34,8 @@ Examples:
   bwrb schema list type objective  # Show objective type details (canonical)
   bwrb schema list objective/task  # Alias for schema list type objective/task
   bwrb schema list -t task --output json  # Type details as JSON for AI/scripting
-  bwrb schema validate          # Validate schema structure`);
+  bwrb schema validate          # Validate schema structure
+  bwrb schema discover ./notes  # Descriptive frontmatter field-usage facts`);
 
 interface SchemaTypesAliasOptions {
   output?: string;
@@ -169,6 +171,12 @@ schemaCommand
       process.exit(1);
     }
   });
+
+// ============================================================================
+// Discover Command (descriptive field-usage facts)
+// ============================================================================
+
+schemaCommand.addCommand(discoverCommand);
 
 // ============================================================================
 // Unified Verb Commands (new, edit, delete)

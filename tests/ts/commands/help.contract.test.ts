@@ -72,6 +72,7 @@ describe('help output contract snapshots', () => {
       'types',
       'fields',
       'validate',
+      'discover',
       'new',
       'edit',
       'delete',
