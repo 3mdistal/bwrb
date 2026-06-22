@@ -86,6 +86,33 @@ bwrb audit --output json
 # Exit code 1 if violations found
 ```
 
+## Describe vs. enforce: `discover` vs. `audit`
+
+`audit` is **prescriptive** — it reports what is *wrong* relative to the schema,
+exits non-zero when it finds violations, and can `--fix` them.
+
+[`bwrb schema discover`](/reference/commands/schema/#discover) is the
+**descriptive** counterpart. It reports frontmatter *facts* over a folder — every
+field, its frequency, the value-types it holds, which files diverge, and (when a
+schema exists) drift such as used-but-undefined fields, defined-but-unused fields,
+and values diverging from declared options. It never passes or fails and is safe
+to run anytime.
+
+Two ways to reach for it:
+
+- **Before a schema exists** — point `discover` at a messy folder to gather raw
+  material for designing types.
+- **After a schema exists** — use it to *see* drift descriptively, then use
+  `audit` to *enforce* the schema.
+
+```bash
+# Describe what's in a folder (no judgment)
+bwrb schema discover ./notes
+
+# Enforce the schema (pass/fail, fixable)
+bwrb audit
+```
+
 ## Next Steps
 
 - [Migrations](/concepts/migrations/) — Evolving your schema over time
