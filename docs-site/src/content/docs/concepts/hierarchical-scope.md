@@ -48,6 +48,13 @@ A `context` type is an ordinary entity with a **self-referential `parent` relati
 ```json
 {
   "types": {
+    "entity": {
+      "output_dir": "Entities",
+      "fields": {
+        "type": { "value": "entity" }
+      },
+      "field_order": ["type"]
+    },
     "context": {
       "extends": "entity",
       "output_dir": "Contexts",
@@ -100,7 +107,15 @@ Collapsing `scope` + `context` into a single context tree removes the redundancy
 - **No double entry.** A note records one fact (its leaf context). The domain is computed, never stored.
 - **Reorganize in one place.** Re-parent a context note (`PKM.parent` from `[[software-dev]]` to `[[personal]]`) and every dependent query updates automatically — no bulk rewrite of notes.
 - **Transitive queries.** "Everything in the career domain" is a single `under(context, '[[career]]')`, not an OR over every leaf.
-- **Contexts are first-class notes.** Because they're real notes, they get aliases (see [Schema](/concepts/schema/)), `unlinked-mention` audit coverage, backlinks, and graph presence for free. Rich contexts (Builder, with its own content) and label-like contexts (PKM) cost the same.
+- **Contexts are first-class notes.** Because they're real notes, they get `unlinked-mention` audit coverage, backlinks, and graph presence for free, and aliases (see [Schema](/concepts/schema/)) help with all of those. Rich contexts (Builder, with its own content) and label-like contexts (PKM) cost the same.
+
+:::caution[Use the canonical note name in `under()` targets and `context` relations]
+Aliases help backlinks, unlinked-mention detection, and audit coverage on context notes, but they do **not** apply to `under()`. The `under` operator (and the `context` relation it dereferences) matches wikilink targets **literally** — it does not yet canonicalize aliases. So a task whose `context` points at an *alias* of a context note silently drops out of altitude queries.
+
+Concretely, if `Builder` has an alias `BuilderProject`, then a task with `context: "[[BuilderProject]]"` will **not** be returned by `under(context, '[[Builder]]')` or `under(context, '[[career]]')` — the alias is never resolved back to `Builder`, so the tree walk never reaches it. Always reference context notes by their **canonical note name** in `under()` targets and in any leaf `context` relation.
+
+This is a known limitation; a follow-up issue will track making `under()` alias-aware.
+:::
 - **Validation for free.** A task pointing at a non-existent context is flagged by the existing relation-source audit (see [Validation and Audit](/concepts/validation-and-audit/)), exactly like any other broken relation.
 
 ## Migration: collapse a redundant `scope` field
