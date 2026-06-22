@@ -45,16 +45,6 @@ describe('formatDisplayValue', () => {
     });
   });
 
-  describe('nullIsEmpty: false', () => {
-    it('stringifies null instead of using the placeholder', () => {
-      expect(formatDisplayValue(null, { empty: '(empty)', nullIsEmpty: false })).toBe('null');
-    });
-
-    it('still treats undefined as empty', () => {
-      expect(formatDisplayValue(undefined, { empty: '(empty)', nullIsEmpty: false })).toBe('(empty)');
-    });
-  });
-
   // The following groups lock in the exact behavior of the four call sites this
   // helper replaced, so any future change to the shared helper that would alter
   // one of those outputs fails loudly.
@@ -82,12 +72,14 @@ describe('formatDisplayValue', () => {
     });
   });
 
-  describe('parity: migration change formatter (empty: "(empty)", bracketed, null stringified)', () => {
+  describe('parity: migration change formatter (empty: "(empty)", bracketed)', () => {
     const fmt = (v: unknown) =>
-      formatDisplayValue(v, { empty: '(empty)', arrayStyle: 'bracketed', nullIsEmpty: false });
-    it('matches legacy behavior', () => {
+      formatDisplayValue(v, { empty: '(empty)', arrayStyle: 'bracketed' });
+    it('treats null and undefined identically as the empty placeholder', () => {
+      // Unified with the bulk change formatter (#595): null no longer renders
+      // as the literal string "null".
       expect(fmt(undefined)).toBe('(empty)');
-      expect(fmt(null)).toBe('null');
+      expect(fmt(null)).toBe('(empty)');
       expect(fmt([])).toBe('[]');
       expect(fmt(['a', 'b'])).toBe('[a, b]');
       expect(fmt('x')).toBe('x');

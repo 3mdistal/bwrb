@@ -415,7 +415,7 @@ export function formatMigrationResult(result: MigrationResult): string {
  */
 function formatAppliedChange(change: AppliedChange): string {
   const formatValue = (v: unknown): string =>
-    formatDisplayValue(v, { empty: '(empty)', arrayStyle: 'bracketed', nullIsEmpty: false });
+    formatDisplayValue(v, { empty: '(empty)', arrayStyle: 'bracketed' });
 
   switch (change.kind) {
     case 'set':
