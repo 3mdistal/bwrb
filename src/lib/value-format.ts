@@ -16,8 +16,8 @@
 
 export interface DisplayValueOptions {
   /**
-   * Placeholder returned for empty values (`undefined`, and `null` unless
-   * `nullIsEmpty` is false). Defaults to an empty string.
+   * Placeholder returned for empty values (`undefined` and `null`). Defaults to
+   * an empty string.
    */
   empty?: string;
   /**
@@ -26,11 +26,6 @@ export interface DisplayValueOptions {
    * - `'bracketed'`: `"[a, b]"`, and `"[]"` for an empty array.
    */
   arrayStyle?: 'plain' | 'bracketed';
-  /**
-   * Whether `null` is treated as empty (returns the `empty` placeholder).
-   * Defaults to `true`. When `false`, `null` is stringified to `"null"`.
-   */
-  nullIsEmpty?: boolean;
 }
 
 /**
@@ -40,9 +35,9 @@ export function formatDisplayValue(
   value: unknown,
   options: DisplayValueOptions = {}
 ): string {
-  const { empty = '', arrayStyle = 'plain', nullIsEmpty = true } = options;
+  const { empty = '', arrayStyle = 'plain' } = options;
 
-  if (value === undefined || (nullIsEmpty && value === null)) {
+  if (value === undefined || value === null) {
     return empty;
   }
 
