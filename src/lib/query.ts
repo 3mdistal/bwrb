@@ -4,6 +4,8 @@ import { getAllFieldsForType, getType, resolveTypeFromFrontmatter } from './sche
 import { matchesExpression, buildEvalContext, type HierarchyData } from './expression.js';
 import { collectFrontmatterKeys, normalizeWhereExpressions } from './where-normalize.js';
 import { extractLinkTarget } from './links.js';
+import { discoverManagedFiles } from './discovery.js';
+import { parseNote } from './frontmatter.js';
 
 /**
  * Validate that a field name is valid for a type.
@@ -47,7 +49,7 @@ export interface FrontmatterFilterOptions {
 // ============================================================================
 
 /** Names of functions that require hierarchy data */
-const HIERARCHY_FUNCTIONS = ['isRoot', 'isChildOf', 'isDescendantOf'];
+const HIERARCHY_FUNCTIONS = ['isRoot', 'isChildOf', 'isDescendantOf', 'under'];
 
 /**
  * Check if any expression uses hierarchy functions.
@@ -57,6 +59,18 @@ function expressionsUseHierarchyFunctions(expressions: string[]): boolean {
   return expressions.some(expr =>
     HIERARCHY_FUNCTIONS.some(fn => expr.includes(fn + '('))
   );
+}
+
+/**
+ * Check if any expression uses the `under` operator.
+ *
+ * `under` dereferences a relation field and walks the *target's* ancestor
+ * chain. The target note is usually NOT in the (type-)filtered candidate set,
+ * so its `parent` chain must be sourced from the full vault rather than only
+ * the files being filtered.
+ */
+function expressionsUseUnder(expressions: string[]): boolean {
+  return expressions.some(expr => expr.includes('under('));
 }
 
 /**
@@ -72,27 +86,73 @@ function buildHierarchyDataFromFiles(
   const hierarchyFieldCache = new Map<string, string[]>();
 
   for (const file of files) {
-    const noteName = basename(file.path, '.md');
-    const typeName = resolveHierarchyType(file.frontmatter, options);
-    const hierarchyFields = getHierarchyFields(typeName, options.schema, hierarchyFieldCache);
-    const parentValue = getHierarchyParentValue(file.frontmatter, hierarchyFields);
-
-    if (parentValue) {
-      const parentTarget = extractLinkTarget(String(parentValue)) ?? String(parentValue).trim();
-      if (parentTarget) {
-        // Set parent relationship
-        parentMap.set(noteName, parentTarget);
-
-        // Build reverse children relationship
-        if (!childrenMap.has(parentTarget)) {
-          childrenMap.set(parentTarget, new Set());
-        }
-        childrenMap.get(parentTarget)!.add(noteName);
-      }
-    }
+    addParentRelationship(file, parentMap, childrenMap, options, hierarchyFieldCache);
   }
 
   return { parentMap, childrenMap };
+}
+
+function addParentRelationship(
+  file: FileWithFrontmatter,
+  parentMap: Map<string, string>,
+  childrenMap: Map<string, Set<string>>,
+  options: Pick<FrontmatterFilterOptions, 'schema' | 'typePath'>,
+  hierarchyFieldCache: Map<string, string[]>
+): void {
+  const noteName = basename(file.path, '.md');
+  // Don't let a later (less specific, full-vault) pass clobber an entry the
+  // type-aware pass already resolved for the candidate set.
+  if (parentMap.has(noteName)) return;
+
+  const typeName = resolveHierarchyType(file.frontmatter, options);
+  const hierarchyFields = getHierarchyFields(typeName, options.schema, hierarchyFieldCache);
+  const parentValue = getHierarchyParentValue(file.frontmatter, hierarchyFields);
+
+  if (!parentValue) return;
+
+  const parentTarget = extractLinkTarget(String(parentValue)) ?? String(parentValue).trim();
+  if (!parentTarget) return;
+
+  parentMap.set(noteName, parentTarget);
+
+  if (!childrenMap.has(parentTarget)) {
+    childrenMap.set(parentTarget, new Set());
+  }
+  childrenMap.get(parentTarget)!.add(noteName);
+}
+
+/**
+ * Augment hierarchy data with parent relationships from the entire vault.
+ *
+ * Needed by `under`, which walks the ancestor chain of a relation target that
+ * usually lives outside the (type-)filtered candidate set. Relationships
+ * already present from the candidate pass are preserved.
+ */
+async function augmentHierarchyDataFromVault(
+  hierarchyData: HierarchyData,
+  options: Pick<FrontmatterFilterOptions, 'schema'> & { vaultDir: string }
+): Promise<void> {
+  if (!options.schema) return;
+
+  const managedFiles = await discoverManagedFiles(options.schema, options.vaultDir);
+  const hierarchyFieldCache = new Map<string, string[]>();
+
+  for (const managed of managedFiles) {
+    let frontmatter: Record<string, unknown>;
+    try {
+      ({ frontmatter } = await parseNote(managed.path));
+    } catch {
+      continue;
+    }
+    addParentRelationship(
+      { path: managed.path, frontmatter },
+      hierarchyData.parentMap,
+      hierarchyData.childrenMap,
+      // Resolve each note's own type from frontmatter for the full-vault pass.
+      options.schema ? { schema: options.schema } : {},
+      hierarchyFieldCache
+    );
+  }
 }
 
 function resolveHierarchyType(
@@ -230,6 +290,12 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
       ...(schema ? { schema } : {}),
       ...(typePath ? { typePath } : {}),
     });
+
+    // `under` resolves relation targets that typically live outside the
+    // filtered candidate set, so it needs the full vault's parent chains.
+    if (schema && expressionsUseUnder(normalizedExpressions)) {
+      await augmentHierarchyDataFromVault(hierarchyData, { schema, vaultDir });
+    }
   }
 
   for (const file of files) {

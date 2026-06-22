@@ -2,6 +2,7 @@ import jsep from 'jsep';
 import type { Expression, BinaryExpression, UnaryExpression, CallExpression, Identifier, Literal, MemberExpression } from 'jsep';
 import { formatLocalDate } from './local-date.js';
 import { FRONTMATTER_IDENTIFIER } from './where-constants.js';
+import { extractLinkTargets } from './links.js';
 
 // Configure jsep for our expression language
 jsep.addBinaryOp('&&', 2);
@@ -40,7 +41,7 @@ export interface EvalContext {
     ctime?: Date;
     mtime?: Date;
   };
-  /** Optional hierarchy data for hierarchy functions (isRoot, isChildOf, isDescendantOf) */
+  /** Optional hierarchy data for hierarchy functions (isRoot, isChildOf, isDescendantOf, under) */
   hierarchyData?: HierarchyData;
 }
 
@@ -368,18 +369,76 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
     const noteName = context.file?.name;
     if (!noteName || !targetAncestor || !context.hierarchyData) return false;
 
-    // Walk up the parent chain checking for the target ancestor
-    // Use a visited set to prevent infinite loops on cyclic parent references
-    const visited = new Set<string>();
-    let current = context.hierarchyData.parentMap.get(noteName);
-    while (current && !visited.has(current)) {
-      if (current === targetAncestor) return true;
-      visited.add(current);
-      current = context.hierarchyData.parentMap.get(current);
+    // Walk up the CURRENT note's own parent chain checking for the target.
+    const startParent = context.hierarchyData.parentMap.get(noteName);
+    if (!startParent) return false;
+    return ancestorChainContains(
+      startParent,
+      targetAncestor,
+      context.hierarchyData.parentMap
+    );
+  },
+
+  /**
+   * Dereference a RELATION FIELD on the current note, then walk each target's
+   * own ancestor (`parent`) chain, returning true if the given node is the
+   * target itself or anywhere in that chain (at any depth).
+   *
+   * Distinct from `isDescendantOf`, which walks the *current note's own* parent
+   * chain. `under` follows a field to ANOTHER note, then walks THAT note's
+   * ancestors. Generalizes to any relation field, not just `context`.
+   *
+   * Usage: under(context, '[[career]]')
+   *   - args[0]: the relation field value(s) (e.g. the value of `context`,
+   *     which may be a single wikilink/markdown link or a list of them)
+   *   - args[1]: the node to test for, in wikilink or plain form
+   *
+   * Semantics are INCLUSIVE of the direct target: `under(context, '[[career]]')`
+   * matches notes whose `context` is `[[career]]` itself OR any descendant of
+   * career. For multi-valued relation fields, matches if ANY target is under
+   * the node.
+   */
+  under: (args, context) => {
+    const targetNode = extractNoteNameFromArg(String(args[1] ?? ''));
+    if (!targetNode || !context.hierarchyData) return false;
+
+    // Resolve the relation field value(s) to note names. extractLinkTargets
+    // handles single values, arrays, wikilinks, and markdown links uniformly.
+    const relationTargets = extractLinkTargets(args[0]);
+    if (relationTargets.length === 0) return false;
+
+    const parentMap = context.hierarchyData.parentMap;
+    for (const relationTarget of relationTargets) {
+      // Inclusive of the direct target (depth 0).
+      if (relationTarget === targetNode) return true;
+      // Otherwise walk the target's own ancestor chain.
+      if (ancestorChainContains(relationTarget, targetNode, parentMap)) {
+        return true;
+      }
     }
     return false;
   },
 };
+
+/**
+ * Walk a parent chain starting from `start`, returning true if `target` is
+ * found anywhere in that chain. Cycle-safe via a visited set, so a malformed
+ * `parent` cycle never causes an infinite loop.
+ */
+function ancestorChainContains(
+  start: string,
+  target: string,
+  parentMap: Map<string, string>
+): boolean {
+  const visited = new Set<string>();
+  let current: string | undefined = start;
+  while (current && !visited.has(current)) {
+    if (current === target) return true;
+    visited.add(current);
+    current = parentMap.get(current);
+  }
+  return false;
+}
 
 /**
  * Extract a note name from an argument that may be in wikilink format.

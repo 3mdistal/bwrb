@@ -356,6 +356,128 @@ describe('expression', () => {
       });
     });
 
+    describe('under()', () => {
+      // Context hierarchy (separate from the task hierarchy above):
+      // career (root)
+      //   └── Builder
+      //         └── Vercel
+      // personal (root)
+      const contextParentMap = new Map([
+        ['Builder', 'career'],
+        ['Vercel', 'Builder'],
+      ]);
+      const contextChildrenMap = new Map([
+        ['career', new Set(['Builder'])],
+        ['Builder', new Set(['Vercel'])],
+      ]);
+
+      // Helper: a note whose `context` relation field points somewhere, with
+      // the context hierarchy available for walking the target's ancestors.
+      const makeNoteWithContext = (
+        relationValue: unknown
+      ): EvalContext => ({
+        frontmatter: { context: relationValue },
+        file: { name: 'Some Task', path: 'Tasks/Some Task.md', folder: 'Tasks', ext: '.md' },
+        hierarchyData: { parentMap: contextParentMap, childrenMap: contextChildrenMap },
+      });
+
+      it('matches when relation target is a deep descendant of the node', () => {
+        const ctx = makeNoteWithContext('[[Vercel]]');
+        expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(true);
+      });
+
+      it('matches when relation target is a direct child of the node', () => {
+        const ctx = makeNoteWithContext('[[Builder]]');
+        expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(true);
+      });
+
+      it('matches the direct target itself (inclusive, depth 0)', () => {
+        const ctx = makeNoteWithContext('[[career]]');
+        expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(true);
+      });
+
+      it('does not match an unrelated node', () => {
+        const ctx = makeNoteWithContext('[[Vercel]]');
+        expect(matchesExpression("under(context, '[[personal]]')", ctx)).toBe(false);
+      });
+
+      it('does not crash and does not match on a dangling relation target', () => {
+        const ctx = makeNoteWithContext('[[Nonexistent]]');
+        expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(false);
+      });
+
+      it('returns false when the relation field is empty', () => {
+        const ctx = makeNoteWithContext('');
+        expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(false);
+      });
+
+      it('returns false when hierarchyData is missing', () => {
+        const ctx: EvalContext = {
+          frontmatter: { context: '[[Vercel]]' },
+          file: { name: 'Some Task', path: 'Tasks/Some Task.md', folder: 'Tasks', ext: '.md' },
+        };
+        expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(false);
+      });
+
+      it('matches if ANY target of a multi-valued relation is under the node', () => {
+        const ctx = makeNoteWithContext(['[[personal]]', '[[Vercel]]']);
+        expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(true);
+      });
+
+      it('does not match a multi-valued relation when no target is under the node', () => {
+        const ctx = makeNoteWithContext(['[[personal]]', '[[Nonexistent]]']);
+        expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(false);
+      });
+
+      it('accepts a plain (non-wikilink) node argument', () => {
+        const ctx = makeNoteWithContext('[[Vercel]]');
+        expect(matchesExpression("under(context, 'career')", ctx)).toBe(true);
+      });
+
+      it('resolves markdown-link relation values', () => {
+        const ctx = makeNoteWithContext('[Vercel](Vercel.md)');
+        expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(true);
+      });
+
+      it('generalizes to any relation field, not just context', () => {
+        const ctx: EvalContext = {
+          frontmatter: { sponsor: '[[Vercel]]' },
+          file: { name: 'Some Task', path: 'Tasks/Some Task.md', folder: 'Tasks', ext: '.md' },
+          hierarchyData: { parentMap: contextParentMap, childrenMap: contextChildrenMap },
+        };
+        expect(matchesExpression("under(sponsor, '[[career]]')", ctx)).toBe(true);
+      });
+
+      it('does not infinite-loop on a cyclic target ancestor chain', () => {
+        // Cycle among the target chain: A -> B -> C -> A
+        const cyclicParentMap = new Map([
+          ['A', 'C'],
+          ['B', 'A'],
+          ['C', 'B'],
+        ]);
+        const ctx: EvalContext = {
+          frontmatter: { context: '[[A]]' },
+          file: { name: 'Some Task', path: 'Tasks/Some Task.md', folder: 'Tasks', ext: '.md' },
+          hierarchyData: { parentMap: cyclicParentMap, childrenMap: new Map() },
+        };
+        // Should terminate and return false (target not in the cycle).
+        expect(matchesExpression("under(context, '[[Nonexistent]]')", ctx)).toBe(false);
+      });
+
+      it('is distinct from isDescendantOf — walks the RELATION target, not the note itself', () => {
+        // The note "Some Task" has NO parent of its own, so isDescendantOf is
+        // false. But its `context` relation points to Vercel, which IS under
+        // career, so `under` is true. Same node argument, opposite results.
+        const ctx: EvalContext = {
+          frontmatter: { context: '[[Vercel]]' },
+          file: { name: 'Some Task', path: 'Tasks/Some Task.md', folder: 'Tasks', ext: '.md' },
+          hierarchyData: { parentMap: contextParentMap, childrenMap: contextChildrenMap },
+        };
+        expect(matchesExpression("isDescendantOf('[[career]]')", ctx)).toBe(false);
+        expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(true);
+      });
+    });
+
     describe('hierarchy functions composability', () => {
       it('should combine with other expressions using AND', () => {
         const ctx: EvalContext = {

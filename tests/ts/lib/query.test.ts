@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { join } from 'path';
+import { writeFile, rm } from 'fs/promises';
 import {
   validateFieldForType,
   applyFrontmatterFilters,
@@ -195,6 +196,105 @@ describe('query', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0]?.path).toContain('Standalone Task.md');
+    });
+
+    describe('under() operator (full-vault relation-target resolution)', () => {
+      // Build a context hierarchy out of recursive `task` notes so they live in
+      // the vault and are discoverable by the full-vault augmentation pass:
+      //   career (root)
+      //     └── Builder
+      //           └── Vercel
+      const contextNotes: string[] = [];
+
+      beforeAll(async () => {
+        const write = async (name: string, parent: string | null) => {
+          const path = join(vaultDir, 'Objectives/Tasks', `${name}.md`);
+          const parentLine = parent ? `\nparent: "[[${parent}]]"` : '';
+          await writeFile(
+            path,
+            `---\ntype: task\nstatus: backlog${parentLine}\n---\n`
+          );
+          contextNotes.push(path);
+        };
+        await write('career', null);
+        await write('Builder', 'career');
+        await write('Vercel', 'Builder');
+      });
+
+      afterAll(async () => {
+        await Promise.all(contextNotes.map(p => rm(p, { force: true })));
+      });
+
+      it('matches a note whose relation target is a deep descendant of the node', async () => {
+        // Candidate task has NO parent of its own; its `milestone` relation
+        // points at Vercel, which is under career via Builder.
+        const files = makeFiles([
+          { path: 'Objectives/Tasks/Leaf.md', fm: { type: 'task', status: 'backlog', milestone: '"[[Vercel]]"' } },
+        ]);
+
+        const result = await applyFrontmatterFilters(files, {
+          whereExpressions: ["under(milestone, '[[career]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+
+        expect(result).toHaveLength(1);
+      });
+
+      it('does not match when the relation target is not under the node', async () => {
+        const files = makeFiles([
+          { path: 'Objectives/Tasks/Leaf.md', fm: { type: 'task', status: 'backlog', milestone: '"[[career]]"' } },
+        ]);
+
+        const result = await applyFrontmatterFilters(files, {
+          whereExpressions: ["under(milestone, '[[Builder]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+
+        expect(result).toHaveLength(0);
+      });
+
+      it('is distinct from isDescendantOf — relation chain vs the note\'s own chain', async () => {
+        // The candidate has no parent, so isDescendantOf('[[career]]') is false,
+        // but under(milestone, '[[career]]') follows the relation and is true.
+        const files = makeFiles([
+          { path: 'Objectives/Tasks/Leaf.md', fm: { type: 'task', status: 'backlog', milestone: '"[[Vercel]]"' } },
+        ]);
+
+        const descResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ["isDescendantOf('[[career]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(descResult).toHaveLength(0);
+
+        const underResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ["under(milestone, '[[career]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(underResult).toHaveLength(1);
+      });
+
+      it('does not match (and does not crash) on a dangling relation target', async () => {
+        const files = makeFiles([
+          { path: 'Objectives/Tasks/Leaf.md', fm: { type: 'task', status: 'backlog', milestone: '"[[Ghost]]"' } },
+        ]);
+
+        const result = await applyFrontmatterFilters(files, {
+          whereExpressions: ["under(milestone, '[[career]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+
+        expect(result).toHaveLength(0);
+      });
     });
 
     it('should throw on invalid expression syntax', async () => {
