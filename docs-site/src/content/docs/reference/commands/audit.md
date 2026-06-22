@@ -78,6 +78,7 @@ Delete semantics in repair mode:
 | `illegal-aliases` | An [`alias`-role field](/reference/schema/#alias) has empty or non-string entries (the Obsidian aliases format requires non-empty, unique strings) |
 | `unlinked-mention` | A known entity's name or [registered alias](/reference/schema/#alias) appears in body prose as plain text but is not wikilinked (warning; exact/alias matches auto-fixable, fuzzy/ambiguous matches flag-only — see below) |
 | `frequent-unlinked-term` | A proper-noun-ish term mentioned frequently across the vault that has **no note yet** (warning; **advisory heuristic, never auto-fixable** — see below) |
+| `missing-body-section` | A heading section declared in the type's [`body_sections`](/reference/schema/) is missing from the note body, or present at the wrong heading level (warning; **auto-fixable** — `--fix` appends the canonical heading scaffold — see below) |
 | `missing-successor` | A [recurring](/automation/task-system/) note satisfies its trigger (e.g. `status = done`) but its chain field (`next`) is empty — a successor was never spawned (e.g. completed outside bwrb). Warning; **auto-fixable** (`--fix` spawns it, identical to the fast path) |
 | `invalid-recurrence` | A [recurrence](/automation/task-system/) rule is broken at the config level — a malformed trigger, a non-date offset base, or a template that doesn't exist (error; **never auto-fixable** — a config error gets the same safety net as data) |
 
@@ -261,6 +262,31 @@ bwrb audit --only frequent-unlinked-term
 
 # Suppress them (e.g. while focusing on fixable issues)
 bwrb audit --ignore frequent-unlinked-term
+```
+
+### Missing-body-section semantics (body structure)
+
+`missing-body-section` validates the **markdown body**, not the frontmatter. The schema heavily enforces YAML frontmatter, but the body has historically been unchecked: `bwrb new` and `bwrb edit` scaffold the heading sections declared in a type's [`body_sections`](/reference/schema/) (e.g. a `bug` gets `## Steps to Reproduce`), but nothing stops a user from later deleting or renaming one. This detection re-checks, at audit time, that every declared section heading is still present.
+
+What it checks:
+
+- For each section declared in the resolved type's `body_sections` (including nested `children`), the body must contain a matching ATX heading — the exact title at the declared `level`. Trailing whitespace and ATX closing hashes (`## Title ##`) are tolerated.
+- A heading written inside a fenced code block, inline code, or a link does **not** satisfy the requirement — the same [body masking](#unlinked-mention-semantics-web-integrity) used by `unlinked-mention` is applied, so only real prose headings count.
+- If a heading with the right title exists but at the **wrong level**, it is still flagged (with the offending `lineNumber`), and the fix appends a correctly-leveled heading rather than rewriting yours.
+
+What it does **not** check: it validates heading *presence/structure* only — not whether the body content under a section is filled in (bullets, checkboxes, paragraph counts). It also does not validate body wikilinks; that is the job of [`unlinked-mention`](#unlinked-mention-semantics-web-integrity) and [`frequent-unlinked-term`](#frequent-unlinked-term-semantics-open-world-nudge), which scan body links and never overlap with this structural check.
+
+**Auto-fixable.** Adding a declared heading is a safe, deterministic, **additive** repair — `--fix` appends the missing section using the *same* scaffold `bwrb new`/`bwrb edit` emit (heading + the section's `content_type` placeholder), so it never deletes or rewrites existing prose. It is idempotent: a re-run finds the now-present heading and does nothing (no duplicate headings). Types that declare no `body_sections` are never flagged.
+
+```bash
+# Report missing body sections only
+bwrb audit --only missing-body-section
+
+# Append missing sections automatically
+bwrb audit --fix --auto --execute --all
+
+# Suppress the check
+bwrb audit --ignore missing-body-section
 ```
 
 ### Non-interactive mode

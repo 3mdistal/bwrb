@@ -89,6 +89,8 @@ import {
 } from './unlinked-mention.js';
 // Import frequent-unlinked-term detection (ingest safety net, #601)
 import { FrequentTermAccumulator } from './frequent-unlinked-term.js';
+// Import body-section validation (#510)
+import { detectMissingBodySections } from './body-sections.js';
 import { parseNote } from '../frontmatter.js';
 
 /**
@@ -718,24 +720,40 @@ export async function auditFile(
   // Note: Body stale-reference detection is deferred to v2.0
   // Per product scope, v1.0 only validates frontmatter relation fields
 
-  // Unlinked-mention detection (#600): scan body prose for known entity
-  // names/aliases that are not wikilinked. Skipped entirely when the caller
-  // filtered this issue out, to avoid the extra body read.
-  if (
-    entityMentionIndex &&
-    entityMentionIndex.surfacePattern &&
+  // Body checks share a single body read. `parseNote` is only invoked when at
+  // least one body check is going to run, and at most once per file.
+  const wantsUnlinkedMention =
+    Boolean(entityMentionIndex?.surfacePattern) &&
     options.ignoreIssue !== 'unlinked-mention' &&
-    (options.onlyIssue === undefined || options.onlyIssue === 'unlinked-mention')
-  ) {
+    (options.onlyIssue === undefined || options.onlyIssue === 'unlinked-mention');
+
+  // Body-section validation (#510): the type declares heading sections in
+  // `body_sections`; flag any that are missing from the note body. Distinct
+  // from unlinked-mention/relation checks (those validate links; this validates
+  // heading structure). Skipped when filtered out or when the type has none.
+  const wantsBodySections =
+    typeDef.bodySections.length > 0 &&
+    options.ignoreIssue !== 'missing-body-section' &&
+    (options.onlyIssue === undefined || options.onlyIssue === 'missing-body-section');
+
+  if (wantsUnlinkedMention || wantsBodySections) {
     try {
       const { body } = await parseNote(file.path);
-      if (body && body.trim().length > 0) {
+      const hasBody = Boolean(body && body.trim().length > 0);
+
+      if (wantsUnlinkedMention && hasBody && entityMentionIndex) {
         issues.push(
           ...detectUnlinkedMentions(body, file.relativePath, entityMentionIndex)
         );
       }
+
+      // A note with an empty body is still missing every declared section, so
+      // body-section validation runs even when the body is blank.
+      if (wantsBodySections) {
+        issues.push(...detectMissingBodySections(body ?? '', typeDef.bodySections));
+      }
     } catch {
-      // If the body can't be parsed, skip mention detection for this file.
+      // If the body can't be parsed, skip body-level detections for this file.
     }
   }
 

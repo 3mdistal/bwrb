@@ -2489,6 +2489,10 @@ priority: medium
 type: task
 status: backlog
 ---
+## Steps
+- [ ] Step 1
+
+## Notes
 `
       );
 
@@ -2498,6 +2502,7 @@ status: backlog
 type: milestone
 status: in-flight
 ---
+## Tasks
 `
       );
 

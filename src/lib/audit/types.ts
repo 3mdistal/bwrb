@@ -65,7 +65,11 @@ export type IssueCode =
   // Task system (#107): a recurrence rule that is broken at the config level —
   // a non-date offset base, a malformed trigger, or a template that doesn't
   // exist. Deterministic config error; NEVER auto-fixable.
-  | 'invalid-recurrence';
+  | 'invalid-recurrence'
+  // Body validation (#510): a heading section declared in the type's
+  // `body_sections` is missing from the note body (or present at the wrong
+  // heading level). Auto-fixable: --fix appends the canonical heading scaffold.
+  | 'missing-body-section';
 
 /**
  * A single audit issue.
