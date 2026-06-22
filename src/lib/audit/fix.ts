@@ -1715,6 +1715,82 @@ async function handleInteractiveFix(
   }
 }
 
+// ============================================================================
+// Shared interactive-handler scaffold (#598)
+// ============================================================================
+
+/**
+ * The outcome contract every interactive handler returns. Centralizing the type
+ * keeps the many handler signatures (and the shared helpers below) in lock-step.
+ */
+type InteractiveFixOutcome = 'fixed' | 'skipped' | 'failed' | 'quit';
+
+/**
+ * Report the result of an applied fix using the standard three-branch logging
+ * that nearly every interactive handler repeats verbatim:
+ *
+ *   - `fixed`   → green success line (caller supplies the exact message)
+ *   - `skipped` → yellow `⚠ <fixResult.message>` line
+ *   - `failed`  → red `✗ Failed: <fixResult.message>` line
+ *
+ * This is a pure logging + mapping helper: it performs no prompting and no
+ * filesystem work, so swapping a hand-written tail for a call here is
+ * behavior-identical for handlers that already followed this exact shape.
+ *
+ * The `successMessage` is the text printed after the green check; it must match
+ * the previous inline string exactly (callers pass the already-formatted line
+ * body, e.g. `Updated foo: bar`).
+ */
+function reportFixResult(
+  fixResult: FixResult,
+  successMessage: string
+): 'fixed' | 'skipped' | 'failed' {
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ ${successMessage}`));
+    return 'fixed';
+  }
+  if (fixResult.action === 'skipped') {
+    console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+    return 'skipped';
+  }
+  console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+  return 'failed';
+}
+
+/**
+ * The simplest, most-repeated interactive scaffold: confirm → quit/skip →
+ * `applyFix` → report. Used by the confirm-style handlers that have no
+ * per-option branching (boolean coercion, enum casing, dedupe, format
+ * conversion, trailing whitespace, etc.).
+ *
+ * Behavior preserved exactly:
+ *   - `promptConfirm` returning `null` (Ctrl+C) → `'quit'`
+ *   - a declined confirm → dim `→ Skipped` then `'skipped'`
+ *   - otherwise `applyFix` runs and the result is reported via `reportFixResult`
+ *
+ * `successMessage` is the green line body printed on success. `newValue` is
+ * forwarded to `applyFix` so callers that pass a value (or rely on the
+ * issue-driven default) keep doing so unchanged.
+ */
+async function confirmAndApplyFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue,
+  confirmMessage: string,
+  successMessage: string,
+  newValue?: unknown
+): Promise<InteractiveFixOutcome> {
+  const confirm = await promptConfirm(confirmMessage);
+  if (confirm === null) return 'quit';
+  if (!confirm) {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  const fixResult = await applyFix(schema, result.path, issue, newValue);
+  return reportFixResult(fixResult, successMessage);
+}
+
 /**
  * Interactive handler for `missing-successor` (#107): prompt to spawn the
  * missing recurrence successor, using the shared engine.
@@ -1747,6 +1823,8 @@ async function handleMissingSuccessorFix(
     console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
     return 'skipped';
   }
+  // Note: failure here logs `✗ <message>` (no "Failed:" prefix), so this tail
+  // intentionally stays inline rather than using reportFixResult.
   console.log(chalk.red(`    ✗ ${fixResult.message}`));
   return 'failed';
 }
@@ -2250,25 +2328,13 @@ async function handleFormatViolationFix(
     return 'skipped';
   }
 
-  const confirm = await promptConfirm(
-    `    → Convert to ${issue.expectedFormat} format?`
+  return confirmAndApplyFix(
+    schema,
+    result,
+    issue,
+    `    → Convert to ${issue.expectedFormat} format?`,
+    `Converted ${issue.field} to ${issue.expectedFormat}`
   );
-  if (confirm === null) {
-    return 'quit';
-  }
-  if (!confirm) {
-    console.log(chalk.dim('    → Skipped'));
-    return 'skipped';
-  }
-
-  const fixResult = await applyFix(schema, result.path, issue);
-  if (fixResult.action === 'fixed') {
-    console.log(chalk.green(`    ✓ Converted ${issue.field} to ${issue.expectedFormat}`));
-    return 'fixed';
-  } else {
-    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
-    return 'failed';
-  }
 }
 
 async function handleStaleReferenceFix(
@@ -2773,24 +2839,13 @@ async function handleFrontmatterNotAtTopFix(
     return 'skipped';
   }
 
-  const confirm = await promptConfirm('    → Move frontmatter to the top of the file?');
-  if (confirm === null) return 'quit';
-  if (!confirm) {
-    console.log(chalk.dim('    → Skipped'));
-    return 'skipped';
-  }
-
-  const fixResult = await applyFix(schema, result.path, issue);
-  if (fixResult.action === 'fixed') {
-    console.log(chalk.green('    ✓ Moved frontmatter to top'));
-    return 'fixed';
-  }
-  if (fixResult.action === 'skipped') {
-    console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
-    return 'skipped';
-  }
-  console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
-  return 'failed';
+  return confirmAndApplyFix(
+    schema,
+    result,
+    issue,
+    '    → Move frontmatter to the top of the file?',
+    'Moved frontmatter to top'
+  );
 }
 
 async function handleDuplicateFrontmatterKeysFix(
@@ -2817,16 +2872,7 @@ async function handleDuplicateFrontmatterKeysFix(
 
   const strategy = selected === 'keep first' ? 'keep-first' : 'keep-last';
   const fixResult = await applyFix(schema, result.path, issue, strategy);
-  if (fixResult.action === 'fixed') {
-    console.log(chalk.green(`    ✓ Resolved duplicate key '${key}' (${selected})`));
-    return 'fixed';
-  }
-  if (fixResult.action === 'skipped') {
-    console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
-    return 'skipped';
-  }
-  console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
-  return 'failed';
+  return reportFixResult(fixResult, `Resolved duplicate key '${key}' (${selected})`);
 }
 
 async function handleMalformedWikilinkFix(
@@ -2838,26 +2884,13 @@ async function handleMalformedWikilinkFix(
     ? `${issue.field}[${issue.listIndex}]`
     : issue.field;
 
-  const confirm = await promptConfirm(
-    `    → Fix malformed wikilink${loc ? ` in '${loc}'` : ''}?`
+  return confirmAndApplyFix(
+    schema,
+    result,
+    issue,
+    `    → Fix malformed wikilink${loc ? ` in '${loc}'` : ''}?`,
+    'Fixed malformed wikilink'
   );
-  if (confirm === null) return 'quit';
-  if (!confirm) {
-    console.log(chalk.dim('    → Skipped'));
-    return 'skipped';
-  }
-
-  const fixResult = await applyFix(schema, result.path, issue);
-  if (fixResult.action === 'fixed') {
-    console.log(chalk.green('    ✓ Fixed malformed wikilink'));
-    return 'fixed';
-  }
-  if (fixResult.action === 'skipped') {
-    console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
-    return 'skipped';
-  }
-  console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
-  return 'failed';
 }
 
 async function updateFrontmatterValue(
@@ -3347,23 +3380,13 @@ async function handleBooleanCoercionFix(
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
   if (!issue.field) return 'skipped';
 
-  const confirm = await promptConfirm(
-    `    → Convert '${issue.value}' to boolean in '${issue.field}'?`
+  return confirmAndApplyFix(
+    schema,
+    result,
+    issue,
+    `    → Convert '${issue.value}' to boolean in '${issue.field}'?`,
+    `Converted ${issue.field} to boolean`
   );
-  if (confirm === null) return 'quit';
-  if (!confirm) {
-    console.log(chalk.dim('    → Skipped'));
-    return 'skipped';
-  }
-
-  const fixResult = await applyFix(schema, result.path, issue);
-  if (fixResult.action === 'fixed') {
-    console.log(chalk.green(`    ✓ Converted ${issue.field} to boolean`));
-    return 'fixed';
-  } else {
-    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
-    return 'failed';
-  }
 }
 
 async function handleWrongScalarTypeFix(
@@ -3566,23 +3589,13 @@ async function handleEnumCasingFix(
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
   if (!issue.field || !issue.canonicalValue) return 'skipped';
 
-  const confirm = await promptConfirm(
-    `    → Change '${issue.value}' to '${issue.canonicalValue}'?`
+  return confirmAndApplyFix(
+    schema,
+    result,
+    issue,
+    `    → Change '${issue.value}' to '${issue.canonicalValue}'?`,
+    `Fixed casing: ${issue.value} → ${issue.canonicalValue}`
   );
-  if (confirm === null) return 'quit';
-  if (!confirm) {
-    console.log(chalk.dim('    → Skipped'));
-    return 'skipped';
-  }
-
-  const fixResult = await applyFix(schema, result.path, issue);
-  if (fixResult.action === 'fixed') {
-    console.log(chalk.green(`    ✓ Fixed casing: ${issue.value} → ${issue.canonicalValue}`));
-    return 'fixed';
-  } else {
-    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
-    return 'failed';
-  }
 }
 
 /**
@@ -3595,23 +3608,13 @@ async function handleDuplicateListFix(
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
   if (!issue.field) return 'skipped';
 
-  const confirm = await promptConfirm(
-    `    → Remove duplicate values from '${issue.field}'?`
+  return confirmAndApplyFix(
+    schema,
+    result,
+    issue,
+    `    → Remove duplicate values from '${issue.field}'?`,
+    `Deduplicated ${issue.field}`
   );
-  if (confirm === null) return 'quit';
-  if (!confirm) {
-    console.log(chalk.dim('    → Skipped'));
-    return 'skipped';
-  }
-
-  const fixResult = await applyFix(schema, result.path, issue);
-  if (fixResult.action === 'fixed') {
-    console.log(chalk.green(`    ✓ Deduplicated ${issue.field}`));
-    return 'fixed';
-  } else {
-    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
-    return 'failed';
-  }
 }
 
 /**
