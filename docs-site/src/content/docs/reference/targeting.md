@@ -73,12 +73,58 @@ bwrb audit --where "isEmpty(tags)"
 - `isRoot()` — note has no parent-like note link (for example `parent`, `owner`, or a singular relation like `milestone`)
 - `isChildOf('[[Note]]')` — direct child of specified note
 - `isDescendantOf('[[Note]]')` — any descendant of specified note
+- `under(field, '[[Note]]')` — the note's `field` relation points at `Note` **or any descendant of `Note`**
 
 ```bash
 bwrb list --type task --where "isRoot()"
 bwrb list --type task --where "isChildOf('[[Epic]]')"
 bwrb list --type task --where "isDescendantOf('[[Q1 Goals]]')" --depth 2
+bwrb list --type task --where "under(context, '[[career]]')"
 ```
+
+#### `under(field, '[[Node]]')` vs `isDescendantOf('[[Node]]')`
+
+Both ask a hierarchy question, but they walk **different** chains:
+
+- `isDescendantOf('[[Node]]')` walks the **filtered note's own** `parent`
+  chain. It answers "is *this note* structurally beneath `Node`?" (for example
+  task → milestone → objective).
+- `under(field, '[[Node]]')` first **dereferences a relation `field`** on the
+  note, then walks **that target's** `parent` chain. It answers "does this
+  note's `field` point into the subtree rooted at `Node`?"
+
+Example. Contexts are real notes in a `parent` hierarchy
+(`Builder.parent = [[career]]`, `Vercel.parent = [[Builder]]`), and a task
+records only the leaf:
+
+```yaml
+# a task
+context: "[[Vercel]]"
+```
+
+```bash
+# Everything in the career domain, at any altitude — Builder, Vercel, deeper.
+bwrb list --type task --where "under(context, '[[career]]')"
+
+# Exact context only.
+bwrb list --type task --where "context = [[Vercel]]"
+```
+
+Notes:
+
+- **Inclusive of the direct target.** `under(context, '[[career]]')` matches a
+  note whose `context` is `[[career]]` itself as well as any descendant of
+  career. (`under(field, '[[X]]')` ≡ `field = [[X]]` OR `field` points to a
+  descendant of `X`.)
+- **Any relation field.** The first argument is the field to dereference —
+  `under(milestone, '[[Q2]]')`, `under(owner, '[[Platform]]')`, etc.
+- **Multi-valued fields.** If the relation holds a list, the note matches when
+  **any** target is under the node.
+- **Resolution scope.** `under` resolves relation targets and their ancestors
+  across the **whole vault**, so the target notes do not need to share the
+  filtered type.
+- **Robustness.** A dangling (unresolvable) relation target simply doesn't
+  match; a malformed `parent` cycle is walked safely and never loops forever.
 
 ### Body (`-b, --body <query>`)
 

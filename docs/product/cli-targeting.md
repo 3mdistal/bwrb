@@ -101,12 +101,14 @@ When running `bwrb audit` without `--type`, each file's type is resolved from it
 **Hierarchy functions** (for recursive types):
 - `isRoot()` — note has no parent
 - `isChildOf('[[Note]]')` — direct child of specified note
-- `isDescendantOf('[[Note]]')` — any descendant of specified note
+- `isDescendantOf('[[Note]]')` — any descendant of specified note (walks the note's own `parent` chain)
+- `under(field, '[[Note]]')` — dereferences the relation `field`, then walks the *target's* `parent` chain; matches when `field` points at `Note` or any descendant of `Note`
 
 ```bash
 bwrb list --type task --where "isRoot()"
 bwrb list --type task --where "isChildOf('[[Epic]]')"
 bwrb list --type task --where "isDescendantOf('[[Q1 Goals]]')" --depth 2
+bwrb list --type task --where "under(context, '[[career]]')"
 ```
 
 ### 4. Body (`--body <query>`)

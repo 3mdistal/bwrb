@@ -98,7 +98,15 @@ bwrb list --type task --where "isChildOf('[[Epic]]')"
 
 # All descendants (with depth limit)
 bwrb list --type task --where "isDescendantOf('[[Q1 Goals]]')" --depth 2
+
+# Follow a relation field, then walk THAT target's ancestors.
+# Matches tasks whose `context` is career or anything under it.
+bwrb list --type task --where "under(context, '[[career]]')"
 ```
+
+`under(field, '[[Node]]')` differs from `isDescendantOf`: it dereferences the
+named relation `field` and walks the *target's* ancestor chain, rather than the
+note's own `parent` chain. See [Targeting Model](/reference/targeting/) for details.
 
 ### Output Formats
 
