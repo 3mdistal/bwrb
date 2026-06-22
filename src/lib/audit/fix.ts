@@ -39,9 +39,11 @@ import {
   findAllMarkdownFiles,
   findWikilinksToFile,
   executeBulkMove,
+  type WikilinkReference,
 } from '../bulk/move.js';
 import { formatValue } from '../vault.js';
 import { buildNoteTargetIndex, type NoteTargetIndex } from '../discovery.js';
+import { BacklinkScanner } from './backlink-index.js';
 import { isBwrbBuiltinFrontmatterField } from '../frontmatter/systemFields.js';
 
 // Alias for backward compatibility
@@ -924,6 +926,10 @@ export async function runAutoFix(
   const manualReviewNeeded: { file: string; issue: AuditIssue }[] = [];
   const resolvedNonFixable = new Set<AuditIssue>();
 
+  // Per-run backlink scanner: caches vault file contents so the repeated move
+  // backlink-count lookups below don't re-read the whole vault per operation.
+  const backlinkScanner = new BacklinkScanner(vaultDir);
+
   for (const result of results) {
     const fixableIssues = result.issues.filter(i => i.autoFixable);
     const nonFixableIssues = result.issues.filter(i => !i.autoFixable);
@@ -945,14 +951,13 @@ export async function runAutoFix(
         }
         
         // Get wikilink count for warning
-        const allFiles = await findAllMarkdownFiles(vaultDir);
-        const refs = await findWikilinksToFile(vaultDir, result.path, allFiles);
-        
+        const refs = await backlinkScanner.findReferences(result.path);
+
         if (refs.length > 0) {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.yellow(`    ⚠ ${refs.length} wikilink(s) will be updated`));
         }
-        
+
         // Execute the move
         const targetDir = join(vaultDir, issue.expectedDirectory);
         const moveResult = await executeBulkMove({
@@ -960,9 +965,12 @@ export async function runAutoFix(
           targetDir,
           filesToMove: [result.path],
           execute: true,
-          allVaultFiles: allFiles,
         });
-        
+
+        // The move rewrote source files and renamed the moved file; rebuild the
+        // backlink index so subsequent lookups reflect the mutated graph.
+        backlinkScanner.invalidate();
+
         if (moveResult.errors.length === 0) {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.green(`    ✓ Moved to ${issue.expectedDirectory}/`));
@@ -975,13 +983,13 @@ export async function runAutoFix(
           console.log(chalk.red(`    ✗ Failed to move: ${moveResult.errors[0]}`));
           failed++;
         }
-        
+
         // Remove from fixableIssues so we don't process it again
         const idx = fixableIssues.indexOf(issue);
         if (idx > -1) fixableIssues.splice(idx, 1);
         continue;
       }
-      
+
       // Handle owned-wrong-location issues
       if (issue.code === 'owned-wrong-location' && issue.expectedDirectory) {
         if (dryRun) {
@@ -994,14 +1002,13 @@ export async function runAutoFix(
         }
         
         // Get wikilink count for warning
-        const allFiles = await findAllMarkdownFiles(vaultDir);
-        const refs = await findWikilinksToFile(vaultDir, result.path, allFiles);
-        
+        const refs = await backlinkScanner.findReferences(result.path);
+
         if (refs.length > 0) {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.yellow(`    ⚠ ${refs.length} wikilink(s) will be updated`));
         }
-        
+
         // Execute the move
         const targetDir = join(vaultDir, issue.expectedDirectory);
         const moveResult = await executeBulkMove({
@@ -1009,9 +1016,12 @@ export async function runAutoFix(
           targetDir,
           filesToMove: [result.path],
           execute: true,
-          allVaultFiles: allFiles,
         });
-        
+
+        // The move rewrote source files and renamed the moved file; rebuild the
+        // backlink index so subsequent lookups reflect the mutated graph.
+        backlinkScanner.invalidate();
+
         if (moveResult.errors.length === 0) {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.green(`    ✓ Moved to ${issue.expectedDirectory}/`));
@@ -1024,13 +1034,13 @@ export async function runAutoFix(
           console.log(chalk.red(`    ✗ Failed to move: ${moveResult.errors[0]}`));
           failed++;
         }
-        
+
         const idx = fixableIssues.indexOf(issue);
         if (idx > -1) fixableIssues.splice(idx, 1);
         continue;
       }
     }
-    
+
     // Handle stale-reference issues with high-confidence matches and safe unknown-field migrations
     for (const issue of nonFixableIssues) {
       if (issue.code === 'stale-reference' && !issue.inBody && issue.field) {
@@ -1556,8 +1566,9 @@ export async function runInteractiveFix(
   const dryRunReason = dryRun ? 'explicit' : undefined;
   dryRunStorage.enterWith(dryRun);
   const noteTargetIndex = await buildNoteTargetIndex(schema, vaultDir);
-  const context: FixContext = { schema, vaultDir, dryRun, noteTargetIndex };
-  
+  const backlinkScanner = new BacklinkScanner(vaultDir);
+  const context: FixContext = { schema, vaultDir, dryRun, noteTargetIndex, backlinkScanner };
+
   console.log(chalk.bold('Auditing vault...\n'));
 
   if (results.length === 0) {
@@ -1740,15 +1751,34 @@ async function handleMissingSuccessorFix(
   return 'failed';
 }
 
+/**
+ * Find all wikilink backlinks to a file, reusing the per-run backlink scanner
+ * when available so repeated delete-safety / move lookups don't re-read the
+ * whole vault each time. Falls back to a one-off scan when no scanner is present
+ * (e.g. callers that build a `FixContext` without one).
+ *
+ * The fallback path is behavior-identical to the cached path for a given on-disk
+ * state — both ultimately use the same `scanWikilinkReferencesInContent` logic.
+ */
+async function findBacklinkReferences(
+  context: FixContext,
+  targetPath: string
+): Promise<WikilinkReference[]> {
+  if (context.backlinkScanner) {
+    return context.backlinkScanner.findReferences(targetPath);
+  }
+  const allFiles = await findAllMarkdownFiles(context.vaultDir);
+  return findWikilinksToFile(context.vaultDir, targetPath, allFiles);
+}
+
 async function deleteNoteWithSafety(
   context: FixContext,
   result: FileAuditResult
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
-  const { vaultDir, dryRun } = context;
+  const { dryRun } = context;
 
   try {
-    const allFiles = await findAllMarkdownFiles(vaultDir);
-    const refs = await findWikilinksToFile(vaultDir, result.path, allFiles);
+    const refs = await findBacklinkReferences(context, result.path);
 
     console.log(chalk.yellow(`    ⚠ Permanent delete requested for ${result.relativePath}`));
     if (refs.length > 0) {
@@ -1792,6 +1822,9 @@ async function deleteNoteWithSafety(
     }
 
     await unlink(result.path);
+    // Keep the backlink index consistent with the live filesystem: the deleted
+    // note can no longer be a backlink source for subsequent operations.
+    context.backlinkScanner?.noteDeleted(result.path);
     console.log(chalk.green(`    ✓ Deleted ${result.relativePath}`));
     if (refs.length > 0) {
       console.log(chalk.yellow(`    ⚠ ${refs.length} note(s) still contain links to this file`));
@@ -2461,17 +2494,16 @@ async function handleOwnedWrongLocationFix(
   // Show context
   console.log(chalk.dim(`    Expected location: ${issue.expectedDirectory}/`));
   console.log(chalk.dim(`    Owner: ${issue.ownerPath}`));
-  
+
   // Check for wikilinks that will be affected
-  const allFiles = await findAllMarkdownFiles(vaultDir);
-  const refs = await findWikilinksToFile(vaultDir, result.path, allFiles);
-  
+  const refs = await findBacklinkReferences(context, result.path);
+
   if (refs.length > 0) {
     console.log(chalk.yellow(`    ⚠ ${refs.length} wikilink(s) will be updated`));
   }
 
   const options = ['[move file]', '[skip]', '[quit]'];
-  
+
   const selected = await promptSelection(
     `    Action for misplaced owned note:`,
     options
@@ -2492,9 +2524,12 @@ async function handleOwnedWrongLocationFix(
       targetDir,
       filesToMove: [result.path],
       execute: true,
-      allVaultFiles: allFiles,
     });
-    
+
+    // The move rewrote source files and renamed the moved file; rebuild the
+    // backlink index so subsequent lookups reflect the mutated graph.
+    context.backlinkScanner?.invalidate();
+
     if (moveResult.errors.length === 0) {
       console.log(chalk.green(`    ✓ Moved to ${issue.expectedDirectory}/`));
       if (moveResult.totalLinksUpdated > 0) {
@@ -2530,17 +2565,16 @@ async function handleWrongDirectoryFix(
   // Show context
   console.log(chalk.dim(`    Current location: ${dirname(result.relativePath)}/`));
   console.log(chalk.dim(`    Expected location: ${issue.expectedDirectory}/`));
-  
+
   // Check for wikilinks that will be affected
-  const allFiles = await findAllMarkdownFiles(vaultDir);
-  const refs = await findWikilinksToFile(vaultDir, result.path, allFiles);
-  
+  const refs = await findBacklinkReferences(context, result.path);
+
   if (refs.length > 0) {
     console.log(chalk.yellow(`    ⚠ ${refs.length} wikilink(s) will be updated`));
   }
 
   const options = ['[move file]', '[skip]', '[quit]'];
-  
+
   const selected = await promptSelection(
     `    Action for wrong directory:`,
     options
@@ -2561,9 +2595,12 @@ async function handleWrongDirectoryFix(
       targetDir,
       filesToMove: [result.path],
       execute: true,
-      allVaultFiles: allFiles,
     });
-    
+
+    // The move rewrote source files and renamed the moved file; rebuild the
+    // backlink index so subsequent lookups reflect the mutated graph.
+    context.backlinkScanner?.invalidate();
+
     if (moveResult.errors.length === 0) {
       console.log(chalk.green(`    ✓ Moved to ${issue.expectedDirectory}/`));
       if (moveResult.totalLinksUpdated > 0) {
