@@ -3499,6 +3499,137 @@ effort: "3"
     });
   });
 
+  describe('list/multiple date fields (#593)', () => {
+    let tempVaultDir: string;
+
+    // A "list of dates" is modeled as a `date` prompt with `multiple: true`.
+    const LIST_DATE_SCHEMA = {
+      version: 2,
+      config: { date_granularity: 'day' as const },
+      types: {
+        log: {
+          output_dir: 'Logs',
+          fields: {
+            type: { value: 'log' },
+            dates: { prompt: 'date' as const, multiple: true },
+            months: { prompt: 'date' as const, multiple: true, granularity: 'month' as const },
+          },
+        },
+      },
+    };
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-list-date-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(LIST_DATE_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Logs'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    async function auditDateIssues(filename: string, body: string, field = 'dates') {
+      await writeFile(join(tempVaultDir, 'Logs', filename), body);
+      const result = await runCLI(['audit', 'log', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes(filename));
+      const issues: { code: string; field?: string; listIndex?: number; value?: unknown }[] =
+        file?.issues ?? [];
+      return issues.filter((i) => i.code === 'invalid-date-format' && i.field === field);
+    }
+
+    it('flags an invalid element inside a list of dates (the #593 repro)', async () => {
+      const issues = await auditDateIssues(
+        'Repro.md',
+        `---\ntype: log\ndates:\n  - "2026-01-01"\n  - "2026/5/2"\n  - not-a-date\n---\n`
+      );
+      // Both malformed elements flagged; the valid first element is not.
+      expect(issues).toHaveLength(2);
+      const indexes = issues.map((i) => i.listIndex).sort();
+      expect(indexes).toEqual([1, 2]);
+      // The offending value is surfaced per element.
+      const byIndex = new Map(issues.map((i) => [i.listIndex, i.value]));
+      expect(byIndex.get(1)).toBe('2026/5/2');
+      expect(byIndex.get(2)).toBe('not-a-date');
+    });
+
+    it('reports a clean list of all-valid dates with no date issues', async () => {
+      const issues = await auditDateIssues(
+        'Clean.md',
+        `---\ntype: log\ndates:\n  - "2026-01-01"\n  - "2026-05-20"\n---\n`
+      );
+      expect(issues).toHaveLength(0);
+    });
+
+    it('treats an empty list as clean', async () => {
+      const issues = await auditDateIssues(
+        'Empty.md',
+        `---\ntype: log\ndates: []\n---\n`
+      );
+      expect(issues).toHaveLength(0);
+    });
+
+    it('flags only the invalid element in a mixed list', async () => {
+      const issues = await auditDateIssues(
+        'Mixed.md',
+        `---\ntype: log\ndates:\n  - "2026-01-01"\n  - bogus\n  - "2026-12-31"\n---\n`
+      );
+      expect(issues).toHaveLength(1);
+      expect(issues[0].listIndex).toBe(1);
+      expect(issues[0].value).toBe('bogus');
+    });
+
+    it('respects per-element granularity for a month-granularity list', async () => {
+      // YYYY-MM is acceptable at month granularity; a bare year is too coarse.
+      const issues = await auditDateIssues(
+        'Months.md',
+        `---\ntype: log\nmonths:\n  - "2026-05"\n  - "2026"\n---\n`,
+        'months'
+      );
+      expect(issues).toHaveLength(1);
+      expect(issues[0].listIndex).toBe(1);
+      expect(issues[0].value).toBe('2026');
+    });
+
+    it('does not regress scalar (single-value) date validation', async () => {
+      // Scalar date assigned to a multiple field still gets validated and the
+      // existing scalar code path is unaffected.
+      const scalarSchema = {
+        version: 2,
+        types: {
+          log: {
+            output_dir: 'Logs',
+            fields: {
+              type: { value: 'log' },
+              deadline: { prompt: 'date' as const },
+            },
+          },
+        },
+      };
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(scalarSchema, null, 2)
+      );
+      await writeFile(
+        join(tempVaultDir, 'Logs', 'Scalar.md'),
+        `---\ntype: log\ndeadline: not-a-date\n---\n`
+      );
+      const result = await runCLI(['audit', 'log', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Scalar.md'));
+      const issues: { code: string; field?: string; listIndex?: number }[] = file?.issues ?? [];
+      const dateIssues = issues.filter((i) => i.code === 'invalid-date-format');
+      expect(dateIssues).toHaveLength(1);
+      expect(dateIssues[0].field).toBe('deadline');
+      // A scalar date error carries no listIndex.
+      expect(dateIssues[0].listIndex).toBeUndefined();
+    });
+  });
+
   describe('unknown-enum-casing detection and fix', () => {
     let tempVaultDir: string;
 

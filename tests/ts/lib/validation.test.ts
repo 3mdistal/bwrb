@@ -332,6 +332,78 @@ describe('validation', () => {
     });
   });
 
+  describe('multiple (list) date fields (#593)', () => {
+    // A "list of dates" is modeled as a `date` prompt with `multiple: true`.
+    function buildSchema(granularity?: 'day' | 'month' | 'year') {
+      return resolveSchema({
+        version: 1,
+        types: {
+          note: {
+            fields: {
+              type: { value: 'note' },
+              dates: {
+                prompt: 'date',
+                multiple: true,
+                ...(granularity && { granularity }),
+              },
+            },
+          },
+        },
+      } as never);
+    }
+
+    it('accepts a list where every element is a valid date', () => {
+      const s = buildSchema();
+      const result = validateFrontmatter(s, 'note', {
+        type: 'note',
+        dates: ['2026-01-01', '2026-05-20'],
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('accepts an empty list', () => {
+      const s = buildSchema();
+      expect(validateFrontmatter(s, 'note', { type: 'note', dates: [] }).valid).toBe(true);
+    });
+
+    it('flags a list with an invalid element', () => {
+      const s = buildSchema();
+      const result = validateFrontmatter(s, 'note', {
+        type: 'note',
+        dates: ['2026-01-01', 'not-a-date'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].type).toBe('invalid_date');
+      // The offending element value is surfaced.
+      expect(result.errors[0].value).toBe('not-a-date');
+      expect(result.errors[0].message).toContain('index 1');
+    });
+
+    it('respects per-element granularity', () => {
+      const monthSchema = buildSchema('month');
+      // YYYY-MM is acceptable at month granularity.
+      expect(
+        validateFrontmatter(monthSchema, 'note', { type: 'note', dates: ['2026-05', '2026-06'] }).valid
+      ).toBe(true);
+
+      const daySchema = buildSchema('day');
+      // YYYY-MM is too coarse at day granularity.
+      expect(
+        validateFrontmatter(daySchema, 'note', { type: 'note', dates: ['2026-05'] }).valid
+      ).toBe(false);
+    });
+
+    it('ignores structural gaps (empty strings) — those are reported elsewhere', () => {
+      const s = buildSchema();
+      const result = validateFrontmatter(s, 'note', {
+        type: 'note',
+        dates: ['2026-01-01', '   '],
+      });
+      // No invalid_date error for the blank element.
+      expect(result.errors.some((e) => e.type === 'invalid_date')).toBe(false);
+    });
+  });
+
   describe('applyDefaults', () => {
     it('should apply defaults for missing fields', () => {
       const result = applyDefaults(schema, 'idea', {

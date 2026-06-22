@@ -528,41 +528,70 @@ export async function auditFile(
       }
     }
 
-    if (field.prompt === 'date' && (typeof value === 'string' || typeof value === 'number')) {
-      // A bare year (e.g. 2026) is parsed as a number by YAML; treat it as a
-      // partial date string for validation.
-      const dateStr = String(value);
+    if (field.prompt === 'date') {
       const granularity = resolveDateGranularity(field, schema.config);
-      if (!isAcceptableDate(dateStr, granularity)) {
-        const normalization = getUnambiguousDateNormalization(dateStr);
-        const expected =
-          granularity === 'day'
-            ? 'YYYY-MM-DD'
-            : granularity === 'month'
-              ? 'YYYY-MM-DD or YYYY-MM'
-              : 'YYYY-MM-DD, YYYY-MM, or YYYY';
-        issues.push({
-          severity: 'error',
-          code: 'invalid-date-format',
-          message: `Invalid date for ${fieldName}: must be ${expected}`,
-          field: fieldName,
-          value,
-          expected,
-          ...(normalization && { suggestion: `Suggested: ${normalization.normalized}` }),
-          ...(normalization && { meta: { normalized: normalization.normalized, normalizationKind: normalization.kind } }),
-          autoFixable: Boolean(normalization),
-        });
-      } else if (typeof value === 'number') {
-        // Valid date but stored as a YAML number — should be quoted as a string.
-        issues.push({
-          severity: 'error',
-          code: 'wrong-scalar-type',
-          message: `Non-string value for ${fieldName} should be a string`,
-          field: fieldName,
-          value,
-          expected: 'string',
-          autoFixable: true,
-        });
+
+      // Validate a single date element. `listIndex` is supplied for elements of
+      // a list/multiple date field so the reported issue identifies the element.
+      const checkDateElement = (element: unknown, listIndex?: number) => {
+        if (typeof element !== 'string' && typeof element !== 'number') return;
+
+        // A bare year (e.g. 2026) is parsed as a number by YAML; treat it as a
+        // partial date string for validation.
+        const dateStr = String(element);
+        if (!isAcceptableDate(dateStr, granularity)) {
+          const normalization = getUnambiguousDateNormalization(dateStr);
+          const expected =
+            granularity === 'day'
+              ? 'YYYY-MM-DD'
+              : granularity === 'month'
+                ? 'YYYY-MM-DD or YYYY-MM'
+                : 'YYYY-MM-DD, YYYY-MM, or YYYY';
+          issues.push({
+            severity: 'error',
+            code: 'invalid-date-format',
+            message:
+              listIndex === undefined
+                ? `Invalid date for ${fieldName}: must be ${expected}`
+                : `Invalid date for ${fieldName} at index ${listIndex} ('${dateStr}'): must be ${expected}`,
+            field: fieldName,
+            value: element,
+            expected,
+            ...(listIndex !== undefined && { listIndex }),
+            // The date auto-fixer overwrites the whole field, so it can only
+            // safely normalize scalar dates. List elements are reported but not
+            // auto-fixed (the offending value is surfaced for a manual fix).
+            ...(listIndex === undefined &&
+              normalization && { suggestion: `Suggested: ${normalization.normalized}` }),
+            ...(listIndex === undefined &&
+              normalization && {
+                meta: { normalized: normalization.normalized, normalizationKind: normalization.kind },
+              }),
+            autoFixable: listIndex === undefined && Boolean(normalization),
+          });
+        } else if (typeof element === 'number' && listIndex === undefined) {
+          // Valid scalar date stored as a YAML number — should be quoted as a
+          // string. A numeric element inside a list is instead reported (and
+          // coerced) by checkListElementIntegrity, so don't double-report here.
+          issues.push({
+            severity: 'error',
+            code: 'wrong-scalar-type',
+            message: `Non-string value for ${fieldName} should be a string`,
+            field: fieldName,
+            value: element,
+            expected: 'string',
+            autoFixable: true,
+          });
+        }
+      };
+
+      if (Array.isArray(value)) {
+        // List/multiple date field: validate every element as a date, reusing
+        // the same granularity-aware checker as scalar dates. Structural issues
+        // (null/empty/nested) are reported separately by checkListElementIntegrity.
+        value.forEach((element, index) => checkDateElement(element, index));
+      } else {
+        checkDateElement(value);
       }
     }
 
