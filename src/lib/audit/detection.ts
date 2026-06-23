@@ -1133,6 +1133,18 @@ function checkListElementIntegrity(
   for (const [fieldName, field] of Object.entries(fields)) {
     if (!field || (field.prompt !== 'list' && !field.multiple)) continue;
 
+    // Alias-role fields are owned exclusively by the `illegal-aliases`
+    // detection+fix (checkIllegalAliases / fixIllegalAliases), which validates
+    // the whole field as a unit and safely drops blanks + dedupes in one pass.
+    // We must NOT also run the generic `invalid-list-element` blank-remover on
+    // them: that remover deletes blank entries by original index applied
+    // sequentially to a shrinking array, so with 2+ leading blanks a stale
+    // index destroys a distinct alias when both fire in the same auto-fix pass
+    // (data loss, #617). This mirrors the `duplicate-list-values` suppression
+    // for alias fields in checkHygieneIssues — alias-field list cleanup has a
+    // single owner.
+    if (field.alias === true) continue;
+
     const value = frontmatter[fieldName];
     if (value === null || value === undefined) continue;
 

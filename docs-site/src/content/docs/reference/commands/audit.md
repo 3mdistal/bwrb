@@ -104,9 +104,9 @@ An [`alias`-role field](/reference/schema/#alias) must hold an **array of non-em
 
 This reuses the same dedupe-style cleanup as `duplicate-list-values`, extended to also drop blanks, and converges on re-run (a second `--fix` changes nothing). It never merges *distinct* aliases, so no meaningful data is lost.
 
-A **non-string** alias entry (e.g. a bare number) is **flag-only**: bwrb can't infer the intended text, so it is surfaced for a manual fix rather than auto-cleaned. (A bare numeric YAML element may still be stringified by the separate `invalid-list-element` coercion, but the alias entry is never dropped.) A non-array alias value is reported as `wrong-scalar-type`.
+A **non-string** alias entry (e.g. a bare number) is **flag-only**: bwrb can't infer the intended text, so it is surfaced for a manual fix rather than auto-cleaned. The alias entry is never dropped or coerced — it survives untouched. A non-array alias value is reported as `wrong-scalar-type`.
 
-Note: because duplicate aliases are owned by `illegal-aliases`, an `alias`-role field never additionally produces a `duplicate-list-values` warning — that generic warning still applies to all other list fields unchanged.
+Note: `illegal-aliases` is the **sole owner** of alias-field list cleanup. An `alias`-role field therefore never additionally produces a generic `duplicate-list-values` warning *or* an `invalid-list-element` issue — both are suppressed so blanks and duplicates are detected and fixed exactly once, by `illegal-aliases`, in a single idempotent pass. (Running both removers on the same field used to destroy a distinct alias when blanks preceded a real entry; see #617.) Those generic checks still apply to all other list fields unchanged.
 
 ## Examples
 
