@@ -75,6 +75,38 @@ describe('frequent-unlinked-term: extractCandidates', () => {
     expect(today?.atSentenceStart).toBe(true);
     expect(rust?.atSentenceStart).toBe(true);
   });
+
+  it('keeps an accented LEADING word in a multi-word phrase (#624)', () => {
+    // Previously the ASCII-only word-start dropped "Émile", surfacing only
+    // "Durkheim". The full phrase must now survive.
+    const hits = extractCandidates('I read Émile Durkheim again today.', 3);
+    const texts = hits.map((h) => h.text);
+    expect(texts).toContain('Émile Durkheim');
+    expect(texts).not.toContain('Durkheim');
+  });
+
+  it('captures a single non-ASCII-uppercase term (#624)', () => {
+    const hits = extractCandidates('We visited Öland and saw Über things.', 3);
+    const texts = hits.map((h) => h.text);
+    expect(texts).toContain('Öland');
+    expect(texts).toContain('Über');
+  });
+
+  it('does not truncate accented continuations (#624)', () => {
+    // "José", "Müller", "naïve" must be captured whole, not cut at the accent.
+    const jose = extractCandidates('met José there.', 3).map((h) => h.text);
+    expect(jose).toContain('José');
+    const muller = extractCandidates('asked Müller about it.', 3).map((h) => h.text);
+    expect(muller).toContain('Müller');
+  });
+
+  it('preserves ASCII extraction behavior unchanged (#624)', () => {
+    const hits = extractCandidates("O'Brien met Jean-Luc in New York Times.", 3);
+    const texts = hits.map((h) => h.text);
+    expect(texts).toContain("O'Brien");
+    expect(texts).toContain('Jean-Luc');
+    expect(texts).toContain('New York Times');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -172,6 +204,31 @@ describe('frequent-unlinked-term: FrequentTermAccumulator', () => {
     for (const issue of acc.finish()) {
       expect(issue.autoFixable).toBe(false);
     }
+  });
+
+  it('surfaces an accented multi-word phrase as the FULL phrase (#624)', () => {
+    const acc = new FrequentTermAccumulator(emptyIndex, { minMentions: 4, minNotes: 2 });
+    acc.addBody('we cite Émile Durkheim here. Émile Durkheim is key.', 'a.md');
+    acc.addBody('we read Émile Durkheim. Émile Durkheim again.', 'b.md');
+    const issues = acc.finish();
+    expect(issues.find((i) => i.value === 'Émile Durkheim')).toBeDefined();
+    // Must NOT have collapsed to just the ASCII tail.
+    expect(issues.find((i) => i.value === 'Durkheim')).toBeUndefined();
+  });
+
+  it('surfaces a single non-ASCII-uppercase term when it meets thresholds (#624)', () => {
+    const acc = new FrequentTermAccumulator(emptyIndex, { minMentions: 2, minNotes: 2 });
+    acc.addBody('we love Öland a lot, and also Öland nearby.', 'a.md');
+    acc.addBody('we visit Öland yearly, plus Öland again.', 'b.md');
+    expect(acc.finish().find((i) => i.value === 'Öland')).toBeDefined();
+  });
+
+  it('applies thresholds to unicode tokens the same as ASCII (#624)', () => {
+    const acc = new FrequentTermAccumulator(emptyIndex, { minMentions: 4, minNotes: 2 });
+    // Only 3 mid-sentence mentions across 2 notes → below threshold.
+    acc.addBody('about Müller here, and Müller too.', 'a.md');
+    acc.addBody('about Müller again.', 'b.md');
+    expect(acc.finish().find((i) => i.value === 'Müller')).toBeUndefined();
   });
 
   it('exposes sensible documented defaults', () => {

@@ -142,9 +142,12 @@ export function extractCandidates(
   maxPhraseWords: number
 ): CandidateHit[] {
   const hits: CandidateHit[] = [];
-  // A Capitalized word: leading uppercase letter, then letters/marks. We keep
-  // internal apostrophes/hyphens (O'Brien, Jean-Luc) but trim trailing ones.
-  const wordRe = /[A-Z][A-Za-z'À-ɏ-]*/g;
+  // A Capitalized word: a leading uppercase/titlecase letter (Unicode-aware, so
+  // `Émile`, `Über`, `Öland`, `Ægir` all qualify, not just ASCII A–Z), then any
+  // run of Unicode letters / combining marks. We keep internal
+  // apostrophes/hyphens (O'Brien, Jean-Luc) but trim trailing ones, and accented
+  // continuations (café, naïve, Müller) are no longer truncated.
+  const wordRe = /[\p{Lu}\p{Lt}][\p{L}\p{M}'-]*/gu;
 
   // Walk word-by-word, grouping consecutive Capitalized words that are
   // separated only by a single space into a phrase.
