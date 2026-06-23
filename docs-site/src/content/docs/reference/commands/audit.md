@@ -72,7 +72,7 @@ Delete semantics in repair mode:
 | `empty-string-required` | Required field is empty/whitespace/empty list |
 | `invalid-option` | Field value not in allowed option values |
 | `unknown-field` | Field not defined in schema (warning by default) |
-| `wrong-directory` | File location doesn't match its type's output_dir |
+| `wrong-directory` | File location doesn't match its type's output_dir (a subdirectory of `output_dir` counts as correct). An [**owned** note](/reference/schema/) is exempt: it correctly lives under its owner at `<owner-dir>/<field>/`, so it is checked against that location, not the owned type's own `output_dir` |
 | `format-violation` | Field value doesn't match expected format (wikilink, etc.) |
 | `stale-reference` | Wikilink points to non-existent file |
 | `trailing-whitespace` | Trailing spaces/tabs on raw frontmatter `key: value` lines (warning; auto-fixable) |

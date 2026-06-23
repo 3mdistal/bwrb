@@ -2580,10 +2580,125 @@ status: raw
       expect(wrongDirIssue.expected).toBe('notes');
       
       // The correctly placed note should have no issues
-      const correctFile = output.files.find((f: { path: string }) => 
+      const correctFile = output.files.find((f: { path: string }) =>
         f.path.includes('Correct Note.md')
       );
       expect(correctFile).toBeUndefined();
+    });
+  });
+
+  // Owned notes (e.g. a `track` owned by an `album` via an `owned` field) live
+  // under their owner at `<owner-dir>/<field>/`, NOT in the owned type's own
+  // `output_dir`. Regression coverage for #661: audit must not flag a
+  // correctly-placed owned note as wrong-directory, while a genuinely-misplaced
+  // owned note (outside any valid owner subtree) is still flagged.
+  describe('wrong-directory detection for owned notes (#661)', () => {
+    let tempVaultDir: string;
+
+    // album (output_dir: Albums) owns `track` (output_dir: Tracks) via `songs`.
+    const OWNERSHIP_SCHEMA = {
+      version: 2,
+      types: {
+        album: {
+          output_dir: 'Albums',
+          fields: {
+            type: { value: 'album' },
+            status: {
+              prompt: 'select',
+              options: ['raw', 'in-flight', 'settled'],
+              default: 'raw',
+              required: true,
+            },
+            songs: { prompt: 'relation', source: 'track', owned: true },
+          },
+          field_order: ['type', 'status', 'songs'],
+        },
+        track: {
+          output_dir: 'Tracks',
+          fields: { type: { value: 'track' } },
+          field_order: ['type'],
+        },
+      },
+    };
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-owned-wrongdir-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(OWNERSHIP_SCHEMA, null, 2)
+      );
+      // Owner note + its owned-field subfolder.
+      await mkdir(join(tempVaultDir, 'Albums/Best Album/songs'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Albums/Best Album', 'Best Album.md'),
+        `---\ntype: album\nstatus: in-flight\n---\n`
+      );
+      await mkdir(join(tempVaultDir, 'Tracks'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Random'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('does not flag a correctly-placed owned note as wrong-directory', async () => {
+      // Owned `track` living under its owner at Albums/Best Album/songs/.
+      await writeFile(
+        join(tempVaultDir, 'Albums/Best Album/songs', 'Opening Track.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      const ownedFile = output.files.find((f: { path: string }) =>
+        f.path.includes('Opening Track.md')
+      );
+      expect(ownedFile).toBeUndefined();
+    });
+
+    it('still flags a genuinely-misplaced owned-type note', async () => {
+      // A `track` placed in Random/ is NOT under any valid owner subtree, so it
+      // is discovered as a plain pooled note and must be flagged against Tracks.
+      await writeFile(
+        join(tempVaultDir, 'Random', 'Stray Track.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const strayFile = output.files.find((f: { path: string }) =>
+        f.path.includes('Stray Track.md')
+      );
+      expect(strayFile).toBeDefined();
+      const wrongDirIssue = strayFile.issues.find(
+        (i: { code: string }) => i.code === 'wrong-directory'
+      );
+      expect(wrongDirIssue).toBeDefined();
+      expect(wrongDirIssue.expected).toBe('Tracks');
+    });
+
+    it('does not flag a non-owned note nested under its output_dir (#660 unchanged)', async () => {
+      // A non-owned `track` filed in a nested subdir of its own output_dir is a
+      // correct location and must remain clean.
+      await mkdir(join(tempVaultDir, 'Tracks/Sub'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Tracks/Sub', 'Nested Track.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      const nestedFile = output.files.find((f: { path: string }) =>
+        f.path.includes('Nested Track.md')
+      );
+      expect(nestedFile).toBeUndefined();
     });
   });
 

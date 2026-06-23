@@ -18,6 +18,7 @@ import {
   getRecurrenceForType,
 } from '../schema.js';
 import { readStructuralFrontmatter } from './structural.js';
+import { getOwnedChildFolder } from '../ownership-paths.js';
 import {
   splitLinesPreserveEol,
   parseSimpleYamlKeyValueLine,
@@ -363,14 +364,26 @@ export async function auditFile(
   }
 
   // Check wrong directory
-  const expectedOutputDir = getOutputDir(schema, resolvedTypePath);
+  //
+  // An OWNED note (e.g. a `track` owned by an `album` via an `owned` field) does
+  // NOT live in its type's own `output_dir`. It legitimately lives under its
+  // owner at `<owner-dir>/<field>/` — the same place `bwrb new --owner` and
+  // ownership-aware discovery (#619/#660) place and accept it. Discovery already
+  // attached the owner info to `file.ownership`, so reuse it (and the shared
+  // path rule) instead of the type's top-level `output_dir`. An owned note that
+  // is NOT in its valid owner-subtree location is still reported here (and a
+  // genuinely misplaced owned note is additionally caught by the dedicated
+  // `owned-wrong-location` check in checkOwnershipViolations).
+  const expectedOutputDir = file.ownership
+    ? getOwnedChildFolder(file.ownership.ownerPath, file.ownership.fieldName)
+    : getOutputDir(schema, resolvedTypePath);
   if (expectedOutputDir) {
     const expectedPath = expectedOutputDir;
     const actualDir = dirname(file.relativePath);
     // Normalize for comparison
     const normalizedExpected = expectedPath.replace(/\/$/, '');
     const normalizedActual = actualDir.replace(/\/$/, '');
-    
+
     // Segment-aware check: actualDir must be exactly expectedDir or a subdirectory
     const isCorrectLocation =
       normalizedActual === normalizedExpected ||
