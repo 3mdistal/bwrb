@@ -86,7 +86,9 @@ the schema-level summary always prints in full. The flag also applies to
 > bwrb bulk --all --rename owner=assignee --execute
 > ```
 >
-> See [issue #694](https://github.com/3mdistal/bwrb/issues/694) for background.
+> Canonical user-facing behavior lives in the docs-site
+> [Migrations](../../docs-site/src/content/docs/concepts/migrations.md) page; see
+> [issue #694](https://github.com/3mdistal/bwrb/issues/694) for background.
 
 In `--output json` mode the per-note changes are **always** included under
 `data.fileChanges` (an array of `{ relativePath, changes[] }`), uncapped, for

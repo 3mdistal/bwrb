@@ -9,7 +9,6 @@ Schemas evolve. Bowerbird provides tools to migrate your notes when your schema 
 
 When you modify your schema, existing notes may become inconsistent:
 
-- **Rename a field** — Old notes still use the old name
 - **Remove a select option** — Notes may reference invalid values
 - **Rename a type** — Notes live in the wrong directory
 - **Remove a field** — Old notes have orphaned data
@@ -144,10 +143,30 @@ These require confirmation because they affect existing data:
 | Change | What Happens |
 |--------|--------------|
 | Remove field | Field is removed from affected notes |
-| Rename field | Field name is updated in affected notes |
 | Remove select option | Affected notes flagged for review |
 | Rename type | Notes are moved to the new directory |
 | Remove type | Existing notes become orphaned (warning) |
+
+:::caution[Field renames are not auto-detected]
+The schema diff engine compares two schema snapshots and has no way to tell an
+intentional rename apart from an unrelated drop-and-add. Renaming a field in
+`.bwrb/schema.json` always surfaces as a separate **add field** + **remove
+field** pair — and removing a field **deletes the old field's data** from
+affected notes.
+
+The `old → new: value` per-note rename preview only appears for an explicit
+`rename-field` operation, which the diff-driven `bwrb schema migrate` workflow
+never produces.
+
+To rename a field while preserving its values, use the bulk command, which
+moves the data in one step:
+
+```bash
+bwrb bulk --all --rename old=new --execute
+```
+
+See [Bulk Operations](/reference/commands/bulk/) for details.
+:::
 
 ## Version Suggestion
 
