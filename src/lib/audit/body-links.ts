@@ -43,7 +43,7 @@
 import { existsSync } from 'fs';
 import { basename, isAbsolute, resolve } from 'path';
 import type { NoteTargetIndex } from '../discovery.js';
-import { levenshteinDistance } from '../levenshtein.js';
+import { closeMatches } from '../close-match.js';
 import type { AuditIssue } from './types.js';
 import { maskCodeSpans } from './unlinked-mention.js';
 
@@ -99,21 +99,23 @@ function noteDir(selfRelativePath: string): string {
 function fuzzyNoteSuggestions(target: string, index: NoteTargetIndex): string[] {
   if (target.length < FUZZY_MIN_LENGTH) return [];
   const lower = target.toLowerCase();
-  const scored: Array<{ name: string; distance: number }> = [];
-  for (const [key, paths] of index.targetToPaths) {
-    if (key.length < FUZZY_MIN_LENGTH) continue;
-    const dist = levenshteinDistance(lower, key);
-    if (dist === 0) continue;
-    if (dist <= FUZZY_MAX_DISTANCE) {
-      // `targetToPaths` keys are lowercased; surface the canonical-case basename
-      // (reconstructed from the resolved note path) so the "did you mean?" hint
-      // shows `RealNote` rather than the index key `realnote`. Fall back to the
-      // key if no path is recorded (shouldn't happen for real notes).
-      const firstPath = paths[0];
-      const name = firstPath ? basename(firstPath, '.md') : key;
-      scored.push({ name, distance: dist });
-    }
-  }
+  // `targetToPaths` keys are already lowercased; only keys of a substantial
+  // length are eligible. Match against those keys, excluding exact (distance 0).
+  const eligibleKeys = [...index.targetToPaths.keys()].filter(
+    (key) => key.length >= FUZZY_MIN_LENGTH
+  );
+  const scored = closeMatches(lower, eligibleKeys, {
+    maxDistance: FUZZY_MAX_DISTANCE,
+    caseInsensitive: false,
+    excludeExact: true,
+  }).map((m) => {
+    // Surface the canonical-case basename (reconstructed from the resolved note
+    // path) so the "did you mean?" hint shows `RealNote` rather than the index
+    // key `realnote`. Fall back to the key if no path is recorded.
+    const firstPath = index.targetToPaths.get(m.value)?.[0];
+    const name = firstPath ? basename(firstPath, '.md') : m.value;
+    return { name, distance: m.distance };
+  });
   scored.sort((a, b) => a.distance - b.distance || a.name.localeCompare(b.name, 'en'));
   return scored.slice(0, FUZZY_MAX_SUGGESTIONS).map((s) => s.name);
 }

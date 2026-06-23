@@ -3,7 +3,7 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { basename } from 'path';
 import { SCHEMA_RELATIVE_PATH } from './bwrb-paths.js';
-import { levenshteinDistance } from './levenshtein.js';
+import { closeMatchValues } from './close-match.js';
 import type { DatePrecision } from './local-date.js';
 import {
   BwrbSchema,
@@ -989,26 +989,6 @@ export function getEntityAliases(
 // ============================================================================
 
 /**
- * Find close matches for a string within a list of candidates.
- * Returns candidates within the specified maximum distance, sorted by distance.
- */
-function findCloseMatches(target: string, candidates: string[], maxDistance: number): string[] {
-  const matches: Array<{ candidate: string; distance: number }> = [];
-
-  for (const candidate of candidates) {
-    const distance = levenshteinDistance(target.toLowerCase(), candidate.toLowerCase());
-    if (distance <= maxDistance && distance > 0) {
-      matches.push({ candidate, distance });
-    }
-  }
-
-  // Sort by distance (closest first)
-  matches.sort((a, b) => a.distance - b.distance);
-
-  return matches.map(m => m.candidate);
-}
-
-/**
  * Suggest the closest concrete type name for a (likely-misspelled) type name.
  *
  * Used to surface a "Did you mean 'X'?" hint when a user supplies an unknown
@@ -1033,7 +1013,10 @@ export function suggestTypeName(
   // Threshold: at most 3 edits, but never more than 60% of the input length so
   // very short inputs don't match unrelated types and long gibberish is rejected.
   const maxDistance = Math.min(3, Math.ceil(typeName.length * 0.6));
-  const matches = findCloseMatches(typeName, availableTypes, maxDistance);
+  const matches = closeMatchValues(typeName, availableTypes, {
+    maxDistance,
+    excludeExact: true,
+  });
   return matches[0];
 }
 
