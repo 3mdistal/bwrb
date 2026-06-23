@@ -100,6 +100,40 @@ bwrb list --type task --where "under(context, '[[career]]')"
 `isDescendantOf('[[X]]')` walks the **current note's own** `parent` chain. `under(field, '[[X]]')` first **dereferences a relation field**, then walks **that target's** chain. The context lives in a *field*, not the note's structural parent, so `under` is the operator you want here. See [Targeting Model](/reference/targeting/#underfield-node-vs-isdescendantofnode).
 :::
 
+## See the hierarchy as a tree
+
+Querying tells you *which* notes are in a domain; rendering the tree tells you *how the domain is shaped*. Because contexts are real notes in a `parent` hierarchy, `bwrb list --output tree` draws that hierarchy directly:
+
+```bash
+bwrb list --type context --output tree
+```
+
+```text
+└── career
+    └── Builder
+        └── Vercel
+```
+
+This is the fastest way to see — or onboard someone else to — the shape of your context tree. `--output tree` builds the parent hierarchy whenever the matched notes carry `parent` links, so it works for **any** entity type modelling a hierarchy this way, not only types marked `recursive`. (When the result set has no `parent` links, `--output tree` falls back to grouping notes by directory.)
+
+Limit the depth with `-L`/`--depth`, and order siblings with `--sort`/`--desc`:
+
+```bash
+# Just the top two levels (domains and their immediate projects)
+bwrb list --type context --output tree -L 2
+
+# Order siblings by name, descending
+bwrb list --type context --output tree --sort name --desc
+```
+
+You can also narrow the tree to a single subtree first, then render it:
+
+```bash
+bwrb list --type context --where "isDescendantOf('[[career]]')" --output tree
+```
+
+See [bwrb list](/reference/commands/list/) for the full `--output tree` reference.
+
 ## Why one field beats two
 
 Collapsing `scope` + `context` into a single context tree removes the redundancy and unlocks transitive queries:
