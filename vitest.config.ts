@@ -38,6 +38,15 @@ export default defineConfig({
     maxConcurrency: 5,
     // Retry flaky tests once before failing - handles CPU contention gracefully
     retry: 1,
+    // Real-CLI suites spawn `tsx` subprocesses (see tests/ts/fixtures/setup.ts),
+    // and some tests fire several sequential spawns in one test/hook. Under heavy
+    // parallel load (many concurrent forks each cold-starting `tsx`) those spawns
+    // can take several seconds each. The default 5s timeout was too tight and was
+    // the root cause of the seed-step flake (#643): vitest aborted the test,
+    // SIGTERM-ed the in-flight spawn, and it surfaced as "exitCode 1, expected 0".
+    // These budgets are generous so contention shows up as slow-but-green.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

@@ -51,13 +51,13 @@ describe('global --non-interactive destructive flows', () => {
 
   it('requires --force for dashboard and template delete when non-interactive is set', async () => {
     const dashboardSeed = await runCLI(['dashboard', 'new', 'triage', '--json', '{"type":"idea"}'], vaultDir);
-    expect(dashboardSeed.exitCode).toBe(0);
+    expect(dashboardSeed.exitCode, `dashboard seed stderr: ${dashboardSeed.stderr}`).toBe(0);
 
     const templateSeed = await runCLI(
       ['template', 'new', 'idea', '--json', '{"name":"triage-template","body":"# Body"}'],
       vaultDir
     );
-    expect(templateSeed.exitCode).toBe(0);
+    expect(templateSeed.exitCode, `template seed stderr: ${templateSeed.stderr}`).toBe(0);
 
     const dashboardDelete = await runCLI(['--non-interactive', 'dashboard', 'delete', 'triage'], vaultDir);
     expect(dashboardDelete.exitCode).not.toBe(0);

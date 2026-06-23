@@ -278,10 +278,117 @@ export interface CLIResult {
 export interface RunCLIOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  /**
+   * Hard wall-clock budget for a single spawn before it is killed and the
+   * attempt is treated as a transient failure. Defaults to RUN_CLI_TIMEOUT_MS.
+   *
+   * The real CLI is launched via `tsx`, which pays a non-trivial cold-start
+   * cost per process. Under heavy parallel load (many concurrent vitest forks
+   * each spawning their own `tsx`), that cold start can balloon well past a
+   * second. This budget is deliberately generous so that contention shows up
+   * as a slow-but-successful run rather than a flaky failure.
+   */
+  timeoutMs?: number;
+  /**
+   * Number of times to re-attempt a spawn that fails transiently (spawn
+   * error such as EAGAIN/ENOMEM, or our own per-spawn timeout). Defaults to
+   * RUN_CLI_RETRIES. A non-zero exit code from the CLI itself is NOT retried
+   * here — that is the CLI's own behavior and is what tests assert on.
+   */
+  retries?: number;
+}
+
+/**
+ * Per-spawn wall-clock budget. Generous on purpose: `tsx` cold start under
+ * heavy parallel load (15+ concurrent forks) can take several seconds, and a
+ * too-tight budget is the root cause of the historical seed-step flake
+ * (vitest aborting the test, SIGTERM-ing the in-flight spawn, surfacing as
+ * "exitCode 1, expected 0"). Override per call via RunCLIOptions.timeoutMs.
+ */
+const RUN_CLI_TIMEOUT_MS = Number(process.env.BWRB_TEST_CLI_TIMEOUT_MS) || 30_000;
+
+/**
+ * Default number of retries for transient spawn failures (spawn errors or the
+ * per-spawn timeout). CLI non-zero exits are never retried.
+ */
+const RUN_CLI_RETRIES = 2;
+
+class TransientSpawnError extends Error {}
+
+function spawnOnce(
+  cliCommand: string,
+  cliArgs: string[],
+  cwd: string,
+  mergedEnv: Record<string, string>,
+  stdin: string | undefined,
+  timeoutMs: number
+): Promise<CLIResult> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cliCommand, cliArgs, {
+      cwd,
+      env: mergedEnv,
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      proc.kill('SIGKILL');
+      reject(
+        new TransientSpawnError(
+          `runCLI spawn exceeded ${timeoutMs}ms: ${cliCommand} ${cliArgs.join(' ')}`
+        )
+      );
+    }, timeoutMs);
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    // Without this handler a failed spawn (e.g. EAGAIN/ENOMEM under load)
+    // would leave the promise pending forever, surfacing as an opaque vitest
+    // worker timeout rather than a diagnosable, retryable failure.
+    proc.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new TransientSpawnError(`runCLI spawn failed: ${err.message}`));
+    });
+
+    if (stdin) {
+      proc.stdin.write(stdin);
+      proc.stdin.end();
+    }
+
+    proc.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        exitCode: code ?? 0,
+      });
+    });
+  });
 }
 
 /**
  * Run the bwrb CLI with arguments and capture output.
+ *
+ * The CLI is spawned as a real subprocess (`tsx src/index.ts`, or `node
+ * dist/index.js` when BWRB_TEST_DIST=1). To stay reliable under heavy parallel
+ * load this helper applies a generous per-spawn timeout and retries only
+ * *transient* spawn failures (spawn errors or timeouts). A non-zero CLI exit
+ * code is returned as-is so tests can assert on it.
+ *
  * @param args CLI arguments (e.g., ['list', 'idea', '--status=raw'])
  * @param vaultDir Optional vault directory (passed via --vault)
  * @param stdin Optional stdin input for interactive commands
@@ -293,7 +400,12 @@ export async function runCLI(
   options: RunCLIOptions = {}
 ): Promise<CLIResult> {
   const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
-  const { cwd = PROJECT_ROOT, env = {} } = options;
+  const {
+    cwd = PROJECT_ROOT,
+    env = {},
+    timeoutMs = RUN_CLI_TIMEOUT_MS,
+    retries = RUN_CLI_RETRIES,
+  } = options;
 
   const cliCommand = USE_DIST ? 'node' : TSX_BIN;
   const cliArgs = USE_DIST ? [CLI_PATH, ...fullArgs] : [CLI_SRC_PATH, ...fullArgs];
@@ -313,34 +425,25 @@ export async function runCLI(
     mergedEnv.NO_COLOR = '1';
   }
 
-  return new Promise((resolve) => {
-    const proc = spawn(cliCommand, cliArgs, {
-      cwd,
-      env: mergedEnv,
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    if (stdin) {
-      proc.stdin.write(stdin);
-      proc.stdin.end();
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await spawnOnce(cliCommand, cliArgs, cwd, mergedEnv, stdin, timeoutMs);
+    } catch (err) {
+      if (!(err instanceof TransientSpawnError)) throw err;
+      lastError = err;
+      // Small backoff lets transient contention (CPU/fork pressure) ease.
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+      }
     }
+  }
 
-    proc.on('close', (code) => {
-      resolve({
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-        exitCode: code ?? 0,
-      });
-    });
-  });
+  // Surface the transient failure clearly so future flakes are diagnosable
+  // instead of masquerading as a bare "exitCode 1".
+  throw new Error(
+    `runCLI failed after ${retries + 1} attempt(s): ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`
+  );
 }
