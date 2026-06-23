@@ -126,6 +126,12 @@ Issue Types:
                         with no note yet (advisory heuristic; never auto-fixed)
   missing-body-section  Heading section declared in the type's body_sections is
                         missing from the note body (auto-fixable: appends it)
+  broken-body-wikilink  A [[wikilink]] in the body resolves to no note
+                        (flag-only; offers a "did you mean?" hint)
+  malformed-body-wikilink Broken wikilink bracket syntax in the body ([[]] /
+                        unclosed [[) (flag-only)
+  broken-body-file-link A relative [text](path)/![alt](img) link in the body
+                        whose target doesn't exist on disk (flag-only)
 
 Type Resolution:
   Audit resolves each file's type from its frontmatter 'type' field.

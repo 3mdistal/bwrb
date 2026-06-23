@@ -69,7 +69,19 @@ export type IssueCode =
   // Body validation (#510): a heading section declared in the type's
   // `body_sections` is missing from the note body (or present at the wrong
   // heading level). Auto-fixable: --fix appends the canonical heading scaffold.
-  | 'missing-body-section';
+  | 'missing-body-section'
+  // Body link validation (#652): a well-formed `[[Target]]` in the body whose
+  // target resolves to NO note via the alias-aware note-target index. Distinct
+  // from `unlinked-mention` (which flags plain-text mentions of KNOWN entities).
+  // Flag-only: we can't know the intended target, so we never auto-link.
+  | 'broken-body-wikilink'
+  // Body link validation (#652): bracket syntax that looks like a wikilink but is
+  // broken — empty `[[]]`/`[[ ]]` target, or an unclosed `[[`. Flag-only.
+  | 'malformed-body-wikilink'
+  // Body link validation (#652): a markdown file/image link `[t](path)` /
+  // `![a](img)` whose relative target doesn't exist on disk (resolved relative to
+  // the note's directory). External URLs / anchors are not checked. Flag-only.
+  | 'broken-body-file-link';
 
 /**
  * A single audit issue.
