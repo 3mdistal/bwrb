@@ -291,6 +291,77 @@ describe('expression-validation', () => {
       // Should not throw, just skip unparseable expressions
       expect(result.valid).toBe(true);
     });
+
+    describe('under() first-argument validation', () => {
+      it('passes for a valid relation field', () => {
+        // task.milestone is a relation field.
+        const result = validateWhereExpressions(
+          ["under(milestone, '[[career]]')"],
+          schema,
+          'task'
+        );
+        expect(result.valid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+
+      it('passes for the relation field `parent`', () => {
+        const result = validateWhereExpressions(
+          ["under(parent, '[[career]]')"],
+          schema,
+          'task'
+        );
+        expect(result.valid).toBe(true);
+      });
+
+      it('flags an unknown field passed to under()', () => {
+        const result = validateWhereExpressions(
+          ["under(nope, '[[career]]')"],
+          schema,
+          'task'
+        );
+        expect(result.valid).toBe(false);
+        expect(result.errors).toHaveLength(1);
+        expect(result.errors[0]!.field).toBe('nope');
+        expect(result.errors[0]!.message).toContain('Unknown field');
+        expect(result.errors[0]!.message).toContain('under()');
+      });
+
+      it('flags a known non-relation field passed to under()', () => {
+        // task.status is a select field, not a relation.
+        const result = validateWhereExpressions(
+          ["under(status, '[[career]]')"],
+          schema,
+          'task'
+        );
+        expect(result.valid).toBe(false);
+        expect(result.errors).toHaveLength(1);
+        expect(result.errors[0]!.field).toBe('status');
+        expect(result.errors[0]!.message).toContain('expects a relation field');
+        expect(result.errors[0]!.message).toContain("'select'");
+      });
+
+      it('does not validate the node (second) argument as a field', () => {
+        // 'nope' here is a node string, not a field — only `milestone` is checked.
+        const result = validateWhereExpressions(
+          ["under(milestone, '[[nope]]')"],
+          schema,
+          'task'
+        );
+        expect(result.valid).toBe(true);
+      });
+
+      it('validates under() combined with other clauses', () => {
+        const result = validateWhereExpressions(
+          ["status == 'backlog' && under(status, '[[career]]')"],
+          schema,
+          'task'
+        );
+        expect(result.valid).toBe(false);
+        expect(
+          result.errors.some(e => e.message.includes('expects a relation field'))
+        ).toBe(true);
+      });
+    });
   });
 
   describe('formatWhereValidationErrors', () => {

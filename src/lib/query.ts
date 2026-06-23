@@ -9,8 +9,7 @@ import {
 import { matchesExpression, buildEvalContext, type HierarchyData } from './expression.js';
 import { collectFrontmatterKeys, normalizeWhereExpressions } from './where-normalize.js';
 import { extractLinkTarget } from './links.js';
-import { buildVaultNoteSnapshot, discoverManagedFiles } from './discovery.js';
-import { parseNote } from './frontmatter.js';
+import { buildVaultNoteSnapshot, type VaultNoteSnapshot } from './discovery.js';
 
 /**
  * Validate that a field name is valid for a type.
@@ -132,41 +131,49 @@ function addParentRelationship(
  * Needed by `under`, which walks the ancestor chain of a relation target that
  * usually lives outside the (type-)filtered candidate set. Relationships
  * already present from the candidate pass are preserved.
+ *
+ * Performance: this builds the parent map AND the alias map from a SINGLE vault
+ * snapshot. `buildVaultNoteSnapshot` walks the vault once and parses every note
+ * once (resolving each note's type in the same pass), and both maps are derived
+ * from that one snapshot. Previously this re-parsed the vault twice per `under`
+ * query — once via `discoverManagedFiles` + `parseNote`, and again inside
+ * `buildVaultAliasMap`'s own snapshot pass.
  */
 async function augmentHierarchyDataFromVault(
   hierarchyData: HierarchyData,
-  options: Pick<FrontmatterFilterOptions, 'schema'> & { vaultDir: string }
+  options: Pick<FrontmatterFilterOptions, 'schema'> & {
+    vaultDir: string;
+    /** Optional pre-built snapshot to reuse instead of walking the vault again. */
+    snapshot?: VaultNoteSnapshot;
+  }
 ): Promise<void> {
   if (!options.schema) return;
 
-  const managedFiles = await discoverManagedFiles(options.schema, options.vaultDir);
+  const snapshot =
+    options.snapshot ?? (await buildVaultNoteSnapshot(options.schema, options.vaultDir));
   const hierarchyFieldCache = new Map<string, string[]>();
 
-  for (const managed of managedFiles) {
-    let frontmatter: Record<string, unknown>;
-    try {
-      ({ frontmatter } = await parseNote(managed.path));
-    } catch {
-      continue;
-    }
+  for (const note of snapshot.notes) {
+    if (!note.frontmatter) continue;
     addParentRelationship(
-      { path: managed.path, frontmatter },
+      { path: note.path, frontmatter: note.frontmatter },
       hierarchyData.parentMap,
       hierarchyData.childrenMap,
       // Resolve each note's own type from frontmatter for the full-vault pass.
-      options.schema ? { schema: options.schema } : {},
+      { schema: options.schema },
       hierarchyFieldCache
     );
   }
 
-  // Build the alias -> canonical-note map so `under` can canonicalize aliased
-  // relation targets and aliased query nodes (see HierarchyData.aliasMap).
-  hierarchyData.aliasMap = await buildVaultAliasMap(options.schema, options.vaultDir);
+  // Build the alias -> canonical-note map from the SAME snapshot so `under` can
+  // canonicalize aliased relation targets and aliased query nodes (see
+  // HierarchyData.aliasMap) without re-reading the vault.
+  hierarchyData.aliasMap = buildVaultAliasMap(options.schema, snapshot);
 }
 
 /**
  * Build a map from each declared alias to the canonical note name it resolves
- * to, over the entire vault. Reuses the same alias index that drives navigation
+ * to, from a vault snapshot. Reuses the same alias index that drives navigation
  * (`getEntityAliases` from #266) so `under` canonicalizes aliases identically to
  * `bwrb open <alias>`.
  *
@@ -178,12 +185,10 @@ async function augmentHierarchyDataFromVault(
  *   data loss, and silently picking a winner is exactly the footgun this guards
  *   against, so an ambiguous alias resolves to nothing (no match, no crash).
  */
-async function buildVaultAliasMap(
+function buildVaultAliasMap(
   schema: LoadedSchema,
-  vaultDir: string
-): Promise<Map<string, string>> {
-  const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
-
+  snapshot: VaultNoteSnapshot
+): Map<string, string> {
   // Real note names always win over aliases.
   const realNames = new Set<string>();
   for (const note of snapshot.notes) {

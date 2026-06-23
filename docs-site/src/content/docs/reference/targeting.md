@@ -117,7 +117,11 @@ Notes:
   career. (`under(field, '[[X]]')` ≡ `field = [[X]]` OR `field` points to a
   descendant of `X`.)
 - **Any relation field.** The first argument is the field to dereference —
-  `under(milestone, '[[Q2]]')`, `under(owner, '[[Platform]]')`, etc.
+  `under(milestone, '[[Q2]]')`, `under(owner, '[[Platform]]')`, etc. When
+  `--type` is set, the first argument is validated against the schema: an unknown
+  field, or a field that is not a relation, is flagged up front (e.g.
+  `under() expects a relation field, but 'status' is a 'select' field`) rather
+  than silently matching nothing.
 - **Multi-valued fields.** If the relation holds a list, the note matches when
   **any** target is under the node.
 - **Resolution scope.** `under` resolves relation targets and their ancestors
