@@ -151,6 +151,40 @@ describe('new command', () => {
       expect(registryIds.has(id)).toBe(true);
     });
 
+    it('should apply a multi-value select default (array) from a template', async () => {
+      // idea.labels is a multiple: true select field.
+      await writeFile(
+        join(vaultDir, '.bwrb', 'templates', 'idea', 'multi-labels.md'),
+        `---
+type: template
+template-for: idea
+description: Multi-value labels default
+defaults:
+  labels:
+    - urgent
+    - review
+---
+
+# {title}
+`
+      );
+
+      const result = await runCLI(
+        ['new', 'idea', '--json', '{"name": "Multi label note"}', '--template', 'multi-labels'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+      const output = JSON.parse(result.stdout);
+      expect(output.success).toBe(true);
+
+      const content = await readFile(join(vaultDir, output.path), 'utf-8');
+      const fm = content.split('---')[1] ?? '';
+      expect(fm).toContain('labels:');
+      expect(fm).toContain('- urgent');
+      expect(fm).toContain('- review');
+    });
+
     it('should reject unknown JSON frontmatter fields', async () => {
       const result = await runCLI(
         ['new', 'task', '--json', '{"name":"Extra Field","status":"backlog","totally-extra":"yep"}'],
