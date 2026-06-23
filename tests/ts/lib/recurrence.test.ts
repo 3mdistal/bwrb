@@ -734,6 +734,237 @@ status: open
   });
 });
 
+describe('recurrence: cross-type naming (#632)', () => {
+  // A `draft` whose completion (status -> done) spawns a `review` via a NAMED
+  // template that targets a DIFFERENT type. Both types carry the `next`/`prev`
+  // chain (their `source` accepts both draft and review). bwrb wikilinks are
+  // name-based, so the spawned review must NOT reuse the draft's basename or the
+  // chain links resolve ambiguously.
+  const CROSS_SCHEMA: Schema = {
+    version: 2,
+    traits: {
+      chained: {
+        description: 'Forward/back chain across draft and review',
+        fields: {
+          next: { prompt: 'relation', source: ['draft', 'review'] },
+          prev: { prompt: 'relation', source: ['draft', 'review'] },
+        },
+      },
+      spawnsReview: {
+        description: 'On completion, spawn a review via a cross-type template',
+        recurrence: {
+          on: 'status = done',
+          template: 'spawn-review',
+          set: { due: 'due + 3d' },
+        },
+      },
+    },
+    types: {
+      draft: {
+        output_dir: 'drafts',
+        traits: ['chained', 'spawnsReview'],
+        fields: {
+          name: { prompt: 'text', required: true },
+          status: { prompt: 'select', options: ['todo', 'doing', 'done'], default: 'todo' },
+          due: { prompt: 'date' },
+        },
+      },
+      review: {
+        output_dir: 'reviews',
+        traits: ['chained'],
+        fields: {
+          name: { prompt: 'text', required: true },
+          status: { prompt: 'select', options: ['todo', 'doing', 'done'], default: 'todo' },
+          due: { prompt: 'date' },
+        },
+      },
+    },
+  };
+
+  async function writeReviewTemplate(vaultDir: string): Promise<void> {
+    const dir = join(vaultDir, '.bwrb', 'templates', 'review');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, 'spawn-review.md'),
+      `---
+type: template
+template-for: review
+name: spawn-review
+defaults:
+  status: todo
+---
+
+# {name}
+`
+    );
+  }
+
+  async function listDir(vaultDir: string, sub: string): Promise<string[]> {
+    const dir = join(vaultDir, sub);
+    if (!existsSync(dir)) return [];
+    return (await readdir(dir)).filter((f) => f.endsWith('.md')).sort();
+  }
+
+  let vaultDir: string;
+  beforeEach(async () => {
+    vaultDir = await setupVault(CROSS_SCHEMA);
+    await writeReviewTemplate(vaultDir);
+    await mkdir(join(vaultDir, 'drafts'), { recursive: true });
+    await mkdir(join(vaultDir, 'reviews'), { recursive: true });
+  });
+  afterEach(async () => {
+    await rm(vaultDir, { recursive: true, force: true });
+  });
+
+  it('spawns a review with a UNIQUE basename (not the draft name) and audits clean', async () => {
+    const draftPath = join(vaultDir, 'drafts', 'Chapter One.md');
+    await writeFile(
+      draftPath,
+      `---
+type: draft
+name: Chapter One
+status: doing
+due: 2026-04-01
+---
+
+# Chapter One
+`
+    );
+
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(schema, vaultDir, draftPath, JSON.stringify({ status: 'done' }), {
+      jsonMode: false,
+    });
+
+    // The review landed in reviews/ with a DISTINCT basename (suffix), not
+    // `reviews/Chapter One.md` (which would clash by name with the draft).
+    const drafts = await listDir(vaultDir, 'drafts');
+    const reviews = await listDir(vaultDir, 'reviews');
+    expect(drafts).toEqual(['Chapter One.md']);
+    expect(reviews).toHaveLength(1);
+    const reviewName = reviews[0]!.replace(/\.md$/, '');
+    expect(reviewName).not.toBe('Chapter One');
+    expect(reviewName.startsWith('Chapter One')).toBe(true); // carried name + suffix
+
+    // Offset applied to the spawned review.
+    const succFm = await readFrontmatter(join(vaultDir, 'reviews', reviews[0]!));
+    expect(succFm['due']).toBe('2026-04-04');
+
+    // `bwrb audit` is CLEAN of the name-collision symptoms (#632): no
+    // self-reference, no relation type-mismatch, no unlinked-mention.
+    const results = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    const issues = results.flatMap((r) => r.issues);
+    expect(issues.some((i) => i.code === 'self-reference')).toBe(false);
+    expect(issues.some((i) => i.code === 'type-mismatch')).toBe(false);
+    expect(issues.some((i) => i.code === 'unlinked-mention')).toBe(false);
+    expect(issues.some((i) => i.code === 'ambiguous-link-target')).toBe(false);
+  });
+
+  it('next/prev resolve to the correct DISTINCT notes', async () => {
+    const draftPath = join(vaultDir, 'drafts', 'Chapter One.md');
+    await writeFile(
+      draftPath,
+      `---
+type: draft
+name: Chapter One
+status: doing
+due: 2026-04-01
+---
+`
+    );
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(schema, vaultDir, draftPath, JSON.stringify({ status: 'done' }), {
+      jsonMode: false,
+    });
+
+    const reviews = await listDir(vaultDir, 'reviews');
+    const reviewName = reviews[0]!.replace(/\.md$/, '');
+
+    // Predecessor's `next` points at the review's UNIQUE name; the review's
+    // `prev` points back at the draft. They are different basenames.
+    const draftFm = await readFrontmatter(draftPath);
+    const reviewFm = await readFrontmatter(join(vaultDir, 'reviews', reviews[0]!));
+    expect(String(draftFm['next'])).toContain(reviewName);
+    expect(String(reviewFm['prev'])).toContain('Chapter One');
+    expect(String(draftFm['next'])).not.toContain('[[Chapter One]]');
+  });
+
+  it('is idempotent: re-completing the draft does NOT spawn a duplicate review', async () => {
+    const draftPath = join(vaultDir, 'drafts', 'Chapter One.md');
+    await writeFile(
+      draftPath,
+      `---
+type: draft
+name: Chapter One
+status: doing
+due: 2026-04-01
+---
+`
+    );
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(schema, vaultDir, draftPath, JSON.stringify({ status: 'done' }), {
+      jsonMode: false,
+    });
+    expect(await listDir(vaultDir, 'reviews')).toHaveLength(1);
+
+    await editNoteFromJson(
+      schema,
+      vaultDir,
+      draftPath,
+      JSON.stringify({ status: 'done', due: '2026-04-01' }),
+      { jsonMode: false }
+    );
+    expect(await listDir(vaultDir, 'reviews')).toHaveLength(1);
+  });
+
+  it('a chain of cross-type spawns stays unambiguous (distinct basenames, audit clean)', async () => {
+    // Pre-seed a review that already carries the base name, forcing the spawned
+    // review to climb past the first suffix and proving global-basename scope.
+    await writeFile(
+      join(vaultDir, 'reviews', 'Chapter One 2.md'),
+      `---
+type: review
+name: Chapter One 2
+status: todo
+due: 2026-01-01
+---
+`
+    );
+    const draftPath = join(vaultDir, 'drafts', 'Chapter One.md');
+    await writeFile(
+      draftPath,
+      `---
+type: draft
+name: Chapter One
+status: doing
+due: 2026-04-01
+---
+`
+    );
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(schema, vaultDir, draftPath, JSON.stringify({ status: 'done' }), {
+      jsonMode: false,
+    });
+
+    const reviews = await listDir(vaultDir, 'reviews');
+    // Existing `Chapter One 2` is untouched; the spawn climbs to `Chapter One 3`.
+    expect(reviews).toContain('Chapter One 2.md');
+    expect(reviews).toContain('Chapter One 3.md');
+
+    // Every basename across the vault is unique → no ambiguous resolution.
+    const allBasenames = [
+      ...(await listDir(vaultDir, 'drafts')),
+      ...(await listDir(vaultDir, 'reviews')),
+    ].map((f) => f.replace(/\.md$/, ''));
+    expect(new Set(allBasenames).size).toBe(allBasenames.length);
+
+    const results = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    const issues = results.flatMap((r) => r.issues);
+    expect(issues.some((i) => i.code === 'self-reference')).toBe(false);
+    expect(issues.some((i) => i.code === 'type-mismatch')).toBe(false);
+  });
+});
+
 describe('recurrence: multi-spawn template (#630)', () => {
   let vaultDir: string;
   afterEach(async () => {

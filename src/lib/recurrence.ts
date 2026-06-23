@@ -33,6 +33,8 @@ import { formatValue } from './vault.js';
 import { getFilenamePattern } from './template.js';
 import { createNoteFromJson } from '../commands/new/json-mode.js';
 import { findDefaultTemplateWithInheritance } from './template.js';
+import { buildNoteIndex } from './navigation.js';
+import type { NoteIndex } from './navigation.js';
 import type { NoteCreationResult } from '../commands/new/types.js';
 
 /**
@@ -400,16 +402,33 @@ async function resolveSuccessorTemplate(
  *
  * If the spawn type (or its template) defines a filename pattern, that pattern
  * disambiguates the filename (commonly via a date), so the carried-forward name
- * is returned unchanged. Otherwise the successor would be filed as
- * `<name>.md` — identical to the predecessor — so we suffix ` 2`, ` 3`, ...
- * against the spawn type's output directory until a free name is found.
+ * is returned unchanged. Otherwise the successor would be filed as `<name>.md` —
+ * and we must guarantee its basename is UNIQUE across the whole vault, not just
+ * the spawn type's own output dir, then suffix ` 2`, ` 3`, ... until it is.
+ *
+ * Why vault-global, not per-output-dir (#632): bwrb wikilinks are NAME-based, so
+ * `[[Chapter One]]` resolves by BASENAME across every directory. Same-type
+ * recurrence collides inside one dir (caught by the dir check), but a CROSS-TYPE
+ * successor (e.g. finish a `draft` → spawn a `review`) lands in a DIFFERENT dir
+ * yet keeps the predecessor's exact basename. The per-dir check never sees that
+ * clash, so the predecessor's `next: [[Chapter One]]` then resolves ambiguously
+ * to BOTH notes — `bwrb audit` reports a self-reference and a relation
+ * type-mismatch. Enforcing global basename uniqueness (consistent with how
+ * name-based links resolve) makes the spawned successor's basename distinct, so
+ * `next`/`prev` resolve unambiguously to the right notes.
+ *
+ * The vault note index (`byBasename`) is the authority for "exists anywhere";
+ * we additionally check the spawn type's output dir on disk as a belt-and-
+ * suspenders for any note the index excludes (it shares the same discovery rules
+ * as the rest of the CLI, so in practice they agree).
  */
 function resolveSuccessorName(
   schema: LoadedSchema,
   vaultDir: string,
   spawnType: string,
   template: import('../types/schema.js').Template | null,
-  baseName: string
+  baseName: string,
+  noteIndex: NoteIndex
 ): string {
   const typeDef = getType(schema, spawnType);
   const pattern = typeDef ? getFilenamePattern(template, typeDef) : null;
@@ -420,7 +439,11 @@ function resolveSuccessorName(
   const outputDir = getOutputDir(schema, spawnType);
   const dir = outputDir ? join(vaultDir, outputDir) : vaultDir;
 
-  const exists = (name: string): boolean => existsSync(join(dir, `${name}.md`));
+  // A name is taken if it collides with ANY existing note's basename anywhere in
+  // the vault (name-based-link uniqueness) OR with a file already on disk in the
+  // spawn type's output dir.
+  const exists = (name: string): boolean =>
+    noteIndex.byBasename.has(name) || existsSync(join(dir, `${name}.md`));
   if (!exists(baseName)) return baseName;
 
   let counter = 2;
@@ -469,15 +492,25 @@ export async function prepareSuccessor(
   // throws a clear, deterministic error for a missing/partial/unparseable base.
   const offsetFields = computeOffsetFields(schema, typeName, predecessor);
 
-  // Resolve a successor name that won't collide with the predecessor's filename.
+  // Resolve a successor name whose basename is UNIQUE across the whole vault.
   // When the spawn type uses a filename pattern, the pattern disambiguates (so we
-  // keep the carried-forward name); otherwise we suffix a counter against the
-  // spawn type's output directory.
+  // keep the carried-forward name); otherwise we suffix a counter until no
+  // existing note shares the basename. Vault-global (not per-output-dir) so a
+  // cross-type successor doesn't reuse the predecessor's basename and break
+  // name-based `next`/`prev` resolution (#632).
   const carriedName =
     typeof predecessor['name'] === 'string' && predecessor['name'].trim() !== ''
       ? (predecessor['name'] as string)
       : predecessorName;
-  const successorName = resolveSuccessorName(schema, vaultDir, spawnType, template, carriedName);
+  const noteIndex = await buildNoteIndex(schema, vaultDir);
+  const successorName = resolveSuccessorName(
+    schema,
+    vaultDir,
+    spawnType,
+    template,
+    carriedName,
+    noteIndex
+  );
 
   const input = buildSuccessorInput(
     schema,
