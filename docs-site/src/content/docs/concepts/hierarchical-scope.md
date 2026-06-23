@@ -109,12 +109,12 @@ Collapsing `scope` + `context` into a single context tree removes the redundancy
 - **Transitive queries.** "Everything in the career domain" is a single `under(context, '[[career]]')`, not an OR over every leaf.
 - **Contexts are first-class notes.** Because they're real notes, they get `unlinked-mention` audit coverage, backlinks, and graph presence for free, and aliases (see [Schema](/concepts/schema/)) help with all of those. Rich contexts (Builder, with its own content) and label-like contexts (PKM) cost the same.
 
-:::caution[Use the canonical note name in `under()` targets and `context` relations]
-Aliases help backlinks, unlinked-mention detection, and audit coverage on context notes, but they do **not** apply to `under()`. The `under` operator (and the `context` relation it dereferences) matches wikilink targets **literally** — it does not yet canonicalize aliases. So a task whose `context` points at an *alias* of a context note silently drops out of altitude queries.
+:::note[`under()` is alias-aware]
+Aliases (see [Schema](/concepts/schema/)) work transparently with `under()`. The operator canonicalizes aliases on **both sides** before walking the tree — the same alias resolution that powers `bwrb open <alias>`.
 
-Concretely, if `Builder` has an alias `BuilderProject`, then a task with `context: "[[BuilderProject]]"` will **not** be returned by `under(context, '[[Builder]]')` or `under(context, '[[career]]')` — the alias is never resolved back to `Builder`, so the tree walk never reaches it. Always reference context notes by their **canonical note name** in `under()` targets and in any leaf `context` relation.
+Concretely, if `Builder` has an alias `BuilderProject`, then a task with `context: "[[BuilderProject]]"` **is** returned by `under(context, '[[Builder]]')` and `under(context, '[[career]]')` — the alias resolves back to `Builder`, so the tree walk reaches it. Passing the alias as the query node works too: `under(context, '[[BuilderProject]]')` resolves to `Builder` and walks its whole subtree. You can use either the canonical name or an alias in `under()` targets and in leaf `context` relations.
 
-This is a known limitation; a follow-up issue will track making `under()` alias-aware.
+Ambiguous aliases (the same alias declared on more than one note) are the one exception: they are **not** auto-resolved, so they match nothing rather than silently picking a winner. Disambiguate by renaming the alias or referencing the canonical note name.
 :::
 - **Validation for free.** A task pointing at a non-existent context is flagged by the existing relation-source audit (see [Validation and Audit](/concepts/validation-and-audit/)), exactly like any other broken relation.
 

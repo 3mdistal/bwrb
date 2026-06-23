@@ -123,8 +123,16 @@ Notes:
 - **Resolution scope.** `under` resolves relation targets and their ancestors
   across the **whole vault**, so the target notes do not need to share the
   filtered type.
-- **Robustness.** A dangling (unresolvable) relation target simply doesn't
-  match; a malformed `parent` cycle is walked safely and never loops forever.
+- **Alias-aware.** `under` canonicalizes aliases (see
+  [Schema](/concepts/schema/)) on **both sides** — an aliased relation value (`context: "[[BuilderProject]]"` where
+  `BuilderProject` is an alias of `Builder`) and an aliased query node
+  (`under(context, '[[BuilderProject]]')`) both resolve to the canonical note,
+  using the same resolution as `bwrb open <alias>`. An ambiguous alias (declared
+  on more than one note) is **not** auto-resolved — it matches nothing rather
+  than silently picking a winner.
+- **Robustness.** A dangling (unresolvable) relation target — including a
+  dangling alias — simply doesn't match; a malformed `parent` cycle is walked
+  safely and never loops forever.
 
 For the full pattern — modelling life domains and projects as a `parent` tree of
 context notes and collapsing a redundant `scope` field into it — see

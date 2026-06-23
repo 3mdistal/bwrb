@@ -1,10 +1,15 @@
 import { basename } from 'path';
 import type { LoadedSchema } from '../types/schema.js';
-import { getAllFieldsForType, getType, resolveTypeFromFrontmatter } from './schema.js';
+import {
+  getAllFieldsForType,
+  getEntityAliases,
+  getType,
+  resolveTypeFromFrontmatter,
+} from './schema.js';
 import { matchesExpression, buildEvalContext, type HierarchyData } from './expression.js';
 import { collectFrontmatterKeys, normalizeWhereExpressions } from './where-normalize.js';
 import { extractLinkTarget } from './links.js';
-import { discoverManagedFiles } from './discovery.js';
+import { buildVaultNoteSnapshot, discoverManagedFiles } from './discovery.js';
 import { parseNote } from './frontmatter.js';
 
 /**
@@ -153,6 +158,63 @@ async function augmentHierarchyDataFromVault(
       hierarchyFieldCache
     );
   }
+
+  // Build the alias -> canonical-note map so `under` can canonicalize aliased
+  // relation targets and aliased query nodes (see HierarchyData.aliasMap).
+  hierarchyData.aliasMap = await buildVaultAliasMap(options.schema, options.vaultDir);
+}
+
+/**
+ * Build a map from each declared alias to the canonical note name it resolves
+ * to, over the entire vault. Reuses the same alias index that drives navigation
+ * (`getEntityAliases` from #266) so `under` canonicalizes aliases identically to
+ * `bwrb open <alias>`.
+ *
+ * Trust model (consistent with navigation's alias resolution and
+ * `deriveNotePathMap`):
+ * - An alias never shadows a real note name.
+ * - An alias claimed by more than one note is AMBIGUOUS and is dropped from the
+ *   map entirely. Resolving it to one note's subtree would reintroduce silent
+ *   data loss, and silently picking a winner is exactly the footgun this guards
+ *   against, so an ambiguous alias resolves to nothing (no match, no crash).
+ */
+async function buildVaultAliasMap(
+  schema: LoadedSchema,
+  vaultDir: string
+): Promise<Map<string, string>> {
+  const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
+
+  // Real note names always win over aliases.
+  const realNames = new Set<string>();
+  for (const note of snapshot.notes) {
+    realNames.add(basename(note.relativePath, '.md'));
+  }
+
+  // First pass: count how many notes claim each (non-shadowed) alias.
+  const claims = new Map<string, string[]>();
+  for (const note of snapshot.notes) {
+    if (!note.resolvedType || !note.frontmatter) continue;
+    const canonical = basename(note.relativePath, '.md');
+    const aliases = getEntityAliases(schema, note.resolvedType, note.frontmatter);
+    for (const alias of aliases) {
+      if (realNames.has(alias)) continue; // never shadow a real note
+      const existing = claims.get(alias);
+      if (existing) {
+        if (!existing.includes(canonical)) existing.push(canonical);
+      } else {
+        claims.set(alias, [canonical]);
+      }
+    }
+  }
+
+  // Second pass: keep only unambiguous aliases.
+  const aliasMap = new Map<string, string>();
+  for (const [alias, canonicals] of claims) {
+    if (canonicals.length === 1) {
+      aliasMap.set(alias, canonicals[0]!);
+    }
+  }
+  return aliasMap;
 }
 
 function resolveHierarchyType(

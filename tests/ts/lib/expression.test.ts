@@ -476,6 +476,82 @@ describe('expression', () => {
         expect(matchesExpression("isDescendantOf('[[career]]')", ctx)).toBe(false);
         expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(true);
       });
+
+      describe('alias canonicalization (#636)', () => {
+        // Builder has alias 'BuilderProject'; career has alias 'careerAlias'.
+        // 'Dup' is an ambiguous alias claimed by two notes -> dropped.
+        const aliasMap = new Map([
+          ['BuilderProject', 'Builder'],
+          ['careerAlias', 'career'],
+        ]);
+
+        const makeAliasedNote = (relationValue: unknown): EvalContext => ({
+          frontmatter: { context: relationValue },
+          file: { name: 'Some Task', path: 'Tasks/Some Task.md', folder: 'Tasks', ext: '.md' },
+          hierarchyData: {
+            parentMap: contextParentMap,
+            childrenMap: contextChildrenMap,
+            aliasMap,
+          },
+        });
+
+        it('matches an aliased relation target against a canonical ancestor', () => {
+          // context: [[BuilderProject]] (alias of Builder) IS under career.
+          const ctx = makeAliasedNote('[[BuilderProject]]');
+          expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(true);
+        });
+
+        it('resolves an aliased query node to its canonical note and walks its subtree', () => {
+          // under(context, '[[BuilderProject]]') should behave like '[[Builder]]'.
+          const ctx = makeAliasedNote('[[Vercel]]');
+          expect(matchesExpression("under(context, '[[BuilderProject]]')", ctx)).toBe(true);
+        });
+
+        it('matches an aliased relation target as the inclusive direct target', () => {
+          // context: [[BuilderProject]] resolves to Builder; query node Builder.
+          const ctx = makeAliasedNote('[[BuilderProject]]');
+          expect(matchesExpression("under(context, '[[Builder]]')", ctx)).toBe(true);
+        });
+
+        it('matches when both sides are aliases of the same canonical note', () => {
+          const ctx = makeAliasedNote('[[BuilderProject]]');
+          expect(matchesExpression("under(context, '[[BuilderProject]]')", ctx)).toBe(true);
+        });
+
+        it('handles mixed alias + canonical multi-valued relation targets', () => {
+          const ctx = makeAliasedNote(['[[personal]]', '[[BuilderProject]]']);
+          expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(true);
+        });
+
+        it('canonicalizes an aliased query node that is itself an ancestor', () => {
+          // careerAlias -> career; Builder is under career.
+          const ctx = makeAliasedNote('[[Builder]]');
+          expect(matchesExpression("under(context, '[[careerAlias]]')", ctx)).toBe(true);
+        });
+
+        it('does not match / crash on a dangling alias (claimed by no note)', () => {
+          // 'GhostAlias' is not in the alias map -> left as-is -> no match.
+          const ctx = makeAliasedNote('[[GhostAlias]]');
+          expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(false);
+        });
+
+        it('does not resolve an ambiguous alias to a subtree (no silent winner)', () => {
+          // The query layer drops ambiguous aliases, so 'Dup' never reaches the
+          // alias map. It stays literal: it is NOT canonicalized into any note's
+          // subtree, so it does not appear under a canonical ancestor.
+          const ctx = makeAliasedNote('[[Dup]]');
+          expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(false);
+          // A literal Dup-vs-Dup still matches as the inclusive direct target;
+          // the guarantee is only that no subtree walking happens for it.
+          expect(matchesExpression("under(context, '[[OtherCanonical]]')", ctx)).toBe(false);
+        });
+
+        it('leaves canonical names untouched when an alias map is present', () => {
+          const ctx = makeAliasedNote('[[Vercel]]');
+          expect(matchesExpression("under(context, '[[career]]')", ctx)).toBe(true);
+          expect(matchesExpression("under(context, '[[personal]]')", ctx)).toBe(false);
+        });
+      });
     });
 
     describe('hierarchy functions composability', () => {
