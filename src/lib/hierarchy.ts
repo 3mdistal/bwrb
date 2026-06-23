@@ -32,9 +32,10 @@ export interface ParentMapOptions {
 
 /**
  * Build a map from note names to their parent note names for recursive types.
+ * Schema-driven: discovers and parses managed files from the vault.
  * Used to detect cycles in parent references (e.g., A -> B -> A).
  */
-export async function buildParentMap(
+export async function buildParentMapFromSchema(
   schema: LoadedSchema,
   vaultDir: string,
   options: ParentMapOptions = {}
@@ -233,7 +234,7 @@ export async function validateParentNoCycle(
   }
   
   // Build the parent map for cycle detection
-  const parentMap = await buildParentMap(schema, vaultDir);
+  const parentMap = await buildParentMapFromSchema(schema, vaultDir);
   
   // Check for cycle
   const result = detectCycle(noteName, parentTarget, parentMap);

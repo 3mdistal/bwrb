@@ -9,7 +9,7 @@ import {
   isFileSortKey,
   type FileStatMap,
   extractNoteName,
-  buildParentMap,
+  buildParentMapFromFiles,
   buildChildrenMap,
   collectDescendants,
   buildTree,
@@ -278,21 +278,21 @@ describe('list-helpers: hierarchy/tree', () => {
     });
   });
 
-  describe('buildParentMap', () => {
+  describe('buildParentMapFromFiles', () => {
     it('maps note name to parent name from frontmatter (wikilink and plain)', () => {
       const files = [
         file('Child A.md', { parent: '[[Root]]' }),
         file('Child B.md', { parent: 'Root' }),
         file('Root.md', {}),
       ];
-      const map = buildParentMap(files);
+      const map = buildParentMapFromFiles(files);
       expect(map.get('Child A')).toBe('Root');
       expect(map.get('Child B')).toBe('Root');
       expect(map.has('Root')).toBe(false);
     });
 
     it('ignores notes without a parent value', () => {
-      const map = buildParentMap([file('Solo.md', {})]);
+      const map = buildParentMapFromFiles([file('Solo.md', {})]);
       expect(map.size).toBe(0);
     });
   });
@@ -339,7 +339,7 @@ describe('list-helpers: hierarchy/tree', () => {
         file('Child.md', { parent: '[[Root]]' }),
         file('Grandchild.md', { parent: '[[Child]]' }),
       ];
-      const tree = buildTree(files, buildParentMap(files));
+      const tree = buildTree(files, buildParentMapFromFiles(files));
       expect(tree).toHaveLength(1);
       expect(tree[0]!.name).toBe('Root');
       expect(tree[0]!.depth).toBe(0);
@@ -351,7 +351,7 @@ describe('list-helpers: hierarchy/tree', () => {
 
     it('treats notes whose parent is absent from the set as roots (orphans)', () => {
       const files = [file('Orphan.md', { parent: '[[Missing]]' })];
-      const tree = buildTree(files, buildParentMap(files));
+      const tree = buildTree(files, buildParentMapFromFiles(files));
       expect(tree.map(n => n.name)).toEqual(['Orphan']);
     });
 
@@ -361,13 +361,13 @@ describe('list-helpers: hierarchy/tree', () => {
         file('Zeta.md', { parent: '[[Root]]' }),
         file('Alpha.md', { parent: '[[Root]]' }),
       ];
-      const tree = buildTree(files, buildParentMap(files));
+      const tree = buildTree(files, buildParentMapFromFiles(files));
       expect(tree[0]!.children.map(c => c.name)).toEqual(['Alpha', 'Zeta']);
     });
 
     it('sorts multiple roots by comparator', () => {
       const files = [file('Zed.md', {}), file('Ann.md', {})];
-      const tree = buildTree(files, buildParentMap(files));
+      const tree = buildTree(files, buildParentMapFromFiles(files));
       expect(tree.map(n => n.name)).toEqual(['Ann', 'Zed']);
     });
 
@@ -377,7 +377,7 @@ describe('list-helpers: hierarchy/tree', () => {
         file('Child.md', { parent: '[[Root]]' }),
         file('Grandchild.md', { parent: '[[Child]]' }),
       ];
-      const tree = buildTree(files, buildParentMap(files), 2);
+      const tree = buildTree(files, buildParentMapFromFiles(files), 2);
       expect(tree[0]!.children[0]!.name).toBe('Child');
       // Depth limit of 2 means grandchildren are pruned
       expect(tree[0]!.children[0]!.children).toEqual([]);
@@ -387,12 +387,12 @@ describe('list-helpers: hierarchy/tree', () => {
   describe('treeHasNestedNotes', () => {
     it('returns false for a flat list of roots', () => {
       const files = [file('A.md', {}), file('B.md', {})];
-      expect(treeHasNestedNotes(buildTree(files, buildParentMap(files)))).toBe(false);
+      expect(treeHasNestedNotes(buildTree(files, buildParentMapFromFiles(files)))).toBe(false);
     });
 
     it('returns true when any node has children', () => {
       const files = [file('Root.md', {}), file('Child.md', { parent: '[[Root]]' })];
-      expect(treeHasNestedNotes(buildTree(files, buildParentMap(files)))).toBe(true);
+      expect(treeHasNestedNotes(buildTree(files, buildParentMapFromFiles(files)))).toBe(true);
     });
   });
 
