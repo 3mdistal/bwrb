@@ -4,7 +4,9 @@
   "title": "Bowerbird Schema",
   "description": "Schema for defining types, fields, and configuration for markdown vaults",
   "type": "object",
-  "required": ["types"],
+  "required": [
+    "types"
+  ],
   "additionalProperties": false,
   "properties": {
     "$schema": {
@@ -23,6 +25,13 @@
     "config": {
       "$ref": "#/definitions/config"
     },
+    "traits": {
+      "type": "object",
+      "description": "Reusable field bundles composed into types via each type's `traits` array. Composition (`also-has`) alongside `extends` inheritance (`is-a`). Optional; schemas without traits are unchanged.",
+      "additionalProperties": {
+        "$ref": "#/definitions/trait"
+      }
+    },
     "types": {
       "type": "object",
       "description": "Type definitions with inheritance support",
@@ -35,6 +44,52 @@
     }
   },
   "definitions": {
+    "trait": {
+      "type": "object",
+      "description": "A reusable bundle of fields composed into a type. Traits are flat: they carry only fields (and an optional description, plus an optional recurrence block) and cannot extend types or compose other traits.",
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this trait bundles and when to use it. Surfaced by `bwrb schema list`."
+        },
+        "fields": {
+          "type": "object",
+          "description": "Field definitions contributed by this trait",
+          "additionalProperties": {
+            "$ref": "#/definitions/frontmatterField"
+          }
+        },
+        "recurrence": {
+          "$ref": "#/definitions/recurrence"
+        }
+      }
+    },
+    "recurrence": {
+      "type": "object",
+      "description": "Event-driven, spawn-on-transition recurrence (#107). When a field transitions into a value (e.g. status enters done), spawn a successor note from a template, offsetting the successor's date field from a predecessor date field. No cron, no daemon, no LLM.",
+      "additionalProperties": false,
+      "required": [
+        "on"
+      ],
+      "properties": {
+        "on": {
+          "type": "string",
+          "description": "Trigger transition, written as `<field> = <value>` (e.g. \"status = done\"). The successor is spawned when the trigger field transitions INTO this value."
+        },
+        "template": {
+          "type": "string",
+          "description": "Template to spawn the successor from. Defaults to the completed note's type default template (a task begets a task). A named template can spawn a different type (finish \"draft\" -> spawn \"review\")."
+        },
+        "set": {
+          "type": "object",
+          "description": "Field-offset assignments for the successor. Each value is a field-offset expression `<dateField> <+|-> <duration>` (e.g. \"deadline + 7d\"). The base must be a date field on the predecessor. Transition-time offsets and calendar-anchored bases are not supported.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "config": {
       "type": "object",
       "description": "Vault-wide configuration options",
@@ -42,7 +97,10 @@
       "properties": {
         "link_format": {
           "type": "string",
-          "enum": ["wikilink", "markdown"],
+          "enum": [
+            "wikilink",
+            "markdown"
+          ],
           "default": "wikilink",
           "description": "Link format for relation fields: wikilink (\"[[Note]]\") or markdown (\"[Note](Note.md)\")"
         },
@@ -56,7 +114,12 @@
         },
         "open_with": {
           "type": "string",
-          "enum": ["system", "editor", "visual", "obsidian"],
+          "enum": [
+            "system",
+            "editor",
+            "visual",
+            "obsidian"
+          ],
           "default": "system",
           "description": "Default behavior for --open flag"
         },
@@ -66,23 +129,29 @@
         },
         "default_dashboard": {
           "type": "string",
-          "description": "Default dashboard to run when `bwrb dashboard` is called without arguments"
+          "description": "Dashboard to run when `bwrb dashboard` is called without arguments"
         },
         "excluded_directories": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Vault-root-relative directory prefixes excluded from all discovery/targeting"
+          "items": {
+            "type": "string"
+          },
+          "description": "Vault-root-relative directory prefixes excluded from all discovery/targeting operations (e.g., \"Archive\", \"Templates\")"
         },
         "date_format": {
           "type": "string",
           "default": "YYYY-MM-DD",
-          "description": "Display/parse format for date fields (YYYY, MM, DD tokens), e.g. MM/DD/YYYY"
+          "description": "Date format for date fields (YYYY, MM, DD tokens), e.g. YYYY-MM-DD (default), MM/DD/YYYY, DD-MM-YYYY"
         },
         "date_granularity": {
           "type": "string",
-          "enum": ["day", "month", "year"],
+          "enum": [
+            "day",
+            "month",
+            "year"
+          ],
           "default": "day",
-          "description": "Default coarsest date precision for all date fields; per-field `granularity` overrides it"
+          "description": "Default coarsest date precision allowed for all date fields (day = full YYYY-MM-DD, month = YYYY-MM or finer, year = YYYY or finer). Per-field `granularity` overrides this default."
         }
       }
     },
@@ -93,40 +162,57 @@
       "properties": {
         "ignored_directories": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Directories to skip during audit"
         },
         "allowed_extra_fields": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Extra frontmatter fields that are allowed without warning"
         }
       }
     },
     "typeNode": {
       "type": "object",
-      "description": "Type definition with inheritance support",
+      "description": "Type definition with inheritance support. Flat v2 model: `extends` for is-a inheritance, `traits` for also-has composition, `fields` (not `frontmatter`) for field definitions. All properties are optional.",
       "additionalProperties": false,
       "properties": {
         "extends": {
           "type": "string",
-          "description": "Parent type name (implicit 'meta' if not specified)"
+          "description": "Parent type name (implicit 'meta' if not specified). Single-parent is-a inheritance."
+        },
+        "traits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Trait names composed into this type (composition alongside `extends`). Precedence: own fields > traits > inherited; later traits in the array win over earlier ones."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this type is for and when to use it. Surfaced by `bwrb schema list`."
         },
         "fields": {
           "type": "object",
-          "description": "Field definitions (merged with ancestors at load time)",
+          "description": "Field definitions, merged with ancestors and traits at load time",
           "additionalProperties": {
-            "$ref": "#/definitions/field"
+            "$ref": "#/definitions/frontmatterField"
           }
         },
         "field_order": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Explicit field ordering (optional - defaults to definition order)"
+          "items": {
+            "type": "string"
+          },
+          "description": "Explicit field ordering (optional; defaults to definition order)"
         },
         "body_sections": {
           "type": "array",
-          "description": "Body section definitions",
+          "description": "Body section definitions generated after frontmatter",
           "items": {
             "$ref": "#/definitions/bodySection"
           }
@@ -137,7 +223,7 @@
         },
         "output_dir": {
           "type": "string",
-          "description": "Output directory (computed from hierarchy if not specified)"
+          "description": "Directory path relative to vault root where files of this type are created (computed from hierarchy if not specified)"
         },
         "filename": {
           "type": "string",
@@ -145,40 +231,89 @@
         },
         "plural": {
           "type": "string",
-          "description": "Custom plural form for folder naming (e.g., 'research' instead of 'researches')"
+          "description": "Custom plural form for folder naming (e.g., 'research' instead of 'researches'). Auto-pluralized if not specified."
         }
       }
     },
-    "field": {
+    "frontmatterField": {
       "type": "object",
-      "description": "Field definition for type frontmatter",
       "additionalProperties": false,
       "properties": {
+        "value": {
+          "type": "string",
+          "description": "Static value (use $NOW for current datetime, $TODAY for date)"
+        },
         "prompt": {
           "type": "string",
-          "enum": ["text", "select", "list", "date", "relation", "boolean", "number"],
-          "description": "Prompt type (how the field is collected)"
+          "enum": [
+            "text",
+            "select",
+            "relation",
+            "list",
+            "date",
+            "boolean",
+            "number"
+          ],
+          "description": "Type of prompt: text (free text), select (from enum), relation (from vault query), list (comma-separated list), date (date picker), boolean (yes/no), number (numeric input)"
         },
         "granularity": {
           "type": "string",
-          "enum": ["day", "month", "year"],
-          "description": "Coarsest date precision allowed for date fields (day=full YYYY-MM-DD, month=YYYY-MM, year=YYYY); overrides config.date_granularity"
+          "enum": [
+            "day",
+            "month",
+            "year"
+          ],
+          "description": "Coarsest date precision allowed for this `date` field, finer is always allowed (day = full YYYY-MM-DD, month = YYYY-MM or finer, year = YYYY or finer). Overrides the global config.date_granularity for this field."
         },
-        "value": {
+        "label": {
           "type": "string",
-          "description": "Static value (no prompting)"
+          "description": "Label shown to user for input prompts (the imperative prompt text, e.g. \"Select status\"). Distinct from `description`, which explains what the field is for."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this field is for and when to use it. Surfaced by `bwrb schema list`; distinct from `label`."
         },
         "options": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Inline options for select prompts"
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value"
+                ],
+                "properties": {
+                  "value": {
+                    "type": "string",
+                    "description": "The option value stored in frontmatter"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "What this option means / when to choose it"
+                  }
+                }
+              }
+            ]
+          },
+          "description": "Allowed values for select fields (inline options). Each entry is a bare value or a { value, description } pair that documents what the option means."
         },
         "source": {
-          "oneOf": [
-            { "type": "string" },
-            { "type": "array", "items": { "type": "string" } }
-          ],
-          "description": "Type name(s) for relation prompts"
+          "description": "Type name(s) for relation prompts. When a relation's value is ambiguous because two notes share a name, path-qualify the link (e.g. `[[contexts/Betson]]`); see the search command docs for the shortest-unambiguous-form rule.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
         },
         "filter": {
           "type": "object",
@@ -187,39 +322,51 @@
             "$ref": "#/definitions/filterCondition"
           }
         },
-        "required": {
-          "type": "boolean",
-          "description": "Whether the field is required"
-        },
-        "default": {
-          "oneOf": [
-            { "type": "string" },
-            { "type": "array", "items": { "type": "string" } }
-          ],
-          "description": "Default value"
-        },
-        "list_format": {
-          "type": "string",
-          "enum": ["yaml-array", "comma-separated"],
-          "description": "How list values are formatted in YAML"
-        },
-        "label": {
-          "type": "string",
-          "description": "Prompt label override"
-        },
         "multiple": {
           "type": "boolean",
-          "description": "Whether this field can hold multiple values (for context fields)"
+          "description": "Whether this field can hold multiple values"
         },
         "owned": {
           "type": "boolean",
           "description": "Whether children referenced by this field are owned (colocate with parent)"
+        },
+        "alias": {
+          "type": "boolean",
+          "description": "Field role: marks this field as holding the entity's aliases (alternate names). bwrb consults aliases during name resolution and linking, so an entity is findable by its aliases wherever it is findable by its name. The value must be an array of non-empty, unique strings (Obsidian `aliases` format)."
+        },
+        "default": {
+          "description": "Default value if user skips the prompt",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether this field is required (user cannot skip)"
+        },
+        "list_format": {
+          "type": "string",
+          "enum": [
+            "yaml-array",
+            "comma-separated"
+          ],
+          "description": "For list fields, how to format the list"
         }
       }
     },
     "bodySection": {
       "type": "object",
-      "required": ["title"],
+      "required": [
+        "title"
+      ],
       "additionalProperties": false,
       "properties": {
         "title": {
@@ -235,13 +382,21 @@
         },
         "content_type": {
           "type": "string",
-          "enum": ["none", "paragraphs", "bullets", "checkboxes"],
+          "enum": [
+            "none",
+            "paragraphs",
+            "bullets",
+            "checkboxes"
+          ],
           "default": "none",
           "description": "Type of content placeholder to add"
         },
         "prompt": {
           "type": "string",
-          "enum": ["none", "list"],
+          "enum": [
+            "none",
+            "list"
+          ],
           "description": "If set, prompts user for initial content during creation"
         },
         "prompt_label": {
@@ -271,12 +426,16 @@
         },
         "in": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Field must be one of these values"
         },
         "not_in": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Field must not be one of these values"
         }
       }

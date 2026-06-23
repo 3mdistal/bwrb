@@ -117,9 +117,21 @@
           "type": "string",
           "description": "Dashboard to run when `bwrb dashboard` is called without arguments"
         },
+        "excluded_directories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Vault-root-relative directory prefixes excluded from all discovery/targeting operations (e.g., \"Archive\", \"Templates\")"
+        },
         "date_format": {
           "type": "string",
-          "description": "Date format for date fields (defaults to YYYY-MM-DD)"
+          "default": "YYYY-MM-DD",
+          "description": "Date format for date fields (YYYY, MM, DD tokens), e.g. YYYY-MM-DD (default), MM/DD/YYYY, DD-MM-YYYY"
+        },
+        "date_granularity": {
+          "type": "string",
+          "enum": ["day", "month", "year"],
+          "default": "day",
+          "description": "Default coarsest date precision allowed for all date fields (day = full YYYY-MM-DD, month = YYYY-MM or finer, year = YYYY or finer). Per-field `granularity` overrides this default."
         }
       }
     },
@@ -140,96 +152,58 @@
         }
       }
     },
-    "typeDefinition": {
-      "type": "object",
-      "required": ["output_dir", "frontmatter"],
-      "additionalProperties": false,
-      "properties": {
-        "output_dir": {
-          "type": "string",
-          "description": "Directory path relative to vault root where files of this type are created"
-        },
-        "filename": {
-          "type": "string",
-          "description": "Filename pattern"
-        },
-        "frontmatter": {
-          "type": "object",
-          "description": "Frontmatter field definitions in order",
-          "additionalProperties": {
-            "$ref": "#/definitions/frontmatterField"
-          }
-        },
-        "frontmatter_order": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Order of frontmatter fields (keys from frontmatter object)"
-        },
-        "body_sections": {
-          "type": "array",
-          "description": "Body sections to generate after frontmatter",
-          "items": {
-            "$ref": "#/definitions/bodySection"
-          }
-        }
-      }
-    },
     "typeNode": {
       "type": "object",
-      "description": "Recursive type family or leaf definition",
+      "description": "Type definition with inheritance support. Flat v2 model: `extends` for is-a inheritance, `traits` for also-has composition, `fields` (not `frontmatter`) for field definitions. All properties are optional.",
       "additionalProperties": false,
       "properties": {
-        "subtypes": {
-          "type": "object",
-          "description": "Nested subtype map",
-          "additionalProperties": {
-            "$ref": "#/definitions/typeNode"
-          }
-        },
-        "output_dir": { "type": "string" },
-        "filename": { "type": "string", "description": "Filename pattern" },
-        "frontmatter": {
-          "$ref": "#/definitions/typeDefinition/properties/frontmatter"
-        },
-        "frontmatter_order": { "type": "array", "items": { "type": "string" } },
-        "body_sections": {
-          "type": "array",
-          "items": { "$ref": "#/definitions/bodySection" }
-        },
-        "plural": {
-          "type": "string",
-          "description": "Custom plural form for folder naming (e.g., 'research' instead of 'researches')"
-        },
         "extends": {
           "type": "string",
-          "description": "Parent type name (v2 inheritance model)"
+          "description": "Parent type name (implicit 'meta' if not specified). Single-parent is-a inheritance."
         },
         "traits": {
           "type": "array",
           "items": { "type": "string" },
           "description": "Trait names composed into this type (composition alongside `extends`). Precedence: own fields > traits > inherited; later traits in the array win over earlier ones."
         },
-        "fields": {
-          "type": "object",
-          "description": "Field definitions (v2 model, replaces frontmatter)",
-          "additionalProperties": {
-            "$ref": "#/definitions/frontmatterField"
-          }
-        },
-        "field_order": { "type": "array", "items": { "type": "string" }, "description": "Field ordering (v2 model)" },
         "description": {
           "type": "string",
           "description": "Human-readable description of what this type is for and when to use it. Surfaced by `bwrb schema list`."
         },
-        "recursive": { "type": "boolean", "description": "Whether this type can contain instances of itself" }
-      },
-      "anyOf": [
-        { "required": ["subtypes"] },
-        { "required": ["output_dir", "frontmatter"] },
-        { "required": ["extends"] },
-        { "required": ["fields"] },
-        { "required": ["traits"] }
-      ]
+        "fields": {
+          "type": "object",
+          "description": "Field definitions, merged with ancestors and traits at load time",
+          "additionalProperties": {
+            "$ref": "#/definitions/frontmatterField"
+          }
+        },
+        "field_order": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Explicit field ordering (optional; defaults to definition order)"
+        },
+        "body_sections": {
+          "type": "array",
+          "description": "Body section definitions generated after frontmatter",
+          "items": { "$ref": "#/definitions/bodySection" }
+        },
+        "recursive": {
+          "type": "boolean",
+          "description": "Whether this type can contain instances of itself"
+        },
+        "output_dir": {
+          "type": "string",
+          "description": "Directory path relative to vault root where files of this type are created (computed from hierarchy if not specified)"
+        },
+        "filename": {
+          "type": "string",
+          "description": "Filename pattern"
+        },
+        "plural": {
+          "type": "string",
+          "description": "Custom plural form for folder naming (e.g., 'research' instead of 'researches'). Auto-pluralized if not specified."
+        }
+      }
     },
     "frontmatterField": {
       "type": "object",
@@ -243,6 +217,11 @@
           "type": "string",
           "enum": ["text", "select", "relation", "list", "date", "boolean", "number"],
           "description": "Type of prompt: text (free text), select (from enum), relation (from vault query), list (comma-separated list), date (date picker), boolean (yes/no), number (numeric input)"
+        },
+        "granularity": {
+          "type": "string",
+          "enum": ["day", "month", "year"],
+          "description": "Coarsest date precision allowed for this `date` field, finer is always allowed (day = full YYYY-MM-DD, month = YYYY-MM or finer, year = YYYY or finer). Overrides the global config.date_granularity for this field."
         },
         "label": {
           "type": "string",

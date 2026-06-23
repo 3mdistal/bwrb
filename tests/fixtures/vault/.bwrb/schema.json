@@ -23,8 +23,7 @@
         "milestone": {
           "prompt": "relation",
           "source": "milestone",
-          "filter": { "status": { "not_in": ["settled"] } },
-          "format": "quoted-wikilink"
+          "filter": { "status": { "not_in": ["settled"] } }
         },
         "creation-date": { "value": "$NOW" },
         "deadline": { "prompt": "date", "label": "Deadline (YYYY-MM-DD)" },
