@@ -174,6 +174,9 @@ bwrb search "deploy" --body
 # Search only in tasks
 bwrb search "deploy" -b -t task
 
+# Restrict to a path glob
+bwrb search "deploy" -b --path "Projects/**"
+
 # Filter by frontmatter
 bwrb search "TODO" -b --where "status != 'done'"
 
