@@ -5,7 +5,10 @@ import { tmpdir } from 'os';
 import { loadSchema } from '../../../src/lib/schema.js';
 import { runAudit } from '../../../src/lib/audit/detection.js';
 import { runAutoFix } from '../../../src/lib/audit/fix.js';
-import { detectMissingBodySections } from '../../../src/lib/audit/body-sections.js';
+import {
+  detectMissingBodySections,
+  isBodySectionPresent,
+} from '../../../src/lib/audit/body-sections.js';
 import type { BodySection, Schema } from '../../../src/types/schema.js';
 
 // ---------------------------------------------------------------------------
@@ -81,6 +84,67 @@ describe('body-sections: detectMissingBodySections', () => {
 
   it('returns nothing when the type declares no body sections', () => {
     expect(detectMissingBodySections('anything', [])).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Shared presence helper (#653): single source of truth used by both
+// `bwrb edit`'s add-missing-sections flow and the audit
+// `missing-body-section` detector + fix.
+// ---------------------------------------------------------------------------
+
+describe('body-sections: isBodySectionPresent', () => {
+  it('returns true for an exact heading match', () => {
+    expect(isBodySectionPresent('## Notes\n\nstuff\n', 2, 'Notes')).toBe(true);
+  });
+
+  it('returns false when the heading is absent', () => {
+    expect(isBodySectionPresent('# Title\n\nbody\n', 2, 'Notes')).toBe(false);
+  });
+
+  it('returns false when the heading exists only at the wrong level', () => {
+    expect(isBodySectionPresent('### Notes\n', 2, 'Notes')).toBe(false);
+    expect(isBodySectionPresent('# Notes\n', 2, 'Notes')).toBe(false);
+  });
+
+  it('tolerates trailing whitespace', () => {
+    expect(isBodySectionPresent('## Notes   \n', 2, 'Notes')).toBe(true);
+  });
+
+  it('tolerates an ATX closing-hash sequence', () => {
+    expect(isBodySectionPresent('## Notes ##\n', 2, 'Notes')).toBe(true);
+    expect(isBodySectionPresent('## Notes ###  \n', 2, 'Notes')).toBe(true);
+  });
+
+  it('tolerates leading indentation', () => {
+    expect(isBodySectionPresent('   ## Notes\n', 2, 'Notes')).toBe(true);
+  });
+
+  it('does not count a heading inside a fenced code block as present', () => {
+    expect(isBodySectionPresent('```\n## Notes\n```\n', 2, 'Notes')).toBe(false);
+  });
+
+  it('is case-sensitive on the title', () => {
+    expect(isBodySectionPresent('## notes\n', 2, 'Notes')).toBe(false);
+  });
+
+  it('does not match a heading with extra trailing text (anchored end)', () => {
+    // Pins the unified behavior (#653): `bwrb edit` previously used an
+    // unanchored prefix matcher that would have treated this as present;
+    // the shared helper anchors the line end, matching the audit matcher.
+    expect(isBodySectionPresent('## Notes and more\n', 2, 'Notes')).toBe(false);
+  });
+
+  it('regex-escapes special characters in the title', () => {
+    // Pins the unified behavior (#653): `bwrb edit` previously fed the raw
+    // title into a RegExp, so `.` matched any char. The shared helper escapes.
+    expect(isBodySectionPresent('## A.B\n', 2, 'A.B')).toBe(true);
+    expect(isBodySectionPresent('## AxB\n', 2, 'A.B')).toBe(false);
+  });
+
+  it('supports level 1 and deeper levels', () => {
+    expect(isBodySectionPresent('# Top\n', 1, 'Top')).toBe(true);
+    expect(isBodySectionPresent('#### Deep\n', 4, 'Deep')).toBe(true);
   });
 });
 

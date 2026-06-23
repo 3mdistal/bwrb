@@ -59,6 +59,7 @@ import {
 import { toMarkdownLink, toWikilink } from '../links.js';
 import { spawnSuccessor, needsSuccessor, CHAIN_NEXT_FIELD } from '../recurrence.js';
 import { maskNonProse } from './unlinked-mention.js';
+import { isBodySectionPresent } from './body-sections.js';
 import {
   readStructuralFrontmatterFromRaw,
   movePrimaryBlockToTop,
@@ -201,21 +202,6 @@ function findBodySectionByTitle(
 }
 
 /**
- * Whether a heading at the given level/title already exists in the body. Mirrors
- * the detector's matcher so the fix is idempotent: if a prior fix (or the user)
- * already added the heading, we skip rather than appending a duplicate.
- */
-function bodyHasSectionHeading(body: string, level: number, title: string): boolean {
-  const masked = maskNonProse(body);
-  const prefix = '#'.repeat(level);
-  const pattern = new RegExp(
-    `^[ \\t]*${prefix} ${escapeRegExp(title)}[ \\t]*#*[ \\t]*$`,
-    'm'
-  );
-  return pattern.test(masked);
-}
-
-/**
  * Apply a `missing-body-section` auto-fix (#510): append the declared heading
  * section (with its canonical content-type placeholder) to the end of the body.
  *
@@ -253,7 +239,7 @@ async function applyBodySectionFix(
   }
 
   // Idempotency: skip if the heading is already present at its declared level.
-  if (bodyHasSectionHeading(parsed.body, section.level ?? level, title)) {
+  if (isBodySectionPresent(parsed.body, section.level ?? level, title)) {
     return {
       file: filePath,
       issue,
