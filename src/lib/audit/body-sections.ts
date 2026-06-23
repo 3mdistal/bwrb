@@ -36,19 +36,45 @@ function escapeRegExp(value: string): string {
 
 /**
  * Whether a heading with the given level and title is present in the (already
- * non-prose-masked) body. Matches an ATX heading line: the exact number of `#`
- * for the declared level, a single space, then the exact title (trailing
- * whitespace and trailing `#` closing sequence tolerated). Matching is
- * case-sensitive on the title to mirror how the scaffold writes it.
+ * non-prose-masked) body. Matches an ATX heading line: optional leading
+ * indentation, the exact number of `#` for the declared level, a single space,
+ * then the exact title (trailing whitespace and trailing `#` closing sequence
+ * tolerated). Matching is case-sensitive on the title to mirror how the scaffold
+ * writes it.
+ *
+ * Shared low-level matcher. Callers that already hold a `maskNonProse`-masked
+ * body use this directly (to avoid re-masking); callers with a raw body should
+ * use the exported {@link isBodySectionPresent} which masks first.
  */
-function headingPresent(maskedBody: string, level: number, title: string): boolean {
+function headingPresentInMasked(maskedBody: string, level: number, title: string): boolean {
   const prefix = '#'.repeat(level);
-  // ^## Title  with optional trailing spaces and optional closing ### run.
+  // ^## Title  with optional leading indent, trailing spaces, optional closing
+  // ### run.
   const pattern = new RegExp(
     `^[ \\t]*${prefix} ${escapeRegExp(title)}[ \\t]*#*[ \\t]*$`,
     'm'
   );
   return pattern.test(maskedBody);
+}
+
+/**
+ * Whether a declared body-section heading is present in a note body.
+ *
+ * The single source of truth for the "is this declared heading present?" check
+ * shared by `bwrb edit`'s add-missing-sections flow, the audit
+ * `missing-body-section` detector, and that audit's auto-fix idempotency guard
+ * (#653). It masks code fences / links / wikilinks via {@link maskNonProse} so a
+ * `## Heading` written inside a fenced code block never counts as satisfying the
+ * requirement, then matches the heading line exactly at the declared level
+ * (leading indent, trailing whitespace, and ATX closing `##` run tolerated;
+ * title matched case-sensitively and regex-escaped).
+ *
+ * @param body  The raw markdown body (frontmatter already stripped). NOT masked.
+ * @param level The declared heading level (number of `#`).
+ * @param title The declared heading title.
+ */
+export function isBodySectionPresent(body: string, level: number, title: string): boolean {
+  return headingPresentInMasked(maskNonProse(body), level, title);
 }
 
 /**
@@ -108,7 +134,7 @@ export function detectMissingBodySections(
   const masked = maskNonProse(body);
 
   for (const { title, level } of flattenSections(bodySections)) {
-    if (headingPresent(masked, level, title)) continue;
+    if (headingPresentInMasked(masked, level, title)) continue;
 
     const wrongLevelLine = findHeadingLine(masked, title);
     const meta: Record<string, unknown> = { title, level };

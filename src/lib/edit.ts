@@ -13,6 +13,7 @@ import {
   getFrontmatterOrder,
 } from './schema.js';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
+import { isBodySectionPresent } from './audit/body-sections.js';
 import { queryByType, formatValue } from './vault.js';
 import {
   promptSelection,
@@ -538,10 +539,8 @@ async function addMissingSections(
 
   for (const section of sections) {
     const level = section.level ?? 2;
-    const prefix = '#'.repeat(level);
-    const pattern = new RegExp(`^${prefix} ${section.title}`, 'm');
 
-    if (!pattern.test(body)) {
+    if (!isBodySectionPresent(body, level, section.title)) {
       printWarning(`Missing section: ${section.title}`);
       const addIt = await promptConfirm('Add it?');
       if (addIt === null) {
