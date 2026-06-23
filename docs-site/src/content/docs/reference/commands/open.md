@@ -8,8 +8,11 @@ Open a note by query in your preferred application. This is an alias for `search
 ## Synopsis
 
 ```bash
-bwrb open [options] [query]
+bwrb open [options] [query] [mode]
 ```
+
+`[mode]` is an optional positional app mode (e.g. `bwrb open "My Note" print`),
+equivalent to passing `--app <mode>`. An explicit `--app` flag always wins.
 
 ## Options
 
@@ -50,6 +53,9 @@ bwrb open "My Note" --app obsidian
 
 # Open in $EDITOR
 bwrb open "My Note" --app editor
+
+# Print the resolved path to stdout (positional mode, handy for scripting)
+bwrb open "My Note" print
 ```
 
 ### With Targeting
@@ -73,9 +79,10 @@ bwrb open --body "TODO"
 The default app is determined by:
 
 1. `--app` flag (explicit)
-2. `BWRB_DEFAULT_APP` environment variable
-3. `config.open_with` in `.bwrb/schema.json`
-4. Fallback: `system`
+2. `[mode]` positional argument (e.g. `bwrb open "My Note" print`)
+3. `BWRB_DEFAULT_APP` environment variable
+4. `config.open_with` in `.bwrb/schema.json`
+5. Fallback: `system`
 
 ```bash
 # Set default via environment

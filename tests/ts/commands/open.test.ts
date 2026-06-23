@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
 import { parseAppMode, resolveAppMode } from '../../../src/commands/open.js';
 import type { ResolvedConfig } from '../../../src/types/schema.js';
@@ -312,5 +314,128 @@ describe('open command', () => {
       expect(result.stdout).toContain('--preview');
       expect(result.stdout).toContain('fzf');
     });
+  });
+
+  describe('positional app mode', () => {
+    it('should accept app mode as a positional argument (open <name> print)', async () => {
+      const result = await runCLI(['open', 'Sample Idea', 'print'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Ideas/Sample Idea.md');
+    });
+
+    it('should let --app flag take precedence over positional mode', async () => {
+      // Positional says system, flag says print -> print wins (prints path).
+      const result = await runCLI(
+        ['open', 'Sample Idea', 'system', '--app', 'print'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Ideas/Sample Idea.md');
+    });
+
+    it('should error on an invalid positional mode instead of silently doing nothing', async () => {
+      const result = await runCLI(['open', 'Sample Idea', 'bogus-mode'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Invalid app mode');
+    });
+
+    it('should treat a single positional as the query, not the mode', async () => {
+      // `open print` searches for a note literally named "print" (none here).
+      const result = await runCLI(['open', 'print', '--picker', 'none'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('No matching notes found');
+    });
+  });
+});
+
+// Regression coverage for #662: `open <name> print` (positional, non-interactive)
+// must resolve and print notes filed in nested subdirs under a type's output_dir,
+// consistently with `search`/`list` (#619). Before the fix the trailing `print`
+// token was silently swallowed, the command fell back to the default app mode,
+// and nothing was printed (exit 0) for nested notes.
+describe('open nested-subdir notes via positional print (#662)', () => {
+  let vaultDir: string;
+
+  beforeEach(async () => {
+    vaultDir = await createTestVault();
+  });
+
+  afterEach(async () => {
+    await cleanupTestVault(vaultDir);
+  });
+
+  it('prints a nested note path with positional print mode', async () => {
+    await mkdir(join(vaultDir, 'Ideas', 'Sub'), { recursive: true });
+    await writeFile(
+      join(vaultDir, 'Ideas', 'Sub', 'Nested Idea.md'),
+      '---\ntype: idea\nstatus: raw\n---\n'
+    );
+
+    const result = await runCLI(['open', 'Nested Idea', 'print'], vaultDir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Ideas/Sub/Nested Idea.md');
+  });
+
+  it('prints a nested note path with --app print as well', async () => {
+    await mkdir(join(vaultDir, 'Ideas', 'Sub'), { recursive: true });
+    await writeFile(
+      join(vaultDir, 'Ideas', 'Sub', 'Nested Idea.md'),
+      '---\ntype: idea\nstatus: raw\n---\n'
+    );
+
+    const result = await runCLI(
+      ['open', 'Nested Idea', '--app', 'print'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Ideas/Sub/Nested Idea.md');
+  });
+
+  it('prints a deeply nested note path with positional print mode', async () => {
+    await mkdir(join(vaultDir, 'Ideas', 'A', 'B', 'C'), { recursive: true });
+    await writeFile(
+      join(vaultDir, 'Ideas', 'A', 'B', 'C', 'Deeply Nested Idea.md'),
+      '---\ntype: idea\nstatus: raw\n---\n'
+    );
+
+    const result = await runCLI(['open', 'Deeply Nested Idea', 'print'], vaultDir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Ideas/A/B/C/Deeply Nested Idea.md');
+  });
+
+  it('still surfaces ambiguity for nested duplicate basenames in non-interactive mode', async () => {
+    await mkdir(join(vaultDir, 'Ideas', 'One'), { recursive: true });
+    await mkdir(join(vaultDir, 'Ideas', 'Two'), { recursive: true });
+    await writeFile(
+      join(vaultDir, 'Ideas', 'One', 'Dup Idea.md'),
+      '---\ntype: idea\nstatus: raw\n---\n'
+    );
+    await writeFile(
+      join(vaultDir, 'Ideas', 'Two', 'Dup Idea.md'),
+      '---\ntype: idea\nstatus: raw\n---\n'
+    );
+
+    const result = await runCLI(
+      ['open', 'Dup Idea', 'print', '--picker', 'none'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout + result.stderr).toContain('Ideas/One/Dup Idea.md');
+    expect(result.stdout + result.stderr).toContain('Ideas/Two/Dup Idea.md');
+  });
+
+  it('keeps top-level note resolution working with positional print mode', async () => {
+    const result = await runCLI(['open', 'Sample Idea', 'print'], vaultDir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Ideas/Sample Idea.md');
   });
 });
