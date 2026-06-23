@@ -85,6 +85,47 @@ describe("diffSchemas", () => {
       );
       expect(removeOps.length).toBeGreaterThanOrEqual(1);
     });
+
+    // The diff engine does not auto-detect field renames. A schema-only rename
+    // (drop one field, add another) is inherently ambiguous — it is
+    // indistinguishable from two unrelated changes — so it surfaces as an
+    // add-field + remove-field pair, never as a `rename-field` op. Intentional
+    // renames are performed explicitly via `bwrb bulk --rename old=new`.
+    // See issue #694 and docs/product/migrations.md.
+    it("should surface a schema-only field rename as add+remove, never rename-field", () => {
+      const newSchema: BwrbSchemaType = {
+        ...baseSchema,
+        schemaVersion: "2.0.0",
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              status: baseSchema.types.task.fields!.status,
+              priority: baseSchema.types.task.fields!.priority,
+              // `assignee` replaces a removed `due` field; from the schema
+              // diff's perspective this is just an add + a remove.
+              assignee: { prompt: "text" },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(baseSchema, newSchema, "1.0.0", "2.0.0");
+
+      const allOps = [...plan.deterministic, ...plan.nonDeterministic];
+      expect(allOps.some((op) => op.op === "rename-field")).toBe(false);
+      expect(
+        plan.deterministic.some(
+          (op) => op.op === "add-field" && op.field === "assignee"
+        )
+      ).toBe(true);
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "remove-field" && op.field === "due"
+        )
+      ).toBe(true);
+    });
   });
 
   describe("type changes", () => {
