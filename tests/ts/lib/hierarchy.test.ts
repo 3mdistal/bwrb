@@ -3,7 +3,7 @@ import { mkdtemp, writeFile, mkdir, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
-  buildParentMap,
+  buildParentMapFromSchema,
   buildNotePathMap,
   detectCycle,
   checkExistingCycle,
@@ -106,7 +106,7 @@ describe('hierarchy', () => {
     });
   });
 
-  describe('buildParentMap', () => {
+  describe('buildParentMapFromSchema', () => {
     let tempDir: string;
 
     beforeAll(async () => {
@@ -171,7 +171,7 @@ parent: "[[Child Task]]"
 
     it('should build parent map from files', async () => {
       const schema = await loadSchema(tempDir);
-      const parentMap = await buildParentMap(schema, tempDir);
+      const parentMap = await buildParentMapFromSchema(schema, tempDir);
 
       expect(parentMap.get('Child Task')).toBe('Parent Task');
       expect(parentMap.get('Grandchild Task')).toBe('Child Task');

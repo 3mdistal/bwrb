@@ -220,8 +220,9 @@ export function extractNoteName(value: string): string | null {
 
 /**
  * Build a map from note name -> parent note name from frontmatter.
+ * Operates on an already-loaded array of files (sync).
  */
-export function buildParentMap(files: FileWithFrontmatter[]): Map<string, string> {
+export function buildParentMapFromFiles(files: FileWithFrontmatter[]): Map<string, string> {
   const parentMap = new Map<string, string>();
 
   for (const file of files) {

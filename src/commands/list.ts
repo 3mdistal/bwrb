@@ -9,7 +9,7 @@ import {
   formatUnknownTypeError,
 } from '../lib/schema.js';
 import {
-  buildParentMap,
+  buildParentMapFromFiles,
   buildChildrenMap,
   collectDescendants,
   createFileComparator,
@@ -508,7 +508,7 @@ export async function listObjects(
   // Apply hierarchy filters for recursive types
   if (isRecursive) {
     // Build parent map for hierarchy queries
-    const parentMap = buildParentMap(filteredFiles);
+    const parentMap = buildParentMapFromFiles(filteredFiles);
     const childrenMap = buildChildrenMap(parentMap);
 
     if (options.roots) {
@@ -660,7 +660,7 @@ export async function listObjects(
       // This lets any entity type with a parent hierarchy (e.g. a context /
       // domain type per #554) render its nesting via `--output tree` (#637).
       // The directory tree remains the fallback when there are no parent links.
-      const parentMap = buildParentMap(filteredFiles);
+      const parentMap = buildParentMapFromFiles(filteredFiles);
       const tree = buildTree(filteredFiles, parentMap, options.depth, fileComparator);
       if (treeHasNestedNotes(tree)) {
         printTree(tree, vaultDir, showPaths);
