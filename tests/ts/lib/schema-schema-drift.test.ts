@@ -217,6 +217,15 @@ describe('schema.schema.json drift guards', () => {
     expect(recurrence.properties.set.additionalProperties.type).toBe('string');
   });
 
+  // --- #679: optional successor name template on the recurrence block ---
+  it('exposes recurrence.name_template as an optional string (#679)', () => {
+    const recurrence = metaSchema.definitions.recurrence;
+    expect(recurrence.properties.name_template).toBeDefined();
+    expect(recurrence.properties.name_template.type).toBe('string');
+    // Optional: never added to `required`.
+    expect(recurrence.required).not.toContain('name_template');
+  });
+
   // --- #626 core: type definitions use the flat v2 `fields` contract ---
   describe('type definitions match the flat v2 loader contract (#626)', () => {
     it('a type composes traits via a string array', () => {

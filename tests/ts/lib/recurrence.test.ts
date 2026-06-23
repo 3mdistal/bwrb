@@ -965,6 +965,286 @@ due: 2026-04-01
   });
 });
 
+describe('recurrence: successor name template (#679)', () => {
+  // A `draft` whose completion spawns a `review` via a cross-type template, with
+  // a `name_template` that gives the review a MEANINGFUL name ("Review: <name>")
+  // instead of a numeric suffix. Both types carry the next/prev chain.
+  function makeCrossSchema(nameTemplate?: string): Schema {
+    return {
+      version: 2,
+      traits: {
+        chained: {
+          fields: {
+            next: { prompt: 'relation', source: ['draft', 'review'] },
+            prev: { prompt: 'relation', source: ['draft', 'review'] },
+          },
+        },
+        spawnsReview: {
+          recurrence: {
+            on: 'status = done',
+            template: 'spawn-review',
+            ...(nameTemplate ? { name_template: nameTemplate } : {}),
+            set: { due: 'due + 3d' },
+          },
+        },
+      },
+      types: {
+        draft: {
+          output_dir: 'drafts',
+          traits: ['chained', 'spawnsReview'],
+          fields: {
+            name: { prompt: 'text', required: true },
+            status: { prompt: 'select', options: ['todo', 'doing', 'done'], default: 'todo' },
+            due: { prompt: 'date' },
+          },
+        },
+        review: {
+          output_dir: 'reviews',
+          traits: ['chained'],
+          fields: {
+            name: { prompt: 'text', required: true },
+            status: { prompt: 'select', options: ['todo', 'doing', 'done'], default: 'todo' },
+            due: { prompt: 'date' },
+          },
+        },
+      },
+    };
+  }
+
+  async function writeReviewTemplate(vaultDir: string): Promise<void> {
+    const dir = join(vaultDir, '.bwrb', 'templates', 'review');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, 'spawn-review.md'),
+      `---
+type: template
+template-for: review
+name: spawn-review
+defaults:
+  status: todo
+---
+
+# {name}
+`
+    );
+  }
+
+  async function listDir(vaultDir: string, sub: string): Promise<string[]> {
+    const dir = join(vaultDir, sub);
+    if (!existsSync(dir)) return [];
+    return (await readdir(dir)).filter((f) => f.endsWith('.md')).sort();
+  }
+
+  async function setupCrossVault(nameTemplate?: string): Promise<string> {
+    const vaultDir = await setupVault(makeCrossSchema(nameTemplate));
+    await writeReviewTemplate(vaultDir);
+    await mkdir(join(vaultDir, 'drafts'), { recursive: true });
+    await mkdir(join(vaultDir, 'reviews'), { recursive: true });
+    return vaultDir;
+  }
+
+  let vaultDir: string;
+  afterEach(async () => {
+    if (vaultDir) await rm(vaultDir, { recursive: true, force: true });
+  });
+
+  it('names the cross-type successor from name_template (Review: {name})', async () => {
+    vaultDir = await setupCrossVault('Review: {name}');
+    const draftPath = join(vaultDir, 'drafts', 'Chapter One.md');
+    await writeFile(
+      draftPath,
+      `---
+type: draft
+name: Chapter One
+status: doing
+due: 2026-04-01
+---
+`
+    );
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(schema, vaultDir, draftPath, JSON.stringify({ status: 'done' }), {
+      jsonMode: false,
+    });
+
+    const reviews = await listDir(vaultDir, 'reviews');
+    expect(reviews).toHaveLength(1);
+    // The colon is filesystem-illegal, so the sanitized basename drops it:
+    // "Review: Chapter One" -> "Review Chapter One".
+    expect(reviews[0]).toBe('Review Chapter One.md');
+
+    // Offset still applied; chain links resolve to the templated name.
+    const succFm = await readFrontmatter(join(vaultDir, 'reviews', reviews[0]!));
+    expect(succFm['due']).toBe('2026-04-04');
+    expect(succFm['name']).toBe('Review Chapter One');
+    expect(String(succFm['prev'])).toContain('Chapter One');
+
+    const draftFm = await readFrontmatter(draftPath);
+    expect(String(draftFm['next'])).toContain('Review Chapter One');
+
+    // Audit clean of the name-collision symptoms.
+    const results = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    const issues = results.flatMap((r) => r.issues);
+    expect(issues.some((i) => i.code === 'self-reference')).toBe(false);
+    expect(issues.some((i) => i.code === 'type-mismatch')).toBe(false);
+    expect(issues.some((i) => i.code === 'ambiguous-link-target')).toBe(false);
+  });
+
+  it('without name_template, keeps the numeric-suffix behavior (#632)', async () => {
+    vaultDir = await setupCrossVault(); // no name_template
+    const draftPath = join(vaultDir, 'drafts', 'Chapter One.md');
+    await writeFile(
+      draftPath,
+      `---
+type: draft
+name: Chapter One
+status: doing
+due: 2026-04-01
+---
+`
+    );
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(schema, vaultDir, draftPath, JSON.stringify({ status: 'done' }), {
+      jsonMode: false,
+    });
+
+    const reviews = await listDir(vaultDir, 'reviews');
+    expect(reviews).toHaveLength(1);
+    const name = reviews[0]!.replace(/\.md$/, '');
+    expect(name).not.toBe('Chapter One');
+    expect(name.startsWith('Chapter One')).toBe(true); // carried name + numeric suffix
+  });
+
+  it('a templated name that still collides is disambiguated with a numeric suffix', async () => {
+    vaultDir = await setupCrossVault('Review: {name}');
+    // Pre-seed a review that already occupies the templated basename so the spawn
+    // must climb past it — uniqueness (#632) applies ON TOP of the template.
+    await writeFile(
+      join(vaultDir, 'reviews', 'Review Chapter One.md'),
+      `---
+type: review
+name: Review Chapter One
+status: todo
+due: 2026-01-01
+---
+`
+    );
+    const draftPath = join(vaultDir, 'drafts', 'Chapter One.md');
+    await writeFile(
+      draftPath,
+      `---
+type: draft
+name: Chapter One
+status: doing
+due: 2026-04-01
+---
+`
+    );
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(schema, vaultDir, draftPath, JSON.stringify({ status: 'done' }), {
+      jsonMode: false,
+    });
+
+    const reviews = await listDir(vaultDir, 'reviews');
+    expect(reviews).toContain('Review Chapter One.md'); // pre-existing untouched
+    expect(reviews).toContain('Review Chapter One 2.md'); // spawn climbed past it
+
+    // Every basename across the vault is unique.
+    const all = [
+      ...(await listDir(vaultDir, 'drafts')),
+      ...(await listDir(vaultDir, 'reviews')),
+    ].map((f) => f.replace(/\.md$/, ''));
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it('fast path and backstop produce the SAME templated successor name', async () => {
+    vaultDir = await setupCrossVault('Review: {name}');
+    const schema = await loadSchema(vaultDir);
+
+    // Fast path on "Alpha".
+    const fastPath = join(vaultDir, 'drafts', 'Alpha.md');
+    await writeFile(
+      fastPath,
+      `---
+type: draft
+name: Alpha
+status: doing
+due: 2026-04-01
+---
+`
+    );
+    await editNoteFromJson(schema, vaultDir, fastPath, JSON.stringify({ status: 'done' }), {
+      jsonMode: false,
+    });
+
+    // Backstop on "Beta" (hand-completed: status=done, empty next).
+    const handPath = join(vaultDir, 'drafts', 'Beta.md');
+    await writeFile(
+      handPath,
+      `---
+type: draft
+name: Beta
+status: done
+due: 2026-04-01
+---
+`
+    );
+    const results = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    await runAutoFix(results, schema, vaultDir, { dryRun: false });
+
+    const reviews = await listDir(vaultDir, 'reviews');
+    // Both successors got the templated form (sanitized, colon dropped).
+    expect(reviews).toContain('Review Alpha.md');
+    expect(reviews).toContain('Review Beta.md');
+  });
+
+  it('is idempotent: re-completing does NOT spawn a duplicate templated review', async () => {
+    vaultDir = await setupCrossVault('Review: {name}');
+    const draftPath = join(vaultDir, 'drafts', 'Chapter One.md');
+    await writeFile(
+      draftPath,
+      `---
+type: draft
+name: Chapter One
+status: doing
+due: 2026-04-01
+---
+`
+    );
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(schema, vaultDir, draftPath, JSON.stringify({ status: 'done' }), {
+      jsonMode: false,
+    });
+    expect(await listDir(vaultDir, 'reviews')).toHaveLength(1);
+
+    await editNoteFromJson(
+      schema,
+      vaultDir,
+      draftPath,
+      JSON.stringify({ status: 'done', due: '2026-04-01' }),
+      { jsonMode: false }
+    );
+    expect(await listDir(vaultDir, 'reviews')).toHaveLength(1);
+  });
+
+  it('flags an empty name_template as a config error (invalid-recurrence)', async () => {
+    vaultDir = await setupVault(makeCrossSchema('   '));
+    await mkdir(join(vaultDir, 'drafts'), { recursive: true });
+    await writeFile(
+      join(vaultDir, 'drafts', 'D.md'),
+      `---
+type: draft
+name: D
+status: todo
+due: 2026-01-01
+---
+`
+    );
+    const schema = await loadSchema(vaultDir);
+    const issues = validateRecurrenceRule(schema, 'draft');
+    expect(issues.some((i) => /name_template/.test(i.message))).toBe(true);
+  });
+});
+
 describe('recurrence: multi-spawn template (#630)', () => {
   let vaultDir: string;
   afterEach(async () => {
