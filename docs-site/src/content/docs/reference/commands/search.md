@@ -123,12 +123,28 @@ bwrb search "Steve" --fuzzy --output json
 
 # Print the full contents of ranked matches, best-first
 bwrb search "Steve" --fuzzy --output content
+
+# Open the best fuzzy match (picker on ambiguity in a terminal)
+bwrb search "Stephen Yeg" --fuzzy --open
+
+# Open the best match in $EDITOR
+bwrb search "Stephen Yeg" --fuzzy --open --app editor
+
+# Edit the best match's frontmatter
+bwrb search "Stephen Yeg" --fuzzy --edit --json '{"status":"settled"}'
 ```
 
 All output formats work uniformly across search modes. With `--fuzzy`,
 `--output content` prints the full file contents (frontmatter + body) of the
 ranked matches — identical in shape to plain `search --output content` — emitted
 best-first by score.
+
+`--open` and `--edit` work with `--fuzzy` too, reusing the same open/edit and
+app-mode handling as the other search modes. In an interactive terminal with
+multiple matches, you get the picker (ordered best-first by score); otherwise
+(non-interactive, `--picker none`, JSON mode, or a single match) the **best**
+match is acted on. A query with no matches is a hard error rather than a silent
+no-op.
 
 #### What participates in matching
 

@@ -668,6 +668,17 @@ async function handleFuzzySearch(
   const index = await buildNoteIndex(schema, vaultDir);
   const matches = await fuzzySearch(index, query, schema, vaultDir, { threshold, limit });
 
+  // --open / --edit: act on the matched note(s), reusing the exact open/edit +
+  // app-mode + picker logic that plain and content search use. Without this,
+  // fuzzy silently ignored these flags (#676). Mutual exclusivity of
+  // --open/--edit, "--json requires --edit", and the non-interactive
+  // "--edit requires --json" rule are all enforced up front in the action
+  // handler before dispatch, so we only have to wire the behavior here.
+  if (options.open || options.edit) {
+    await handleFuzzyOpenOrEdit(query, options, vaultDir, schema, jsonMode, matches);
+    return;
+  }
+
   if (jsonMode) {
     printJson(jsonSuccess({
       data: matches.map(m => ({
@@ -691,6 +702,86 @@ async function handleFuzzySearch(
 
   for (const match of matches) {
     await outputFuzzyResult(index, match, outputFormat);
+  }
+}
+
+/**
+ * Apply --open / --edit to fuzzy results.
+ *
+ * Behavior mirrors content search (which, like fuzzy, returns a ranked list of
+ * candidates):
+ * - Interactive (TTY, picker != none, not JSON, >1 match): present the picker
+ *   over the ranked candidates (best first) and act on the selection.
+ * - Non-interactive (no TTY, --picker none, or JSON) or a single match: act on
+ *   the best (top) match — never a silent no-op.
+ *
+ * No matches is an error (not a silent no-op), consistent with failing to find
+ * a note to open/edit. This is the key difference from the read-only fuzzy
+ * paths, which stay silent on no-match like grep.
+ */
+async function handleFuzzyOpenOrEdit(
+  query: string,
+  options: SearchOptions,
+  vaultDir: string,
+  schema: import('../types/schema.js').LoadedSchema,
+  jsonMode: boolean,
+  matches: FuzzyMatch[]
+): Promise<void> {
+  if (matches.length === 0) {
+    const error = `No matching notes found for: ${query}`;
+    if (jsonMode) {
+      printJson(jsonError(error));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    printError(error);
+    process.exit(1);
+  }
+
+  const pickerMode = parsePickerMode(options.picker);
+  const shouldPick =
+    !jsonMode &&
+    pickerMode !== 'none' &&
+    matches.length > 1 &&
+    Boolean(process.stdin.isTTY && process.stdout.isTTY);
+
+  let target: ManagedFile;
+  if (shouldPick) {
+    // Interactive: pick among ranked candidates (already best-first).
+    const pickerResult = await pickFile(matches.map(m => m.file), {
+      mode: pickerMode,
+      prompt: options.open ? 'Select note to open' : 'Select note to edit',
+      preview: options.preview ?? false,
+      vaultDir,
+    });
+
+    if (pickerResult.cancelled || !pickerResult.selected) {
+      process.exit(0);
+    }
+    target = pickerResult.selected;
+  } else {
+    // Non-interactive (or single match): act on the best match.
+    target = matches[0]!.file;
+  }
+
+  if (options.open) {
+    const appMode = resolveAppMode(options.app, schema.config);
+    await openNote(vaultDir, target.path, appMode, schema.config, jsonMode);
+    return;
+  }
+
+  // --edit
+  if (options.json) {
+    const result = await editNoteFromJson(schema, vaultDir, target.path, options.json, { jsonMode });
+    if (jsonMode) {
+      printJson(jsonSuccess({
+        path: target.relativePath,
+        updated: result.updatedFields,
+      }));
+    } else {
+      printSuccess(`Updated: ${target.relativePath}`);
+    }
+  } else {
+    await editNoteInteractive(schema, vaultDir, target.path);
   }
 }
 
