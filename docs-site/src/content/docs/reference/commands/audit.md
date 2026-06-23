@@ -86,6 +86,8 @@ Note: built-in fields written by `bwrb new` (currently `id` and `name`) are alwa
 Invalid option values inside list fields are reported as `invalid-option` with `listIndex` metadata, not a separate issue code.
 For a [`date`](/reference/schema/) field with `multiple: true` (a list of dates), each element is validated against the field's granularity and an invalid element is reported as `invalid-date-format` with `listIndex` metadata identifying the offending value. List elements are reported for manual correction (not auto-fixed); only scalar date values are auto-normalized.
 
+An empty or whitespace-only date value is treated as **unset**, not as an invalid date — the same convention every optional field follows (an empty optional field never produces a format/type issue). So an optional `date` field stored as `""` produces no `invalid-date-format` issue, matching what `bwrb new`/`bwrb edit` accept on write. An empty **required** date is reported once as [`empty-string-required`](#issue-codes) (consistent with every other required field), and an empty **element** inside a date list is reported once as `invalid-list-element` — never additionally as `invalid-date-format`.
+
 ## Examples
 
 ### Basic Auditing

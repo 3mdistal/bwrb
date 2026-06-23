@@ -3304,6 +3304,155 @@ deadline: 2026/1/2
       expect(dateIssue.meta).toMatchObject({ normalized: '2026-01-02' });
     });
 
+    it('should not flag an empty optional date as invalid-date-format (#614)', async () => {
+      // Repro for #614: the write path accepts an empty-string optional date and
+      // stores `deadline: ""`. Audit must agree and treat it as "unset" rather
+      // than reporting an invalid date format.
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Empty Deadline.md'),
+        `---
+type: task
+status: backlog
+deadline: ""
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Empty Deadline.md'));
+
+      if (file) {
+        const dateIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-date-format');
+        expect(dateIssue).toBeUndefined();
+      }
+    });
+
+    it('should not flag a blank (whitespace) optional date as invalid-date-format', async () => {
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Blank Deadline.md'),
+        `---
+type: task
+status: backlog
+deadline: "   "
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Blank Deadline.md'));
+
+      if (file) {
+        const dateIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-date-format');
+        expect(dateIssue).toBeUndefined();
+      }
+    });
+
+    it('should still flag a non-empty malformed optional date', async () => {
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Objectives/Tasks', 'Garbage Deadline.md'),
+        `---
+type: task
+status: backlog
+deadline: "not-a-date"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Garbage Deadline.md'));
+      expect(file).toBeDefined();
+      const dateIssue = file.issues.find((i: { code: string }) => i.code === 'invalid-date-format');
+      expect(dateIssue).toBeDefined();
+    });
+
+    it('should report an empty required date once as empty-string-required, not invalid-date-format', async () => {
+      // A required empty date should follow the same "missing required" path as
+      // any other required field — exactly one issue, and not a bogus format
+      // error.
+      const schema = {
+        ...TEST_SCHEMA,
+        types: {
+          ...TEST_SCHEMA.types,
+          dated: {
+            output_dir: 'Dated',
+            fields: {
+              type: { value: 'dated' },
+              when: { prompt: 'date', required: true },
+            },
+            field_order: ['type', 'when'],
+          },
+        },
+      };
+      await writeFile(join(tempVaultDir, '.bwrb', 'schema.json'), JSON.stringify(schema, null, 2));
+      await mkdir(join(tempVaultDir, 'Dated'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Dated', 'No When.md'),
+        `---
+type: dated
+when: ""
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'dated', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('No When.md'));
+      expect(file).toBeDefined();
+      const emptyRequired = file.issues.filter((i: { code: string }) => i.code === 'empty-string-required');
+      const dateIssues = file.issues.filter((i: { code: string }) => i.code === 'invalid-date-format');
+      expect(emptyRequired).toHaveLength(1);
+      expect(dateIssues).toHaveLength(0);
+    });
+
+    it('should report an empty element in a date list once (as invalid-list-element, not invalid-date-format)', async () => {
+      // Coordinates with #640/#641: empty list elements are surfaced by the list
+      // integrity checker. The per-element date check must skip them so they are
+      // not double-reported as invalid-date-format.
+      const schema = {
+        ...TEST_SCHEMA,
+        types: {
+          ...TEST_SCHEMA.types,
+          dated: {
+            output_dir: 'Dated',
+            fields: {
+              type: { value: 'dated' },
+              dates: { prompt: 'date', multiple: true },
+            },
+            field_order: ['type', 'dates'],
+          },
+        },
+      };
+      await writeFile(join(tempVaultDir, '.bwrb', 'schema.json'), JSON.stringify(schema, null, 2));
+      await mkdir(join(tempVaultDir, 'Dated'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Dated', 'Date List.md'),
+        `---
+type: dated
+dates:
+  - "2026-01-01"
+  - ""
+  - "2026-02-01"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'dated', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Date List.md'));
+      expect(file).toBeDefined();
+      const dateIssues = file.issues.filter((i: { code: string }) => i.code === 'invalid-date-format');
+      expect(dateIssues).toHaveLength(0);
+      const listIssues = file.issues.filter((i: { code: string }) => i.code === 'invalid-list-element');
+      expect(listIssues).toHaveLength(1);
+      expect(listIssues[0].listIndex).toBe(1);
+    });
+
     it('should detect empty required values as empty-string-required', async () => {
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Empty Status.md'),
