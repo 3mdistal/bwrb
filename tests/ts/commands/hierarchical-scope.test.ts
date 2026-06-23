@@ -256,3 +256,180 @@ describe('#554 hierarchical scope — contexts as notes + under()', () => {
     expect(descendants.stdout).not.toContain('PKM.md');
   });
 });
+
+/**
+ * Guard test for #636 — "under() does not canonicalize aliases".
+ *
+ * Aliases are a field role (#266): a context note can declare alternate names.
+ * Before #636, `under()` matched wikilink targets literally, so a task using an
+ * aliased context (e.g. context: [[BuilderProject]] where BuilderProject is an
+ * alias of Builder) silently dropped out of every subtree query. This locks in
+ * that aliases are canonicalized on BOTH the relation value and the query node.
+ */
+describe('#636 under() canonicalizes aliases', () => {
+  let vaultDir: string;
+
+  const SCHEMA = {
+    version: 2,
+    types: {
+      entity: {
+        output_dir: 'Entities',
+        fields: { type: { value: 'entity' } },
+        field_order: ['type'],
+      },
+      context: {
+        extends: 'entity',
+        output_dir: 'Contexts',
+        recursive: true,
+        fields: {
+          type: { value: 'context' },
+          parent: { prompt: 'relation', source: 'context', format: 'quoted-wikilink' },
+          aliases: { prompt: 'list', alias: true, list_format: 'yaml-array', default: [] },
+        },
+        field_order: ['type', 'parent', 'aliases'],
+      },
+      task: {
+        output_dir: 'Tasks',
+        fields: {
+          type: { value: 'task' },
+          status: {
+            prompt: 'select',
+            options: ['backlog', 'active', 'done'],
+            default: 'backlog',
+            required: true,
+          },
+          context: { prompt: 'relation', source: 'context', format: 'quoted-wikilink' },
+        },
+        field_order: ['type', 'status', 'context'],
+      },
+    },
+    audit: { ignored_directories: [] },
+  };
+
+  const writeNote = async (rel: string, frontmatter: string[]) => {
+    const path = join(vaultDir, rel);
+    await mkdir(join(path, '..'), { recursive: true });
+    await writeFile(path, ['---', ...frontmatter, '---', ''].join('\n'));
+  };
+
+  beforeAll(async () => {
+    vaultDir = await mkdtemp(join(tmpdir(), 'bwrb-636-'));
+    await mkdir(join(vaultDir, '.bwrb'), { recursive: true });
+    await writeFile(join(vaultDir, '.bwrb', 'schema.json'), JSON.stringify(SCHEMA, null, 2));
+
+    // career (alias: careerAlias)
+    //   └── Builder (alias: BuilderProject)
+    //         └── Vercel
+    await writeNote('Contexts/career.md', [
+      'type: context',
+      'aliases:',
+      '  - careerAlias',
+    ]);
+    await writeNote('Contexts/Builder.md', [
+      'type: context',
+      'parent: "[[career]]"',
+      'aliases:',
+      '  - BuilderProject',
+    ]);
+    await writeNote('Contexts/Vercel.md', ['type: context', 'parent: "[[Builder]]"']);
+
+    // Two notes claim the same alias 'Dup' -> ambiguous.
+    await writeNote('Contexts/Alpha.md', [
+      'type: context',
+      'aliases:',
+      '  - Dup',
+    ]);
+    await writeNote('Contexts/Beta.md', [
+      'type: context',
+      'aliases:',
+      '  - Dup',
+    ]);
+
+    // Task uses the ALIAS as its context value.
+    await writeNote('Tasks/Aliased context task.md', [
+      'type: task',
+      'status: active',
+      'context: "[[BuilderProject]]"',
+    ]);
+    // Task uses the canonical leaf.
+    await writeNote('Tasks/Canonical leaf task.md', [
+      'type: task',
+      'status: active',
+      'context: "[[Vercel]]"',
+    ]);
+    // Task pointing at the ambiguous alias.
+    await writeNote('Tasks/Ambiguous alias task.md', [
+      'type: task',
+      'status: active',
+      'context: "[[Dup]]"',
+    ]);
+  });
+
+  afterAll(async () => {
+    await rm(vaultDir, { recursive: true, force: true });
+  });
+
+  it('matches an aliased relation target against a canonical ancestor', async () => {
+    // context: [[BuilderProject]] (alias of Builder) IS under career.
+    const result = await runCLI(
+      ['list', 'task', '--where', "under(context, '[[career]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Aliased context task.md');
+    expect(result.stdout).toContain('Canonical leaf task.md');
+  });
+
+  it('resolves an aliased query node to its canonical note and walks its subtree', async () => {
+    // under(context, '[[BuilderProject]]') must behave like '[[Builder]]':
+    // both the aliased-context task and the Vercel-leaf task (Vercel is under
+    // Builder) are returned.
+    const result = await runCLI(
+      ['list', 'task', '--where', "under(context, '[[BuilderProject]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Aliased context task.md');
+    expect(result.stdout).toContain('Canonical leaf task.md');
+  });
+
+  it('canonicalizes an aliased query node that is an ancestor', async () => {
+    const result = await runCLI(
+      ['list', 'task', '--where', "under(context, '[[careerAlias]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Aliased context task.md');
+    expect(result.stdout).toContain('Canonical leaf task.md');
+  });
+
+  it('does not resolve an ambiguous alias to a subtree (no silent winner)', async () => {
+    // 'Dup' is claimed by both Alpha and Beta, so it is dropped from the alias
+    // map. The Dup task must NOT be reachable via either claimant's subtree —
+    // the engine refuses to silently pick a winner. (A literal Dup-vs-Dup self
+    // match would still pass under(context, '[[Dup]]'); the guarantee under test
+    // is that no canonicalization to Alpha/Beta happens.)
+    const viaAlpha = await runCLI(
+      ['list', 'task', '--where', "under(context, '[[Alpha]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(viaAlpha.exitCode).toBe(0);
+    expect(viaAlpha.stdout).not.toContain('Ambiguous alias task.md');
+
+    const viaBeta = await runCLI(
+      ['list', 'task', '--where', "under(context, '[[Beta]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(viaBeta.exitCode).toBe(0);
+    expect(viaBeta.stdout).not.toContain('Ambiguous alias task.md');
+  });
+
+  it('does not crash on a dangling alias', async () => {
+    const result = await runCLI(
+      ['list', 'task', '--where', "under(context, '[[GhostAlias]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).not.toContain('Aliased context task.md');
+  });
+}, 30000);

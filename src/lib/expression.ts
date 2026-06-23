@@ -25,6 +25,16 @@ export interface HierarchyData {
   parentMap: Map<string, string>;
   /** Map from note name to set of child note names */
   childrenMap: Map<string, Set<string>>;
+  /**
+   * Optional map from a declared alias to the canonical note name it resolves
+   * to. Used by `under` to canonicalize aliased relation targets and aliased
+   * query nodes before walking the parent chain, so aliases never silently
+   * drop out of subtree queries. Built from the same alias index that drives
+   * navigation (`getEntityAliases`). Ambiguous aliases (claimed by more than
+   * one note) are intentionally omitted, so they resolve to nothing rather than
+   * silently picking one note's subtree.
+   */
+  aliasMap?: Map<string, string>;
 }
 
 /**
@@ -397,9 +407,21 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
    * matches notes whose `context` is `[[career]]` itself OR any descendant of
    * career. For multi-valued relation fields, matches if ANY target is under
    * the node.
+   *
+   * Aliases are canonicalized on BOTH sides via `hierarchyData.aliasMap`: an
+   * aliased relation target (e.g. `[[BuilderProject]]`, an alias of `Builder`)
+   * resolves to its canonical note so its ancestor chain is walked, and an
+   * aliased query node resolves to the canonical note so subtree matching works.
+   * This makes `under` consistent with `bwrb open <alias>`. A dangling alias
+   * (claimed by no note) or an ambiguous alias (claimed by several) is left
+   * as-is, so it simply fails to match rather than crashing or guessing.
    */
   under: (args, context) => {
-    const targetNode = extractNoteNameFromArg(String(args[1] ?? ''));
+    const aliasMap = context.hierarchyData?.aliasMap;
+    const targetNode = canonicalizeAlias(
+      extractNoteNameFromArg(String(args[1] ?? '')),
+      aliasMap
+    );
     if (!targetNode || !context.hierarchyData) return false;
 
     // Resolve the relation field value(s) to note names. extractLinkTargets
@@ -408,7 +430,9 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
     if (relationTargets.length === 0) return false;
 
     const parentMap = context.hierarchyData.parentMap;
-    for (const relationTarget of relationTargets) {
+    for (const rawTarget of relationTargets) {
+      const relationTarget = canonicalizeAlias(rawTarget, aliasMap);
+      if (!relationTarget) continue;
       // Inclusive of the direct target (depth 0).
       if (relationTarget === targetNode) return true;
       // Otherwise walk the target's own ancestor chain.
@@ -419,6 +443,23 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
     return false;
   },
 };
+
+/**
+ * Resolve a note name through the alias map, if present.
+ *
+ * If `name` is a declared alias that unambiguously resolves to a canonical note,
+ * return that canonical name; otherwise return `name` unchanged. A real note
+ * name always wins over an alias (the alias map never contains keys that shadow
+ * real notes), so canonical names pass through untouched.
+ */
+function canonicalizeAlias(
+  name: string | null,
+  aliasMap: Map<string, string> | undefined
+): string | null {
+  if (!name) return name;
+  if (!aliasMap) return name;
+  return aliasMap.get(name) ?? name;
+}
 
 /**
  * Walk a parent chain starting from `start`, returning true if `target` is
