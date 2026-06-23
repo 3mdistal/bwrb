@@ -538,6 +538,14 @@ export async function auditFile(
       const checkDateElement = (element: unknown, listIndex?: number) => {
         if (typeof element !== 'string' && typeof element !== 'number') return;
 
+        // An empty/blank string is "unset", not an invalid date. This mirrors the
+        // write path (validateFrontmatter treats `''` as no value) and how other
+        // optional fields behave (e.g. empty selects are skipped). A *required*
+        // empty date is reported once as `empty-string-required`; an empty list
+        // element is reported once as `invalid-list-element`. Skipping here keeps
+        // write and audit in agreement and avoids double-reporting (#614).
+        if (typeof element === 'string' && element.trim().length === 0) return;
+
         // A bare year (e.g. 2026) is parsed as a number by YAML; treat it as a
         // partial date string for validation.
         const dateStr = String(element);
