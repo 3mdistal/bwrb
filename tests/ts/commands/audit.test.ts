@@ -3749,6 +3749,110 @@ effort: "3"
       expect(issues[0].value).toBe('2026');
     });
 
+    // #641: a numeric or empty-string element of a multiple date field must be
+    // reported exactly once, consistent with scalar dates and the create/edit
+    // path. The date check owns numeric elements (a number in a date field is a
+    // date candidate, not a structural wrong-type); checkListElementIntegrity
+    // owns null/empty/nested/non-numeric-wrong-type. The two must not both fire
+    // for the same element.
+    async function auditAllIssues(filename: string, body: string, field = 'dates') {
+      await writeFile(join(tempVaultDir, 'Logs', filename), body);
+      const result = await runCLI(['audit', 'log', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes(filename));
+      const issues: { code: string; field?: string; listIndex?: number; value?: unknown }[] =
+        file?.issues ?? [];
+      return issues.filter((i) => i.field === field || i.field === undefined);
+    }
+
+    it('reports an invalid numeric date-list element once as invalid-date-format (#641)', async () => {
+      // At day granularity, numeric 2026 and 5 are not valid dates. Each must be
+      // reported once as invalid-date-format and NOT also as invalid-list-element.
+      const issues = await auditAllIssues(
+        'NumericInvalid.md',
+        `---\ntype: log\ndates:\n  - "2026-01-01"\n  - 2026\n  - 5\n---\n`
+      );
+      const dateIssues = issues.filter((i) => i.code === 'invalid-date-format');
+      const listIssues = issues.filter((i) => i.code === 'invalid-list-element');
+      expect(dateIssues.map((i) => i.listIndex).sort()).toEqual([1, 2]);
+      expect(listIssues).toHaveLength(0);
+    });
+
+    it('reports a valid numeric date-list element once as wrong-scalar-type (#641)', async () => {
+      // At year granularity a numeric 2026 IS a valid date; it should be quoted as
+      // a string. Reported once as wrong-scalar-type (matching scalar dates), not
+      // as invalid-list-element and not as invalid-date-format.
+      const yearSchema = {
+        version: 2,
+        types: {
+          log: {
+            output_dir: 'Logs',
+            fields: {
+              type: { value: 'log' },
+              years: { prompt: 'date' as const, multiple: true, granularity: 'year' as const },
+            },
+          },
+        },
+      };
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(yearSchema, null, 2)
+      );
+      await writeFile(
+        join(tempVaultDir, 'Logs', 'NumericValid.md'),
+        `---\ntype: log\nyears:\n  - 2026\n---\n`
+      );
+      const result = await runCLI(['audit', 'log', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('NumericValid.md'));
+      const issues: { code: string; listIndex?: number; value?: unknown }[] = file?.issues ?? [];
+      const wrongScalar = issues.filter((i) => i.code === 'wrong-scalar-type');
+      const listIssues = issues.filter((i) => i.code === 'invalid-list-element');
+      const dateIssues = issues.filter((i) => i.code === 'invalid-date-format');
+      expect(wrongScalar).toHaveLength(1);
+      expect(wrongScalar[0].listIndex).toBe(0);
+      expect(wrongScalar[0].value).toBe(2026);
+      expect(listIssues).toHaveLength(0);
+      expect(dateIssues).toHaveLength(0);
+    });
+
+    it('reports an empty-string date-list element once as invalid-list-element (#641)', async () => {
+      const issues = await auditAllIssues(
+        'EmptyElement.md',
+        `---\ntype: log\ndates:\n  - "2026-01-01"\n  - ""\n  - "2026-02-01"\n---\n`
+      );
+      const dateIssues = issues.filter((i) => i.code === 'invalid-date-format');
+      const listIssues = issues.filter((i) => i.code === 'invalid-list-element');
+      expect(dateIssues).toHaveLength(0);
+      expect(listIssues).toHaveLength(1);
+      expect(listIssues[0].listIndex).toBe(1);
+    });
+
+    it('reports an invalid date-string element once as invalid-date-format (#641)', async () => {
+      const issues = await auditAllIssues(
+        'InvalidString.md',
+        `---\ntype: log\ndates:\n  - "2026-01-01"\n  - not-a-date\n---\n`
+      );
+      const dateIssues = issues.filter((i) => i.code === 'invalid-date-format');
+      const listIssues = issues.filter((i) => i.code === 'invalid-list-element');
+      expect(dateIssues).toHaveLength(1);
+      expect(dateIssues[0].listIndex).toBe(1);
+      expect(listIssues).toHaveLength(0);
+    });
+
+    it('reports no issues for an all-valid string date list (#641)', async () => {
+      const issues = await auditAllIssues(
+        'AllValid.md',
+        `---\ntype: log\ndates:\n  - "2026-01-01"\n  - "2026-02-01"\n---\n`
+      );
+      const dateIssues = issues.filter((i) => i.code === 'invalid-date-format');
+      const listIssues = issues.filter((i) => i.code === 'invalid-list-element');
+      const wrongScalar = issues.filter((i) => i.code === 'wrong-scalar-type');
+      expect(dateIssues).toHaveLength(0);
+      expect(listIssues).toHaveLength(0);
+      expect(wrongScalar).toHaveLength(0);
+    });
+
     it('does not regress scalar (single-value) date validation', async () => {
       // Scalar date assigned to a multiple field still gets validated and the
       // existing scalar code path is unaffected.

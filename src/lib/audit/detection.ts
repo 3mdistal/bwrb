@@ -579,10 +579,14 @@ export async function auditFile(
               }),
             autoFixable: listIndex === undefined && Boolean(normalization),
           });
-        } else if (typeof element === 'number' && listIndex === undefined) {
-          // Valid scalar date stored as a YAML number — should be quoted as a
-          // string. A numeric element inside a list is instead reported (and
-          // coerced) by checkListElementIntegrity, so don't double-report here.
+        } else if (typeof element === 'number') {
+          // A valid date stored as a YAML number — should be quoted as a string.
+          // This is true for both scalar dates and list elements: the date check
+          // owns every numeric element of a date field (just as create/edit
+          // validates numeric elements as dates), so `checkListElementIntegrity`
+          // skips numeric date elements and we report exactly one issue per bad
+          // element (#641). For scalar dates the field-level auto-fixer can quote
+          // the value; a list element is surfaced for a manual fix.
           issues.push({
             severity: 'error',
             code: 'wrong-scalar-type',
@@ -590,7 +594,8 @@ export async function auditFile(
             field: fieldName,
             value: element,
             expected: 'string',
-            autoFixable: true,
+            ...(listIndex !== undefined && { listIndex }),
+            autoFixable: listIndex === undefined,
           });
         }
       };
@@ -1159,6 +1164,16 @@ function checkListElementIntegrity(
       }
 
       if (typeof item !== 'string') {
+        // Numeric elements of a date field are owned by the date check
+        // (checkDateElement): a number in a date field is a date candidate, not a
+        // structural wrong-type. It is reported once there — as invalid-date-format
+        // when it isn't a valid date, or wrong-scalar-type ("quote it") when it is.
+        // Skipping here keeps each bad element single-reported and aligns date
+        // lists with scalar dates and the create/edit path (#641).
+        if (field.prompt === 'date' && typeof item === 'number') {
+          return;
+        }
+
         const canCoerce = typeof item === 'number' || typeof item === 'boolean';
         issues.push({
           severity: 'warning',
