@@ -5,7 +5,7 @@
 
 import { Command, Option } from 'commander';
 import chalk from 'chalk';
-import { loadCurrentSchema, getTypeNames } from '../../lib/schema.js';
+import { loadCurrentSchema, getTypeNames, getFieldsByOrigin } from '../../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../../lib/vaultSelection.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes } from '../../lib/output.js';
 import { getGlobalOpts } from '../../lib/command.js';
@@ -237,14 +237,34 @@ listCommand
       const schema = await loadCurrentSchema(vaultDir);
       await warnIfPendingMigration(vaultDir, schema, jsonMode);
 
-      const allFields: Array<{ type: string; field: string; definition: Field }> = [];
-      
+      // Enumerate the RESOLVED fields per type (own + trait-composed +
+      // inherited) using the same origin attribution as `schema list type`.
+      // `origin` is one of: 'own', `trait:<name>`, `inherited:<name>`.
+      const allFields: Array<{
+        type: string;
+        field: string;
+        origin: string;
+        definition: Field;
+      }> = [];
+
       for (const typeName of getTypeNames(schema)) {
         if (typeName === 'meta') continue;
-        const typeEntry = schema.raw.types[typeName];
-        if (typeEntry?.fields) {
-          for (const [fieldName, fieldDef] of Object.entries(typeEntry.fields)) {
-            allFields.push({ type: typeName, field: fieldName, definition: fieldDef });
+        const { ownFields, inheritedFields, traitFields } = getFieldsByOrigin(
+          schema,
+          typeName
+        );
+
+        for (const [fieldName, fieldDef] of Object.entries(ownFields)) {
+          allFields.push({ type: typeName, field: fieldName, origin: 'own', definition: fieldDef });
+        }
+        for (const [traitName, fields] of traitFields) {
+          for (const [fieldName, fieldDef] of Object.entries(fields)) {
+            allFields.push({ type: typeName, field: fieldName, origin: `trait:${traitName}`, definition: fieldDef });
+          }
+        }
+        for (const [ancestorName, fields] of inheritedFields) {
+          for (const [fieldName, fieldDef] of Object.entries(fields)) {
+            allFields.push({ type: typeName, field: fieldName, origin: `inherited:${ancestorName}`, definition: fieldDef });
           }
         }
       }
@@ -258,8 +278,11 @@ listCommand
         console.log(chalk.bold('\nFields:\n'));
         const context = getTtyContext();
         const lines = renderSchemaFieldsTable(
-          allFields.map(({ type, field, definition }) => {
+          allFields.map(({ type, field, origin, definition }) => {
             const details: string[] = [];
+            // Provenance first so it reads as a leading marker:
+            // own / trait:<name> / inherited:<name>.
+            details.push(origin);
             if (definition.options?.length) {
               const optionValues = getOptionValues(definition.options);
               if (context.isTTY) {
