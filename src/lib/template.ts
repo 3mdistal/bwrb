@@ -2,7 +2,7 @@ import { readdir, mkdir } from 'fs/promises';
 import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
-import { levenshteinDistance } from './levenshtein.js';
+import { closestMatch } from './close-match.js';
 import { TemplateFrontmatterSchema, type Template, type LoadedSchema, type Field, type Constraint, type InstanceScaffold, type ResolvedType } from '../types/schema.js';
 import { getType, getFieldsForType, getFieldOptions, getOutputDir } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
@@ -891,18 +891,8 @@ export interface TemplateValidationResult {
  * Returns undefined if no close match found (distance > 3).
  */
 function findClosestMatch(target: string, options: string[]): string | undefined {
-  let closest: string | undefined;
-  let minDistance = 4; // Max distance for suggestions
-  
-  for (const option of options) {
-    const distance = levenshteinDistance(target.toLowerCase(), option.toLowerCase());
-    if (distance < minDistance) {
-      minDistance = distance;
-      closest = option;
-    }
-  }
-  
-  return closest;
+  // Case-insensitive, max edit distance 3; first option wins on a distance tie.
+  return closestMatch(target, options, { maxDistance: 3 });
 }
 
 function buildUnknownFieldSuggestion(
