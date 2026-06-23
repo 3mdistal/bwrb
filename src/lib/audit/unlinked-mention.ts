@@ -190,12 +190,17 @@ function blankOut(text: string): string {
 }
 
 /**
- * Mask regions of the body where a literal name match must NOT be flagged:
- * fenced code blocks, inline code, existing wikilinks, markdown links, and bare
- * URLs. Returns a string of identical length/line structure with those regions
- * blanked to spaces.
+ * Mask ONLY code regions (fenced code blocks + inline code spans), leaving links
+ * and prose intact. Returns a string of identical length/line structure with the
+ * code regions blanked to spaces so character offsets and line numbers stay
+ * accurate.
+ *
+ * This is the shared primitive behind {@link maskNonProse}. It is exported for
+ * body-LINK validation (#652), which must still SEE wikilinks/markdown links
+ * (they are exactly what it inspects) but must NOT flag links written inside
+ * code fences or inline code.
  */
-export function maskNonProse(body: string): string {
+export function maskCodeSpans(body: string): string {
   let masked = body;
 
   const maskPattern = (pattern: RegExp): void => {
@@ -208,6 +213,25 @@ export function maskNonProse(body: string): string {
   maskPattern(/^[ \t]*(```|~~~)[\s\S]*$/gm);
   // Inline code spans.
   maskPattern(/`[^`\n]+`/g);
+
+  return masked;
+}
+
+/**
+ * Mask regions of the body where a literal name match must NOT be flagged:
+ * fenced code blocks, inline code, existing wikilinks, markdown links, and bare
+ * URLs. Returns a string of identical length/line structure with those regions
+ * blanked to spaces.
+ */
+export function maskNonProse(body: string): string {
+  // Reuse the shared code-span masking, then additionally blank out links/URLs
+  // (which body-link validation deliberately keeps visible).
+  let masked = maskCodeSpans(body);
+
+  const maskPattern = (pattern: RegExp): void => {
+    masked = masked.replace(pattern, (m) => blankOut(m));
+  };
+
   // Existing wikilinks (including display-aliased form).
   maskPattern(/\[\[[^\]]*\]\]/g);
   // Markdown links/images: keep the visible text out of scope entirely so we

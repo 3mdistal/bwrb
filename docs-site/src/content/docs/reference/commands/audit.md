@@ -79,6 +79,9 @@ Delete semantics in repair mode:
 | `unlinked-mention` | A known entity's name or [registered alias](/reference/schema/#alias) appears in body prose as plain text but is not wikilinked (warning; exact/alias matches auto-fixable, fuzzy/ambiguous matches flag-only — see below) |
 | `frequent-unlinked-term` | A proper-noun-ish term mentioned frequently across the vault that has **no note yet** (warning; **advisory heuristic, never auto-fixable** — see below) |
 | `missing-body-section` | A heading section declared in the type's [`body_sections`](/reference/schema/) is missing from the note body, or present at the wrong heading level (warning; **auto-fixable** — `--fix` appends the canonical heading scaffold — see below) |
+| `broken-body-wikilink` | A well-formed `[[wikilink]]` in the note **body** whose target resolves to **no note** via the alias-aware, case-insensitive note index (warning; **flag-only** — offers a "did you mean?" hint but never auto-links — see below) |
+| `malformed-body-wikilink` | Wikilink bracket syntax in the body that is broken — an empty target (`[[]]`/`[[ ]]`) or an unclosed `[[` (warning; **flag-only**) |
+| `broken-body-file-link` | A relative markdown file/image link in the body — `[text](path.md)` / `![alt](img.png)` — whose target does not exist on disk (warning; **flag-only**) |
 | `missing-successor` | A [recurring](/automation/task-system/) note satisfies its trigger (e.g. `status = done`) but its chain field (`next`) is empty — a successor was never spawned (e.g. completed outside bwrb). Warning; **auto-fixable** (`--fix` spawns it, identical to the fast path) |
 | `invalid-recurrence` | A [recurrence](/automation/task-system/) rule is broken at the config level — a malformed trigger, a non-date offset base, or a template that doesn't exist (error; **never auto-fixable** — a config error gets the same safety net as data) |
 
@@ -278,7 +281,7 @@ What it checks:
 - A heading written inside a fenced code block, inline code, or a link does **not** satisfy the requirement — the same [body masking](#unlinked-mention-semantics-web-integrity) used by `unlinked-mention` is applied, so only real prose headings count.
 - If a heading with the right title exists but at the **wrong level**, it is still flagged (with the offending `lineNumber`), and the fix appends a correctly-leveled heading rather than rewriting yours.
 
-What it does **not** check: it validates heading *presence/structure* only — not whether the body content under a section is filled in (bullets, checkboxes, paragraph counts). It also does not validate body wikilinks; that is the job of [`unlinked-mention`](#unlinked-mention-semantics-web-integrity) and [`frequent-unlinked-term`](#frequent-unlinked-term-semantics-open-world-nudge), which scan body links and never overlap with this structural check.
+What it does **not** check: it validates heading *presence/structure* only — not whether the body content under a section is filled in (bullets, checkboxes, paragraph counts). It also does not validate body links; that is the job of the [body-link checks](#body-link-validation-semantics-link-integrity) (`broken-body-wikilink`, `malformed-body-wikilink`, `broken-body-file-link`), which never overlap with this structural check.
 
 **Auto-fixable.** Adding a declared heading is a safe, deterministic, **additive** repair — `--fix` appends the missing section using the *same* scaffold `bwrb new`/`bwrb edit` emit (heading + the section's `content_type` placeholder), so it never deletes or rewrites existing prose. It is idempotent: a re-run finds the now-present heading and does nothing (no duplicate headings). Types that declare no `body_sections` are never flagged.
 
@@ -291,6 +294,33 @@ bwrb audit --fix --auto --execute --all
 
 # Suppress the check
 bwrb audit --ignore missing-body-section
+```
+
+### Body-link validation semantics (link integrity)
+
+The body-link checks validate the actual **links written in a note's markdown body** — the link-integrity counterpart to `missing-body-section`'s structure check. They are all **flag-only**: bwrb reports the problem (often with a suggestion) but never edits body prose links, because the intended target can't be known safely.
+
+There are three codes:
+
+- **`broken-body-wikilink`** — a *well-formed* `[[Target]]` (also `[[Target|display]]`, `[[Target#heading]]`, and embeds `![[Target]]`) whose target resolves to **no note**. Resolution uses the same alias-aware, case-insensitive [note index](/reference/schema/#alias) that relation fields use: a link written as `[[an alias]]` or `[[REALNOTE]]` resolves wherever the note's name or a [registered alias](/reference/schema/#alias) does. When a near-named note exists, a flag-only *"did you mean?"* hint is offered. An **ambiguous** body wikilink (its text matches more than one note) is **not** flagged — it is still a working Obsidian link (Obsidian resolves by proximity); ambiguity is only an error in *relation fields*, which is a separate frontmatter check.
+- **`malformed-body-wikilink`** — bracket syntax that looks like a wikilink but is broken: an empty/whitespace-only target (`[[]]`, `[[ ]]`) or an unclosed `[[` with no matching `]]`.
+- **`broken-body-file-link`** — a markdown file or image link, `[text](path)` / `![alt](path)`, whose **relative** target does not exist on disk. The path is resolved relative to the note's own directory (a leading `/` is treated as the vault root, Obsidian-style), with percent-encoding (e.g. `%20`) decoded for the existence check. **External targets are never checked**: URLs with a scheme (`https:`, `mailto:`, `tel:`…), protocol-relative `//host` links, and pure in-page anchors (`#section`).
+
+All three respect code context: links written inside **fenced code blocks** or **inline code** are masked out and never flagged. Reported issues carry the offending `lineNumber` and the raw link `value`.
+
+**Relationship to `unlinked-mention`.** These checks are the inverse of [`unlinked-mention`](#unlinked-mention-semantics-web-integrity) and never overlap with it:
+
+- `unlinked-mention` flags a **known entity's name appearing as plain text** that *should* be a wikilink (it masks out existing `[[...]]` before scanning).
+- `broken-body-wikilink` flags an **actual `[[...]]` link that points nowhere** (it looks *only* at existing wikilinks).
+
+They are also disjoint from `frequent-unlinked-term` (an open-world plain-text heuristic) and from the relation-field checks (`stale-reference`, `malformed-wikilink`, `ambiguous-link-target`), which validate **frontmatter** values only.
+
+```bash
+# Report broken body wikilinks only
+bwrb audit --only broken-body-wikilink
+
+# Suppress broken file/image link checks
+bwrb audit --ignore broken-body-file-link
 ```
 
 ### Non-interactive mode

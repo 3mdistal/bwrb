@@ -46,6 +46,7 @@ import {
   type FileAuditResult,
   type ManagedFile,
   type AuditRunOptions,
+  type IssueCode,
   ALLOWED_NATIVE_FIELDS,
 } from './types.js';
 import { isBwrbBuiltinFrontmatterField } from '../frontmatter/systemFields.js';
@@ -91,6 +92,8 @@ import {
 import { FrequentTermAccumulator } from './frequent-unlinked-term.js';
 // Import body-section validation (#510)
 import { detectMissingBodySections } from './body-sections.js';
+// Import body-link validation (#652)
+import { detectBodyLinks } from './body-links.js';
 import { parseNote } from '../frontmatter.js';
 
 /**
@@ -263,7 +266,7 @@ export async function runAudit(
  */
 export async function auditFile(
   schema: LoadedSchema,
-  _vaultDir: string,
+  vaultDir: string,
   file: ManagedFile,
   options: AuditRunOptions,
   noteIndex?: import('../discovery.js').VaultNoteIndex,
@@ -699,7 +702,7 @@ export async function auditFile(
     issues.push(
       ...(await checkRecurrenceIssues(
         schema,
-        _vaultDir,
+        vaultDir,
         resolvedTypePath,
         frontmatter,
         wantInvalidRecurrence,
@@ -749,7 +752,20 @@ export async function auditFile(
     options.ignoreIssue !== 'missing-body-section' &&
     (options.onlyIssue === undefined || options.onlyIssue === 'missing-body-section');
 
-  if (wantsUnlinkedMention || wantsBodySections) {
+  // Body-link validation (#652): broken/malformed body wikilinks + broken
+  // relative file/image links. Distinct from unlinked-mention (plain-text
+  // mentions) and frontmatter relation checks. Runs whenever any of its codes is
+  // in scope.
+  const bodyLinkCodes: IssueCode[] = [
+    'broken-body-wikilink',
+    'malformed-body-wikilink',
+    'broken-body-file-link',
+  ];
+  const wantsBodyLinks =
+    (options.ignoreIssue === undefined || !bodyLinkCodes.includes(options.ignoreIssue)) &&
+    (options.onlyIssue === undefined || bodyLinkCodes.includes(options.onlyIssue));
+
+  if (wantsUnlinkedMention || wantsBodySections || wantsBodyLinks) {
     try {
       const { body } = await parseNote(file.path);
       const hasBody = Boolean(body && body.trim().length > 0);
@@ -764,6 +780,21 @@ export async function auditFile(
       // body-section validation runs even when the body is blank.
       if (wantsBodySections) {
         issues.push(...detectMissingBodySections(body ?? '', typeDef.bodySections));
+      }
+
+      // Body-link validation only matters when there is a body to scan.
+      if (wantsBodyLinks && hasBody) {
+        const bodyLinkIssues = detectBodyLinks(
+          body,
+          file.relativePath,
+          vaultDir,
+          noteIndex?.noteTargetIndex
+        ).filter(
+          (issue) =>
+            (options.onlyIssue === undefined || issue.code === options.onlyIssue) &&
+            issue.code !== options.ignoreIssue
+        );
+        issues.push(...bodyLinkIssues);
       }
     } catch {
       // If the body can't be parsed, skip body-level detections for this file.
