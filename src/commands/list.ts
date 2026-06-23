@@ -17,9 +17,12 @@ import {
   treeHasNestedNotes,
   buildDirectoryTree,
   extractNoteName,
+  isFileSortKey,
   type TreeNode,
   type DirectoryTreeNode,
+  type FileStatMap,
 } from '../lib/list-helpers.js';
+import { stat } from 'fs/promises';
 
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
@@ -132,6 +135,31 @@ interface ListCommandOptions {
 
 const RESERVED_DISPLAY_FIELDS = new Set(['name', '_name', '_path']);
 
+/**
+ * Stat the given file paths and build a {@link FileStatMap} for the `file.*`
+ * sort keys. Files that can't be stat'd are simply omitted (the comparator
+ * treats a missing stat as a missing sort value, sorting them last) rather than
+ * failing the whole command.
+ */
+async function collectFileStats(paths: string[]): Promise<FileStatMap> {
+  const map: FileStatMap = new Map();
+  await Promise.all(
+    paths.map(async path => {
+      try {
+        const stats = await stat(path);
+        map.set(path, {
+          mtimeMs: stats.mtimeMs,
+          ctimeMs: stats.birthtimeMs,
+          size: stats.size,
+        });
+      } catch {
+        // Skip unreadable files
+      }
+    })
+  );
+  return map;
+}
+
 export const listCommand = new Command('list')
   .description('List notes with optional filtering')
   .addHelpText('after', `
@@ -141,7 +169,8 @@ Targeting Selectors (compose via AND):
   --where <expr>       Filter by frontmatter expression (can repeat)
   --id <uuid>          Filter by stable note id
   --body <query>       Filter by body content (uses ripgrep)
-  --sort <field>       Sort by frontmatter field, name, _name, or _path
+  --sort <field>       Sort by frontmatter field, name, _name, _path,
+                       or a file stat: file.mtime, file.ctime, file.size
   --desc               Sort descending (requires --sort)
   --limit <n>          Show only the first n matching notes
   --count              Print only the number of matching notes
@@ -162,6 +191,7 @@ Examples:
   bwrb list --path "Projects/**" --body "TODO"
   bwrb list --type task --sort deadline
   bwrb list --type task --sort priority --desc
+  bwrb list --sort file.mtime --desc              # Most recently modified first
   bwrb list --type task --limit 5
   bwrb list --type task --count
   bwrb list --type task --output json
@@ -201,7 +231,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--fields <fields>', 'Show frontmatter fields in a table (comma-separated)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
   .option('--id <uuid>', 'Filter by stable note id')
-  .option('--sort <field>', 'Sort by frontmatter field, name, _name, or _path')
+  .option('--sort <field>', 'Sort by frontmatter field, name, _name, _path, or file stat (file.mtime, file.ctime, file.size)')
   .option('--desc', 'Sort descending (requires --sort)')
   .option('--limit <n>', 'Limit output to the first n matching notes')
   .option('--count', 'Print only the number of matching notes')
@@ -324,6 +354,9 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         ];
 
         for (const field of fieldNamesToValidate) {
+          // `file.*` stat keys are valid sort keys but not frontmatter/display
+          // fields, so they bypass the per-type field validation.
+          if (isFileSortKey(field)) continue;
           if (!allFieldNames.has(field) && !RESERVED_DISPLAY_FIELDS.has(field)) {
             const fieldList = Array.from(allFieldNames);
             const suggestion = suggestFieldName(field, fieldList);
@@ -511,7 +544,19 @@ export async function listObjects(
     }
   }
 
-  const fileComparator = createFileComparator(vaultDir, options.sortField, options.sortDesc);
+  // When sorting by a filesystem-stat `file.*` key, stat the files first and
+  // thread the results into the comparator (which stays pure/synchronous).
+  const fileStats =
+    options.sortField && isFileSortKey(options.sortField)
+      ? await collectFileStats(filteredFiles.map(f => f.path))
+      : undefined;
+
+  const fileComparator = createFileComparator(
+    vaultDir,
+    options.sortField,
+    options.sortDesc,
+    fileStats
+  );
   filteredFiles.sort(fileComparator);
 
   const matchCount = filteredFiles.length;

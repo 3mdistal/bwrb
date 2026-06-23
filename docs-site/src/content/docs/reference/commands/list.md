@@ -30,7 +30,7 @@ The positional argument is auto-detected as type, path (contains `/`), or where 
 |--------|-------------|
 | `--output <format>` | Output format: `text`, `paths`, `tree`, `link`, `json` |
 | `--fields <fields>` | Show frontmatter fields in a table (comma-separated) |
-| `--sort <field>` | Sort by a frontmatter field, `name`, `_name`, or `_path` |
+| `--sort <field>` | Sort by a frontmatter field, `name`, `_name`, `_path`, or a file stat (`file.mtime`, `file.ctime`, `file.size`) |
 | `--desc` | Sort descending (requires `--sort`) |
 | `--limit <n>` | Show only the first `n` matching notes |
 | `--count` | Print only the number of matching notes |
@@ -152,6 +152,11 @@ bwrb list --type task --sort deadline
 bwrb list --type task --sort priority --desc
 bwrb list --sort name
 
+# Sort by file stats (filesystem metadata, no frontmatter needed)
+bwrb list --sort file.mtime --desc              # Most recently modified first
+bwrb list --type task --sort file.ctime         # Oldest-created first
+bwrb list --sort file.size --desc               # Largest notes first
+
 # Show the first five matches after filtering
 bwrb list --type task --where "status == 'in-progress'" --limit 5
 
@@ -159,6 +164,12 @@ bwrb list --type task --where "status == 'in-progress'" --limit 5
 bwrb list --type task --count
 bwrb list --type task --count --output json  # {"count": 12}
 ```
+
+The `file.*` sort keys read filesystem metadata and mirror the `file.*`
+accessors available in `--where`: `file.mtime` (modification time),
+`file.ctime` (creation time), and `file.size` (bytes). They compare
+numerically. `bwrb recent` is `bwrb list --sort file.mtime --desc` with a
+default limit of 20.
 
 Missing sort values are always placed at the end, including with `--desc`.
 `--count` reports the total number of matching notes before any `--limit` is applied.

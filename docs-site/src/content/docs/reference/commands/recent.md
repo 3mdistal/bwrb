@@ -44,6 +44,22 @@ is always available.
 | `--limit <n>` | Show only the first `n` notes (default `20`) |
 | `--output <format>` | Output format: `text`, `paths`, `link`, `json` |
 
+### Actions
+
+| Option | Description |
+|--------|-------------|
+| `-o, --open` | Open the most recent note (picker if several, in a TTY) |
+| `--app <mode>` | How to open: `system`, `editor`, `visual`, `obsidian`, `print` |
+| `--save-as <name>` | Save this recency query as a dashboard |
+| `--force` | Overwrite an existing dashboard when using `--save-as` |
+
+These mirror the equivalent [`bwrb list`](/reference/commands/list/) flags. With
+`--open`, a single result opens directly; in a TTY with several results you get
+an interactive picker; non-interactively the most recent note (the top result)
+is opened. `--save-as` persists the query as a dashboard stored in the canonical
+`list --sort file.mtime --desc` form (with the effective `--limit`), so running
+the saved dashboard reproduces the recency view.
+
 ## Output Formats
 
 | Format | Description |
@@ -71,6 +87,14 @@ bwrb recent --path "Projects/**"
 # Machine-readable output
 bwrb recent --output paths
 bwrb recent --output json
+
+# Open the most recent note (or the most recent task, in your editor)
+bwrb recent --open
+bwrb recent --type task --open --app editor
+
+# Save a recency view as a reusable dashboard
+bwrb recent --type task --save-as "recent-tasks"
+bwrb dashboard recent-tasks
 ```
 
 ## JSON output
@@ -109,6 +133,12 @@ output is deterministic.
 
 ## Equivalent `list` query
 
-`recent` is a convenience wrapper. The closest hand-written equivalent is a
-listing sorted by mtime, descending, with a limit — `recent` adds the `_modified`
-field and a sensible default limit on top.
+`recent` is a convenience wrapper. The hand-written equivalent is:
+
+```bash
+bwrb list --sort file.mtime --desc --limit 20
+```
+
+`recent` adds the `_modified` field to JSON output, a `NAME` / `MODIFIED` default
+table, and a sensible default limit on top. The `file.mtime` / `file.ctime` /
+`file.size` sort keys it relies on are also available directly on `list`.

@@ -6,6 +6,8 @@ import {
   normalizeSortValue,
   compareSortValues,
   createFileComparator,
+  isFileSortKey,
+  type FileStatMap,
   extractNoteName,
   buildParentMap,
   buildChildrenMap,
@@ -46,6 +48,65 @@ describe('list-helpers: sort/comparison', () => {
       const f = file('A.md', { priority: 3 });
       expect(getSortValue(f, VAULT, 'priority')).toBe(3);
       expect(getSortValue(f, VAULT, 'missing')).toBeUndefined();
+    });
+
+    it('reads file.* stat keys from the provided stat map', () => {
+      const f = file('A.md');
+      const stats: FileStatMap = new Map([
+        [f.path, { mtimeMs: 200, ctimeMs: 100, size: 42 }],
+      ]);
+      expect(getSortValue(f, VAULT, 'file.mtime', stats)).toBe(200);
+      expect(getSortValue(f, VAULT, 'file.ctime', stats)).toBe(100);
+      expect(getSortValue(f, VAULT, 'file.size', stats)).toBe(42);
+    });
+
+    it('returns undefined for file.* keys when the stat is missing', () => {
+      const f = file('A.md');
+      expect(getSortValue(f, VAULT, 'file.mtime')).toBeUndefined();
+      expect(getSortValue(f, VAULT, 'file.mtime', new Map())).toBeUndefined();
+    });
+  });
+
+  describe('isFileSortKey', () => {
+    it('recognizes the stat-backed file.* keys', () => {
+      expect(isFileSortKey('file.mtime')).toBe(true);
+      expect(isFileSortKey('file.ctime')).toBe(true);
+      expect(isFileSortKey('file.size')).toBe(true);
+    });
+
+    it('rejects non-stat keys', () => {
+      expect(isFileSortKey('file.name')).toBe(false);
+      expect(isFileSortKey('name')).toBe(false);
+      expect(isFileSortKey('priority')).toBe(false);
+    });
+  });
+
+  describe('createFileComparator with file.* stats', () => {
+    it('sorts by file.mtime ascending and descending', () => {
+      const files = [file('A.md'), file('B.md'), file('C.md')];
+      const stats: FileStatMap = new Map([
+        [files[0]!.path, { mtimeMs: 300, ctimeMs: 0, size: 0 }],
+        [files[1]!.path, { mtimeMs: 100, ctimeMs: 0, size: 0 }],
+        [files[2]!.path, { mtimeMs: 200, ctimeMs: 0, size: 0 }],
+      ]);
+
+      expect(sortedNames(files, createFileComparator(VAULT, 'file.mtime', false, stats)))
+        .toEqual(['B', 'C', 'A']);
+      expect(sortedNames(files, createFileComparator(VAULT, 'file.mtime', true, stats)))
+        .toEqual(['A', 'C', 'B']);
+    });
+
+    it('sorts files with a missing stat to the end', () => {
+      const files = [file('A.md'), file('B.md')];
+      const stats: FileStatMap = new Map([
+        [files[0]!.path, { mtimeMs: 100, ctimeMs: 0, size: 0 }],
+        // B.md has no stat entry -> treated as missing -> sorts last
+      ]);
+      expect(sortedNames(files, createFileComparator(VAULT, 'file.mtime', false, stats)))
+        .toEqual(['A', 'B']);
+      // Even descending, missing stays last.
+      expect(sortedNames(files, createFileComparator(VAULT, 'file.mtime', true, stats)))
+        .toEqual(['A', 'B']);
     });
   });
 
