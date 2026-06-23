@@ -13,6 +13,12 @@ Required fields are considered empty when the value is:
 If the field is present but empty, report `empty-string-required`.
 If the field is absent entirely, report `missing-required`.
 
+## Optional Field Emptiness
+
+An empty string (`""`) or whitespace-only string in an **optional** field is treated as "unset" — never an error. This holds uniformly across all scalar types, including `number`, `boolean`, `date`, text, and select fields. Audit and the write path agree here: `validateFrontmatter` treats `''` as no value, so audit must not flag what writing would have accepted.
+
+In particular, an empty optional `number` (e.g. `count: ""`) is *not* reported as `wrong-scalar-type`; it is simply unset. A genuinely non-numeric value (e.g. `count: "abc"`) is still flagged.
+
 ## Auto-Coercion Policy (Unambiguous Only)
 
 `audit --fix --auto` may coerce scalars only when the conversion is unambiguous:
