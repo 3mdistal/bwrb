@@ -14,10 +14,12 @@ import {
   getOutputDir,
   getTypeFamilies,
   getDescendants,
+  getOwnedFields,
   resolveDateGranularity,
   getRecurrenceForType,
 } from '../schema.js';
 import { readStructuralFrontmatter } from './structural.js';
+import { getOwnedChildFolder } from '../ownership-paths.js';
 import {
   splitLinesPreserveEol,
   parseSimpleYamlKeyValueLine,
@@ -363,14 +365,68 @@ export async function auditFile(
   }
 
   // Check wrong directory
-  const expectedOutputDir = getOutputDir(schema, resolvedTypePath);
+  //
+  // An OWNED note (e.g. a `track` owned by an `album` via an `owned` field) does
+  // NOT live in its type's own `output_dir`. It legitimately lives under its
+  // owner at `<owner-dir>/<field>/` — the same place `bwrb new --owner` and
+  // ownership-aware discovery (#619/#660) place and accept it. Discovery already
+  // attached the owner info to `file.ownership`, so reuse it (and the shared
+  // path rule) instead of the type's top-level `output_dir`. An owned note that
+  // is NOT in its valid owner-subtree location is still reported here (and a
+  // genuinely misplaced owned note is additionally caught by the dedicated
+  // `owned-wrong-location` check in checkOwnershipViolations).
+  //
+  // Discovery attaches `file.ownership` based on FOLDER LOCATION alone, so a
+  // note whose actual `type` does NOT match the owned field's expected child
+  // type can still land here with ownership attached (e.g. a `type: album` note
+  // dropped into `Albums/Best Album/songs/`). Such a note is not a legitimate
+  // owned note — its real type determines where it belongs — so we only honor
+  // the owner-subtree exemption when the note's resolved type matches the owned
+  // field's child type (or is a descendant of it). Otherwise we fall through to
+  // the type's own `output_dir` so the mismatched-type note IS flagged.
+  //
+  // Discovery also attaches ownership purely because `<owner-dir>/<owner>.md`
+  // EXISTS — it never checks that the owner note's own `type` actually resolves
+  // to the expected owner type. A "fake owner" (e.g. `Albums/Fake/Fake.md` with
+  // `type: note`, not `album`) therefore still makes its `songs/` children look
+  // owned, exempting them from this check even though there is no real album to
+  // own them. Validate the owner note's ACTUAL resolved type against the
+  // expected `ownerType` (cheaply, via the audit run's existing note-type index)
+  // so a child under a fake/wrong-type owner falls through to its real type's
+  // `output_dir` and IS flagged.
+  const ownedChildType = file.ownership
+    ? getOwnedFields(schema, file.ownership.ownerType).find(
+        f => f.fieldName === file.ownership!.fieldName
+      )?.childType
+    : undefined;
+  const resolvedTypeMatchesOwnedChild =
+    ownedChildType !== undefined &&
+    (resolvedTypePath === ownedChildType ||
+      getDescendants(schema, ownedChildType).includes(resolvedTypePath));
+  // Owner note's actual type, resolved from the shared note-type index (keyed by
+  // the owner note's path without the `.md` extension). Only treat the owner as
+  // valid when its resolved type equals the expected `ownerType` (or is a
+  // descendant of it). When no index is available we cannot validate the owner,
+  // so we conservatively skip the exemption rather than risk a false negative.
+  const ownerNoteType = file.ownership
+    ? noteIndex?.noteTypeMap.get(file.ownership.ownerPath.replace(/\.md$/, ''))
+    : undefined;
+  const ownerNoteIsValid =
+    file.ownership !== undefined &&
+    ownerNoteType !== undefined &&
+    (ownerNoteType === file.ownership.ownerType ||
+      getDescendants(schema, file.ownership.ownerType).includes(ownerNoteType));
+  const expectedOutputDir =
+    file.ownership && resolvedTypeMatchesOwnedChild && ownerNoteIsValid
+      ? getOwnedChildFolder(file.ownership.ownerPath, file.ownership.fieldName)
+      : getOutputDir(schema, resolvedTypePath);
   if (expectedOutputDir) {
     const expectedPath = expectedOutputDir;
     const actualDir = dirname(file.relativePath);
     // Normalize for comparison
     const normalizedExpected = expectedPath.replace(/\/$/, '');
     const normalizedActual = actualDir.replace(/\/$/, '');
-    
+
     // Segment-aware check: actualDir must be exactly expectedDir or a subdirectory
     const isCorrectLocation =
       normalizedActual === normalizedExpected ||
