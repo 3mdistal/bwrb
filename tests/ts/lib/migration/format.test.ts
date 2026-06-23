@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { formatMigrationResult } from "../../../../src/lib/migration/execute.js";
+import {
+  formatMigrationResult,
+  formatPerNoteChanges,
+} from "../../../../src/lib/migration/execute.js";
 import type {
   AppliedChange,
+  FileMigrationResult,
   MigrationResult,
 } from "../../../../src/types/migration.js";
 
@@ -178,5 +182,82 @@ describe("formatMigrationResult - null/empty rendering", () => {
         })
       ).toBe("tags: [a, b] → []");
     });
+  });
+});
+
+describe("formatPerNoteChanges", () => {
+  function fileResult(
+    relativePath: string,
+    changes: AppliedChange[]
+  ): FileMigrationResult {
+    return {
+      filePath: `/vault/${relativePath}`,
+      relativePath,
+      changes,
+      applied: false,
+    };
+  }
+
+  const setChange = (field: string, n: number): AppliedChange => ({
+    kind: "set",
+    field,
+    oldValue: undefined,
+    newValue: String(n),
+  });
+
+  it("returns an empty string when there are no changes", () => {
+    expect(formatPerNoteChanges([])).toBe("");
+    expect(formatPerNoteChanges([fileResult("Empty.md", [])])).toBe("");
+  });
+
+  it("renders a block per affected note with indented change lines", () => {
+    const out = formatPerNoteChanges([
+      fileResult("Work/Task.md", [
+        { kind: "set", field: "deadline", oldValue: null, newValue: "2026-01-07" },
+        {
+          kind: "rename",
+          field: "owner",
+          newField: "assignee",
+          oldValue: "alice",
+          newValue: "alice",
+        },
+      ]),
+    ]);
+    expect(out).toBe(
+      [
+        "  Work/Task.md:",
+        "    deadline: (empty) → 2026-01-07",
+        "    owner → assignee: alice",
+      ].join("\n")
+    );
+  });
+
+  it("caps output and appends a '+N more' summary", () => {
+    const changes = Array.from({ length: 5 }, (_, i) => setChange(`f${i}`, i));
+    const out = formatPerNoteChanges([fileResult("Big.md", changes)], {
+      cap: 3,
+    });
+    const lines = out.split("\n");
+    // 1 header + 3 change lines + 1 summary line
+    expect(lines).toHaveLength(5);
+    expect(lines[lines.length - 1]).toBe("  ... and 2 more changes");
+  });
+
+  it("uses singular 'change' when exactly one is truncated", () => {
+    const changes = Array.from({ length: 3 }, (_, i) => setChange(`f${i}`, i));
+    const out = formatPerNoteChanges([fileResult("Big.md", changes)], {
+      cap: 2,
+    });
+    expect(out.split("\n").pop()).toBe("  ... and 1 more change");
+  });
+
+  it("does not truncate when cap is Infinity", () => {
+    const changes = Array.from({ length: 50 }, (_, i) => setChange(`f${i}`, i));
+    const out = formatPerNoteChanges([fileResult("Big.md", changes)], {
+      cap: Infinity,
+    });
+    expect(out).not.toContain("more change");
+    // 1 header + 50 change lines
+    expect(out.split("\n")).toHaveLength(51);
   });
 });

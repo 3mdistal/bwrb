@@ -385,19 +385,10 @@ export function formatMigrationResult(result: MigrationResult): string {
     lines.push(`Backup created: ${result.backupPath}`);
   }
 
-  if (result.fileResults.length > 0) {
+  const changeBlock = formatPerNoteChanges(result.fileResults, { cap: Infinity });
+  if (changeBlock) {
     lines.push('\nChanges:');
-    for (const file of result.fileResults) {
-      if (file.changes.length === 0) continue;
-
-      lines.push(`  ${file.relativePath}:`);
-      for (const change of file.changes) {
-        lines.push(`    ${formatAppliedChange(change)}`);
-      }
-      if (file.error) {
-        lines.push(`    ERROR: ${file.error}`);
-      }
-    }
+    lines.push(changeBlock);
   }
 
   if (result.errors.length > 0) {
@@ -405,6 +396,76 @@ export function formatMigrationResult(result: MigrationResult): string {
     for (const error of result.errors) {
       lines.push(`  ${error}`);
     }
+  }
+
+  return lines.join('\n');
+}
+
+/** Default maximum number of per-note change lines to render in a preview. */
+export const DEFAULT_CHANGE_PREVIEW_CAP = 200;
+
+export interface FormatPerNoteChangesOptions {
+  /**
+   * Maximum number of individual change lines to render. When the total exceeds
+   * this, output is truncated and a "+N more" line is appended. Use
+   * `Infinity` to render everything. Defaults to {@link DEFAULT_CHANGE_PREVIEW_CAP}.
+   */
+  cap?: number;
+}
+
+/**
+ * Format the per-note before→after changes from a set of file results.
+ *
+ * Renders one block per affected note with a change line per field, e.g.:
+ *
+ *   Work/Task.md:
+ *     deadline: (empty) → 2026-01-07
+ *     owner → assignee: alice
+ *
+ * Output is capped (see {@link FormatPerNoteChangesOptions.cap}) so a large
+ * vault doesn't produce thousands of lines; the remainder is summarized as
+ * "... and N more changes". Returns an empty string when there are no changes.
+ */
+export function formatPerNoteChanges(
+  fileResults: FileMigrationResult[],
+  options: FormatPerNoteChangesOptions = {}
+): string {
+  const cap = options.cap ?? DEFAULT_CHANGE_PREVIEW_CAP;
+  const lines: string[] = [];
+
+  let rendered = 0;
+  let total = 0;
+  let truncated = false;
+
+  for (const file of fileResults) {
+    if (file.changes.length === 0) continue;
+    total += file.changes.length;
+
+    if (truncated) continue;
+
+    const fileLines: string[] = [];
+    for (const change of file.changes) {
+      if (rendered >= cap) {
+        truncated = true;
+        break;
+      }
+      fileLines.push(`    ${formatAppliedChange(change)}`);
+      rendered += 1;
+    }
+
+    if (fileLines.length > 0) {
+      lines.push(`  ${file.relativePath}:`);
+      lines.push(...fileLines);
+      if (file.error) {
+        lines.push(`    ERROR: ${file.error}`);
+      }
+    }
+  }
+
+  if (lines.length === 0) return '';
+
+  if (truncated) {
+    lines.push(`  ... and ${total - rendered} more change${total - rendered === 1 ? '' : 's'}`);
   }
 
   return lines.join('\n');

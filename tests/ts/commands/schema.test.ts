@@ -536,6 +536,149 @@ milestone: "[[Active Milestone]]"
         await cleanupTestVault(tempVaultDir);
       }
     });
+
+    /**
+     * Set up a vault where the current schema adds a `priority` field (with a
+     * default) to the `task` type relative to the applied snapshot, so an
+     * existing task note will get a per-note `priority: (empty) → medium`
+     * change in the migration preview.
+     */
+    async function setupAddFieldVault(): Promise<string> {
+      const tempVaultDir = await createTestVault();
+
+      await writeFile(
+        join(tempVaultDir, 'Objectives', 'Tasks', 'Preview Task.md'),
+        `---
+type: task
+status: in-flight
+---
+`
+      );
+
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+      const currentSchema = JSON.parse(await readFile(schemaPath, 'utf8'));
+      const snapshotSchema = JSON.parse(JSON.stringify(currentSchema));
+
+      // Add a new field with a default to the current schema only.
+      currentSchema.types.task.fields = {
+        ...(currentSchema.types.task.fields ?? {}),
+        priority: { prompt: 'text', default: 'medium' },
+      };
+
+      await writeFile(schemaPath, JSON.stringify(currentSchema, null, 2));
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.applied.json'),
+        JSON.stringify(
+          {
+            schemaVersion: '1.0.0',
+            snapshotAt: new Date().toISOString(),
+            schema: snapshotSchema,
+          },
+          null,
+          2
+        )
+      );
+
+      return tempVaultDir;
+    }
+
+    it('dry-run does NOT show per-note changes by default', async () => {
+      const tempVaultDir = await setupAddFieldVault();
+      try {
+        const result = await runCLI(['schema', 'migrate'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Migration Preview (Dry-Run)');
+        expect(result.stdout).toContain('Files affected:');
+        expect(result.stdout).not.toContain('Per-note changes:');
+        // Hint to opt in is shown when there are affected files.
+        expect(result.stdout).toContain('--show-changes');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+
+    it('dry-run --show-changes prints per-note before→after lines incl. (empty)', async () => {
+      const tempVaultDir = await setupAddFieldVault();
+      try {
+        const result = await runCLI(
+          ['schema', 'migrate', '--show-changes'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Per-note changes:');
+        expect(result.stdout).toContain('Preview Task.md:');
+        // add-field with a default surfaces the unified #595 (empty) placeholder.
+        expect(result.stdout).toContain('priority: (empty) → medium');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+
+    it('dry-run --output json always includes fileChanges', async () => {
+      const tempVaultDir = await setupAddFieldVault();
+      try {
+        const result = await runCLI(
+          ['schema', 'migrate', '--output', 'json'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const response = JSON.parse(result.stdout);
+        expect(response.success).toBe(true);
+        expect(Array.isArray(response.data.fileChanges)).toBe(true);
+        expect(response.data.fileChanges.length).toBeGreaterThan(0);
+
+        const taskEntry = response.data.fileChanges.find(
+          (f: { relativePath: string }) =>
+            f.relativePath.endsWith('Preview Task.md')
+        );
+        expect(taskEntry).toBeDefined();
+        const priorityChange = taskEntry.changes.find(
+          (c: { field: string }) => c.field === 'priority'
+        );
+        expect(priorityChange).toMatchObject({
+          kind: 'set',
+          field: 'priority',
+          newValue: 'medium',
+        });
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+
+    it('execute --output json includes fileChanges and applies the change', async () => {
+      const tempVaultDir = await setupAddFieldVault();
+      try {
+        const result = await runCLI(
+          [
+            'schema',
+            'migrate',
+            '--output',
+            'json',
+            '--execute',
+            '--no-backup',
+          ],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const response = JSON.parse(result.stdout);
+        expect(response.success).toBe(true);
+        expect(response.data.affectedFiles).toBeGreaterThan(0);
+        expect(Array.isArray(response.data.fileChanges)).toBe(true);
+
+        // The field was actually written to the note.
+        const noteContent = await readFile(
+          join(tempVaultDir, 'Objectives', 'Tasks', 'Preview Task.md'),
+          'utf8'
+        );
+        expect(noteContent).toContain('priority: medium');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
   });
 
   describe('schema list type <name> --output json', () => {
