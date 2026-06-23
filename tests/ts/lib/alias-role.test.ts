@@ -221,10 +221,12 @@ describe('alias field role', () => {
       const schema = await loadSchema(vaultDir);
       const targetIndex = await buildNoteTargetIndex(schema, vaultDir);
 
-      expect(targetIndex.targetToPaths.get('Steve')).toContain('People/Steve Yegge.md');
+      // The index is keyed by the lowercased target (case-insensitive
+      // resolution, consistent with open/navigation).
+      expect(targetIndex.targetToPaths.get('steve')).toContain('People/Steve Yegge.md');
       expect(targetIndex.targetToPaths.get('stevey')).toContain('People/Steve Yegge.md');
       // The canonical name still resolves.
-      expect(targetIndex.targetToPaths.get('Steve Yegge')).toContain('People/Steve Yegge.md');
+      expect(targetIndex.targetToPaths.get('steve yegge')).toContain('People/Steve Yegge.md');
     });
 
     it('relation target index: a case-variant real note wins over an alias (#616)', async () => {
@@ -233,12 +235,10 @@ describe('alias field role', () => {
       const schema = await loadSchema(vaultDir);
       const targetIndex = await buildNoteTargetIndex(schema, vaultDir);
 
-      // The capital "Steve" alias key is never registered, because the real
-      // note "steve" wins case-insensitively. Audit relation resolution + --fix
-      // therefore never bind a `[[Steve]]` reference to the aliased entity.
-      expect(targetIndex.targetToPaths.has('Steve')).toBe(false);
-      // The real note resolves under its own (lowercase) key.
-      expect(targetIndex.targetToPaths.get('steve')).toContain('Notes/steve.md');
+      // The lowercased "steve" key is claimed by the REAL note, not the alias of
+      // the same string. Audit relation resolution + --fix therefore never bind a
+      // `[[Steve]]` reference to the aliased entity — it resolves to the real note.
+      expect(targetIndex.targetToPaths.get('steve')).toEqual(['Notes/steve.md']);
       // Other, non-colliding aliases still resolve to the entity.
       expect(targetIndex.targetToPaths.get('stevey')).toContain('People/Steve Yegge.md');
     });
@@ -276,6 +276,144 @@ describe('alias field role', () => {
       // The well-formed note is either omitted (no issues at all) or present
       // without an illegal-aliases issue.
       expect(steve?.issues.some((i) => i.code === 'illegal-aliases') ?? false).toBe(false);
+    });
+  });
+
+  // End-to-end relation resolution: a relation field reference must resolve
+  // through the same case-insensitive rules as open/navigation, so a
+  // case-variant `[[Steve]]` resolves to the real `steve` note instead of being
+  // reported as a stale reference (#616). The original PR only asserted on index
+  // KEYS — these tests run the full audit pipeline.
+  describe('case-insensitive relation resolution (real vault)', () => {
+    // A `person` type (alias-bearing) plus a `doc` type whose `related` field is
+    // a relation, so we can exercise stale-reference / ambiguous-link-target.
+    const RELATION_SCHEMA: Schema = {
+      version: 2,
+      types: {
+        meta: { fields: {} },
+        person: {
+          extends: 'meta',
+          output_dir: 'People',
+          fields: {
+            type: { value: 'person' },
+            aliases: { prompt: 'list', alias: true, list_format: 'yaml-array' },
+          },
+          field_order: ['type', 'aliases'],
+        },
+        doc: {
+          extends: 'meta',
+          output_dir: 'Docs',
+          fields: {
+            type: { value: 'doc' },
+            related: { prompt: 'relation', source: 'any' },
+          },
+          field_order: ['type', 'related'],
+        },
+      },
+    };
+
+    let vaultDir: string;
+
+    beforeEach(async () => {
+      vaultDir = await mkdtemp(join(tmpdir(), 'bwrb-relation-'));
+      await mkdir(join(vaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(vaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(RELATION_SCHEMA, null, 2)
+      );
+      await mkdir(join(vaultDir, 'People'), { recursive: true });
+      await mkdir(join(vaultDir, 'Docs'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(vaultDir, { recursive: true, force: true });
+    });
+
+    const relationIssues = (results: Awaited<ReturnType<typeof runAudit>>, relPath: string) =>
+      results.find((r) => r.relativePath === relPath)?.issues ?? [];
+
+    it('[[Steve]] resolves to the real `steve` note, NOT a stale-reference (#616)', async () => {
+      // Real note literally named "steve" (lowercase) and a DIFFERENT entity
+      // aliased "Steve" (capital). A `[[Steve]]` relation must resolve to the
+      // real steve note end-to-end, never flagged stale, never bound to the alias.
+      await writeFile(join(vaultDir, 'Docs', 'steve.md'), `---\ntype: doc\n---\n`);
+      await writeFile(
+        join(vaultDir, 'People', 'Steve Yegge.md'),
+        `---\ntype: person\naliases:\n  - Steve\n---\n`
+      );
+      await writeFile(
+        join(vaultDir, 'Docs', 'Ref.md'),
+        `---\ntype: doc\nrelated: "[[Steve]]"\n---\n`
+      );
+
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, { strict: false });
+      const issues = relationIssues(results, 'Docs/Ref.md');
+
+      expect(issues.some((i) => i.code === 'stale-reference')).toBe(false);
+      expect(issues.some((i) => i.code === 'ambiguous-link-target')).toBe(false);
+    });
+
+    it('[[CAFÉ]] resolves to the real `café` note via unicode case fold (no stale)', async () => {
+      await writeFile(join(vaultDir, 'Docs', 'café.md'), `---\ntype: doc\n---\n`);
+      await writeFile(
+        join(vaultDir, 'Docs', 'Ref.md'),
+        `---\ntype: doc\nrelated: "[[CAFÉ]]"\n---\n`
+      );
+
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, { strict: false });
+      const issues = relationIssues(results, 'Docs/Ref.md');
+
+      expect(issues.some((i) => i.code === 'stale-reference')).toBe(false);
+      expect(issues.some((i) => i.code === 'ambiguous-link-target')).toBe(false);
+    });
+
+    it('genuine case-variant ambiguity (two real notes) surfaces ambiguous-link-target', async () => {
+      // Two real notes whose names differ only by case both claim the lowercased
+      // key, so `[[Steve]]` is genuinely ambiguous and is never auto-resolved.
+      await mkdir(join(vaultDir, 'Docs', 'Sub'), { recursive: true });
+      await writeFile(join(vaultDir, 'Docs', 'steve.md'), `---\ntype: doc\n---\n`);
+      await writeFile(join(vaultDir, 'Docs', 'Sub', 'Steve.md'), `---\ntype: doc\n---\n`);
+      await writeFile(
+        join(vaultDir, 'Docs', 'Ref.md'),
+        `---\ntype: doc\nrelated: "[[Steve]]"\n---\n`
+      );
+
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, { strict: false });
+      const issues = relationIssues(results, 'Docs/Ref.md');
+
+      expect(issues.some((i) => i.code === 'ambiguous-link-target')).toBe(true);
+      expect(issues.some((i) => i.code === 'stale-reference')).toBe(false);
+    });
+
+    it('a truly-missing target is still a stale-reference', async () => {
+      await writeFile(
+        join(vaultDir, 'Docs', 'Ref.md'),
+        `---\ntype: doc\nrelated: "[[Nonexistent]]"\n---\n`
+      );
+
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, { strict: false });
+      const issues = relationIssues(results, 'Docs/Ref.md');
+
+      expect(issues.some((i) => i.code === 'stale-reference')).toBe(true);
+    });
+
+    it('an exact-case relation reference still resolves cleanly (no regression)', async () => {
+      await writeFile(join(vaultDir, 'Docs', 'Target.md'), `---\ntype: doc\n---\n`);
+      await writeFile(
+        join(vaultDir, 'Docs', 'Ref.md'),
+        `---\ntype: doc\nrelated: "[[Target]]"\n---\n`
+      );
+
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, { strict: false });
+      const issues = relationIssues(results, 'Docs/Ref.md');
+
+      expect(issues.some((i) => i.code === 'stale-reference')).toBe(false);
+      expect(issues.some((i) => i.code === 'ambiguous-link-target')).toBe(false);
     });
   });
 });

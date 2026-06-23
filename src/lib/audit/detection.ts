@@ -813,7 +813,12 @@ function resolveRelationTarget(
     return { rawTarget, candidates: [], resolvedPath: undefined };
   }
 
-  const candidates = noteTargetIndex.targetToPaths.get(rawTarget) ?? [];
+  // Case-insensitive lookup, consistent with `open`/navigation resolution
+  // (`resolveNoteQuery`). `targetToPaths` is keyed by the lowercased target name,
+  // with a real note name still winning over an alias of the same string. A
+  // unique match resolves (no stale); multiple matches stay ambiguous and are
+  // never auto-resolved; zero matches surface as a stale reference.
+  const candidates = noteTargetIndex.targetToPaths.get(rawTarget.toLowerCase()) ?? [];
   if (candidates.length === 1) {
     return { rawTarget, candidates, resolvedPath: candidates[0] };
   }

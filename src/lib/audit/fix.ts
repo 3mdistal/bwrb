@@ -2411,7 +2411,16 @@ function collectTargetsBySource(
   const sources = Array.isArray(source) ? source : [source];
 
   if (sources.includes('any')) {
-    return Array.from(targetIndex.targetToPaths.keys()).filter((key) => !key.includes('/'));
+    // `targetToPaths` keys are lowercased (case-insensitive resolution), so they
+    // are unsuitable as display/fix targets. Reconstruct real-case basenames from
+    // the resolved paths instead.
+    const realBasenames = new Set<string>();
+    for (const paths of targetIndex.targetToPaths.values()) {
+      for (const path of paths) {
+        realBasenames.add(basename(path, '.md'));
+      }
+    }
+    return Array.from(realBasenames.values()).sort((a, b) => a.localeCompare(b));
   }
 
   const validTypes = new Set<string>();
@@ -3087,7 +3096,9 @@ function formatMarkdownLinkValue(label: string, path: string): string {
 
 function getShortestLinkTarget(candidatePath: string, targetIndex?: NoteTargetIndex): string {
   const basenameTarget = basename(candidatePath, '.md');
-  const matches = targetIndex?.targetToPaths.get(basenameTarget) ?? [];
+  // `targetToPaths` is keyed by the lowercased target (case-insensitive
+  // resolution); look up accordingly so a unique basename still shortens.
+  const matches = targetIndex?.targetToPaths.get(basenameTarget.toLowerCase()) ?? [];
   if (matches.length === 1) {
     return basenameTarget;
   }

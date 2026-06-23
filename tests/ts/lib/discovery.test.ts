@@ -267,7 +267,10 @@ describe('Discovery', () => {
       const pathMap = deriveNotePathMap(snapshot);
       const targetIndex = deriveNoteTargetIndex(snapshot);
 
-      expect(targetIndex.targetToPaths.get('Shared')).toEqual([
+      // targetToPaths is keyed by the lowercased target (case-insensitive
+      // resolution); two distinct notes sharing a basename stay represented as
+      // multiple paths so ambiguity remains detectable.
+      expect(targetIndex.targetToPaths.get('shared')).toEqual([
         'Projects/Shared.md',
         'Research/Shared.md',
       ]);
@@ -289,7 +292,7 @@ describe('Discovery', () => {
       expect(index.snapshot.notes.some((note) => note.relativePath === 'Templates/Excluded.md')).toBe(false);
       expect(index.allFiles.has('Excluded')).toBe(false);
       expect(index.notePathMap.has('Templates/Excluded')).toBe(false);
-      expect(index.noteTargetIndex.targetToPaths.has('Excluded')).toBe(false);
+      expect(index.noteTargetIndex.targetToPaths.has('excluded')).toBe(false);
     });
   });
 

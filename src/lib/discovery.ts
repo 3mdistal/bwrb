@@ -380,6 +380,11 @@ export async function buildNoteTypeMap(
 }
 
 export type NoteTargetIndex = {
+  /**
+   * Maps a lowercased target name/path/alias to every note it could resolve to.
+   * Keys are lowercased so relation resolution is case-insensitive (consistent
+   * with `open`/navigation); look up with `key.toLowerCase()`.
+   */
   targetToPaths: Map<string, string[]>;
   pathToType: Map<string, string>;
   pathNoExtToType: Map<string, string>;
@@ -518,6 +523,13 @@ export function deriveNoteTypeMap(snapshot: VaultNoteSnapshot): Map<string, stri
  * shared by two entities surfaces as an ambiguous (multi-candidate) target,
  * which callers already refuse to auto-resolve, preserving the deterministic
  * "never auto-resolve ambiguity" guarantee.
+ *
+ * Keys are lowercased so relation resolution is case-insensitive, consistent
+ * with `open`/navigation (`resolveNoteQuery`): a `[[Steve]]` reference resolves
+ * to a real `steve` note, and a real note name still wins over an alias even
+ * when they differ only by case. A lowercased key that genuinely maps to more
+ * than one note (two real notes differing only by case, or a shared alias)
+ * keeps every path so ambiguity stays detectable.
  */
 export function deriveNoteTargetIndex(
   snapshot: VaultNoteSnapshot,
@@ -530,15 +542,19 @@ export function deriveNoteTargetIndex(
   // when they differ only by case, consistent with case-insensitive resolution.
   const realKeysLower = new Set<string>();
 
+  // Keys are lowercased to match the case-insensitive lookup in
+  // `resolveRelationTarget`. Distinct notes that collapse to the same lowercased
+  // key are all preserved so ambiguity remains detectable.
   const addTarget = (key: string, relativePath: string) => {
-    const existing = targetToPaths.get(key);
+    const lowerKey = key.toLowerCase();
+    const existing = targetToPaths.get(lowerKey);
     if (existing) {
       if (!existing.includes(relativePath)) {
         existing.push(relativePath);
       }
       return;
     }
-    targetToPaths.set(key, [relativePath]);
+    targetToPaths.set(lowerKey, [relativePath]);
   };
 
   for (const note of snapshot.notes) {
