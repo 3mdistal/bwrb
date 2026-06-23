@@ -120,7 +120,15 @@ bwrb search "Steve" --fuzzy --limit 3
 
 # JSON output with scores for an agent to consume
 bwrb search "Steve" --fuzzy --output json
+
+# Print the full contents of ranked matches, best-first
+bwrb search "Steve" --fuzzy --output content
 ```
+
+All output formats work uniformly across search modes. With `--fuzzy`,
+`--output content` prints the full file contents (frontmatter + body) of the
+ranked matches — identical in shape to plain `search --output content` — emitted
+best-first by score.
 
 #### What participates in matching
 
