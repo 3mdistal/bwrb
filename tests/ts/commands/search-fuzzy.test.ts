@@ -16,8 +16,10 @@ const FUZZY_SCHEMA = {
       fields: {
         type: { value: 'person' },
         aliases: { prompt: 'list', alias: true, list_format: 'yaml-array' },
+        // A plain editable field so `--edit --json` has a target field (#676).
+        status: { prompt: 'text' },
       },
-      field_order: ['type', 'aliases'],
+      field_order: ['type', 'aliases', 'status'],
     },
     idea: {
       output_dir: 'Ideas',
@@ -379,5 +381,122 @@ describe('search --fuzzy', () => {
     expect(result.exitCode).not.toBe(0);
     const json = JSON.parse(result.stdout);
     expect(json.success).toBe(false);
+  });
+
+  // --open / --edit wiring (#676). Previously fuzzy silently ignored these
+  // flags (no error, no action). They now act on the resolved/best match,
+  // reusing plain/content search's open/edit + app-mode logic. Tests use
+  // `--app print` so nothing is actually launched.
+  describe('--open / --edit (#676)', () => {
+    it('--open no longer silently ignores: it opens the resolved match', async () => {
+      // Regression guard: a single exact match opens directly. With --app print
+      // the resolved path is emitted, proving the flag took effect (not a no-op).
+      const result = await runCLI(
+        ['search', 'Steve Yegge', '--fuzzy', '--open', '--app', 'print'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('People/Steve Yegge.md');
+      // Must NOT fall through to the default scored text output.
+      expect(result.stdout).not.toMatch(/^\d\.\d{2}\s+Steve Yegge/m);
+    });
+
+    it('--open opens the best (top-ranked) match non-interactively on multi-match', async () => {
+      // "Steve" fuzzily matches several notes; best match is Steve Yegge.
+      const result = await runCLI(
+        ['search', 'Steve', '--fuzzy', '--open', '--app', 'print'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('People/Steve Yegge.md');
+    });
+
+    it('--open resolves the best match via an alias', async () => {
+      const result = await runCLI(
+        ['search', 'Stevey', '--fuzzy', '--open', '--app', 'print'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('People/Steve Yegge.md');
+    });
+
+    it('--open with --output json emits the resolved path as JSON', async () => {
+      const result = await runCLI(
+        ['search', 'Steve Yegge', '--fuzzy', '--open', '--app', 'print', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.data.relativePath).toBe('People/Steve Yegge.md');
+    });
+
+    it('--open errors (not silent no-op) when nothing matches', async () => {
+      const result = await runCLI(
+        ['search', 'zzzzzzzzzzxxxxxxx', '--fuzzy', '--open', '--app', 'print'],
+        vaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr + result.stdout).toMatch(/No matching notes/i);
+    });
+
+    it('--edit --json updates the best match (non-interactive)', async () => {
+      const result = await runCLI(
+        [
+          'search',
+          'Margret Hamiltn',
+          '--fuzzy',
+          '--edit',
+          '--json',
+          '{"status":"reviewed"}',
+          '--output',
+          'json',
+        ],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      // Same JSON shape as plain `search --edit --json`: top-level path +
+      // updated field names.
+      expect(json.path).toBe('People/Margaret Hamilton.md');
+      expect(json.updated).toContain('status');
+    });
+
+    it('--edit errors (not silent no-op) when nothing matches', async () => {
+      const result = await runCLI(
+        [
+          'search',
+          'zzzzzzzzzzxxxxxxx',
+          '--fuzzy',
+          '--edit',
+          '--json',
+          '{"status":"reviewed"}',
+          '--output',
+          'json',
+        ],
+        vaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+    });
+
+    it('still rejects --open together with --edit', async () => {
+      const result = await runCLI(
+        ['search', 'Steve', '--fuzzy', '--open', '--edit'],
+        vaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr + result.stdout).toMatch(/--open and --edit/);
+    });
   });
 });
