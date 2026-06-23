@@ -684,7 +684,7 @@ async function handleFuzzySearch(
   }
 
   for (const match of matches) {
-    outputFuzzyResult(index, match, outputFormat);
+    await outputFuzzyResult(index, match, outputFormat);
   }
 }
 
@@ -692,14 +692,21 @@ async function handleFuzzySearch(
  * Output a single fuzzy match in the requested text format.
  *
  * The default format shows the score so ranking is visible; pipe-friendly
- * formats (paths, link) stay clean for scripting.
+ * formats (paths, link, content) stay clean for scripting. `content` prints
+ * the full file contents (frontmatter + body) — identical in shape to plain
+ * `search --output content` — with matches emitted best-first by score.
  */
-function outputFuzzyResult(
+async function outputFuzzyResult(
   index: NoteIndex,
   match: FuzzyMatch,
   format: SearchOutputFormat
-): void {
+): Promise<void> {
   switch (format) {
+    case 'content':
+      // Reuse the shared text output path so fuzzy `content` is byte-for-byte
+      // consistent with plain `search --output content` (full file contents).
+      await outputTextResult(index, match.file, format);
+      break;
     case 'paths':
       console.log(match.file.relativePath);
       break;

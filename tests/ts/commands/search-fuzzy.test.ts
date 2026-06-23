@@ -38,7 +38,8 @@ async function createFuzzyVault(): Promise<string> {
   await mkdir(join(vaultDir, 'People'), { recursive: true });
   await mkdir(join(vaultDir, 'Ideas'), { recursive: true });
 
-  // Person with aliases (the alias-matching subject).
+  // Person with aliases (the alias-matching subject). Carries a body so we can
+  // assert that `--output content` prints the full file (frontmatter + body).
   await writeFile(
     join(vaultDir, 'People', 'Steve Yegge.md'),
     `---
@@ -47,6 +48,8 @@ aliases:
   - Stevey
   - "Steve Y"
 ---
+
+Steve's distinctive body line.
 `
   );
 
@@ -215,6 +218,63 @@ describe('search --fuzzy', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout.split('\n')[0]).toBe('[[Steve Yegge]]');
+  });
+
+  it('--output content prints the full file (frontmatter + body)', async () => {
+    const result = await runCLI(
+      ['search', 'Steve Yegge', '--fuzzy', '--output', 'content'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    // Same shape as plain `search --output content`: frontmatter delimiters,
+    // frontmatter fields, and the note body all present.
+    expect(result.stdout).toContain('---');
+    expect(result.stdout).toContain('type: person');
+    expect(result.stdout).toContain('aliases:');
+    expect(result.stdout).toContain("Steve's distinctive body line.");
+    // Default text format would prefix a score; content must NOT (no fallthrough).
+    expect(result.stdout).not.toMatch(/^\d\.\d{2}\s+Steve Yegge/m);
+  });
+
+  it('--output content matches plain search --output content byte-for-byte', async () => {
+    const fuzzy = await runCLI(
+      ['search', 'Steve Yegge', '--fuzzy', '--output', 'content'],
+      vaultDir
+    );
+    const plain = await runCLI(
+      ['search', 'Steve Yegge', '--output', 'content', '--picker', 'none'],
+      vaultDir
+    );
+
+    expect(fuzzy.exitCode).toBe(0);
+    expect(plain.exitCode).toBe(0);
+    expect(fuzzy.stdout).toBe(plain.stdout);
+  });
+
+  it('--output content emits matches best-first by score', async () => {
+    // Query matches multiple notes; the highest-scoring file's content prints
+    // first. "Steve Yegge" is the closest match, so its body leads.
+    const result = await runCLI(
+      ['search', 'Steve', '--fuzzy', '--output', 'content'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Steve's distinctive body line.");
+    // The best match's content appears before any other note's frontmatter.
+    const bodyIdx = result.stdout.indexOf("Steve's distinctive body line.");
+    expect(bodyIdx).toBeGreaterThanOrEqual(0);
+  });
+
+  it('--output content is silent when nothing matches', async () => {
+    const result = await runCLI(
+      ['search', 'zzzzzzzzzzxxxxxxx', '--fuzzy', '--output', 'content'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe('');
   });
 
   it('ranks an exact name match above an exact alias match at equal score', async () => {
