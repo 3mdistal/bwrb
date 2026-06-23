@@ -297,6 +297,61 @@ describe('expression', () => {
         };
         expect(matchesExpression("isChildOf('[[Epic]]')", ctx)).toBe(false);
       });
+
+      describe('alias canonicalization (#659)', () => {
+        // Hierarchy where some notes write `parent` as an ALIAS of the real
+        // parent. Canonical names: Epic, Feature A. Aliases: EpicAlias -> Epic,
+        // FeatureAlias -> Feature A. 'Dup' is ambiguous and is therefore absent
+        // from the map (the query layer drops it), so it stays literal.
+        const aliasMap = new Map([
+          ['EpicAlias', 'Epic'],
+          ['FeatureAlias', 'Feature A'],
+        ]);
+        // Note "Aliased Child" writes parent: [[EpicAlias]] (alias of Epic).
+        const aliasedParentMap = new Map([
+          ['Aliased Child', 'EpicAlias'],
+          ['Canonical Child', 'Epic'],
+        ]);
+
+        const makeCtx = (fileName: string): EvalContext => ({
+          frontmatter: {},
+          file: { name: fileName, path: `Tasks/${fileName}.md`, folder: 'Tasks', ext: '.md' },
+          hierarchyData: { parentMap: aliasedParentMap, childrenMap: new Map(), aliasMap },
+        });
+
+        it('matches an aliased parent value against the canonical query node', () => {
+          // parent: [[EpicAlias]] (alias of Epic) IS a child of Epic.
+          expect(matchesExpression("isChildOf('[[Epic]]')", makeCtx('Aliased Child'))).toBe(true);
+        });
+
+        it('resolves an aliased query node to its canonical note', () => {
+          // Canonical Child's parent is Epic; query node EpicAlias -> Epic.
+          expect(matchesExpression("isChildOf('[[EpicAlias]]')", makeCtx('Canonical Child'))).toBe(true);
+        });
+
+        it('matches when both the parent value and the query node are aliases', () => {
+          expect(matchesExpression("isChildOf('[[EpicAlias]]')", makeCtx('Aliased Child'))).toBe(true);
+        });
+
+        it('leaves canonical parent values untouched when an alias map is present', () => {
+          expect(matchesExpression("isChildOf('[[Epic]]')", makeCtx('Canonical Child'))).toBe(true);
+          expect(matchesExpression("isChildOf('[[Feature A]]')", makeCtx('Canonical Child'))).toBe(false);
+        });
+
+        it('does not resolve an ambiguous alias (no silent winner)', () => {
+          // 'Dup' is not in the map, so it stays literal: a note whose parent is
+          // the literal string 'Dup' is NOT canonicalized into Epic's place.
+          const ambiguousParentMap = new Map([['Dup Child', 'Dup']]);
+          const ctx: EvalContext = {
+            frontmatter: {},
+            file: { name: 'Dup Child', path: 'Tasks/Dup Child.md', folder: 'Tasks', ext: '.md' },
+            hierarchyData: { parentMap: ambiguousParentMap, childrenMap: new Map(), aliasMap },
+          };
+          expect(matchesExpression("isChildOf('[[Epic]]')", ctx)).toBe(false);
+          // It still matches a literal Dup-vs-Dup comparison.
+          expect(matchesExpression("isChildOf('[[Dup]]')", ctx)).toBe(true);
+        });
+      });
     });
 
     describe('isDescendantOf()', () => {
@@ -353,6 +408,88 @@ describe('expression', () => {
         const ctx = makeHierarchyContext('Note A', cyclicParentMap, cyclicChildrenMap);
         // Should return false (not find 'NonExistent') without hanging
         expect(matchesExpression("isDescendantOf('[[NonExistent]]')", ctx)).toBe(false);
+      });
+
+      describe('alias canonicalization (#659)', () => {
+        // Ancestor (canonical, alias: AncestorAlias)
+        //   └── Mid (canonical)
+        //         └── Leaf, whose own parent is written as [[MidAlias]] (alias of Mid)
+        // Plus a chain that mixes an aliased mid-level link.
+        const aliasMap = new Map([
+          ['AncestorAlias', 'Ancestor'],
+          ['MidAlias', 'Mid'],
+        ]);
+        // Leaf -> MidAlias (alias) -> Mid's parent Ancestor.
+        const aliasedParentMap = new Map([
+          ['Leaf', 'MidAlias'],
+          ['Mid', 'Ancestor'],
+        ]);
+
+        const makeCtx = (fileName: string, parentMap = aliasedParentMap): EvalContext => ({
+          frontmatter: {},
+          file: { name: fileName, path: `Tasks/${fileName}.md`, folder: 'Tasks', ext: '.md' },
+          hierarchyData: { parentMap, childrenMap: new Map(), aliasMap },
+        });
+
+        it('matches a canonical ancestor through an aliased link in the chain', () => {
+          // Leaf's parent is [[MidAlias]] (alias of Mid); Mid is under Ancestor.
+          expect(matchesExpression("isDescendantOf('[[Ancestor]]')", makeCtx('Leaf'))).toBe(true);
+          // And Leaf is a descendant of Mid itself (the aliased direct parent).
+          expect(matchesExpression("isDescendantOf('[[Mid]]')", makeCtx('Leaf'))).toBe(true);
+        });
+
+        it('resolves an aliased query node to its canonical note', () => {
+          // Query node AncestorAlias -> Ancestor; Leaf is under Ancestor.
+          expect(matchesExpression("isDescendantOf('[[AncestorAlias]]')", makeCtx('Leaf'))).toBe(true);
+          // Query node MidAlias -> Mid; Leaf is under Mid.
+          expect(matchesExpression("isDescendantOf('[[MidAlias]]')", makeCtx('Leaf'))).toBe(true);
+        });
+
+        it('handles a mixed alias + canonical chain', () => {
+          // Mid's own parent is the canonical Ancestor; querying via the alias of
+          // the top still walks the whole chain.
+          expect(matchesExpression("isDescendantOf('[[AncestorAlias]]')", makeCtx('Mid'))).toBe(true);
+        });
+
+        it('leaves fully canonical chains untouched when an alias map is present', () => {
+          const canonicalMap = new Map([
+            ['Leaf', 'Mid'],
+            ['Mid', 'Ancestor'],
+          ]);
+          expect(matchesExpression("isDescendantOf('[[Ancestor]]')", makeCtx('Leaf', canonicalMap))).toBe(true);
+          expect(matchesExpression("isDescendantOf('[[Nope]]')", makeCtx('Leaf', canonicalMap))).toBe(false);
+        });
+
+        it('does not resolve an ambiguous alias (no silent winner)', () => {
+          // 'Dup' is absent from the alias map. A chain step written as 'Dup'
+          // stays literal and does not climb into Ancestor's place.
+          const map = new Map([['Leaf', 'Dup']]);
+          expect(matchesExpression("isDescendantOf('[[Ancestor]]')", makeCtx('Leaf', map))).toBe(false);
+          // But a literal Dup IS still a direct ancestor of Leaf.
+          expect(matchesExpression("isDescendantOf('[[Dup]]')", makeCtx('Leaf', map))).toBe(true);
+        });
+
+        it('stays cycle-safe when aliases are present in the chain', () => {
+          // Cycle via aliases: A -> Balias (Mid... actually B) -> Calias -> A.
+          const cycleAliasMap = new Map([
+            ['Balias', 'B'],
+            ['Calias', 'C'],
+          ]);
+          const cyclicParentMap = new Map([
+            ['A', 'Balias'],
+            ['B', 'Calias'],
+            ['C', 'A'],
+          ]);
+          const ctx: EvalContext = {
+            frontmatter: {},
+            file: { name: 'A', path: 'Tasks/A.md', folder: 'Tasks', ext: '.md' },
+            hierarchyData: { parentMap: cyclicParentMap, childrenMap: new Map(), aliasMap: cycleAliasMap },
+          };
+          // Terminates and returns false for a node not in the cycle.
+          expect(matchesExpression("isDescendantOf('[[NonExistent]]')", ctx)).toBe(false);
+          // But correctly finds a node that IS in the alias-laced cycle.
+          expect(matchesExpression("isDescendantOf('[[B]]')", ctx)).toBe(true);
+        });
       });
     });
 

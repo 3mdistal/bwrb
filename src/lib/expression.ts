@@ -362,20 +362,45 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
   /**
    * Check if the current note is a direct child of the specified note.
    * Accepts wikilink format: isChildOf('[[Parent Note]]') or plain: isChildOf('Parent Note')
+   *
+   * Aliases are canonicalized on BOTH sides via `hierarchyData.aliasMap` (the
+   * same machinery `under` uses, #636/#659): if the note's own `parent` value is
+   * written as an alias of the real parent, it resolves to the canonical note
+   * before comparison, and an aliased query node likewise resolves to its
+   * canonical note. Canonical names pass through untouched, so non-aliased
+   * hierarchies behave exactly as before. An ambiguous alias is never in the map
+   * (the query layer drops it), so it stays literal and simply fails to match.
    */
   isChildOf: (args, context) => {
-    const targetParent = extractNoteNameFromArg(String(args[0] ?? ''));
+    const aliasMap = context.hierarchyData?.aliasMap;
+    const targetParent = canonicalizeAlias(
+      extractNoteNameFromArg(String(args[0] ?? '')),
+      aliasMap
+    );
     const noteName = context.file?.name;
     if (!noteName || !targetParent || !context.hierarchyData) return false;
-    return context.hierarchyData.parentMap.get(noteName) === targetParent;
+    const rawParent = context.hierarchyData.parentMap.get(noteName);
+    if (rawParent === undefined) return false;
+    return canonicalizeAlias(rawParent, aliasMap) === targetParent;
   },
 
   /**
    * Check if the current note is a descendant (at any depth) of the specified note.
    * Accepts wikilink format: isDescendantOf('[[Ancestor]]') or plain: isDescendantOf('Ancestor')
+   *
+   * Aliases are canonicalized on BOTH sides via `hierarchyData.aliasMap` (the
+   * same machinery `under` uses, #636/#659): each step of the note's own
+   * `parent` chain is resolved through the alias map as it is walked, and the
+   * query node is resolved too, so an aliased link anywhere in the chain (or an
+   * aliased query node) still matches the true ancestor instead of silently
+   * missing. Cycle-safe and case-preserving exactly as before.
    */
   isDescendantOf: (args, context) => {
-    const targetAncestor = extractNoteNameFromArg(String(args[0] ?? ''));
+    const aliasMap = context.hierarchyData?.aliasMap;
+    const targetAncestor = canonicalizeAlias(
+      extractNoteNameFromArg(String(args[0] ?? '')),
+      aliasMap
+    );
     const noteName = context.file?.name;
     if (!noteName || !targetAncestor || !context.hierarchyData) return false;
 
@@ -385,7 +410,8 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
     return ancestorChainContains(
       startParent,
       targetAncestor,
-      context.hierarchyData.parentMap
+      context.hierarchyData.parentMap,
+      aliasMap
     );
   },
 
@@ -435,8 +461,9 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
       if (!relationTarget) continue;
       // Inclusive of the direct target (depth 0).
       if (relationTarget === targetNode) return true;
-      // Otherwise walk the target's own ancestor chain.
-      if (ancestorChainContains(relationTarget, targetNode, parentMap)) {
+      // Otherwise walk the target's own ancestor chain. Pass the alias map so a
+      // mid-chain `parent` written as an alias still resolves while walking.
+      if (ancestorChainContains(relationTarget, targetNode, parentMap, aliasMap)) {
         return true;
       }
     }
@@ -465,18 +492,29 @@ function canonicalizeAlias(
  * Walk a parent chain starting from `start`, returning true if `target` is
  * found anywhere in that chain. Cycle-safe via a visited set, so a malformed
  * `parent` cycle never causes an infinite loop.
+ *
+ * Each step is canonicalized through `aliasMap` (when provided) before it is
+ * compared and used to look up the next parent, so a `parent` value written as
+ * an alias of the real note still resolves to the canonical note and continues
+ * the walk (#636/#659). `target` is expected to be already canonical (callers
+ * canonicalize the query node). Canonical names pass through untouched, so a
+ * walk with no alias map — or over a fully canonical chain — is unchanged. The
+ * visited set tracks canonical names, keeping cycle detection correct even when
+ * aliases and canonical names are mixed in the same chain.
  */
 function ancestorChainContains(
   start: string,
   target: string,
-  parentMap: Map<string, string>
+  parentMap: Map<string, string>,
+  aliasMap?: Map<string, string>
 ): boolean {
   const visited = new Set<string>();
-  let current: string | undefined = start;
+  let current: string | undefined = canonicalizeAlias(start, aliasMap) ?? undefined;
   while (current && !visited.has(current)) {
     if (current === target) return true;
     visited.add(current);
-    current = parentMap.get(current);
+    const next = parentMap.get(current);
+    current = next === undefined ? undefined : (canonicalizeAlias(next, aliasMap) ?? undefined);
   }
   return false;
 }

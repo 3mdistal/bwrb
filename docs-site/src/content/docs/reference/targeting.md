@@ -82,6 +82,16 @@ bwrb list --type task --where "isDescendantOf('[[Q1 Goals]]')" --depth 2
 bwrb list --type task --where "under(context, '[[career]]')"
 ```
 
+`isChildOf` and `isDescendantOf` are **alias-aware on both sides**, just like
+`under` (see below): a note whose `parent` is written as an alias of the real
+parent (`parent: "[[BuilderProject]]"` where `BuilderProject` is an alias of
+`Builder`) still matches `isChildOf('[[Builder]]')` /
+`isDescendantOf('[[Ancestor]]')`, and an aliased query node
+(`isChildOf('[[BuilderProject]]')`) resolves to the canonical note. Aliases are
+canonicalized at every step of the walked `parent` chain. Ambiguous aliases
+(declared by more than one note) and dangling aliases are left literal, so they
+simply don't match rather than guessing; cycles remain safe.
+
 #### `under(field, '[[Node]]')` vs `isDescendantOf('[[Node]]')`
 
 Both ask a hierarchy question, but they walk **different** chains:
