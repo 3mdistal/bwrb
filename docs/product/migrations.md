@@ -47,12 +47,36 @@ Applies schema changes to existing notes.
 # Dry-run (default) - shows what would change
 bwrb schema migrate
 
+# Dry-run + per-note before→after changes
+bwrb schema migrate --show-changes
+
 # Execute migration - prompts for new version, creates backup, applies changes
 bwrb schema migrate --execute
 
 # Skip backup (power users)
 bwrb schema migrate --execute --no-backup
 ```
+
+By default the dry-run preview shows schema-level operations plus a
+files-scanned / files-affected summary. Add `--show-changes` to also print the
+concrete per-note before→after edits, e.g.:
+
+```text
+Per-note changes:
+  Objectives/Tasks/Task A.md:
+    priority: (empty) → medium
+    owner → assignee: alice
+```
+
+Null/missing values render as `(empty)` (consistent with the bulk change
+preview). To keep output manageable on large vaults, the per-note list is
+capped (currently 200 lines) with a trailing `... and N more changes` summary;
+the schema-level summary always prints in full. The flag also applies to
+`--execute` to echo what was applied.
+
+In `--output json` mode the per-note changes are **always** included under
+`data.fileChanges` (an array of `{ relativePath, changes[] }`), uncapped, for
+both dry-run and execute — no flag required.
 
 When executing:
 1. Shows pending changes

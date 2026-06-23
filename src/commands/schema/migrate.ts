@@ -25,8 +25,12 @@ import { loadRawSchemaJson, writeSchema } from '../../lib/schema-writer.js';
 import { diffSchemas, formatDiffForDisplay, formatDiffForJson } from '../../lib/migration/diff.js';
 import { loadSchemaSnapshot, saveSchemaSnapshot, hasSchemaSnapshot } from '../../lib/migration/snapshot.js';
 import { loadMigrationHistory, recordMigration } from '../../lib/migration/history.js';
-import { executeMigration } from '../../lib/migration/execute.js';
-import type { MigrationPlan } from '../../types/migration.js';
+import {
+  executeMigration,
+  formatPerNoteChanges,
+  DEFAULT_CHANGE_PREVIEW_CAP,
+} from '../../lib/migration/execute.js';
+import type { MigrationPlan, FileMigrationResult } from '../../types/migration.js';
 
 interface DiffOptions {
   output?: string;
@@ -36,6 +40,20 @@ interface MigrateOptions {
   output?: string;
   execute?: boolean;
   backup?: boolean;
+  showChanges?: boolean;
+}
+
+/**
+ * Build the JSON-friendly per-note change payload from file results.
+ * Only includes notes that actually have changes.
+ */
+function toFileChangesJson(fileResults: FileMigrationResult[]): Array<{
+  relativePath: string;
+  changes: FileMigrationResult['changes'];
+}> {
+  return fileResults
+    .filter(f => f.changes.length > 0)
+    .map(f => ({ relativePath: f.relativePath, changes: f.changes }));
 }
 
 interface HistoryOptions {
@@ -177,15 +195,18 @@ Examples:
     .option('-x, --execute', 'Actually apply the migration (default is dry-run)')
     // NOTE: Commander maps --no-backup to options.backup === false.
     .option('--no-backup', 'Skip backup creation (not recommended)')
+    .option('--show-changes', 'Show per-note before→after changes in the dry-run preview')
     .addHelpText('after', `
 Examples:
-  bwrb schema migrate              # Preview migration (dry-run)
-  bwrb schema migrate --execute    # Apply migration with backup
+  bwrb schema migrate                  # Preview migration (dry-run)
+  bwrb schema migrate --show-changes   # Preview + per-note before→after changes
+  bwrb schema migrate --execute        # Apply migration with backup
   bwrb schema migrate --execute --no-backup  # Apply without backup`)
     .action(async (options: MigrateOptions, cmd: Command) => {
       const jsonMode = options.output === 'json';
       const execute = options.execute ?? false;
       const backup = options.backup !== false;
+      const showChanges = options.showChanges ?? false;
 
       try {
         const globalOpts = getGlobalOpts(cmd);
@@ -265,6 +286,8 @@ Examples:
             });
             
             if (jsonMode) {
+              // Per-note before→after changes are always included in JSON so
+              // automation gets the full picture without a flag.
               printJson(jsonSuccess({
                 message: 'Migration preview (dry-run)',
                 data: {
@@ -274,6 +297,7 @@ Examples:
                   totalFiles: result.totalFiles,
                   affectedFiles: result.affectedFiles,
                   changes: diff,
+                  fileChanges: toFileChangesJson(result.fileResults),
                 },
               }));
             } else {
@@ -281,6 +305,21 @@ Examples:
               console.log(formatDiffForDisplay(diff));
               console.log(chalk.cyan(`Files scanned: ${result.totalFiles}`));
               console.log(chalk.cyan(`Files affected: ${result.affectedFiles}`));
+
+              // Per-note before→after changes are gated behind --show-changes
+              // since a large vault could produce a great many lines.
+              if (showChanges) {
+                const changeBlock = formatPerNoteChanges(result.fileResults, {
+                  cap: DEFAULT_CHANGE_PREVIEW_CAP,
+                });
+                if (changeBlock) {
+                  console.log(chalk.bold('\nPer-note changes:'));
+                  console.log(changeBlock);
+                }
+              } else if (result.affectedFiles > 0) {
+                console.log(chalk.gray('\nRun with --show-changes to see per-note before→after changes.'));
+              }
+
               console.log('');
               console.log('Run `bwrb schema migrate --execute` to apply these changes.');
             }
@@ -379,6 +418,7 @@ Examples:
               totalFiles: result.totalFiles,
               affectedFiles: result.affectedFiles,
               backupPath: result.backupPath,
+              fileChanges: toFileChangesJson(result.fileResults),
               errors: result.errors,
             },
           }));
@@ -390,6 +430,16 @@ Examples:
           console.log(chalk.cyan(`  Files modified: ${result.affectedFiles}`));
           if (result.backupPath) {
             console.log(chalk.cyan(`  Backup: ${result.backupPath}`));
+          }
+          if (showChanges) {
+            const changeBlock = formatPerNoteChanges(result.fileResults, {
+              cap: DEFAULT_CHANGE_PREVIEW_CAP,
+            });
+            if (changeBlock) {
+              console.log('');
+              console.log(chalk.bold('  Per-note changes:'));
+              console.log(changeBlock);
+            }
           }
           if (result.errors.length > 0) {
             console.log('');

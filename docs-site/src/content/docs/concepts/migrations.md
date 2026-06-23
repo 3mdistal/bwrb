@@ -85,6 +85,29 @@ Files affected: 0
 Run `bwrb schema migrate --execute` to apply these changes.
 ```
 
+By default the preview shows schema-level operations plus a scanned/affected
+file count. To also see the concrete per-note before→after edits, add
+`--show-changes`:
+
+```bash
+bwrb schema migrate --show-changes
+```
+
+```
+Per-note changes:
+  Ideas/Idea A.md:
+    importance: (empty) → medium
+    priority → rank: 3
+```
+
+Missing or null values render as `(empty)`. On large vaults the per-note list
+is capped (200 lines) with a `... and N more changes` footer; the schema-level
+summary is never truncated. The flag also works with `--execute` to echo what
+was applied.
+
+In `--output json` mode, the per-note changes are always included under
+`data.fileChanges` (uncapped), so automation never needs the flag.
+
 ### 4. Apply the Migration
 
 When ready, execute the migration:
