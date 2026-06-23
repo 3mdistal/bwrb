@@ -380,6 +380,11 @@ export async function buildNoteTypeMap(
 }
 
 export type NoteTargetIndex = {
+  /**
+   * Maps a lowercased target name/path/alias to every note it could resolve to.
+   * Keys are lowercased so relation resolution is case-insensitive (consistent
+   * with `open`/navigation); look up with `key.toLowerCase()`.
+   */
   targetToPaths: Map<string, string[]>;
   pathToType: Map<string, string>;
   pathNoExtToType: Map<string, string>;
@@ -460,15 +465,18 @@ export function deriveNotePathMap(
   schema?: LoadedSchema
 ): Map<string, string> {
   const pathMap = new Map<string, string>();
-  const realKeys = new Set<string>();
+  // Real note name/path keys, lowercased: a real note wins over an alias even
+  // when they differ only by case, consistent with the case-insensitive lookups
+  // elsewhere in resolution.
+  const realKeysLower = new Set<string>();
 
   for (const note of snapshot.notes) {
     const noteName = basename(note.relativePath, '.md');
     const pathKey = note.relativePath.replace(/\.md$/, '');
     pathMap.set(noteName, note.relativePath);
     pathMap.set(pathKey, note.relativePath);
-    realKeys.add(noteName);
-    realKeys.add(pathKey);
+    realKeysLower.add(noteName.toLowerCase());
+    realKeysLower.add(pathKey.toLowerCase());
   }
 
   if (schema) {
@@ -476,9 +484,9 @@ export function deriveNotePathMap(
       if (!note.resolvedType || !note.frontmatter) continue;
       const aliases = getEntityAliases(schema, note.resolvedType, note.frontmatter);
       for (const alias of aliases) {
-        // Never let an alias shadow a real note name/path, and keep the first
-        // claimant when two entities share an alias.
-        if (realKeys.has(alias) || pathMap.has(alias)) continue;
+        // Never let an alias shadow a real note name/path (case-insensitively),
+        // and keep the first claimant when two entities share an alias.
+        if (realKeysLower.has(alias.toLowerCase()) || pathMap.has(alias)) continue;
         pathMap.set(alias, note.relativePath);
       }
     }
@@ -515,6 +523,13 @@ export function deriveNoteTypeMap(snapshot: VaultNoteSnapshot): Map<string, stri
  * shared by two entities surfaces as an ambiguous (multi-candidate) target,
  * which callers already refuse to auto-resolve, preserving the deterministic
  * "never auto-resolve ambiguity" guarantee.
+ *
+ * Keys are lowercased so relation resolution is case-insensitive, consistent
+ * with `open`/navigation (`resolveNoteQuery`): a `[[Steve]]` reference resolves
+ * to a real `steve` note, and a real note name still wins over an alias even
+ * when they differ only by case. A lowercased key that genuinely maps to more
+ * than one note (two real notes differing only by case, or a shared alias)
+ * keeps every path so ambiguity stays detectable.
  */
 export function deriveNoteTargetIndex(
   snapshot: VaultNoteSnapshot,
@@ -523,17 +538,23 @@ export function deriveNoteTargetIndex(
   const targetToPaths = new Map<string, string[]>();
   const pathToType = new Map<string, string>();
   const pathNoExtToType = new Map<string, string>();
-  const realKeys = new Set<string>();
+  // Real note name/path keys, lowercased: a real note wins over an alias even
+  // when they differ only by case, consistent with case-insensitive resolution.
+  const realKeysLower = new Set<string>();
 
+  // Keys are lowercased to match the case-insensitive lookup in
+  // `resolveRelationTarget`. Distinct notes that collapse to the same lowercased
+  // key are all preserved so ambiguity remains detectable.
   const addTarget = (key: string, relativePath: string) => {
-    const existing = targetToPaths.get(key);
+    const lowerKey = key.toLowerCase();
+    const existing = targetToPaths.get(lowerKey);
     if (existing) {
       if (!existing.includes(relativePath)) {
         existing.push(relativePath);
       }
       return;
     }
-    targetToPaths.set(key, [relativePath]);
+    targetToPaths.set(lowerKey, [relativePath]);
   };
 
   for (const note of snapshot.notes) {
@@ -543,8 +564,8 @@ export function deriveNoteTargetIndex(
 
     addTarget(basenameKey, relativePath);
     addTarget(pathKey, relativePath);
-    realKeys.add(basenameKey);
-    realKeys.add(pathKey);
+    realKeysLower.add(basenameKey.toLowerCase());
+    realKeysLower.add(pathKey.toLowerCase());
 
     if (note.resolvedType) {
       pathToType.set(relativePath, note.resolvedType);
@@ -557,8 +578,8 @@ export function deriveNoteTargetIndex(
       if (!note.resolvedType || !note.frontmatter) continue;
       const aliases = getEntityAliases(schema, note.resolvedType, note.frontmatter);
       for (const alias of aliases) {
-        // Never let an alias shadow a real note name/path key.
-        if (realKeys.has(alias)) continue;
+        // Never let an alias shadow a real note name/path key (case-insensitively).
+        if (realKeysLower.has(alias.toLowerCase())) continue;
         addTarget(alias, note.relativePath);
       }
     }
