@@ -647,6 +647,82 @@ Some content
       });
     });
 
+    describe('--path is applied before --limit (issue #675 regression)', () => {
+      // Regression for the bug where --body --path filtered AFTER the content
+      // search had already sorted by match-count and sliced to --limit. In a
+      // vault where more than --limit out-of-path files rank ahead of in-path
+      // files, the post-slice filter only saw the global top-N and returned
+      // an empty/incomplete set even though in-path files matched. The fix
+      // prefilters the candidate set by --path before scan/sort/slice, so the
+      // limit applies to the already-path-scoped set.
+      let largeVault: string;
+
+      beforeAll(async () => {
+        largeVault = await createTestVault();
+
+        // Three OUT-OF-PATH idea files, each with MANY occurrences of the term
+        // so they rank ahead (by match count) of the single in-path file.
+        for (let i = 0; i < 3; i++) {
+          const body = Array.from({ length: 10 }, () => 'needle').join('\n');
+          await writeFile(
+            join(largeVault, 'Ideas', `Outside Idea ${i}.md`),
+            `---\ntype: idea\nstatus: raw\n---\n${body}\n`
+          );
+        }
+
+        // One IN-PATH task file with a SINGLE occurrence — it ranks last by
+        // match count, so any post-slice filter at a small limit misses it.
+        await writeFile(
+          join(largeVault, 'Objectives/Tasks', 'Inside Task.md'),
+          `---\ntype: task\nstatus: raw\n---\nneedle\n`
+        );
+      });
+
+      afterAll(async () => {
+        await cleanupTestVault(largeVault);
+      });
+
+      it('returns in-path matches even when out-of-path files rank ahead and exceed --limit', async () => {
+        const result = await runCLI([
+          'search', 'needle', '--body',
+          '--path', 'Objectives/Tasks/**',
+          '--limit', '2',
+          '--output', 'json',
+        ], largeVault);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        // The in-path file must be present (the bug returned an empty set here).
+        const paths = json.data.map((d: { path: string }) => d.path);
+        expect(paths).toContain('Objectives/Tasks/Inside Task.md');
+        // And no out-of-path files leak through.
+        expect(paths.every((p: string) => p.startsWith('Objectives/Tasks/'))).toBe(true);
+      });
+
+      it('limit applies to the path-scoped set, not the global top-N', async () => {
+        // Without any path filter, --limit 2 would be consumed entirely by the
+        // higher-ranked out-of-path Ideas files. Scoping to the path first
+        // means the small limit still leaves room for the in-path match.
+        const unscoped = await runCLI([
+          'search', 'needle', '--body', '--limit', '2', '--output', 'json',
+        ], largeVault);
+        const unscopedPaths = JSON.parse(unscoped.stdout).data
+          .map((d: { path: string }) => d.path);
+        // Global top-2 are the out-of-path Ideas; in-path task is starved out.
+        expect(unscopedPaths).not.toContain('Objectives/Tasks/Inside Task.md');
+
+        const scoped = await runCLI([
+          'search', 'needle', '--body',
+          '--path', 'Objectives/Tasks/**',
+          '--limit', '2', '--output', 'json',
+        ], largeVault);
+        const scopedPaths = JSON.parse(scoped.stdout).data
+          .map((d: { path: string }) => d.path);
+        expect(scopedPaths).toContain('Objectives/Tasks/Inside Task.md');
+      });
+    });
+
     describe('--where validation with --type', () => {
       it('should accept valid --where with --type', async () => {
         const result = await runCLI([

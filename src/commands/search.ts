@@ -37,7 +37,6 @@ import {
 } from '../lib/fuzzy-search.js';
 import { parseNote } from '../lib/frontmatter.js';
 import { applyWhereExpressions } from '../lib/where-targeting.js';
-import { filterByPath } from '../lib/targeting.js';
 import { UserCancelledError } from '../lib/errors.js';
 
 // ============================================================================
@@ -382,12 +381,23 @@ async function handleContentSearch(
   const contextLines = options.noContext ? 0 : parseInt(options.context ?? '2', 10);
   const limit = parseInt(options.limit ?? '100', 10);
 
-  // Run content search
+  // Run content search.
+  //
+  // The path glob is threaded into searchContent as `pathFilter` so it
+  // prefilters the candidate file set BEFORE the content scan sorts and slices
+  // to `limit`. This makes the limit apply to the already-path-scoped set,
+  // rather than the global top-N (which previously let higher-ranked
+  // out-of-path matches starve out in-path matches). Reads the canonical
+  // `options.path` (the same field --path sets and the deprecated --path-glob
+  // is normalized into earlier in the action handler), so both
+  // `--body --path <glob>` and `--body --path-glob <glob>` filter correctly.
+  // (fixes #675)
   const searchResult = await searchContent({
     pattern: query,
     vaultDir,
     schema,
     ...(options.type !== undefined ? { typePath: options.type } : {}),
+    ...(options.path !== undefined ? { pathFilter: options.path } : {}),
     contextLines,
     caseSensitive: options.caseSensitive ?? false,
     regex: options.regex ?? false,
@@ -403,20 +413,9 @@ async function handleContentSearch(
     process.exit(1);
   }
 
-  // Apply path glob filter if specified.
-  //
-  // Reads the canonical `options.path` (the same field --path sets and the
-  // deprecated --path-glob is normalized into earlier in the action handler),
-  // so `--body --path <glob>` and `--body --path-glob <glob>` both filter
-  // content-search results. Reuses the shared filterByPath util for consistent
-  // directory/glob normalization with `list` and bulk commands. (fixes #675)
+  // Path filtering already happened inside searchContent (via `pathFilter`),
+  // before the sort/slice limit was applied — see the searchContent call above.
   let filteredResults = searchResult.results;
-  if (options.path) {
-    const matched = new Set(
-      filterByPath(filteredResults.map(r => r.file), options.path).map(f => f.path)
-    );
-    filteredResults = filteredResults.filter(r => matched.has(r.file.path));
-  }
 
   // Apply frontmatter filters if specified (--where expressions)
   if (options.where && options.where.length > 0) {

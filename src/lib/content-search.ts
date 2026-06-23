@@ -10,7 +10,7 @@ import { readFile } from 'fs/promises';
 import { join } from 'path';
 import type { LoadedSchema } from '../types/schema.js';
 import type { ManagedFile } from './discovery.js';
-import { discoverManagedFiles } from './discovery.js';
+import { discoverManagedFiles, filterByPath } from './discovery.js';
 
 // ============================================================================
 // Types
@@ -25,6 +25,13 @@ export interface ContentSearchOptions {
   schema: LoadedSchema;
   /** Optional type path to restrict search (e.g., 'idea', 'objective/task') */
   typePath?: string;
+  /**
+   * Optional path glob to restrict the candidate file set BEFORE scanning,
+   * sorting, and applying the limit. This ensures `limit` applies to the
+   * path-scoped set rather than the global top-N (fixes #675). Uses the same
+   * glob normalization as `list` and bulk commands via `filterByPath`.
+   */
+  pathFilter?: string;
   /** Number of context lines to show (default: 2) */
   contextLines?: number;
   /** Case-sensitive search (default: false) */
@@ -342,6 +349,7 @@ export async function searchContent(
     vaultDir,
     schema,
     typePath,
+    pathFilter,
     contextLines = 2,
     caseSensitive = false,
     regex = false,
@@ -361,7 +369,15 @@ export async function searchContent(
 
   try {
     // Discover files to search
-    const files = await discoverManagedFiles(schema, vaultDir, typePath);
+    let files = await discoverManagedFiles(schema, vaultDir, typePath);
+
+    // Prefilter the candidate set by path glob BEFORE scanning/sorting/slicing.
+    // This guarantees the `limit` applies to the path-scoped set, so in-path
+    // matches are never starved out by higher-ranked out-of-path files, and we
+    // avoid scanning files that can't appear in the result (fixes #675).
+    if (pathFilter) {
+      files = filterByPath(files, pathFilter);
+    }
 
     if (files.length === 0) {
       return {
