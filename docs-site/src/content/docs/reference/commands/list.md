@@ -117,6 +117,33 @@ bwrb list --type task --output link      # [[Task 1]], [[Task 2]], ...
 bwrb list --type task --output tree      # Hierarchical display
 ```
 
+#### `--output tree`
+
+`--output tree` renders a **parent hierarchy** whenever the matched notes carry
+`parent` links — drawing the nesting directly from each note's `parent` relation.
+This works for any entity type that models a hierarchy this way (for example a
+`context`/`domain` type, see [Hierarchical Scope (Contexts as Notes)](/concepts/hierarchical-scope/)),
+not only types marked `recursive`:
+
+```bash
+bwrb list --type context --output tree
+```
+
+```text
+└── career
+    └── Builder
+        └── Vercel
+```
+
+When the matched notes have **no** `parent` links, `--output tree` instead groups
+them by their vault directory. Use `-L`/`--depth` to limit how deep the tree
+renders, and `--sort`/`--desc` to order siblings:
+
+```bash
+bwrb list --type context --output tree -L 2          # top two levels only
+bwrb list --type context --output tree --sort name --desc
+```
+
 ### Limiting and Counting
 
 ```bash

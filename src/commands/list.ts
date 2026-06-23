@@ -610,13 +610,16 @@ export async function listObjects(
     }
 
     case 'tree': {
-      if (isRecursive) {
-        const parentMap = buildParentMap(filteredFiles);
-        const tree = buildTree(filteredFiles, parentMap, options.depth, fileComparator);
-        if (treeHasNestedNotes(tree)) {
-          printTree(tree, vaultDir, showPaths);
-          return;
-        }
+      // Render a parent-based hierarchy tree whenever the result set actually
+      // has `parent` links — regardless of whether the type is `recursive`.
+      // This lets any entity type with a parent hierarchy (e.g. a context /
+      // domain type per #554) render its nesting via `--output tree` (#637).
+      // The directory tree remains the fallback when there are no parent links.
+      const parentMap = buildParentMap(filteredFiles);
+      const tree = buildTree(filteredFiles, parentMap, options.depth, fileComparator);
+      if (treeHasNestedNotes(tree)) {
+        printTree(tree, vaultDir, showPaths);
+        return;
       }
 
       const directoryTree = buildDirectoryTree(filteredFiles, vaultDir, options.depth, fileComparator);
