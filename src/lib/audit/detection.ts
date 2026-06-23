@@ -1133,6 +1133,18 @@ function checkListElementIntegrity(
   for (const [fieldName, field] of Object.entries(fields)) {
     if (!field || (field.prompt !== 'list' && !field.multiple)) continue;
 
+    // Alias-role fields are owned exclusively by the `illegal-aliases`
+    // detection+fix (checkIllegalAliases / fixIllegalAliases), which validates
+    // the whole field as a unit and safely drops blanks + dedupes in one pass.
+    // We must NOT also run the generic `invalid-list-element` blank-remover on
+    // them: that remover deletes blank entries by original index applied
+    // sequentially to a shrinking array, so with 2+ leading blanks a stale
+    // index destroys a distinct alias when both fire in the same auto-fix pass
+    // (data loss, #617). This mirrors the `duplicate-list-values` suppression
+    // for alias fields in checkHygieneIssues — alias-field list cleanup has a
+    // single owner.
+    if (field.alias === true) continue;
+
     const value = frontmatter[fieldName];
     if (value === null || value === undefined) continue;
 
@@ -1900,21 +1912,31 @@ function checkHygieneIssues(
       }
     }
     
-    // Check for duplicate list values (case-sensitive)
-    if (Array.isArray(value)) {
+    // Alias-role fields are validated as a unit by checkIllegalAliases below
+    // (empty/whitespace, duplicate, AND non-string entries → one
+    // `illegal-aliases` error). Duplicate aliases must surface at error severity
+    // to match the write path, so we do NOT also run the generic
+    // `duplicate-list-values` warning check on them — that would both
+    // double-report and contradict the write path's hard rejection (#617).
+    const isAliasField = field?.alias === true && Array.isArray(value);
+
+    // Check for duplicate list values (case-sensitive). Non-alias lists only.
+    if (Array.isArray(value) && !isAliasField) {
       const dupIssue = checkDuplicateListValues(fieldName, value);
       if (dupIssue) {
         issues.push(dupIssue);
       }
     }
 
-    // Alias-role fields: flag empty/blank entries. Scalar values and duplicates
-    // are already covered by wrong-scalar-type and duplicate-list-values; this
-    // closes the remaining gap in the Obsidian aliases format (#266).
-    if (field?.alias === true && Array.isArray(value)) {
-      const emptyAliasIssue = checkEmptyAliasEntries(fieldName, value);
-      if (emptyAliasIssue) {
-        issues.push(emptyAliasIssue);
+    // Alias-role fields: enforce the Obsidian aliases format (array of
+    // non-empty, unique strings) as a single `illegal-aliases` error, matching
+    // what the write path (new/edit) rejects. Empty/whitespace entries and
+    // duplicates are safely auto-fixable (drop blanks; dedupe preserving the
+    // first occurrence); a non-string entry makes the issue flag-only (#266, #617).
+    if (isAliasField) {
+      const aliasIssue = checkIllegalAliases(fieldName, value as unknown[]);
+      if (aliasIssue) {
+        issues.push(aliasIssue);
       }
     }
 
@@ -2091,29 +2113,79 @@ function checkDuplicateListValues(
 }
 
 /**
- * Check an alias-role field for empty or non-string entries.
+ * Validate an alias-role field as a unit (the Obsidian `aliases` format: an
+ * array of non-empty, UNIQUE strings). This mirrors the write path's
+ * `validateAliasValue` (new/edit), which rejects empty/whitespace entries,
+ * non-string entries, and duplicates as a hard error — so audit reports the same
+ * conditions at `error` severity, keeping the two paths in agreement (#617).
  *
- * Scalar values and duplicates are caught elsewhere (wrong-scalar-type and
- * duplicate-list-values); this covers the remaining illegal-aliases cases:
- * empty/blank strings and non-string entries. Flagged for human review rather
- * than auto-fixed, since dropping entries could lose intent.
+ * Auto-fixability (the safe, idempotent subset):
+ * - empty/whitespace entries → dropped
+ * - exact duplicates → de-duplicated, preserving the first occurrence
+ * Both are non-destructive of meaningful data and converge on re-run, so a note
+ * with only these problems is auto-fixable via the existing dedupe-style meta
+ * pattern. The fixed list (`meta.after`) is computed here so the fixer is a pure
+ * apply.
+ *
+ * A NON-STRING entry (number/boolean/object) is NOT safely auto-fixable — we
+ * can't know the intended alias text — so its presence makes the whole issue
+ * flag-only, surfaced for a manual fix.
+ *
+ * Scalar (non-array) alias values are handled separately as `wrong-scalar-type`
+ * (this check only runs for array values).
  */
-function checkEmptyAliasEntries(
+function checkIllegalAliases(
   fieldName: string,
   value: unknown[]
 ): AuditIssue | null {
-  const hasEmpty = value.some(
-    (item) => typeof item !== 'string' || item.trim() === ''
-  );
-  if (!hasEmpty) return null;
+  let hasEmpty = false;
+  let hasDuplicate = false;
+  let hasNonString = false;
+
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+
+  for (const item of value) {
+    if (typeof item !== 'string') {
+      hasNonString = true;
+      continue;
+    }
+    if (item.trim() === '') {
+      hasEmpty = true;
+      continue;
+    }
+    if (seen.has(item)) {
+      hasDuplicate = true;
+      continue;
+    }
+    seen.add(item);
+    cleaned.push(item);
+  }
+
+  if (!hasEmpty && !hasDuplicate && !hasNonString) return null;
+
+  // The empty/whitespace + dedupe fix is only safe when every offending entry is
+  // either blank or a duplicate; a non-string entry blocks the auto-fix.
+  const autoFixable = !hasNonString;
+
+  const problems: string[] = [];
+  if (hasEmpty) problems.push('empty/whitespace');
+  if (hasDuplicate) problems.push('duplicate');
+  if (hasNonString) problems.push('non-string');
 
   return {
     severity: 'error',
     code: 'illegal-aliases',
-    message: `Invalid aliases in '${fieldName}': entries must be non-empty strings`,
+    message: `Invalid aliases in '${fieldName}': entries must be non-empty, unique strings (found ${problems.join(', ')})`,
     field: fieldName,
     value,
-    autoFixable: false,
+    autoFixable,
+    meta: {
+      problems,
+      before: value,
+      // Only meaningful when autoFixable; the fixer drops blanks and dedupes.
+      after: cleaned,
+    },
   };
 }
 

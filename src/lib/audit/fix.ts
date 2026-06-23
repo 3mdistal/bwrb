@@ -690,6 +690,30 @@ async function applyFix(
         }
         break;
       }
+      case 'illegal-aliases': {
+        // Safe, idempotent alias cleanup: drop empty/whitespace entries and
+        // de-duplicate (preserving the first occurrence). Reuses the same
+        // dedupe-style apply as `duplicate-list-values`, extended to also drop
+        // blanks. A non-string entry is never auto-dispatched here (the detector
+        // marks such issues non-fixable), so we fail safe if one appears (#617).
+        const currentValue = issue.field ? frontmatter[issue.field] : undefined;
+        if (!issue.field || !Array.isArray(currentValue)) {
+          return { file: filePath, issue, action: 'failed', message: 'Cannot clean non-array aliases' };
+        }
+        if (!currentValue.every((item) => typeof item === 'string')) {
+          return { file: filePath, issue, action: 'failed', message: 'Cannot auto-fix non-string aliases' };
+        }
+        const seen = new Set<string>();
+        const cleaned: string[] = [];
+        for (const item of currentValue as string[]) {
+          if (item.trim() === '') continue; // drop empty/whitespace
+          if (seen.has(item)) continue; // dedupe (first wins)
+          seen.add(item);
+          cleaned.push(item);
+        }
+        frontmatter[issue.field] = cleaned;
+        break;
+      }
       case 'singular-plural-mismatch': {
         if (!issue.field || !issue.canonicalKey) {
           return { file: filePath, issue, action: 'failed', message: 'No field or canonical key provided' };
@@ -1562,6 +1586,19 @@ export async function runAutoFix(
           console.log(chalk.red(`    ✗ Failed to dedupe ${issue.field}: ${fixResult.message}`));
           failed++;
         }
+      } else if (issue.code === 'illegal-aliases' && issue.field) {
+        // Clean an alias list: drop empty/whitespace entries and dedupe. Only
+        // dispatched for auto-fixable issues (those with no non-string entry).
+        const fixResult = await applyFix(schema, result.path, issue);
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Cleaned aliases in ${issue.field}`));
+          fixed++;
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to clean ${issue.field}: ${fixResult.message}`));
+          failed++;
+        }
       } else if (issue.code === 'unlinked-mention') {
         // Only exact/alias mentions are auto-fixable (fuzzy/ambiguous are
         // flag-only and never reach here, since autoFixable is false on them).
@@ -1817,6 +1854,8 @@ async function handleInteractiveFix(
       return handleEnumCasingFix(schema, result, issue);
     case 'duplicate-list-values':
       return handleDuplicateListFix(schema, result, issue);
+    case 'illegal-aliases':
+      return handleIllegalAliasesFix(schema, result, issue);
     case 'frontmatter-key-casing':
     case 'singular-plural-mismatch':
       return handleKeyCasingFix(schema, result, issue);
@@ -3765,6 +3804,36 @@ async function handleDuplicateListFix(
     issue,
     `    → Remove duplicate values from '${issue.field}'?`,
     `Deduplicated ${issue.field}`
+  );
+}
+
+/**
+ * Interactive handler for `illegal-aliases` (#617): offer to clean the alias
+ * list by dropping empty/whitespace entries and de-duplicating (first wins),
+ * reusing the same apply path as the auto-fix. Non-string aliases are flagged as
+ * non-auto-fixable by the detector, so such issues never reach a fix dispatch.
+ */
+async function handleIllegalAliasesFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  if (!issue.field) return 'skipped';
+
+  // A non-string alias entry makes the issue flag-only (we can't infer the
+  // intended text). Surface the suggestion path and skip rather than prompting a
+  // fix that would fail.
+  if (!issue.autoFixable) {
+    console.log(chalk.dim('    (Manual fix required - skipping)'));
+    return 'skipped';
+  }
+
+  return confirmAndApplyFix(
+    schema,
+    result,
+    issue,
+    `    → Clean aliases in '${issue.field}' (drop empty entries + dedupe)?`,
+    `Cleaned aliases in ${issue.field}`
   );
 }
 

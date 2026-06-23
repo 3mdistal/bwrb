@@ -581,8 +581,16 @@ aliases:
 
 **Validation.** Because `aliases` is a recognized role, bwrb validates the value
 as an array of **non-empty, unique strings** (the Obsidian `aliases` format).
-`bwrb audit` flags a scalar value, empty entries, non-string entries, or
-duplicates.
+The write path (`bwrb new`/`bwrb edit`) rejects a scalar value, empty/whitespace
+entries, non-string entries, and duplicates as a hard error. `bwrb audit` reports
+the **same** conditions at **error** severity (an [`illegal-aliases`](/reference/commands/audit/#alias-hygiene-illegal-aliases)
+issue), so write and audit agree — a note hand-written with duplicate or blank
+aliases is an error, not a warning.
+
+**Auto-fix.** `bwrb audit --fix` cleans the safe, idempotent cases: it drops
+empty/whitespace entries and de-duplicates (preserving the first occurrence). It
+never merges distinct aliases. A **non-string** entry stays flag-only (bwrb can't
+infer the intended text); a non-array value is reported as `wrong-scalar-type`.
 
 **Back-compat.** The role is optional. Types that declare no alias field, and
 notes without an `aliases` value, keep working unchanged.

@@ -13,6 +13,8 @@ import { validateFrontmatter } from '../../../src/lib/validation.js';
 import { buildNoteIndex, resolveNoteQuery } from '../../../src/lib/navigation.js';
 import { buildNoteTargetIndex } from '../../../src/lib/discovery.js';
 import { runAudit } from '../../../src/lib/audit/detection.js';
+import { runAutoFix } from '../../../src/lib/audit/fix.js';
+import { parseNote } from '../../../src/lib/frontmatter.js';
 import type { Schema } from '../../../src/types/schema.js';
 
 // A schema with a person type whose `aliases` field carries the alias role,
@@ -258,7 +260,7 @@ describe('alias field role', () => {
       expect(result.candidates.length).toBe(2);
     });
 
-    it('audit flags empty alias entries (illegal-aliases)', async () => {
+    it('audit flags empty alias entries (illegal-aliases) as an error', async () => {
       await writeFile(
         join(vaultDir, 'People', 'Bad.md'),
         `---\ntype: person\naliases:\n  - Real\n  - ""\n---\n`
@@ -266,7 +268,183 @@ describe('alias field role', () => {
       const schema = await loadSchema(vaultDir);
       const results = await runAudit(schema, vaultDir, { strict: false });
       const bad = results.find((r) => r.relativePath === 'People/Bad.md');
-      expect(bad?.issues.some((i) => i.code === 'illegal-aliases')).toBe(true);
+      const issue = bad?.issues.find((i) => i.code === 'illegal-aliases');
+      expect(issue).toBeDefined();
+      expect(issue?.severity).toBe('error');
+      // Empty-only is the safe auto-fix subset.
+      expect(issue?.autoFixable).toBe(true);
+    });
+
+    it('audit flags DUPLICATE aliases as an illegal-aliases error (not a warning), matching the write path (#617)', async () => {
+      await writeFile(
+        join(vaultDir, 'People', 'Dup.md'),
+        `---\ntype: person\naliases:\n  - Steve\n  - Steve\n---\n`
+      );
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, { strict: false });
+      const dup = results.find((r) => r.relativePath === 'People/Dup.md');
+
+      // The write path rejects duplicate aliases as a hard error; audit now
+      // agrees — it is an `illegal-aliases` ERROR, NOT a `duplicate-list-values`
+      // warning.
+      const issue = dup?.issues.find((i) => i.code === 'illegal-aliases');
+      expect(issue).toBeDefined();
+      expect(issue?.severity).toBe('error');
+      expect(issue?.autoFixable).toBe(true);
+      expect(dup?.issues.some((i) => i.code === 'duplicate-list-values')).toBe(false);
+    });
+
+    it('--fix auto-cleans empty/whitespace + duplicate aliases (dedupe, first wins) and is idempotent', async () => {
+      await writeFile(
+        join(vaultDir, 'People', 'Messy.md'),
+        `---\ntype: person\naliases:\n  - Steve\n  - ""\n  - "  "\n  - Steve\n  - stevey\n---\n`
+      );
+      const schema = await loadSchema(vaultDir);
+
+      const results = await runAudit(schema, vaultDir, { strict: false });
+      const messyResult = results.filter((r) => r.relativePath === 'People/Messy.md');
+      await runAutoFix(messyResult, schema, vaultDir);
+
+      const fixed = await parseNote(join(vaultDir, 'People', 'Messy.md'));
+      // Blanks dropped, duplicate removed, order preserved (first occurrence).
+      expect(fixed.frontmatter['aliases']).toEqual(['Steve', 'stevey']);
+
+      // Re-audit: no illegal-aliases issue remains (idempotent).
+      const after = await runAudit(schema, vaultDir, { strict: false });
+      const messyAfter = after.find((r) => r.relativePath === 'People/Messy.md');
+      expect(messyAfter?.issues.some((i) => i.code === 'illegal-aliases') ?? false).toBe(false);
+
+      // Re-running --fix on a clean note changes nothing.
+      const reRun = await runAudit(schema, vaultDir, { strict: false });
+      await runAutoFix(
+        reRun.filter((r) => r.relativePath === 'People/Messy.md'),
+        schema,
+        vaultDir
+      );
+      const stable = await parseNote(join(vaultDir, 'People', 'Messy.md'));
+      expect(stable.frontmatter['aliases']).toEqual(['Steve', 'stevey']);
+    });
+
+    // DEFAULT fix path data-loss regression (#617). These exercise the FULL
+    // auto-fix pass (runAudit with NO onlyIssue filter, then runAutoFix), which
+    // is where the bug lived: the `illegal-aliases` fixer is correct in
+    // isolation, but the generic `invalid-list-element` blank-remover used to
+    // CO-FIRE on the same alias field. It removed blanks by original index
+    // applied to a shrinking array, so with 2+ leading blanks a stale index
+    // deleted a distinct alias ("Real" → silently destroyed) while the run still
+    // reported success. The fix makes `illegal-aliases` the sole owner of
+    // alias-field list cleanup. The fixture deliberately puts the real alias
+    // AFTER the blanks so a regression would catch the data loss.
+    describe('default fix path never loses a distinct alias (#617 data-loss regression)', () => {
+      const writePerson = async (name: string, yamlAliases: string) => {
+        await writeFile(
+          join(vaultDir, 'People', `${name}.md`),
+          `---\ntype: person\naliases:\n${yamlAliases}---\n`
+        );
+      };
+
+      // Run the DEFAULT auto-fix pass (all detections, not --only) and return
+      // the resulting alias array plus the fix summary.
+      const fixDefaultPath = async (name: string) => {
+        const schema = await loadSchema(vaultDir);
+        const results = await runAudit(schema, vaultDir, { strict: false });
+        const summary = await runAutoFix(
+          results.filter((r) => r.relativePath === `People/${name}.md`),
+          schema,
+          vaultDir
+        );
+        const fixed = await parseNote(join(vaultDir, 'People', `${name}.md`));
+        return { aliases: fixed.frontmatter['aliases'], summary, schema };
+      };
+
+      it('["", "  ", "Real"] -> ["Real"] (the distinct alias survives), idempotent', async () => {
+        // Two LEADING blanks then a real alias: the exact shape that triggered
+        // the stale-index data loss under the default path.
+        await writePerson('Lead', `  - ""\n  - "  "\n  - Real\n`);
+
+        const { aliases, summary, schema } = await fixDefaultPath('Lead');
+        expect(aliases).toEqual(['Real']);
+        // Reported success without claiming an inflated/incorrect remaining count.
+        expect(summary.remaining).toBe(0);
+        expect(summary.fixed).toBeGreaterThan(0);
+
+        // Idempotent: no illegal-aliases issue remains, re-fix is a no-op.
+        const after = await runAudit(schema, vaultDir, { strict: false });
+        const lead = after.find((r) => r.relativePath === 'People/Lead.md');
+        expect(lead?.issues.some((i) => i.code === 'illegal-aliases') ?? false).toBe(false);
+        await runAutoFix(
+          after.filter((r) => r.relativePath === 'People/Lead.md'),
+          schema,
+          vaultDir
+        );
+        const stable = await parseNote(join(vaultDir, 'People', 'Lead.md'));
+        expect(stable.frontmatter['aliases']).toEqual(['Real']);
+      });
+
+      it('["", ""] -> [] (all blanks removed, no alias to keep)', async () => {
+        await writePerson('AllBlank', `  - ""\n  - ""\n`);
+        const { aliases, summary } = await fixDefaultPath('AllBlank');
+        expect(aliases).toEqual([]);
+        expect(summary.remaining).toBe(0);
+      });
+
+      it('[A, "", B, "", A] -> [A, B] (blanks dropped AND duplicate deduped, first wins)', async () => {
+        await writePerson('Mixed', `  - A\n  - ""\n  - B\n  - ""\n  - A\n`);
+        const { aliases, summary, schema } = await fixDefaultPath('Mixed');
+        expect(aliases).toEqual(['A', 'B']);
+        expect(summary.remaining).toBe(0);
+
+        // Idempotent.
+        const after = await runAudit(schema, vaultDir, { strict: false });
+        await runAutoFix(
+          after.filter((r) => r.relativePath === 'People/Mixed.md'),
+          schema,
+          vaultDir
+        );
+        const stable = await parseNote(join(vaultDir, 'People', 'Mixed.md'));
+        expect(stable.frontmatter['aliases']).toEqual(['A', 'B']);
+      });
+
+      it('only the single illegal-aliases issue fires on an alias field (invalid-list-element is suppressed)', async () => {
+        await writePerson('Guard', `  - ""\n  - "  "\n  - Real\n`);
+        const schema = await loadSchema(vaultDir);
+        const results = await runAudit(schema, vaultDir, { strict: false });
+        const guard = results.find((r) => r.relativePath === 'People/Guard.md');
+        // The alias-field guard means invalid-list-element must NOT co-fire.
+        expect(guard?.issues.some((i) => i.code === 'invalid-list-element')).toBe(false);
+        expect(guard?.issues.some((i) => i.code === 'illegal-aliases')).toBe(true);
+      });
+    });
+
+    it('non-string alias entries are flagged but NOT auto-fixed', async () => {
+      // A YAML-numeric alias entry: we cannot infer the intended text, so this
+      // stays flag-only (consistent with the write path rejecting it).
+      await writeFile(
+        join(vaultDir, 'People', 'NumAlias.md'),
+        `---\ntype: person\naliases:\n  - Steve\n  - 123\n---\n`
+      );
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, { strict: false });
+      const num = results.find((r) => r.relativePath === 'People/NumAlias.md');
+      const issue = num?.issues.find((i) => i.code === 'illegal-aliases');
+      expect(issue).toBeDefined();
+      expect(issue?.severity).toBe('error');
+      expect(issue?.autoFixable).toBe(false);
+
+      // The illegal-aliases fix must NOT drop or merge the non-string entry — no
+      // alias data is lost. (A separate, pre-existing `invalid-list-element`
+      // coercion may stringify a bare numeric YAML element, e.g. 123 → "123";
+      // either way the entry survives.)
+      await runAutoFix(
+        results.filter((r) => r.relativePath === 'People/NumAlias.md'),
+        schema,
+        vaultDir
+      );
+      const after = await parseNote(join(vaultDir, 'People', 'NumAlias.md'));
+      const aliases = after.frontmatter['aliases'] as unknown[];
+      expect(aliases).toHaveLength(2);
+      expect(aliases[0]).toBe('Steve');
+      expect(String(aliases[1])).toBe('123');
     });
 
     it('audit passes a well-formed aliases note', async () => {
@@ -276,6 +454,62 @@ describe('alias field role', () => {
       // The well-formed note is either omitted (no issues at all) or present
       // without an illegal-aliases issue.
       expect(steve?.issues.some((i) => i.code === 'illegal-aliases') ?? false).toBe(false);
+    });
+  });
+
+  // Confirm this PR did NOT change `invalid-list-element` behavior for NON-alias
+  // list fields. The alias-field guard added for #617 must be scoped to alias
+  // fields only — a plain list field with blanks is still detected and removed
+  // by `invalid-list-element` exactly as before (the stale-index bug there is a
+  // separate, pre-existing issue tracked elsewhere; we don't assert on its
+  // result shape, only that detection still fires and the field is untouched by
+  // the alias path).
+  describe('non-alias list fields are unaffected by the alias-field guard (#617)', () => {
+    const TAG_SCHEMA: Schema = {
+      version: 2,
+      types: {
+        meta: { fields: {} },
+        note: {
+          extends: 'meta',
+          output_dir: 'Notes',
+          fields: {
+            type: { value: 'note' },
+            // A plain (non-alias) list field.
+            tags: { prompt: 'list' },
+          },
+          field_order: ['type', 'tags'],
+        },
+      },
+    };
+
+    let vaultDir: string;
+
+    beforeEach(async () => {
+      vaultDir = await mkdtemp(join(tmpdir(), 'bwrb-taglist-'));
+      await mkdir(join(vaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(vaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TAG_SCHEMA, null, 2)
+      );
+      await mkdir(join(vaultDir, 'Notes'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(vaultDir, { recursive: true, force: true });
+    });
+
+    it('still reports invalid-list-element for a blank entry in a non-alias list', async () => {
+      await writeFile(
+        join(vaultDir, 'Notes', 'Tagged.md'),
+        `---\ntype: note\ntags:\n  - alpha\n  - ""\n  - beta\n---\n`
+      );
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, { strict: false });
+      const tagged = results.find((r) => r.relativePath === 'Notes/Tagged.md');
+      // The non-alias list is NOT guarded — invalid-list-element still fires.
+      expect(tagged?.issues.some((i) => i.code === 'invalid-list-element')).toBe(true);
+      // And illegal-aliases never applies to a non-alias field.
+      expect(tagged?.issues.some((i) => i.code === 'illegal-aliases')).toBe(false);
     });
   });
 
