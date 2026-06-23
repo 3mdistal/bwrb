@@ -13,7 +13,11 @@ import {
   getFrontmatterOrder,
 } from './schema.js';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
-import { isBodySectionPresent } from './audit/body-sections.js';
+import {
+  isBodySectionPresent,
+  flattenBodySections,
+  type FlatBodySection,
+} from './audit/body-sections.js';
 import { queryByType, formatValue } from './vault.js';
 import {
   promptSelection,
@@ -528,8 +532,49 @@ function formatCurrentValue(value: unknown): string {
 }
 
 /**
+ * Collect the declared body-section headings missing from `body`, in tree order.
+ *
+ * Recurses the FULL `body_sections` tree (top-level AND nested children) via the
+ * shared {@link flattenBodySections} tree-walk that the audit
+ * `missing-body-section` detector uses, so `edit`'s candidate set agrees with
+ * audit's missing-section set (#697). A declared child heading whose parent is
+ * already present is still reported (at its own declared level) — previously
+ * such a child was skipped because `edit` only iterated top-level sections and
+ * emitted children solely via the parent's scaffold. Presence is checked with
+ * the shared {@link isBodySectionPresent} helper (#653), so present headings
+ * (incl. trailing-ws / ATX-closing-`##` / code-fenced-not-counted) are not
+ * reported.
+ */
+export function collectMissingBodySections(
+  body: string,
+  sections: BodySection[]
+): FlatBodySection[] {
+  return flattenBodySections(sections).filter(
+    ({ title, level }) => !isBodySectionPresent(body, level, title)
+  );
+}
+
+/**
+ * Append a single declared heading's scaffold to `body`, WITHOUT its children
+ * (children are appended on their own turn in the tree-walk). Mirrors the audit
+ * auto-fix (`applyBodySectionFix`) spacing/placement so `edit` and `audit`
+ * produce consistent output, and so re-running adds nothing (idempotent — the
+ * caller re-checks presence against the growing body before each append).
+ */
+export function appendBodySection(body: string, section: BodySection): string {
+  const sectionScaffold = generateBodySections([{ ...section, children: undefined }]);
+  const existing = body.replace(/\s*$/, '');
+  return existing.length > 0 ? `${existing}\n\n${sectionScaffold}` : sectionScaffold;
+}
+
+/**
  * Check for missing sections and offer to add them.
  * Throws UserCancelledError if user cancels any prompt.
+ *
+ * Iterates the shared tree-walk so it agrees with audit (#697); for each missing
+ * heading it prompts, then appends just that heading. The presence re-check runs
+ * against the growing `updatedBody`, so a heading is never duplicated within a
+ * single run.
  */
 async function addMissingSections(
   body: string,
@@ -537,19 +582,16 @@ async function addMissingSections(
 ): Promise<string> {
   let updatedBody = body;
 
-  for (const section of sections) {
-    const level = section.level ?? 2;
+  for (const { section, title, level } of flattenBodySections(sections)) {
+    if (isBodySectionPresent(updatedBody, level, title)) continue;
 
-    if (!isBodySectionPresent(body, level, section.title)) {
-      printWarning(`Missing section: ${section.title}`);
-      const addIt = await promptConfirm('Add it?');
-      if (addIt === null) {
-        throw new UserCancelledError();
-      }
-      if (addIt) {
-        const newSection = generateBodySections([section]);
-        updatedBody += '\n' + newSection;
-      }
+    printWarning(`Missing section: ${title}`);
+    const addIt = await promptConfirm('Add it?');
+    if (addIt === null) {
+      throw new UserCancelledError();
+    }
+    if (addIt) {
+      updatedBody = appendBodySection(updatedBody, section);
     }
   }
 

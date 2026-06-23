@@ -91,20 +91,33 @@ function findHeadingLine(maskedBody: string, title: string): number | undefined 
   return undefined;
 }
 
+/** One declared heading, flattened out of the `body_sections` tree. */
+export interface FlatBodySection {
+  /** The declared section (carries `content_type` for the scaffold). */
+  section: BodySection;
+  title: string;
+  level: number;
+}
+
 /**
- * Recursively collect every declared section as a flat list of (section, level)
- * entries. A child's level defaults to one deeper than its declared value via
- * the schema's own `level` field (children carry their own `level`), so we read
- * each section's `level` directly (default 2) rather than inferring depth.
+ * Recursively collect every declared section (top-level AND nested children) as
+ * a flat, tree-order list of {@link FlatBodySection} entries. A child's level
+ * defaults to one deeper than its declared value via the schema's own `level`
+ * field (children carry their own `level`), so we read each section's `level`
+ * directly (default 2) rather than inferring depth.
+ *
+ * Shared tree-walk: the audit `missing-body-section` detector AND `bwrb edit`'s
+ * add-missing-sections flow both iterate this so they can't drift in which
+ * declared headings they consider (#697).
  */
-function flattenSections(
+export function flattenBodySections(
   sections: BodySection[],
-  out: Array<{ title: string; level: number }> = []
-): Array<{ title: string; level: number }> {
+  out: FlatBodySection[] = []
+): FlatBodySection[] {
   for (const section of sections) {
-    out.push({ title: section.title, level: section.level ?? 2 });
+    out.push({ section, title: section.title, level: section.level ?? 2 });
     if (section.children && section.children.length > 0) {
-      flattenSections(section.children, out);
+      flattenBodySections(section.children, out);
     }
   }
   return out;
@@ -133,7 +146,7 @@ export function detectMissingBodySections(
   // line number at masked content).
   const masked = maskNonProse(body);
 
-  for (const { title, level } of flattenSections(bodySections)) {
+  for (const { title, level } of flattenBodySections(bodySections)) {
     if (headingPresentInMasked(masked, level, title)) continue;
 
     const wrongLevelLine = findHeadingLine(masked, title);
