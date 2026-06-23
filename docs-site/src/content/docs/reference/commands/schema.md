@@ -95,6 +95,24 @@ bwrb schema list type [options] <name>
 - Use shorthand (`<typePath>` or `--type`) for all other type paths
 - If mixed forms are provided (for example positional + `--type`), the command errors with guidance
 
+### Field provenance
+
+`schema list fields` lists the **resolved** fields for every type, so each type
+shows its own fields plus the fields it inherits from a parent and the fields it
+composes from traits — matching what `schema list type <name>` reports. Every
+field row carries an `origin` so you can tell where it came from:
+
+| `origin` | Meaning |
+|----------|---------|
+| `own` | Declared directly on the type |
+| `trait:<name>` | Composed from the named trait |
+| `inherited:<name>` | Inherited from the named ancestor type |
+
+In text output the origin is the leading token in the `DETAILS` column. In JSON
+output (`--output json`) each entry in `data.fields` gains an `origin` string
+alongside the existing `type`, `field`, and `definition`. A schema with no
+inheritance or traits lists the same fields as before, each with `origin: "own"`.
+
 ### Examples
 
 ```bash

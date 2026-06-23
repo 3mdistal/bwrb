@@ -1127,6 +1127,138 @@ milestone: "[[Active Milestone]]"
     });
   });
 
+  describe('schema list fields provenance', () => {
+    async function withProvenanceVault(
+      fn: (dir: string) => Promise<void>
+    ): Promise<void> {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-fields-prov-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          traits: {
+            timestamped: {
+              fields: {
+                created: { prompt: 'date' },
+                updated: { prompt: 'date' },
+              },
+            },
+          },
+          types: {
+            meta: {},
+            objective: {
+              extends: 'meta',
+              output_dir: 'Objectives',
+              fields: { title: { prompt: 'text', required: true } },
+            },
+            task: {
+              extends: 'objective',
+              traits: ['timestamped'],
+              output_dir: 'Objectives/Tasks',
+              fields: { status: { prompt: 'select', options: ['todo', 'done'] } },
+            },
+          },
+        })
+      );
+      try {
+        await fn(tempVaultDir);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    }
+
+    it('JSON shows inherited fields with provenance on the child type', async () => {
+      await withProvenanceVault(async (dir) => {
+        const result = await runCLI(['schema', 'list', 'fields', '--output', 'json'], dir);
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+
+        const inheritedTitle = json.data.fields.find(
+          (f: { type: string; field: string }) => f.type === 'task' && f.field === 'title'
+        );
+        expect(inheritedTitle).toBeDefined();
+        expect(inheritedTitle.origin).toBe('inherited:objective');
+      });
+    });
+
+    it('JSON shows trait-composed fields with provenance', async () => {
+      await withProvenanceVault(async (dir) => {
+        const result = await runCLI(['schema', 'list', 'fields', '--output', 'json'], dir);
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+
+        const created = json.data.fields.find(
+          (f: { type: string; field: string }) => f.type === 'task' && f.field === 'created'
+        );
+        expect(created).toBeDefined();
+        expect(created.origin).toBe('trait:timestamped');
+      });
+    });
+
+    it('JSON shows own fields as own', async () => {
+      await withProvenanceVault(async (dir) => {
+        const result = await runCLI(['schema', 'list', 'fields', '--output', 'json'], dir);
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+
+        const status = json.data.fields.find(
+          (f: { type: string; field: string }) => f.type === 'task' && f.field === 'status'
+        );
+        expect(status).toBeDefined();
+        expect(status.origin).toBe('own');
+      });
+    });
+
+    it('text output surfaces inherited and trait provenance markers', async () => {
+      await withProvenanceVault(async (dir) => {
+        const result = await runCLI(['schema', 'list', 'fields'], dir);
+        expect(result.exitCode).toBe(0);
+        // Inherited title field from objective shows on task.
+        expect(result.stdout).toMatch(/task\s+title.*inherited:objective/);
+        // Trait fields show with their trait provenance.
+        expect(result.stdout).toMatch(/task\s+created.*trait:timestamped/);
+        // Own fields are marked own.
+        expect(result.stdout).toMatch(/task\s+status.*own/);
+      });
+    });
+
+    it('schema with no inheritance/traits keeps the existing shape', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-fields-flat-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            note: {
+              extends: 'meta',
+              output_dir: 'Notes',
+              fields: { body: { prompt: 'text' } },
+            },
+          },
+        })
+      );
+      try {
+        const result = await runCLI(['schema', 'list', 'fields', '--output', 'json'], tempVaultDir);
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+
+        // Only the single own field, attributed as own. Every field carries the
+        // new origin key but the field set is unchanged.
+        expect(json.data.fields).toHaveLength(1);
+        const body = json.data.fields[0];
+        expect(body.type).toBe('note');
+        expect(body.field).toBe('body');
+        expect(body.origin).toBe('own');
+        expect(body.definition).toEqual({ prompt: 'text' });
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('schema list --verbose', () => {
     it('should show all types with their fields inline', async () => {
       const result = await runCLI(['schema', 'list', '--verbose'], vaultDir);
