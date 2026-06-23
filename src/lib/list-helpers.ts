@@ -59,6 +59,63 @@ export function isFileSortKey(field: string): boolean {
   return FILE_SORT_KEYS.has(field);
 }
 
+/**
+ * Whether the given `--fields` key is a filesystem-stat `file.*` key. These can
+ * be requested as display columns (text table) and JSON fields in addition to
+ * being used as `--sort` keys. Currently identical to {@link isFileSortKey}
+ * (same key set), but named separately so the two intents read clearly at call
+ * sites and can diverge later if needed.
+ */
+export function isFileStatField(field: string): boolean {
+  return FILE_SORT_KEYS.has(field);
+}
+
+/**
+ * Format a filesystem timestamp (epoch millis) for human (text-table) output as
+ * `YYYY-MM-DD HH:MM` in local time. Shared with `recent`'s MODIFIED column so
+ * the two commands render `file.mtime` identically.
+ */
+export function formatFileTimestamp(timeMs: number): string {
+  const d = new Date(timeMs);
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${date} ${time}`;
+}
+
+/**
+ * Render a `file.*` stat value for the human (text-table) display. Times are
+ * formatted via {@link formatFileTimestamp}; `file.size` is the raw byte count.
+ * Returns `undefined` when no stat was collected for the file (e.g. unreadable),
+ * letting the caller fall back to its empty placeholder.
+ */
+export function formatFileStatDisplay(
+  field: string,
+  stat: FileStat | undefined
+): string | undefined {
+  if (!stat) return undefined;
+  if (field === 'file.mtime') return formatFileTimestamp(stat.mtimeMs);
+  if (field === 'file.ctime') return formatFileTimestamp(stat.ctimeMs);
+  if (field === 'file.size') return String(stat.size);
+  return undefined;
+}
+
+/**
+ * Resolve a `file.*` stat value for JSON output. Times are ISO-8601 strings
+ * (matching `recent`'s `_modified` convention); `file.size` is a number.
+ * Returns `undefined` when no stat was collected (the key is then omitted).
+ */
+export function fileStatJsonValue(
+  field: string,
+  stat: FileStat | undefined
+): string | number | undefined {
+  if (!stat) return undefined;
+  if (field === 'file.mtime') return new Date(stat.mtimeMs).toISOString();
+  if (field === 'file.ctime') return new Date(stat.ctimeMs).toISOString();
+  if (field === 'file.size') return stat.size;
+  return undefined;
+}
+
 export interface TreeNode {
   name: string;
   path: string;

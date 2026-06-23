@@ -7,6 +7,10 @@ import {
   compareSortValues,
   createFileComparator,
   isFileSortKey,
+  isFileStatField,
+  formatFileTimestamp,
+  formatFileStatDisplay,
+  fileStatJsonValue,
   type FileStatMap,
   extractNoteName,
   buildParentMapFromFiles,
@@ -78,6 +82,55 @@ describe('list-helpers: sort/comparison', () => {
       expect(isFileSortKey('file.name')).toBe(false);
       expect(isFileSortKey('name')).toBe(false);
       expect(isFileSortKey('priority')).toBe(false);
+    });
+  });
+
+  describe('isFileStatField', () => {
+    it('recognizes the same stat-backed file.* keys as --fields columns', () => {
+      expect(isFileStatField('file.mtime')).toBe(true);
+      expect(isFileStatField('file.ctime')).toBe(true);
+      expect(isFileStatField('file.size')).toBe(true);
+    });
+
+    it('rejects frontmatter and reserved keys', () => {
+      expect(isFileStatField('file.name')).toBe(false);
+      expect(isFileStatField('status')).toBe(false);
+      expect(isFileStatField('_path')).toBe(false);
+    });
+  });
+
+  describe('file.* display + json formatting (#689)', () => {
+    const stat = { mtimeMs: 1_700_000_000_000, ctimeMs: 1_690_000_000_000, size: 4096 };
+
+    function localStamp(ms: number): string {
+      const d = new Date(ms);
+      const pad = (n: number): string => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    it('formatFileTimestamp renders local YYYY-MM-DD HH:MM', () => {
+      expect(formatFileTimestamp(stat.mtimeMs)).toBe(localStamp(stat.mtimeMs));
+    });
+
+    it('formatFileStatDisplay renders times as stamps and size as bytes', () => {
+      expect(formatFileStatDisplay('file.mtime', stat)).toBe(localStamp(stat.mtimeMs));
+      expect(formatFileStatDisplay('file.ctime', stat)).toBe(localStamp(stat.ctimeMs));
+      expect(formatFileStatDisplay('file.size', stat)).toBe('4096');
+    });
+
+    it('formatFileStatDisplay returns undefined for a missing stat', () => {
+      expect(formatFileStatDisplay('file.mtime', undefined)).toBeUndefined();
+    });
+
+    it('fileStatJsonValue renders times as ISO strings and size as a number', () => {
+      expect(fileStatJsonValue('file.mtime', stat)).toBe(new Date(stat.mtimeMs).toISOString());
+      expect(fileStatJsonValue('file.ctime', stat)).toBe(new Date(stat.ctimeMs).toISOString());
+      expect(fileStatJsonValue('file.size', stat)).toBe(4096);
+      expect(typeof fileStatJsonValue('file.size', stat)).toBe('number');
+    });
+
+    it('fileStatJsonValue returns undefined for a missing stat', () => {
+      expect(fileStatJsonValue('file.size', undefined)).toBeUndefined();
     });
   });
 
