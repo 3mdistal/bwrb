@@ -552,7 +552,8 @@ name**:
 
 - `bwrb open`, `bwrb edit`, and `bwrb search` resolve a query to an entity when
   it matches one of the entity's aliases (a real note name always wins over an
-  alias of the same string).
+  alias of the same string — **case-insensitively**, consistent with the rest of
+  resolution, so a real note `steve` wins over an entity merely aliased `Steve`).
 - Relation/link targets written as `[[An Alias]]` resolve to the aliased entity.
 
 Declare the role with `alias: true` on a list field:

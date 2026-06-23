@@ -72,6 +72,13 @@ export async function buildNoteIndex(schema: LoadedSchema, vaultDir: string): Pr
   // Index entity aliases as additional resolution keys, so notes are findable by
   // their declared aliases. Reuses the single parse pass from the vault snapshot;
   // aliases only exist on schema-typed entities.
+  // Lowercased real-basename set so a real note wins over an alias even when they
+  // differ only by case, consistent with the case-insensitive basename lookup in
+  // resolveNoteQuery.
+  const basenamesLower = new Set<string>();
+  for (const name of byBasename.keys()) {
+    basenamesLower.add(name.toLowerCase());
+  }
   const byAlias = new Map<string, ManagedFile[]>();
   const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
   for (const note of snapshot.notes) {
@@ -80,8 +87,9 @@ export async function buildNoteIndex(schema: LoadedSchema, vaultDir: string): Pr
     if (!file) continue;
     const aliases = getEntityAliases(schema, note.resolvedType, note.frontmatter);
     for (const alias of aliases) {
-      // A real note name always wins over an alias of the same string.
-      if (byBasename.has(alias)) continue;
+      // A real note name always wins over an alias of the same string
+      // (case-insensitively).
+      if (basenamesLower.has(alias.toLowerCase())) continue;
       const existing = byAlias.get(alias) || [];
       existing.push(file);
       byAlias.set(alias, existing);

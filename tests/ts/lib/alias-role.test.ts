@@ -199,6 +199,24 @@ describe('alias field role', () => {
       expect(result.exact?.relativePath).toBe('Notes/Steve.md');
     });
 
+    it('a case-variant real note name wins over an alias (#616)', async () => {
+      // Real note literally named "steve" (lowercase) and a DIFFERENT entity
+      // aliased "Steve" (capital). The real-name-wins guard is case-insensitive,
+      // so the alias must NOT shadow the case-variant real note.
+      await writeFile(join(vaultDir, 'Notes', 'steve.md'), `---\ntype: note\n---\n`);
+      const schema = await loadSchema(vaultDir);
+      const index = await buildNoteIndex(schema, vaultDir);
+
+      // The alias "Steve" is never registered, because the real note "steve"
+      // wins case-insensitively.
+      expect(index.byAlias.has('Steve')).toBe(false);
+
+      // Querying "Steve" resolves to the REAL note via case-insensitive basename
+      // matching, never silently to the aliased entity.
+      const result = resolveNoteQuery(index, 'Steve');
+      expect(result.exact?.relativePath).toBe('Notes/steve.md');
+    });
+
     it('relation/link target index resolves an alias to the entity path', async () => {
       const schema = await loadSchema(vaultDir);
       const targetIndex = await buildNoteTargetIndex(schema, vaultDir);
@@ -207,6 +225,37 @@ describe('alias field role', () => {
       expect(targetIndex.targetToPaths.get('stevey')).toContain('People/Steve Yegge.md');
       // The canonical name still resolves.
       expect(targetIndex.targetToPaths.get('Steve Yegge')).toContain('People/Steve Yegge.md');
+    });
+
+    it('relation target index: a case-variant real note wins over an alias (#616)', async () => {
+      // Real note "steve" (lowercase); "Steve Yegge" is aliased "Steve".
+      await writeFile(join(vaultDir, 'Notes', 'steve.md'), `---\ntype: note\n---\n`);
+      const schema = await loadSchema(vaultDir);
+      const targetIndex = await buildNoteTargetIndex(schema, vaultDir);
+
+      // The capital "Steve" alias key is never registered, because the real
+      // note "steve" wins case-insensitively. Audit relation resolution + --fix
+      // therefore never bind a `[[Steve]]` reference to the aliased entity.
+      expect(targetIndex.targetToPaths.has('Steve')).toBe(false);
+      // The real note resolves under its own (lowercase) key.
+      expect(targetIndex.targetToPaths.get('steve')).toContain('Notes/steve.md');
+      // Other, non-colliding aliases still resolve to the entity.
+      expect(targetIndex.targetToPaths.get('stevey')).toContain('People/Steve Yegge.md');
+    });
+
+    it('a shared alias across two entities stays ambiguous (no regression)', async () => {
+      // A second person also aliased "Steve": genuine ambiguity, never auto-resolved.
+      await writeFile(
+        join(vaultDir, 'People', 'Steve Jobs.md'),
+        `---\ntype: person\naliases:\n  - Steve\n---\n`
+      );
+      const schema = await loadSchema(vaultDir);
+      const index = await buildNoteIndex(schema, vaultDir);
+
+      const result = resolveNoteQuery(index, 'Steve');
+      expect(result.exact).toBeNull();
+      expect(result.isAmbiguous).toBe(true);
+      expect(result.candidates.length).toBe(2);
     });
 
     it('audit flags empty alias entries (illegal-aliases)', async () => {
