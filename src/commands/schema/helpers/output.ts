@@ -18,6 +18,7 @@ import {
   getFieldOrderForOrigin,
   getFieldOrderForTrait,
   getOutputDir,
+  formatUnknownTypeError,
 } from '../../../lib/schema.js';
 import { printError } from '../../../lib/prompt.js';
 import { printJson, jsonError, ExitCodes } from '../../../lib/output.js';
@@ -53,7 +54,7 @@ export function outputSchemaJson(schema: LoadedSchema): void {
 export function outputTypeDetailsJson(schema: LoadedSchema, typePath: string): void {
   const typeDef = getTypeDefByPath(schema, typePath);
   if (!typeDef) {
-    printJson(jsonError(`Unknown type: ${typePath}`));
+    printJson(jsonError(formatUnknownTypeError(schema, typePath)));
     process.exit(ExitCodes.VALIDATION_ERROR);
   }
 
@@ -309,7 +310,7 @@ export function showTypeDetails(schema: LoadedSchema, typePath: string): void {
   const context = getTtyContext();
   const typeDef = getTypeDefByPath(schema, typePath);
   if (!typeDef) {
-    printError(`Unknown type: ${typePath}`);
+    printError(formatUnknownTypeError(schema, typePath));
     process.exit(1);
   }
 

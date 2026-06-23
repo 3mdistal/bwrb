@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import {
   loadSchema,
   getTypeDefByPath,
+  formatUnknownTypeError,
 } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
@@ -309,7 +310,7 @@ Examples:
       if (typePath) {
         const typeDef = getTypeDefByPath(schema, typePath);
         if (!typeDef) {
-          const error = `Unknown type: ${typePath}`;
+          const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {
             printJson(jsonError(error, { code: ExitCodes.VALIDATION_ERROR }));
             printError(error);
