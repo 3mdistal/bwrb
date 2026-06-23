@@ -149,7 +149,12 @@ export interface DiscoverReport {
   totalFiles: number;
   /** Files that had a (non-empty) frontmatter block. */
   filesWithFrontmatter: number;
-  /** Files that could not be parsed (path + reason). Never fatal. */
+  /**
+   * Paths that could not be read and were skipped (path + reason). Never fatal.
+   * Includes individual files that failed to parse and NESTED subdirectories
+   * that could not be listed mid-walk. (An unreadable scanned ROOT is a hard
+   * error and never reaches a report.)
+   */
   unreadable: Array<{ file: string; error: string }>;
   /** Whether a schema was found and loaded for drift detection. */
   schemaPresent: boolean;
@@ -163,29 +168,69 @@ export interface DiscoverReport {
 // File walking
 // ============================================================================
 
+/** Result of walking a folder for Markdown files. */
+interface MarkdownWalkResult {
+  /** Absolute paths of every `.md` file found, sorted. */
+  files: string[];
+  /**
+   * Nested directories that could not be read mid-walk (path + reason). The
+   * scanned ROOT is never recorded here — an unreadable root is a hard error
+   * raised by the caller of {@link collectMarkdownFiles}, not a recoverable
+   * skip. These are surfaced (not silently dropped) but do not abort the scan.
+   */
+  unreadableDirs: Array<{ dir: string; error: string }>;
+}
+
 /**
  * Recursively collect `.md` files under `dir`. Hidden directories (`.git`,
  * `.bwrb`, …) are skipped. Standalone helper so discover can run on an
  * arbitrary folder without the vault's schema-aware discovery machinery.
+ *
+ * The ROOT directory being unreadable is a hard error: `readdir` throws and
+ * the error propagates to the caller (which maps it to a non-zero exit). An
+ * unreadable NESTED subdirectory is recoverable — it is recorded in
+ * `unreadableDirs` and the rest of the tree is still scanned, so one locked
+ * subfolder does not make the whole run silently report "0 files".
+ *
+ * @param isRoot whether `dir` is the originally scanned root (default true).
+ *   Recursive calls pass `false` so their failures are recorded, not thrown.
  */
-async function collectMarkdownFiles(dir: string): Promise<string[]> {
-  const results: string[] = [];
+async function collectMarkdownFiles(
+  dir: string,
+  isRoot = true
+): Promise<MarkdownWalkResult> {
+  const files: string[] = [];
+  const unreadableDirs: Array<{ dir: string; error: string }> = [];
+
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
-  } catch {
-    return results;
+  } catch (err) {
+    // Root unreadable → hard error (exit 2). Nested → record and skip.
+    if (isRoot) throw err;
+    unreadableDirs.push({
+      dir,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { files, unreadableDirs };
   }
+
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
-      results.push(...(await collectMarkdownFiles(full)));
+      const nested = await collectMarkdownFiles(full, false);
+      files.push(...nested.files);
+      unreadableDirs.push(...nested.unreadableDirs);
     } else if (entry.isFile() && entry.name.endsWith('.md')) {
-      results.push(full);
+      files.push(full);
     }
   }
-  return results.sort((a, b) => a.localeCompare(b));
+
+  return {
+    files: files.sort((a, b) => a.localeCompare(b)),
+    unreadableDirs,
+  };
 }
 
 // ============================================================================
@@ -275,10 +320,15 @@ export async function buildDiscoverReport(
   options: BuildReportOptions = {}
 ): Promise<DiscoverReport> {
   const { schema } = options;
-  const files = await collectMarkdownFiles(root);
+  // An unreadable ROOT throws here and propagates to the command layer, which
+  // maps it to a non-zero (IO_ERROR) exit. Nested unreadable dirs are returned
+  // and surfaced below rather than aborting the scan.
+  const { files, unreadableDirs } = await collectMarkdownFiles(root);
 
   const accumulators = new Map<string, FieldAccumulator>();
-  const unreadable: Array<{ file: string; error: string }> = [];
+  const unreadable: Array<{ file: string; error: string }> = unreadableDirs.map(
+    (d) => ({ file: relative(root, d.dir), error: d.error })
+  );
   let filesWithFrontmatter = 0;
 
   const schemaInfo = schema ? collateSchemaFields(schema) : undefined;

@@ -1,8 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, mkdir, writeFile, rm } from 'fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, chmod } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { runCLI } from '../fixtures/setup.js';
+
+/**
+ * `chmod 000` is a no-op for the root user (root bypasses permission bits), so
+ * permission-based tests must be skipped when the suite runs as root (common in
+ * CI containers). `process.getuid` is undefined on Windows; treat that as
+ * "cannot test permissions" and skip too.
+ */
+const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+const skipIfNoPerms = isRoot ? it.skip : it;
 
 /**
  * `schema discover` is DESCRIPTIVE — it reports frontmatter facts and never
@@ -245,6 +254,59 @@ describe('schema discover', () => {
       const parsed = JSON.parse(result.stdout) as { success: boolean; error: string };
       expect(parsed.success).toBe(false);
       expect(parsed.error).toContain('not found');
+    });
+
+    skipIfNoPerms('exits non-zero for an unreadable ROOT directory (#639)', async () => {
+      const locked = join(dir, 'locked');
+      await mkdir(locked, { recursive: true });
+      await writeFile(join(locked, 'n.md'), `---\nk: v\n---\n`);
+      await chmod(locked, 0o000);
+      try {
+        const result = await runCLI(['schema', 'discover', locked]);
+        // Must NOT silently report "0 markdown file(s)" with exit 0.
+        expect(result.exitCode).toBe(2);
+        expect(result.stdout).not.toContain('0 markdown file(s)');
+      } finally {
+        // Restore perms so afterEach cleanup can remove the dir.
+        await chmod(locked, 0o755);
+      }
+    });
+
+    skipIfNoPerms('reports an error as JSON for an unreadable ROOT in json mode (#639)', async () => {
+      const locked = join(dir, 'locked');
+      await mkdir(locked, { recursive: true });
+      await writeFile(join(locked, 'n.md'), `---\nk: v\n---\n`);
+      await chmod(locked, 0o000);
+      try {
+        const result = await runCLI(['schema', 'discover', locked, '--output', 'json']);
+        expect(result.exitCode).toBe(2);
+        const parsed = JSON.parse(result.stdout) as { success: boolean; error: string };
+        expect(parsed.success).toBe(false);
+        expect(parsed.error).toContain('unreadable');
+      } finally {
+        await chmod(locked, 0o755);
+      }
+    });
+
+    skipIfNoPerms('surfaces an unreadable NESTED subdir without aborting the scan (#639)', async () => {
+      // Readable root with one readable note and one locked subdirectory.
+      await writeNote('readable.md', `---\ntype: idea\n---\n`);
+      const lockedSub = join(dir, 'locked-sub');
+      await mkdir(lockedSub, { recursive: true });
+      await writeFile(join(lockedSub, 'hidden.md'), `---\nsecret: yes\n---\n`);
+      await chmod(lockedSub, 0o000);
+      try {
+        const result = await runCLI(['schema', 'discover', dir, '--output', 'json']);
+        // The scan succeeds (exit 0) and still reports the readable file...
+        expect(result.exitCode).toBe(0);
+        const data = parseJson(result.stdout);
+        expect(data.totalFiles).toBe(1);
+        expect(field(data, 'type')).toBeDefined();
+        // ...but the locked subdir is surfaced, not silently dropped.
+        expect(data.unreadable.some((u) => u.file === 'locked-sub')).toBe(true);
+      } finally {
+        await chmod(lockedSub, 0o755);
+      }
     });
 
     it('classifies dates, lists, and booleans distinctly', async () => {
