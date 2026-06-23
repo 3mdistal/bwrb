@@ -2732,6 +2732,41 @@ status: raw
       expect(wrongDirIssue).toBeDefined();
       expect(wrongDirIssue.expected).toBe('Notes');
     });
+
+    it('flags an owned-type child under a fake (wrong-type) owner note', async () => {
+      // `Albums/Fake/Fake.md` is a fake owner: it exists where an owner note
+      // would live, but its `type` is `note`, not `album`. Discovery attaches
+      // ownership to children purely from folder structure (the owner note's
+      // existence), so a `type: track` child under `Albums/Fake/songs/` arrives
+      // with `file.ownership` even though there is no real album owning it.
+      // Because the owner note does not actually resolve to the expected owner
+      // type, the owner-subtree exemption must NOT apply: the child is flagged
+      // against `track`'s own output_dir (Tracks). (Regression for the Codex P2
+      // owner-side false-negative on #701.)
+      await mkdir(join(tempVaultDir, 'Albums/Fake/songs'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Albums/Fake', 'Fake.md'),
+        `---\ntype: note\n---\n`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Albums/Fake/songs', 'Stranded Track.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const stranded = output.files.find((f: { path: string }) =>
+        f.path.includes('Stranded Track.md')
+      );
+      expect(stranded).toBeDefined();
+      const wrongDirIssue = stranded.issues.find(
+        (i: { code: string }) => i.code === 'wrong-directory'
+      );
+      expect(wrongDirIssue).toBeDefined();
+      expect(wrongDirIssue.expected).toBe('Tracks');
+    });
   });
 
   describe('--execute flag validation', () => {
