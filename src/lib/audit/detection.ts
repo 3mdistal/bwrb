@@ -522,6 +522,24 @@ export async function auditFile(
           autoFixable: wrapped.ok,
         });
       }
+    } else if (
+      expectedScalarType !== 'string' &&
+      typeof value === 'string' &&
+      value === ''
+    ) {
+      // A literal empty string is "unset", not an invalid scalar. This mirrors
+      // the write path exactly: validateFrontmatter computes emptiness with
+      // `value !== ''` (NOT trimmed) and accepts `''`, so we skip only `''`
+      // here too. A whitespace-only value (e.g. "   ") is NOT skipped — the
+      // write path rejects it as a wrong-type scalar, so audit must flag it as
+      // `wrong-scalar-type` to keep write and audit in agreement (parity).
+      // Other optional fields behave the same (e.g. empty selects/dates are
+      // skipped — see the date block below). A *required* empty value is
+      // reported once as `empty-string-required` by the required-field loop
+      // above. Skipping here avoids both double-reporting and flagging an unset
+      // optional number as `wrong-scalar-type` (#664, mirroring #614). A
+      // genuinely non-numeric value (e.g. "abc") is not empty and so is still
+      // flagged by the coercion check below.
     } else {
       if (Array.isArray(value)) {
         const listCoercion = getScalarFromList(value, expectedScalarType);

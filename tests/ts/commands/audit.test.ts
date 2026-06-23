@@ -3598,6 +3598,151 @@ when: ""
       expect(dateIssues).toHaveLength(0);
     });
 
+    it('should not flag an empty optional number as wrong-scalar-type (#664)', async () => {
+      // Repro for #664: the write path accepts an empty-string optional number and
+      // stores `effort: ""`. Audit must agree and treat it as "unset" rather than
+      // reporting a wrong-scalar-type error. Mirrors the #614 rule for dates.
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Empty Effort.md'),
+        `---
+type: idea
+status: raw
+effort: ""
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Empty Effort.md'));
+
+      if (file) {
+        const numberIssue = file.issues.find(
+          (i: { code: string; field?: string }) =>
+            i.code === 'wrong-scalar-type' && i.field === 'effort'
+        );
+        expect(numberIssue).toBeUndefined();
+      }
+    });
+
+    it('should flag a blank (whitespace) optional number as wrong-scalar-type (write/audit parity)', async () => {
+      // Parity with the write path: validateFrontmatter computes emptiness with
+      // `value !== ''` (NOT trimmed), so a whitespace-only value like "   " is
+      // NOT treated as unset and is rejected as a wrong-type scalar. Audit must
+      // agree and flag it as wrong-scalar-type. Only the literal empty string
+      // ("") is skipped as "unset" (see the #664 test above). This keeps audit
+      // and `new --json`/`edit` in agreement on whitespace-only scalars.
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Blank Effort.md'),
+        `---
+type: idea
+status: raw
+effort: "   "
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Blank Effort.md'));
+
+      expect(file).toBeDefined();
+      const numberIssue = file.issues.find(
+        (i: { code: string; field?: string }) =>
+          i.code === 'wrong-scalar-type' && i.field === 'effort'
+      );
+      expect(numberIssue).toBeDefined();
+      expect(numberIssue.expected).toBe('number');
+    });
+
+    it('should still flag a non-numeric optional number value', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Garbage Effort.md'),
+        `---
+type: idea
+status: raw
+effort: "abc"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Garbage Effort.md'));
+      expect(file).toBeDefined();
+      const numberIssue = file.issues.find(
+        (i: { code: string; field?: string }) =>
+          i.code === 'wrong-scalar-type' && i.field === 'effort'
+      );
+      expect(numberIssue).toBeDefined();
+      expect(numberIssue.expected).toBe('number');
+    });
+
+    it('should report an empty required number once as empty-string-required, not wrong-scalar-type', async () => {
+      // A required empty number should follow the same "missing required" path as
+      // any other required field — exactly one issue, and not a bogus scalar-type
+      // error. Mirrors the #614 required-date behaviour.
+      const schema = {
+        ...TEST_SCHEMA,
+        types: {
+          ...TEST_SCHEMA.types,
+          counted: {
+            output_dir: 'Counted',
+            fields: {
+              type: { value: 'counted' },
+              count: { prompt: 'number', required: true },
+            },
+            field_order: ['type', 'count'],
+          },
+        },
+      };
+      await writeFile(join(tempVaultDir, '.bwrb', 'schema.json'), JSON.stringify(schema, null, 2));
+      await mkdir(join(tempVaultDir, 'Counted'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Counted', 'No Count.md'),
+        `---
+type: counted
+count: ""
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'counted', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('No Count.md'));
+      expect(file).toBeDefined();
+      const emptyRequired = file.issues.filter((i: { code: string }) => i.code === 'empty-string-required');
+      const scalarIssues = file.issues.filter((i: { code: string }) => i.code === 'wrong-scalar-type');
+      expect(emptyRequired).toHaveLength(1);
+      expect(scalarIssues).toHaveLength(0);
+    });
+
+    it('should not flag a valid optional number (#664 regression)', async () => {
+      // A genuine numeric value must remain clean — the #664 blank-skip guard
+      // only narrows the empty-string case and must not suppress real numbers.
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Valid Effort.md'),
+        `---
+type: idea
+status: raw
+effort: 3
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Valid Effort.md'));
+
+      if (file) {
+        const numberIssue = file.issues.find(
+          (i: { code: string; field?: string }) =>
+            i.code === 'wrong-scalar-type' && i.field === 'effort'
+        );
+        expect(numberIssue).toBeUndefined();
+      }
+    });
+
     it('should report an empty element in a date list once (as invalid-list-element, not invalid-date-format)', async () => {
       // Coordinates with #640/#641: empty list elements are surfaced by the list
       // integrity checker. The per-element date check must skip them so they are
