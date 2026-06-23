@@ -37,7 +37,7 @@ import {
 } from '../lib/fuzzy-search.js';
 import { parseNote } from '../lib/frontmatter.js';
 import { applyWhereExpressions } from '../lib/where-targeting.js';
-import { minimatch } from 'minimatch';
+import { filterByPath } from '../lib/targeting.js';
 import { UserCancelledError } from '../lib/errors.js';
 
 // ============================================================================
@@ -403,12 +403,19 @@ async function handleContentSearch(
     process.exit(1);
   }
 
-  // Apply path glob filter if specified
+  // Apply path glob filter if specified.
+  //
+  // Reads the canonical `options.path` (the same field --path sets and the
+  // deprecated --path-glob is normalized into earlier in the action handler),
+  // so `--body --path <glob>` and `--body --path-glob <glob>` both filter
+  // content-search results. Reuses the shared filterByPath util for consistent
+  // directory/glob normalization with `list` and bulk commands. (fixes #675)
   let filteredResults = searchResult.results;
-  if (options.pathGlob) {
-    filteredResults = filteredResults.filter(r => 
-      minimatch(r.file.relativePath, options.pathGlob!, { matchBase: true })
+  if (options.path) {
+    const matched = new Set(
+      filterByPath(filteredResults.map(r => r.file), options.path).map(f => f.path)
     );
+    filteredResults = filteredResults.filter(r => matched.has(r.file.path));
   }
 
   // Apply frontmatter filters if specified (--where expressions)

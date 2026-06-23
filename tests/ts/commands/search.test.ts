@@ -578,6 +578,75 @@ Some content
       expect(result.stdout).toContain('--limit');
     });
 
+    describe('--path filtering with --body (issue #675)', () => {
+      it('should filter content-search results with canonical --path', async () => {
+        const result = await runCLI([
+          'search', 'status', '--body', '--path', 'Ideas/*', '--output', 'json'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        // Matches inside the glob are kept...
+        expect(json.data.length).toBeGreaterThan(0);
+        for (const item of json.data) {
+          expect(item.path).toMatch(/^Ideas\//);
+        }
+        // ...and matches outside the glob are excluded.
+        const paths = json.data.map((d: { path: string }) => d.path);
+        expect(paths.some((p: string) => p.startsWith('Objectives/'))).toBe(false);
+      });
+
+      it('should support -p short flag with --body', async () => {
+        const result = await runCLI([
+          'search', 'status', '--body', '-p', 'Ideas/*', '--output', 'json'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        for (const item of json.data) {
+          expect(item.path).toMatch(/^Ideas\//);
+        }
+      });
+
+      it('should still filter with deprecated --path-glob alias', async () => {
+        const result = await runCLI([
+          'search', 'status', '--body', '--path-glob', 'Ideas/*', '--output', 'json'
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        for (const item of json.data) {
+          expect(item.path).toMatch(/^Ideas\//);
+        }
+        const paths = json.data.map((d: { path: string }) => d.path);
+        expect(paths.some((p: string) => p.startsWith('Objectives/'))).toBe(false);
+        // Deprecation warning still emitted for the alias.
+        expect(result.stderr).toContain('Warning');
+        expect(result.stderr).toContain('--path');
+      });
+
+      it('should produce identical results for --path and --path-glob', async () => {
+        const withPath = await runCLI([
+          'search', 'status', '--body', '--path', 'Objectives/**', '--output', 'json'
+        ], vaultDir);
+        const withGlob = await runCLI([
+          'search', 'status', '--body', '--path-glob', 'Objectives/**', '--output', 'json'
+        ], vaultDir);
+
+        expect(withPath.exitCode).toBe(0);
+        expect(withGlob.exitCode).toBe(0);
+        const pathData = JSON.parse(withPath.stdout).data
+          .map((d: { path: string }) => d.path).sort();
+        const globData = JSON.parse(withGlob.stdout).data
+          .map((d: { path: string }) => d.path).sort();
+        expect(pathData).toEqual(globData);
+        expect(pathData.length).toBeGreaterThan(0);
+      });
+    });
+
     describe('--where validation with --type', () => {
       it('should accept valid --where with --type', async () => {
         const result = await runCLI([
