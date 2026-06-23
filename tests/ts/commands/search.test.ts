@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
-import { writeFile } from 'fs/promises';
+import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 
 describe('search command', () => {
@@ -227,8 +227,7 @@ status: backlog
 
     it('should exclude unmanaged files in gitignored directories', async () => {
       // Create an unmanaged file outside type directories
-      const { mkdir } = await import('fs/promises');
-      await mkdir(join(tempVaultDir, 'Drafts'), { recursive: true });
+        await mkdir(join(tempVaultDir, 'Drafts'), { recursive: true });
       await writeFile(join(tempVaultDir, 'Drafts', 'WIP Note.md'), `---
 title: WIP Note
 ---
@@ -247,8 +246,7 @@ Work in progress
 
     it('should find unmanaged files NOT in gitignored directories', async () => {
       // Create an unmanaged file outside type directories
-      const { mkdir } = await import('fs/promises');
-      await mkdir(join(tempVaultDir, 'Notes'), { recursive: true });
+        await mkdir(join(tempVaultDir, 'Notes'), { recursive: true });
       await writeFile(join(tempVaultDir, 'Notes', 'Random Note.md'), `---
 title: Random Note
 ---
@@ -652,5 +650,86 @@ Some content
         expect(json.error).toContain('Unknown function: missingFn');
       });
     });
+  });
+});
+
+describe('nested subdir discovery (#619)', () => {
+  let vaultDir: string;
+
+  beforeEach(async () => {
+    vaultDir = await createTestVault();
+  });
+
+  afterEach(async () => {
+    await cleanupTestVault(vaultDir);
+  });
+
+  it('lists a note in a nested subdir under output_dir with the parent type', async () => {
+    await mkdir(join(vaultDir, 'Ideas', 'Sub'), { recursive: true });
+    await writeFile(
+      join(vaultDir, 'Ideas', 'Sub', 'Nested Idea.md'),
+      '---\ntype: idea\nstatus: raw\n---\n'
+    );
+
+    const result = await runCLI(['list', '--type', 'idea', '--output', 'paths'], vaultDir);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Ideas/Sub/Nested Idea.md');
+  });
+
+  it('finds a nested note via plain search', async () => {
+    await mkdir(join(vaultDir, 'Ideas', 'Sub'), { recursive: true });
+    await writeFile(
+      join(vaultDir, 'Ideas', 'Sub', 'Nested Idea.md'),
+      '---\ntype: idea\nstatus: raw\n---\n'
+    );
+
+    const result = await runCLI(
+      ['search', 'Nested Idea', '--output', 'paths'],
+      vaultDir
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe('Ideas/Sub/Nested Idea.md');
+  });
+
+  it('finds a deeply nested note via fuzzy search', async () => {
+    await mkdir(join(vaultDir, 'Ideas', 'A', 'B'), { recursive: true });
+    await writeFile(
+      join(vaultDir, 'Ideas', 'A', 'B', 'Deeply Nested Idea.md'),
+      '---\ntype: idea\nstatus: raw\n---\n'
+    );
+
+    const result = await runCLI(
+      ['search', 'Deeply Nestd Idea', '--fuzzy', '--output', 'json'],
+      vaultDir
+    );
+    expect(result.exitCode).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.success).toBe(true);
+    expect(json.data.some((d: { name: string }) => d.name === 'Deeply Nested Idea')).toBe(true);
+  });
+
+  it('does not misassign a nested note under one type to another type', async () => {
+    // A nested idea under Ideas must not show up when listing tasks.
+    await mkdir(join(vaultDir, 'Ideas', 'Sub'), { recursive: true });
+    await writeFile(
+      join(vaultDir, 'Ideas', 'Sub', 'Nested Idea.md'),
+      '---\ntype: idea\nstatus: raw\n---\n'
+    );
+
+    const tasks = await runCLI(['list', '--type', 'task', '--output', 'paths'], vaultDir);
+    expect(tasks.exitCode).toBe(0);
+    expect(tasks.stdout).not.toContain('Nested Idea');
+  });
+
+  it('excludes hidden subdirectories under a type output_dir', async () => {
+    await mkdir(join(vaultDir, 'Ideas', '.hidden'), { recursive: true });
+    await writeFile(
+      join(vaultDir, 'Ideas', '.hidden', 'Secret Idea.md'),
+      '---\ntype: idea\nstatus: raw\n---\n'
+    );
+
+    const result = await runCLI(['list', '--type', 'idea', '--output', 'paths'], vaultDir);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).not.toContain('Secret Idea');
   });
 });

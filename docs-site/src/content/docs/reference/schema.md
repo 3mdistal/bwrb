@@ -71,11 +71,41 @@ Types define categories of notes. Each type has a name (the object key) and a de
 | `extends` | string | `"meta"` | Parent type name (single-inheritance) |
 | `traits` | array | — | Trait names composed into this type (see [Traits](#traits)) |
 | `description` | string | — | What this type is for and when to use it. Surfaced by `bwrb schema list` |
+| `output_dir` | string | auto | Vault-relative folder where this type's notes live (e.g., `"Objectives/Tasks"`). See [Output directories](#output-directories) |
 | `fields` | object | `{}` | Field definitions |
 | `field_order` | array | — | Order of fields in frontmatter |
 | `body_sections` | array | — | Body structure after frontmatter |
 | `recursive` | boolean | `false` | Whether type can contain instances of itself |
 | `plural` | string | auto | Custom plural for folder naming (e.g., `"research"` instead of `"researchs"`) |
+
+### Output directories
+
+Each type's `output_dir` is the folder its notes live in. `bwrb new` creates notes
+directly in `output_dir`, but discovery (`bwrb list`, `bwrb search`, and
+`search --fuzzy`) treats `output_dir` as a **subtree**: notes filed in nested
+subfolders are discovered and associated with that type too.
+
+For a `people` type with `output_dir: "People"`, all of these are discovered as
+`people` notes:
+
+```
+People/Ada Lovelace.md          # direct child
+People/Historical/Ada Lovelace.md   # nested subdir
+People/Historical/Mathematicians/Ada.md   # deeply nested
+```
+
+Boundaries are respected so notes are never misassigned:
+
+- A nested folder that is itself another type's `output_dir` (e.g. `Objectives/Tasks`
+  under `Objectives`) belongs to that more specific type, not the parent.
+- Owned-note subfolders (see [Owned relations](#owned-relations)) keep their owned
+  child type and ownership metadata.
+- Hidden/system folders (`.bwrb`, anything starting with `.`) and paths excluded by
+  `config.excluded_directories`, `.gitignore`, or `.bwrbignore` are never indexed.
+
+A nested note whose declared `type` does not match the folder it sits in is still
+discoverable, but `bwrb audit` reports it as `wrong-directory` — discovery and the
+audit's directory check use the same subtree rule.
 
 ### Inheritance
 
