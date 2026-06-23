@@ -105,6 +105,18 @@ function isDryRunEnabled(): boolean {
   return dryRunStorage.getStore() ?? false;
 }
 
+/**
+ * A list entry that the `invalid-list-element` remover is allowed to drop:
+ * `null`/`undefined` or a whitespace-only string. Mirrors the blank/empty
+ * detection in checkInvalidListElements (detection.ts) so the fixer only ever
+ * removes the entries that detection flagged for removal — never distinct
+ * content (#683).
+ */
+function isBlankListEntry(entry: unknown): boolean {
+  if (entry === null || entry === undefined) return true;
+  return typeof entry === 'string' && entry.trim().length === 0;
+}
+
 function registerManualReview(
   list: { file: string; issue: AuditIssue }[],
   file: string,
@@ -1419,13 +1431,30 @@ export async function runAutoFix(
         const fixResult = await updateFrontmatterValue(schema, result, (frontmatter) => {
           const current = frontmatter[issue.field!];
           if (!Array.isArray(current)) return false;
-          if (listIndex < 0 || listIndex >= current.length) return false;
 
           if (action === 'remove') {
-            current.splice(listIndex, 1);
+            // Index-safe blank removal (#683). Detection reports each blank/null
+            // entry with its ORIGINAL index, but every issue is applied as its
+            // own read-modify-write to a SHRINKING array. Splicing blindly by the
+            // original index uses a stale offset once an earlier blank has been
+            // removed and can delete a distinct, non-blank element (data loss).
+            //
+            // Only ever remove a blank/null entry: prefer the reported index when
+            // it still points at a blank, otherwise drop the first remaining
+            // blank. This preserves every distinct value regardless of how many
+            // blanks there are or where they sit, and is idempotent — once no
+            // blanks remain the predicate returns false and the file is untouched.
+            const removeAt =
+              listIndex >= 0 && listIndex < current.length && isBlankListEntry(current[listIndex])
+                ? listIndex
+                : current.findIndex((entry) => isBlankListEntry(entry));
+            if (removeAt < 0) return false;
+            current.splice(removeAt, 1);
             frontmatter[issue.field!] = current;
             return true;
           }
+
+          if (listIndex < 0 || listIndex >= current.length) return false;
 
           if (action === 'coerce') {
             current[listIndex] = String(current[listIndex]);
