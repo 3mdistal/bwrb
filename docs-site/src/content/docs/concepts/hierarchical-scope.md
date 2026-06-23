@@ -149,6 +149,8 @@ Aliases (see [Schema](/concepts/schema/)) work transparently with `under()`. The
 Concretely, if `Builder` has an alias `BuilderProject`, then a task with `context: "[[BuilderProject]]"` **is** returned by `under(context, '[[Builder]]')` and `under(context, '[[career]]')` — the alias resolves back to `Builder`, so the tree walk reaches it. Passing the alias as the query node works too: `under(context, '[[BuilderProject]]')` resolves to `Builder` and walks its whole subtree. You can use either the canonical name or an alias in `under()` targets and in leaf `context` relations.
 
 Ambiguous aliases (the same alias declared on more than one note) are the one exception: they are **not** auto-resolved, so they match nothing rather than silently picking a winner. Disambiguate by renaming the alias or referencing the canonical note name.
+
+The structural operators `isChildOf` and `isDescendantOf` are alias-aware in the same way: if a context note writes its own `parent` as an alias of the real parent (`Vercel.parent = "[[BuilderProject]]"`), it is still matched by `isChildOf('[[Builder]]')` and `isDescendantOf('[[career]]')`, and an aliased query node resolves to the canonical note too.
 :::
 - **Validation for free.** A task pointing at a non-existent context is flagged by the existing relation-source audit (see [Validation and Audit](/concepts/validation-and-audit/)), exactly like any other broken relation.
 

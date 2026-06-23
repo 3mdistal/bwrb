@@ -66,12 +66,30 @@ function expressionsUseHierarchyFunctions(expressions: string[]): boolean {
 }
 
 /**
- * Check if any expression uses the `under` operator.
+ * Hierarchy operators that canonicalize aliases on the parent chain and so need
+ * the full-vault augmentation pass that builds `HierarchyData.aliasMap`.
  *
- * `under` dereferences a relation field and walks the *target's* ancestor
- * chain. The target note is usually NOT in the (type-)filtered candidate set,
- * so its `parent` chain must be sourced from the full vault rather than only
- * the files being filtered.
+ * - `under` dereferences a relation field and walks the *target's* ancestor
+ *   chain. The target note is usually NOT in the (type-)filtered candidate set,
+ *   so its `parent` chain must be sourced from the full vault.
+ * - `isChildOf` / `isDescendantOf` walk the candidate note's OWN `parent` chain,
+ *   but that chain may be written with aliases (and may climb through notes
+ *   outside the candidate set). They need the same alias map and full-vault
+ *   parent chains to canonicalize each step (#659).
+ */
+const ALIAS_AWARE_HIERARCHY_FUNCTIONS = ['under', 'isChildOf', 'isDescendantOf'];
+
+function expressionsNeedVaultAugmentation(expressions: string[]): boolean {
+  return expressions.some(expr =>
+    ALIAS_AWARE_HIERARCHY_FUNCTIONS.some(fn => expr.includes(fn + '('))
+  );
+}
+
+/**
+ * `under` is the only operator that needs the full-vault parent chains merged in
+ * (it dereferences a relation to a target outside the candidate set). The other
+ * alias-aware operators get the alias map only, keeping their candidate-only
+ * parent-map semantics intact.
  */
 function expressionsUseUnder(expressions: string[]): boolean {
   return expressions.some(expr => expr.includes('under('));
@@ -126,18 +144,28 @@ function addParentRelationship(
 }
 
 /**
- * Augment hierarchy data with parent relationships from the entire vault.
+ * Augment hierarchy data with data sourced from the entire vault.
  *
- * Needed by `under`, which walks the ancestor chain of a relation target that
- * usually lives outside the (type-)filtered candidate set. Relationships
- * already present from the candidate pass are preserved.
+ * Two things may be attached, both derived from a SINGLE vault snapshot:
  *
- * Performance: this builds the parent map AND the alias map from a SINGLE vault
- * snapshot. `buildVaultNoteSnapshot` walks the vault once and parses every note
- * once (resolving each note's type in the same pass), and both maps are derived
- * from that one snapshot. Previously this re-parsed the vault twice per `under`
- * query — once via `discoverManagedFiles` + `parseNote`, and again inside
- * `buildVaultAliasMap`'s own snapshot pass.
+ * 1. The alias -> canonical-note map (`HierarchyData.aliasMap`). Consumed by all
+ *    the alias-aware hierarchy operators (`under`, `isChildOf`,
+ *    `isDescendantOf`) to canonicalize aliased relation/parent values and
+ *    aliased query nodes before walking the chain (#636/#659). Always built.
+ *
+ * 2. (Only when `augmentParentChains` is set, i.e. for `under`) the full-vault
+ *    parent map. `under` dereferences a relation field to a note that usually
+ *    lives OUTSIDE the (type-)filtered candidate set, so that target's ancestor
+ *    chain must come from the whole vault. `isChildOf`/`isDescendantOf` instead
+ *    walk the *candidate note's own* chain and intentionally keep the
+ *    candidate-only parent map — augmenting it would change which structural
+ *    ancestors they see (it would pull in cross-type ancestors that the
+ *    candidate-only semantics deliberately stop at). Candidate-pass
+ *    relationships always win on conflicts regardless.
+ *
+ * Performance: both outputs come from one `buildVaultNoteSnapshot` pass (the
+ * vault is walked and parsed once, resolving each note's type in the same pass),
+ * so an `under` query never re-reads the vault for the alias map.
  */
 async function augmentHierarchyDataFromVault(
   hierarchyData: HierarchyData,
@@ -145,28 +173,36 @@ async function augmentHierarchyDataFromVault(
     vaultDir: string;
     /** Optional pre-built snapshot to reuse instead of walking the vault again. */
     snapshot?: VaultNoteSnapshot;
+    /**
+     * When true, also merge the full-vault parent chains into `parentMap` (for
+     * `under`). When false, only the alias map is attached and the candidate-only
+     * parent map is left intact (for `isChildOf`/`isDescendantOf`).
+     */
+    augmentParentChains: boolean;
   }
 ): Promise<void> {
   if (!options.schema) return;
 
   const snapshot =
     options.snapshot ?? (await buildVaultNoteSnapshot(options.schema, options.vaultDir));
-  const hierarchyFieldCache = new Map<string, string[]>();
 
-  for (const note of snapshot.notes) {
-    if (!note.frontmatter) continue;
-    addParentRelationship(
-      { path: note.path, frontmatter: note.frontmatter },
-      hierarchyData.parentMap,
-      hierarchyData.childrenMap,
-      // Resolve each note's own type from frontmatter for the full-vault pass.
-      { schema: options.schema },
-      hierarchyFieldCache
-    );
+  if (options.augmentParentChains) {
+    const hierarchyFieldCache = new Map<string, string[]>();
+    for (const note of snapshot.notes) {
+      if (!note.frontmatter) continue;
+      addParentRelationship(
+        { path: note.path, frontmatter: note.frontmatter },
+        hierarchyData.parentMap,
+        hierarchyData.childrenMap,
+        // Resolve each note's own type from frontmatter for the full-vault pass.
+        { schema: options.schema },
+        hierarchyFieldCache
+      );
+    }
   }
 
-  // Build the alias -> canonical-note map from the SAME snapshot so `under` can
-  // canonicalize aliased relation targets and aliased query nodes (see
+  // Build the alias -> canonical-note map from the SAME snapshot so the
+  // operators can canonicalize aliased values and query nodes (see
   // HierarchyData.aliasMap) without re-reading the vault.
   hierarchyData.aliasMap = buildVaultAliasMap(options.schema, snapshot);
 }
@@ -358,10 +394,17 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
       ...(typePath ? { typePath } : {}),
     });
 
-    // `under` resolves relation targets that typically live outside the
-    // filtered candidate set, so it needs the full vault's parent chains.
-    if (schema && expressionsUseUnder(normalizedExpressions)) {
-      await augmentHierarchyDataFromVault(hierarchyData, { schema, vaultDir });
+    // All alias-aware hierarchy operators need the vault-wide alias map.
+    // Additionally, `under` needs the full vault's parent chains merged in
+    // (its relation targets live outside the candidate set); `isChildOf` /
+    // `isDescendantOf` keep their candidate-only parent map and take the alias
+    // map only. Both are built from a single vault snapshot.
+    if (schema && expressionsNeedVaultAugmentation(normalizedExpressions)) {
+      await augmentHierarchyDataFromVault(hierarchyData, {
+        schema,
+        vaultDir,
+        augmentParentChains: expressionsUseUnder(normalizedExpressions),
+      });
     }
   }
 

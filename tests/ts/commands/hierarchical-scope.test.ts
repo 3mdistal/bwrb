@@ -433,3 +433,151 @@ describe('#636 under() canonicalizes aliases', () => {
     expect(result.stdout).not.toContain('Aliased context task.md');
   });
 }, 30000);
+
+/**
+ * Guard test for #659 — "isChildOf/isDescendantOf don't canonicalize aliased
+ * parent values" (sibling of #636).
+ *
+ * `isChildOf`/`isDescendantOf` walk the candidate note's OWN `parent` chain. If
+ * a note writes `parent: [[Alias]]` (an alias of the real parent), the literal
+ * comparison used to silently miss the true ancestor — the same blind spot #636
+ * fixed for `under()`. This locks in that the parent-chain walk canonicalizes
+ * aliases on BOTH the chain values and the query node, end-to-end through the
+ * real CLI, reusing the #636 alias map.
+ */
+describe('#659 isChildOf/isDescendantOf canonicalize aliased parent values', () => {
+  let vaultDir: string;
+
+  const SCHEMA = {
+    version: 2,
+    types: {
+      entity: {
+        output_dir: 'Entities',
+        fields: { type: { value: 'entity' } },
+        field_order: ['type'],
+      },
+      context: {
+        extends: 'entity',
+        output_dir: 'Contexts',
+        recursive: true,
+        fields: {
+          type: { value: 'context' },
+          parent: { prompt: 'relation', source: 'context', format: 'quoted-wikilink' },
+          aliases: { prompt: 'list', alias: true, list_format: 'yaml-array', default: [] },
+        },
+        field_order: ['type', 'parent', 'aliases'],
+      },
+    },
+    audit: { ignored_directories: [] },
+  };
+
+  const writeNote = async (rel: string, frontmatter: string[]) => {
+    const path = join(vaultDir, rel);
+    await mkdir(join(path, '..'), { recursive: true });
+    await writeFile(path, ['---', ...frontmatter, '---', ''].join('\n'));
+  };
+
+  beforeAll(async () => {
+    vaultDir = await mkdtemp(join(tmpdir(), 'bwrb-659-'));
+    await mkdir(join(vaultDir, '.bwrb'), { recursive: true });
+    await writeFile(join(vaultDir, '.bwrb', 'schema.json'), JSON.stringify(SCHEMA, null, 2));
+
+    // career (alias: careerAlias)
+    //   └── Builder (alias: BuilderProject)
+    //         └── Vercel   (parent written as the ALIAS [[BuilderProject]])
+    //               └── Edge (parent written as canonical [[Vercel]])
+    await writeNote('Contexts/career.md', ['type: context', 'aliases:', '  - careerAlias']);
+    await writeNote('Contexts/Builder.md', [
+      'type: context',
+      'parent: "[[career]]"',
+      'aliases:',
+      '  - BuilderProject',
+    ]);
+    // Vercel's parent is the ALIAS of Builder — the #659 bug case.
+    await writeNote('Contexts/Vercel.md', ['type: context', 'parent: "[[BuilderProject]]"']);
+    await writeNote('Contexts/Edge.md', ['type: context', 'parent: "[[Vercel]]"']);
+
+    // Two notes claim the same alias 'Dup' -> ambiguous, dropped from the map.
+    await writeNote('Contexts/Alpha.md', ['type: context', 'aliases:', '  - Dup']);
+    await writeNote('Contexts/Beta.md', ['type: context', 'aliases:', '  - Dup']);
+    // A note whose parent is the ambiguous alias.
+    await writeNote('Contexts/DupChild.md', ['type: context', 'parent: "[[Dup]]"']);
+  });
+
+  afterAll(async () => {
+    await rm(vaultDir, { recursive: true, force: true });
+  });
+
+  it('isChildOf matches an aliased parent value against the canonical node', async () => {
+    // Vercel's parent is [[BuilderProject]] (alias of Builder).
+    const result = await runCLI(
+      ['list', 'context', '--where', "isChildOf('[[Builder]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Vercel.md');
+    // Builder's own (canonical) parent is career — not a child of Builder.
+    expect(result.stdout).not.toContain('Builder.md');
+  });
+
+  it('isChildOf resolves an aliased query node to its canonical note', async () => {
+    // Builder's parent is the canonical [[career]]; query node careerAlias.
+    const result = await runCLI(
+      ['list', 'context', '--where', "isChildOf('[[careerAlias]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Builder.md');
+  });
+
+  it('isDescendantOf walks through an aliased link to a canonical ancestor', async () => {
+    // Vercel.parent = [[BuilderProject]] -> Builder -> career.
+    const result = await runCLI(
+      ['list', 'context', '--where', "isDescendantOf('[[career]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Builder.md');
+    expect(result.stdout).toContain('Vercel.md');
+    expect(result.stdout).toContain('Edge.md'); // mixed alias/canonical chain
+    expect(result.stdout).not.toContain('career.md'); // root is not its own descendant
+  });
+
+  it('isDescendantOf resolves an aliased query node and matches its subtree', async () => {
+    // Query node BuilderProject -> Builder; Vercel and Edge are under Builder.
+    const result = await runCLI(
+      ['list', 'context', '--where', "isDescendantOf('[[BuilderProject]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Vercel.md');
+    expect(result.stdout).toContain('Edge.md');
+  });
+
+  it('does not resolve an ambiguous alias in the parent chain (no silent winner)', async () => {
+    // DupChild.parent = [[Dup]]; 'Dup' is ambiguous (Alpha + Beta) so it stays
+    // literal and never canonicalizes into either claimant's subtree.
+    const viaAlpha = await runCLI(
+      ['list', 'context', '--where', "isChildOf('[[Alpha]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(viaAlpha.exitCode).toBe(0);
+    expect(viaAlpha.stdout).not.toContain('DupChild.md');
+
+    const viaBeta = await runCLI(
+      ['list', 'context', '--where', "isChildOf('[[Beta]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(viaBeta.exitCode).toBe(0);
+    expect(viaBeta.stdout).not.toContain('DupChild.md');
+  });
+
+  it('does not crash on a dangling alias query node', async () => {
+    const result = await runCLI(
+      ['list', 'context', '--where', "isDescendantOf('[[GhostAlias]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).not.toContain('Vercel.md');
+  });
+}, 30000);
