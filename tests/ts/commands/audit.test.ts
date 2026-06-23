@@ -2618,6 +2618,11 @@ status: raw
           fields: { type: { value: 'track' } },
           field_order: ['type'],
         },
+        note: {
+          output_dir: 'Notes',
+          fields: { type: { value: 'note' } },
+          field_order: ['type'],
+        },
       },
     };
 
@@ -2699,6 +2704,33 @@ status: raw
         f.path.includes('Nested Track.md')
       );
       expect(nestedFile).toBeUndefined();
+    });
+
+    it('flags a note whose type differs from the owned field child type placed in an owned-field folder', async () => {
+      // A `type: note` note dropped into the `songs/` owned-field folder gets
+      // `file.ownership` attached by discovery (folder-location only), but it is
+      // NOT a legitimate owned note: the owned field's child type is `track`, not
+      // `note`. Its real type (`note`) determines where it belongs, so it must be
+      // flagged against note's own output_dir (Notes), not exempted by the
+      // owner-subtree rule. (Regression for the Codex P2 false-negative on #701.)
+      await writeFile(
+        join(tempVaultDir, 'Albums/Best Album/songs', 'Misfiled Note.md'),
+        `---\ntype: note\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const misfiled = output.files.find((f: { path: string }) =>
+        f.path.includes('Misfiled Note.md')
+      );
+      expect(misfiled).toBeDefined();
+      const wrongDirIssue = misfiled.issues.find(
+        (i: { code: string }) => i.code === 'wrong-directory'
+      );
+      expect(wrongDirIssue).toBeDefined();
+      expect(wrongDirIssue.expected).toBe('Notes');
     });
   });
 

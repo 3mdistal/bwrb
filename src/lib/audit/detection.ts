@@ -14,6 +14,7 @@ import {
   getOutputDir,
   getTypeFamilies,
   getDescendants,
+  getOwnedFields,
   resolveDateGranularity,
   getRecurrenceForType,
 } from '../schema.js';
@@ -374,9 +375,28 @@ export async function auditFile(
   // is NOT in its valid owner-subtree location is still reported here (and a
   // genuinely misplaced owned note is additionally caught by the dedicated
   // `owned-wrong-location` check in checkOwnershipViolations).
-  const expectedOutputDir = file.ownership
-    ? getOwnedChildFolder(file.ownership.ownerPath, file.ownership.fieldName)
-    : getOutputDir(schema, resolvedTypePath);
+  //
+  // Discovery attaches `file.ownership` based on FOLDER LOCATION alone, so a
+  // note whose actual `type` does NOT match the owned field's expected child
+  // type can still land here with ownership attached (e.g. a `type: album` note
+  // dropped into `Albums/Best Album/songs/`). Such a note is not a legitimate
+  // owned note — its real type determines where it belongs — so we only honor
+  // the owner-subtree exemption when the note's resolved type matches the owned
+  // field's child type (or is a descendant of it). Otherwise we fall through to
+  // the type's own `output_dir` so the mismatched-type note IS flagged.
+  const ownedChildType = file.ownership
+    ? getOwnedFields(schema, file.ownership.ownerType).find(
+        f => f.fieldName === file.ownership!.fieldName
+      )?.childType
+    : undefined;
+  const resolvedTypeMatchesOwnedChild =
+    ownedChildType !== undefined &&
+    (resolvedTypePath === ownedChildType ||
+      getDescendants(schema, ownedChildType).includes(resolvedTypePath));
+  const expectedOutputDir =
+    file.ownership && resolvedTypeMatchesOwnedChild
+      ? getOwnedChildFolder(file.ownership.ownerPath, file.ownership.fieldName)
+      : getOutputDir(schema, resolvedTypePath);
   if (expectedOutputDir) {
     const expectedPath = expectedOutputDir;
     const actualDir = dirname(file.relativePath);
