@@ -589,6 +589,117 @@ describe('list command', () => {
     });
   });
 
+  describe('--sort file.* stat keys', () => {
+    let statVault: string;
+
+    beforeEach(async () => {
+      statVault = await createTestVault();
+    });
+
+    afterEach(async () => {
+      await cleanupTestVault(statVault);
+    });
+
+    /** Set a file's mtime/atime to a fixed epoch-seconds value. */
+    async function setMtime(rel: string, seconds: number): Promise<void> {
+      const { utimes } = await import('fs/promises');
+      const when = new Date(seconds * 1000);
+      await utimes(join(statVault, rel), when, when);
+    }
+
+    it('sorts by file.mtime ascending (oldest first)', async () => {
+      const base = 1_700_000_000;
+      await setMtime('Ideas/Sample Idea.md', base + 300);
+      await setMtime('Ideas/Another Idea.md', base + 100);
+
+      const result = await runCLI(
+        ['list', 'idea', '--sort', 'file.mtime', '--output', 'paths'],
+        statVault
+      );
+
+      expect(result.exitCode).toBe(0);
+      const lines = result.stdout.trim().split('\n');
+      expect(lines.indexOf('Ideas/Another Idea.md')).toBeLessThan(
+        lines.indexOf('Ideas/Sample Idea.md')
+      );
+    });
+
+    it('sorts by file.mtime descending (most-recent first)', async () => {
+      const base = 1_700_000_000;
+      await setMtime('Ideas/Sample Idea.md', base + 100);
+      await setMtime('Ideas/Another Idea.md', base + 300);
+
+      const result = await runCLI(
+        ['list', 'idea', '--sort', 'file.mtime', '--desc', '--output', 'paths'],
+        statVault
+      );
+
+      expect(result.exitCode).toBe(0);
+      const lines = result.stdout.trim().split('\n');
+      expect(lines.indexOf('Ideas/Another Idea.md')).toBeLessThan(
+        lines.indexOf('Ideas/Sample Idea.md')
+      );
+    });
+
+    it('accepts file.ctime as a sort key', async () => {
+      const result = await runCLI(
+        ['list', 'idea', '--sort', 'file.ctime', '--desc', '--output', 'paths'],
+        statVault
+      );
+      expect(result.exitCode).toBe(0);
+      // All ideas present (ordering by ctime is platform-dependent for fixtures)
+      expect(result.stdout).toContain('Ideas/Sample Idea.md');
+      expect(result.stdout).toContain('Ideas/Another Idea.md');
+    });
+
+    it('accepts file.size as a sort key', async () => {
+      const result = await runCLI(
+        ['list', 'idea', '--sort', 'file.size', '--output', 'paths'],
+        statVault
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Ideas/Sample Idea.md');
+    });
+
+    it('combines file.mtime sort with --limit', async () => {
+      const base = 1_700_000_000;
+      await setMtime('Ideas/Sample Idea.md', base + 100);
+      await setMtime('Ideas/Another Idea.md', base + 300);
+
+      const result = await runCLI(
+        ['list', 'idea', '--sort', 'file.mtime', '--desc', '--limit', '1'],
+        statVault
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('Another Idea');
+    });
+
+    it('combines file.mtime sort with --where', async () => {
+      const base = 1_700_000_000;
+      await setMtime('Ideas/Sample Idea.md', base + 100);
+      await setMtime('Ideas/Another Idea.md', base + 300);
+
+      const result = await runCLI(
+        ['list', 'idea', '--where', '!isEmpty(status)', '--sort', 'file.mtime', '--desc', '--output', 'paths'],
+        statVault
+      );
+
+      expect(result.exitCode).toBe(0);
+      const lines = result.stdout.trim().split('\n').filter(Boolean);
+      // Both ideas pass the filter; most-recent (Another Idea) first.
+      expect(lines.indexOf('Ideas/Another Idea.md')).toBeLessThan(
+        lines.indexOf('Ideas/Sample Idea.md')
+      );
+    });
+
+    it('still rejects an unknown sort key', async () => {
+      const result = await runCLI(['list', 'idea', '--sort', 'file.bogus'], statVault);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Unknown field 'file.bogus'");
+    });
+  });
+
   describe('error handling', () => {
     it('should error on unknown type', async () => {
       const result = await runCLI(['list', '--type', 'nonexistent'], vaultDir);

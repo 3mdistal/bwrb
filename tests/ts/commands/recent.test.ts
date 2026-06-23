@@ -161,6 +161,87 @@ describe('recent command', () => {
     });
   });
 
+  describe('--open / --app', () => {
+    it('opens the most recent note (top result) in non-interactive mode', async () => {
+      const base = 1_700_000_000;
+      await setMtime(join(vaultDir, 'Ideas', 'Sample Idea.md'), base + 100);
+      await setMtime(join(vaultDir, 'Ideas', 'Another Idea.md'), base + 999);
+
+      // --app print resolves to printing the path of the opened note.
+      const result = await runCLI(
+        ['recent', '--type', 'idea', '--open', '--app', 'print'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toContain('Ideas/Another Idea.md');
+      // Only the single most-recent note is opened.
+      expect(result.stdout.trim()).not.toContain('Sample Idea');
+    });
+
+    it('opens the selected note resolved from --type filtering', async () => {
+      const result = await runCLI(
+        ['recent', '--type', 'task', '--limit', '1', '--open', '--app', 'print'],
+        vaultDir
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Task');
+    });
+
+    it('prints nothing and exits 0 when --open finds no notes', async () => {
+      const result = await runCLI(
+        ['recent', '--path', 'NoSuchDir/**', '--open', '--app', 'print'],
+        vaultDir
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('No notes found');
+    });
+  });
+
+  describe('--save-as', () => {
+    it('saves a recency query as a dashboard (sort file.mtime --desc)', async () => {
+      const result = await runCLI(
+        ['recent', '--type', 'task', '--save-as', 'recent-tasks'],
+        vaultDir
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain('Dashboard "recent-tasks" saved.');
+
+      const { readFile } = await import('fs/promises');
+      const raw = await readFile(join(vaultDir, '.bwrb', 'dashboards.json'), 'utf8');
+      const data = JSON.parse(raw);
+      const def = data.dashboards['recent-tasks'];
+      expect(def).toBeDefined();
+      expect(def.sort).toBe('file.mtime');
+      expect(def.desc).toBe(true);
+      expect(def.type).toBe('task');
+      // recent always limits; the default limit is persisted.
+      expect(def.limit).toBe(20);
+    });
+
+    it('errors if the dashboard exists without --force', async () => {
+      await runCLI(['recent', '--save-as', 'dup'], vaultDir);
+      const result = await runCLI(['recent', '--save-as', 'dup'], vaultDir);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain('already exists');
+    });
+
+    it('overwrites an existing dashboard with --force', async () => {
+      await runCLI(['recent', '--save-as', 'forced'], vaultDir);
+      const result = await runCLI(
+        ['recent', '--type', 'idea', '--save-as', 'forced', '--force'],
+        vaultDir
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain('Dashboard "forced" updated.');
+
+      const { readFile } = await import('fs/promises');
+      const raw = await readFile(join(vaultDir, '.bwrb', 'dashboards.json'), 'utf8');
+      const def = JSON.parse(raw).dashboards['forced'];
+      expect(def.type).toBe('idea');
+    });
+  });
+
   describe('empty vault', () => {
     it('reports no notes found', async () => {
       const emptyVault = await createTestVault();

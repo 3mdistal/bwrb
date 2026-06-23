@@ -25,6 +25,40 @@ export type FileWithFrontmatter = {
 
 export type FileComparator = (a: FileWithFrontmatter, b: FileWithFrontmatter) => number;
 
+/**
+ * Filesystem stat values used by the `file.*` sort keys. Mirrors the subset of
+ * `file.*` accessors that `--where` exposes (see `buildEvalContext` in
+ * `expression.ts`): modification time, creation time, and size. Times are kept
+ * as epoch-millisecond numbers so they compare numerically.
+ */
+export interface FileStat {
+  mtimeMs: number;
+  ctimeMs: number;
+  size: number;
+}
+
+/**
+ * Map from a file's absolute path to its {@link FileStat}. Built by the caller
+ * (which can do async I/O) and threaded into the comparator so the sort itself
+ * stays pure and synchronous.
+ */
+export type FileStatMap = Map<string, FileStat>;
+
+/**
+ * Sort keys backed by filesystem stats rather than frontmatter. These mirror
+ * the stat-derived `file.*` accessors available in `--where`. `file.name`,
+ * `file.path`, etc. are intentionally omitted because `name`/`_name`/`_path`
+ * already cover them.
+ */
+const FILE_SORT_KEYS = new Set(['file.mtime', 'file.ctime', 'file.size']);
+
+/**
+ * Whether the given sort field is one of the filesystem-stat `file.*` keys.
+ */
+export function isFileSortKey(field: string): boolean {
+  return FILE_SORT_KEYS.has(field);
+}
+
 export interface TreeNode {
   name: string;
   path: string;
@@ -58,12 +92,24 @@ export function compareByName(a: FileWithFrontmatter, b: FileWithFrontmatter): n
  * Handles the reserved fields `name`/`_name` (note basename) and `_path`
  * (vault-relative path); everything else is read from frontmatter.
  */
-export function getSortValue(file: FileWithFrontmatter, vaultDir: string, field: string): unknown {
+export function getSortValue(
+  file: FileWithFrontmatter,
+  vaultDir: string,
+  field: string,
+  fileStats?: FileStatMap
+): unknown {
   if (field === 'name' || field === '_name') {
     return basename(file.path, '.md');
   }
   if (field === '_path') {
     return relative(vaultDir, file.path);
+  }
+  if (isFileSortKey(field)) {
+    const stat = fileStats?.get(file.path);
+    if (!stat) return undefined;
+    if (field === 'file.mtime') return stat.mtimeMs;
+    if (field === 'file.ctime') return stat.ctimeMs;
+    return stat.size; // file.size
   }
   return file.frontmatter[field];
 }
@@ -124,15 +170,16 @@ export function compareSortValues(a: unknown, b: unknown): number {
 export function createFileComparator(
   vaultDir: string,
   sortField: string | undefined,
-  descending: boolean | undefined
+  descending: boolean | undefined,
+  fileStats?: FileStatMap
 ): FileComparator {
   if (!sortField) {
     return compareByName;
   }
 
   return (a, b) => {
-    const valueA = getSortValue(a, vaultDir, sortField);
-    const valueB = getSortValue(b, vaultDir, sortField);
+    const valueA = getSortValue(a, vaultDir, sortField, fileStats);
+    const valueB = getSortValue(b, vaultDir, sortField, fileStats);
     const missingA = isMissingSortValue(valueA);
     const missingB = isMissingSortValue(valueB);
 

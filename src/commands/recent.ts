@@ -4,7 +4,7 @@ import { stat } from 'fs/promises';
 import chalk from 'chalk';
 import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
-import { getGlobalOpts } from '../lib/command.js';
+import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
 import { printError } from '../lib/prompt.js';
 import {
   printJson,
@@ -23,6 +23,10 @@ import {
 } from '../lib/targeting.js';
 import { getTtyContext } from '../lib/tty/context.js';
 import { renderTable } from '../lib/tty/table.js';
+import { openNote, resolveAppMode } from './open.js';
+import { pickFile, parsePickerMode } from '../lib/picker.js';
+import { createDashboard, updateDashboard, getDashboard } from '../lib/dashboard.js';
+import type { DashboardDefinition } from '../types/schema.js';
 
 /**
  * Default number of recently-modified notes to show when --limit is omitted.
@@ -36,6 +40,12 @@ interface RecentCommandOptions {
   where?: string[];
   limit?: string;
   output?: string;
+  // Open options (parity with `list`)
+  open?: boolean;
+  app?: string;
+  // Dashboard save options (parity with `list`)
+  saveAs?: string;
+  force?: boolean;
 }
 
 /**
@@ -95,6 +105,22 @@ Targeting Selectors (compose via AND):
   --body <query>       Filter by body content (uses ripgrep)
   --limit <n>          Show only the first n notes (default ${DEFAULT_RECENT_LIMIT})
 
+Open Options:
+  --open               Open the most recent note (picker if multiple)
+  --app <mode>         How to open: system (default), editor, visual, obsidian, print
+
+App Modes:
+  system      Open with OS default handler (default)
+  editor      Open in terminal editor ($EDITOR or config.editor)
+  visual      Open in GUI editor ($VISUAL or config.visual)
+  obsidian    Open in Obsidian via URI scheme
+  print       Print the resolved path (for scripting)
+
+Dashboard Save:
+  --save-as <name>   Save this recency query as a reusable dashboard
+                     (stored as 'list --sort file.mtime --desc')
+  --force            Overwrite if the dashboard already exists
+
 Examples:
   bwrb recent
   bwrb recent --limit 5
@@ -102,7 +128,10 @@ Examples:
   bwrb recent --type task --limit 10
   bwrb recent --output json
   bwrb recent --output paths
-  bwrb recent --path "Projects/**"`)
+  bwrb recent --path "Projects/**"
+  bwrb recent --open                              # Open the most recent note
+  bwrb recent --type task --open --app editor
+  bwrb recent --type task --save-as "recent-tasks"`)
   .argument('[positional]', 'Smart positional: type, path (contains /), or where expression (contains =<>~)')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path glob (e.g., Projects/**, Ideas/)')
@@ -110,6 +139,12 @@ Examples:
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
   .option('--limit <n>', `Limit output to the first n notes (default ${DEFAULT_RECENT_LIMIT})`)
   .option('--output <format>', 'Output format: text (default), paths, link, json')
+  // Open options (parity with `list`)
+  .option('-o, --open', 'Open the most recent note (picker if multiple)')
+  .option('--app <mode>', 'How to open: system (default), editor, visual, obsidian, print')
+  // Dashboard save options (parity with `list`)
+  .option('--save-as <name>', 'Save this recency query as a dashboard')
+  .option('--force', 'Overwrite existing dashboard when using --save-as')
   .action(async (positional: string | undefined, options: RecentCommandOptions, cmd: Command) => {
     const outputFormat = resolveRecentOutputFormat(options.output);
     const jsonMode = outputFormat === 'json';
@@ -120,6 +155,21 @@ Examples:
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
+
+      // Pre-flight check: if --save-as is provided without --force, error early
+      // if the dashboard already exists (mirrors `list`).
+      if (options.saveAs && !options.force) {
+        const existing = await getDashboard(vaultDir, options.saveAs);
+        if (existing) {
+          const error = `Dashboard "${options.saveAs}" already exists. Use --force to overwrite.`;
+          if (jsonMode) {
+            printJson(jsonError(error));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(error);
+          process.exit(1);
+        }
+      }
 
       // Build targeting options from flags
       const targeting: TargetingOptions = {};
@@ -191,6 +241,48 @@ Examples:
 
       const limited = withMtime.slice(0, limit);
 
+      // Save as dashboard if --save-as was provided. A `recent` query is just
+      // `list --sort file.mtime --desc`, so persist it in that canonical form
+      // (the dashboard command runs it through `listObjects`). Saving runs even
+      // for an empty result set, mirroring `list`.
+      if (options.saveAs) {
+        const definition: DashboardDefinition = {
+          sort: 'file.mtime',
+          desc: true,
+        };
+        if (targeting.type) definition.type = targeting.type;
+        if (targeting.path) definition.path = targeting.path;
+        if (targeting.where?.length) definition.where = targeting.where;
+        if (targeting.body) definition.body = targeting.body;
+        if (outputFormat !== 'default') definition.output = outputFormat;
+        // `recent` always limits (default 20), so persist the effective limit.
+        definition.limit = limit;
+
+        try {
+          if (options.force) {
+            const existing = await getDashboard(vaultDir, options.saveAs);
+            if (existing) {
+              await updateDashboard(vaultDir, options.saveAs, definition);
+              console.error(`Dashboard "${options.saveAs}" updated.`);
+            } else {
+              await createDashboard(vaultDir, options.saveAs, definition);
+              console.error(`Dashboard "${options.saveAs}" saved.`);
+            }
+          } else {
+            await createDashboard(vaultDir, options.saveAs, definition);
+            console.error(`Dashboard "${options.saveAs}" saved.`);
+          }
+        } catch (saveErr) {
+          const saveMessage = saveErr instanceof Error ? saveErr.message : String(saveErr);
+          if (jsonMode) {
+            printJson(jsonError(`Failed to save dashboard: ${saveMessage}`));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(`Failed to save dashboard: ${saveMessage}`);
+          process.exit(1);
+        }
+      }
+
       // No results
       if (limited.length === 0) {
         if (jsonMode) {
@@ -204,6 +296,42 @@ Examples:
             console.log('No notes found.');
           }
         }
+        return;
+      }
+
+      // Handle --open: open the most recent note, or pick from the limited set
+      // when there are several and we're attached to a TTY (mirrors `list`).
+      if (options.open) {
+        let targetPath: string;
+
+        if (limited.length === 1) {
+          targetPath = limited[0]!.path;
+        } else if (process.stdin.isTTY && process.stdout.isTTY) {
+          const pickerFiles = limited.map(f => ({
+            path: f.path,
+            relativePath: relative(vaultDir, f.path),
+          }));
+          const pickerResult = await pickFile(pickerFiles, {
+            mode: parsePickerMode(resolveGlobalPickerMode(undefined, globalOpts, 'auto')),
+            prompt: `${limited.length} notes - select to open`,
+          });
+
+          if (pickerResult.cancelled || !pickerResult.selected) {
+            process.exit(0);
+          }
+          targetPath = pickerResult.selected.path;
+        } else {
+          // Non-interactive with multiple matches: open the most recent (top).
+          targetPath = limited[0]!.path;
+        }
+
+        await openNote(
+          vaultDir,
+          targetPath,
+          resolveAppMode(options.app, schema.config),
+          schema.config,
+          jsonMode
+        );
         return;
       }
 
