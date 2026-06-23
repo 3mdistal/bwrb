@@ -75,7 +75,7 @@ Delete semantics in repair mode:
 | `stale-reference` | Wikilink points to non-existent file |
 | `trailing-whitespace` | Trailing spaces/tabs on raw frontmatter `key: value` lines (warning; auto-fixable) |
 | `wrong-scalar-type` | Scalar value has wrong type for schema |
-| `illegal-aliases` | An [`alias`-role field](/reference/schema/#alias) has empty or non-string entries (the Obsidian aliases format requires non-empty, unique strings) |
+| `illegal-aliases` | An [`alias`-role field](/reference/schema/#alias) violates the Obsidian aliases format (array of **non-empty, unique** strings): an empty/whitespace entry, a **duplicate** entry, or a non-string entry (**error** — matching what `bwrb new`/`bwrb edit` reject on write; empty/whitespace + duplicate cases are **auto-fixable**, a non-string entry is **flag-only** — see below) |
 | `unlinked-mention` | A known entity's name or [registered alias](/reference/schema/#alias) appears in body prose as plain text but is not wikilinked (warning; exact/alias matches auto-fixable, fuzzy/ambiguous matches flag-only — see below) |
 | `frequent-unlinked-term` | A proper-noun-ish term mentioned frequently across the vault that has **no note yet** (warning; **advisory heuristic, never auto-fixable** — see below) |
 | `missing-body-section` | A heading section declared in the type's [`body_sections`](/reference/schema/) is missing from the note body, or present at the wrong heading level (warning; **auto-fixable** — `--fix` appends the canonical heading scaffold — see below) |
@@ -92,6 +92,21 @@ For a [`date`](/reference/schema/) field with `multiple: true` (a list of dates)
 A **numeric** date element (e.g. an unquoted `2026`, which YAML parses as a number) is treated exactly like a numeric scalar date: it is owned by the date check, so it is reported **once** — as `invalid-date-format` when it isn't a valid date for the field's granularity, or as `wrong-scalar-type` ("should be quoted as a string") when it *is* a valid date. It is never additionally reported as `invalid-list-element`. This matches scalar date handling and what `bwrb new`/`bwrb edit` accept on write.
 
 An empty or whitespace-only date value is treated as **unset**, not as an invalid date — the same convention every optional field follows (an empty optional field never produces a format/type issue). So an optional `date` field stored as `""` produces no `invalid-date-format` issue, matching what `bwrb new`/`bwrb edit` accept on write. An empty **required** date is reported once as [`empty-string-required`](#issue-codes) (consistent with every other required field), and an empty **element** inside a date list is reported once as `invalid-list-element` — never additionally as `invalid-date-format`.
+
+### Alias hygiene (`illegal-aliases`)
+
+An [`alias`-role field](/reference/schema/#alias) must hold an **array of non-empty, unique strings** (the Obsidian `aliases` format). The write path (`bwrb new`/`bwrb edit`) rejects a non-array value, an empty/whitespace entry, a duplicate entry, or a non-string entry as a hard error. Audit reports the exact same conditions at **error** severity, so a note hand-written with duplicate or blank aliases no longer slips through as a mere warning — write and audit agree.
+
+`--fix` applies the safe, idempotent subset:
+
+- **Empty/whitespace entries** are dropped.
+- **Duplicate entries** are de-duplicated, preserving the **first** occurrence (so order is stable).
+
+This reuses the same dedupe-style cleanup as `duplicate-list-values`, extended to also drop blanks, and converges on re-run (a second `--fix` changes nothing). It never merges *distinct* aliases, so no meaningful data is lost.
+
+A **non-string** alias entry (e.g. a bare number) is **flag-only**: bwrb can't infer the intended text, so it is surfaced for a manual fix rather than auto-cleaned. (A bare numeric YAML element may still be stringified by the separate `invalid-list-element` coercion, but the alias entry is never dropped.) A non-array alias value is reported as `wrong-scalar-type`.
+
+Note: because duplicate aliases are owned by `illegal-aliases`, an `alias`-role field never additionally produces a `duplicate-list-values` warning — that generic warning still applies to all other list fields unchanged.
 
 ## Examples
 
