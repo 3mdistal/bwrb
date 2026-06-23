@@ -41,7 +41,7 @@
  */
 
 import { existsSync } from 'fs';
-import { isAbsolute, resolve } from 'path';
+import { basename, isAbsolute, resolve } from 'path';
 import type { NoteTargetIndex } from '../discovery.js';
 import { levenshteinDistance } from '../levenshtein.js';
 import type { AuditIssue } from './types.js';
@@ -100,11 +100,19 @@ function fuzzyNoteSuggestions(target: string, index: NoteTargetIndex): string[] 
   if (target.length < FUZZY_MIN_LENGTH) return [];
   const lower = target.toLowerCase();
   const scored: Array<{ name: string; distance: number }> = [];
-  for (const key of index.targetToPaths.keys()) {
+  for (const [key, paths] of index.targetToPaths) {
     if (key.length < FUZZY_MIN_LENGTH) continue;
     const dist = levenshteinDistance(lower, key);
     if (dist === 0) continue;
-    if (dist <= FUZZY_MAX_DISTANCE) scored.push({ name: key, distance: dist });
+    if (dist <= FUZZY_MAX_DISTANCE) {
+      // `targetToPaths` keys are lowercased; surface the canonical-case basename
+      // (reconstructed from the resolved note path) so the "did you mean?" hint
+      // shows `RealNote` rather than the index key `realnote`. Fall back to the
+      // key if no path is recorded (shouldn't happen for real notes).
+      const firstPath = paths[0];
+      const name = firstPath ? basename(firstPath, '.md') : key;
+      scored.push({ name, distance: dist });
+    }
   }
   scored.sort((a, b) => a.distance - b.distance || a.name.localeCompare(b.name, 'en'));
   return scored.slice(0, FUZZY_MAX_SUGGESTIONS).map((s) => s.name);

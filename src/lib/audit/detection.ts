@@ -756,14 +756,19 @@ export async function auditFile(
   // relative file/image links. Distinct from unlinked-mention (plain-text
   // mentions) and frontmatter relation checks. Runs whenever any of its codes is
   // in scope.
+  //
+  // The gate intentionally depends on `--only` (onlyIssue) but NOT on `--ignore`
+  // (ignoreIssue): the three body-link codes share one detection pass, so
+  // ignoring a single code must not skip the whole block — otherwise the other
+  // two codes would be silently dropped. Per-code `--ignore` filtering happens on
+  // the produced issues below (`issue.code !== options.ignoreIssue`).
   const bodyLinkCodes: IssueCode[] = [
     'broken-body-wikilink',
     'malformed-body-wikilink',
     'broken-body-file-link',
   ];
   const wantsBodyLinks =
-    (options.ignoreIssue === undefined || !bodyLinkCodes.includes(options.ignoreIssue)) &&
-    (options.onlyIssue === undefined || bodyLinkCodes.includes(options.onlyIssue));
+    options.onlyIssue === undefined || bodyLinkCodes.includes(options.onlyIssue);
 
   if (wantsUnlinkedMention || wantsBodySections || wantsBodyLinks) {
     try {

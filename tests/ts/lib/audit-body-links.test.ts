@@ -62,10 +62,14 @@ describe('body-links: detectBodyWikilinks', () => {
     expect(issues[0]!.targetName).toBe('Nope');
   });
 
-  it('offers a fuzzy "did you mean?" hint for a near-named note', () => {
+  it('offers a fuzzy "did you mean?" hint with the canonical-case filename', () => {
     const issues = detectBodyWikilinks('[[RealNotee]]', index);
     expect(issues).toHaveLength(1);
-    expect(issues[0]!.similarFiles).toContain('realnote');
+    // The hint must surface the real-case basename ('RealNote'), not the
+    // lowercased index key ('realnote').
+    expect(issues[0]!.similarFiles).toContain('RealNote');
+    expect(issues[0]!.similarFiles).not.toContain('realnote');
+    expect(issues[0]!.suggestion).toContain('[[RealNote]]');
     expect(issues[0]!.suggestion).toContain('Did you mean');
   });
 
@@ -268,4 +272,73 @@ describe('body-links: end-to-end audit', () => {
     const src = results.find((r) => r.relativePath === 'Notes/Source.md');
     expect(src?.issues.some((i) => i.code === 'broken-body-file-link')).toBeFalsy();
   });
+
+  // ---------------------------------------------------------------------------
+  // #680 regression: a Source note containing ALL THREE body-link issue codes.
+  // `--ignore <one body-link code>` must suppress ONLY that code; the other two
+  // must STILL report (they share one detection pass, so the bug was the outer
+  // gate skipping the whole block when any one code was ignored).
+  // ---------------------------------------------------------------------------
+  const ALL_THREE: Array<
+    'broken-body-wikilink' | 'malformed-body-wikilink' | 'broken-body-file-link'
+  > = ['broken-body-wikilink', 'malformed-body-wikilink', 'broken-body-file-link'];
+
+  async function writeSourceWithAllThree() {
+    // [[Ghost]] -> broken-body-wikilink; [[]] -> malformed-body-wikilink;
+    // [doc](missing.md) -> broken-body-file-link.
+    await writeFile(
+      join(vaultDir, 'Notes', 'Source.md'),
+      `---\ntype: note\n---\nBroken [[Ghost]].\nMalformed [[]].\nFile [doc](missing.md).\n`
+    );
+  }
+
+  it('sanity: an unfiltered run reports all three body-link codes', async () => {
+    await writeSourceWithAllThree();
+    const schema = await loadSchema(vaultDir);
+    const results = await runAudit(schema, vaultDir, { strict: false });
+    const src = results.find((r) => r.relativePath === 'Notes/Source.md');
+    const codes = new Set(src?.issues.map((i) => i.code) ?? []);
+    for (const code of ALL_THREE) {
+      expect(codes.has(code)).toBe(true);
+    }
+  });
+
+  for (const ignored of ALL_THREE) {
+    it(`--ignore ${ignored} suppresses only that code; the other two still report`, async () => {
+      await writeSourceWithAllThree();
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, {
+        strict: false,
+        ignoreIssue: ignored,
+      });
+      const src = results.find((r) => r.relativePath === 'Notes/Source.md');
+      const codes = new Set(src?.issues.map((i) => i.code) ?? []);
+
+      // The ignored code is gone.
+      expect(codes.has(ignored)).toBe(false);
+      // The other two body-link codes STILL report.
+      for (const code of ALL_THREE) {
+        if (code === ignored) continue;
+        expect(codes.has(code)).toBe(true);
+      }
+    });
+  }
+
+  for (const only of ALL_THREE) {
+    it(`--only ${only} runs body links and reports just that code`, async () => {
+      await writeSourceWithAllThree();
+      const schema = await loadSchema(vaultDir);
+      const results = await runAudit(schema, vaultDir, {
+        strict: false,
+        onlyIssue: only,
+      });
+      const src = results.find((r) => r.relativePath === 'Notes/Source.md');
+      const codes = src?.issues.map((i) => i.code) ?? [];
+
+      expect(codes.length).toBeGreaterThan(0);
+      for (const code of codes) {
+        expect(code).toBe(only);
+      }
+    });
+  }
 });
