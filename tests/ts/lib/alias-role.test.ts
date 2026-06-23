@@ -511,6 +511,92 @@ describe('alias field role', () => {
       // And illegal-aliases never applies to a non-alias field.
       expect(tagged?.issues.some((i) => i.code === 'illegal-aliases')).toBe(false);
     });
+
+    // #683 regression: the `invalid-list-element` blank-remover used to splice by
+    // ORIGINAL index against a SHRINKING array. With 2+ blanks a later removal
+    // used a stale offset and deleted a distinct, non-blank element (data loss).
+    // #617 only sidestepped this for ALIAS fields; non-alias lists were still
+    // exposed. These tests run the real default auto-fix pass on a non-alias list
+    // and assert ONLY blanks are dropped, every distinct value survives in order,
+    // and the fix is idempotent — regardless of where the blanks sit.
+    describe('blank removal is index-safe on non-alias lists (#683 data loss)', () => {
+      const writeNoteFile = async (name: string, yamlTags: string) => {
+        await writeFile(
+          join(vaultDir, 'Notes', `${name}.md`),
+          `---\ntype: note\ntags:\n${yamlTags}---\n`
+        );
+      };
+
+      // Default auto-fix pass (all detections, not --only); returns the resulting
+      // tags array, the fix summary, and the schema for a follow-up re-run.
+      const fixDefaultPath = async (name: string) => {
+        const schema = await loadSchema(vaultDir);
+        const results = await runAudit(schema, vaultDir, { strict: false });
+        const summary = await runAutoFix(
+          results.filter((r) => r.relativePath === `Notes/${name}.md`),
+          schema,
+          vaultDir
+        );
+        const fixed = await parseNote(join(vaultDir, 'Notes', `${name}.md`));
+        return { tags: fixed.frontmatter['tags'], summary, schema };
+      };
+
+      // Re-run the default fix once more and return the resulting tags — used to
+      // assert idempotency.
+      const refix = async (name: string, schema: Awaited<ReturnType<typeof loadSchema>>) => {
+        const after = await runAudit(schema, vaultDir, { strict: false });
+        expect(
+          after
+            .find((r) => r.relativePath === `Notes/${name}.md`)
+            ?.issues.some((i) => i.code === 'invalid-list-element') ?? false
+        ).toBe(false);
+        await runAutoFix(
+          after.filter((r) => r.relativePath === `Notes/${name}.md`),
+          schema,
+          vaultDir
+        );
+        const stable = await parseNote(join(vaultDir, 'Notes', `${name}.md`));
+        return stable.frontmatter['tags'];
+      };
+
+      it('["", "  ", "Real"] -> ["Real"] (the exact regression: distinct value survives)', async () => {
+        // Two LEADING blanks then a real value — the shape that triggered the
+        // stale-index data loss. The naive splice-by-original-index would delete
+        // "Real" here.
+        await writeNoteFile('Lead', `  - ""\n  - "  "\n  - Real\n`);
+        const { tags, schema } = await fixDefaultPath('Lead');
+        expect(tags).toEqual(['Real']);
+        expect(await refix('Lead', schema)).toEqual(['Real']);
+      });
+
+      it('["", ""] -> [] (all blanks removed)', async () => {
+        await writeNoteFile('AllBlank', `  - ""\n  - ""\n`);
+        const { tags, schema } = await fixDefaultPath('AllBlank');
+        expect(tags).toEqual([]);
+        expect(await refix('AllBlank', schema)).toEqual([]);
+      });
+
+      it('[A, "", B, "", C] -> [A, B, C] (interleaved blanks, all distinct values kept)', async () => {
+        await writeNoteFile('Inter', `  - A\n  - ""\n  - B\n  - ""\n  - C\n`);
+        const { tags, schema } = await fixDefaultPath('Inter');
+        expect(tags).toEqual(['A', 'B', 'C']);
+        expect(await refix('Inter', schema)).toEqual(['A', 'B', 'C']);
+      });
+
+      it('[Real, "", ""] -> [Real] (trailing blanks)', async () => {
+        await writeNoteFile('Trail', `  - Real\n  - ""\n  - ""\n`);
+        const { tags, schema } = await fixDefaultPath('Trail');
+        expect(tags).toEqual(['Real']);
+        expect(await refix('Trail', schema)).toEqual(['Real']);
+      });
+
+      it('["", Real, ""] -> [Real] (surrounding blanks)', async () => {
+        await writeNoteFile('Around', `  - ""\n  - Real\n  - ""\n`);
+        const { tags, schema } = await fixDefaultPath('Around');
+        expect(tags).toEqual(['Real']);
+        expect(await refix('Around', schema)).toEqual(['Real']);
+      });
+    });
   });
 
   // End-to-end relation resolution: a relation field reference must resolve
