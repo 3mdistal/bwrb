@@ -83,6 +83,16 @@ spawn a `review`:
 The audit validates that the referenced template exists (a rule pointing at a deleted
 template is a deterministic error — see below).
 
+**Successor naming.** The successor carries the predecessor's name so the chain reads
+naturally, but bwrb wikilinks are **name-based** (`[[Chapter One]]` resolves by basename
+across every directory). So the spawned successor's basename is guaranteed **unique across
+the whole vault**: if the carried name is already taken anywhere, bwrb appends ` 2`, ` 3`,
+… A same-type successor in a busy directory and a **cross-type** successor (finish a
+`draft` → spawn a `review`) are handled the same way — finishing `drafts/Chapter One.md`
+spawns `reviews/Chapter One 2.md`, not `reviews/Chapter One.md`, so the predecessor's
+`next` and the successor's `prev` resolve unambiguously to the right notes (a type whose
+template defines a filename pattern disambiguates via that pattern instead).
+
 ### The `next` field does three jobs
 
 A single `next` relation field collapses three requirements into one mechanism:
