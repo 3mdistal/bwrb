@@ -185,11 +185,11 @@ async function promptSelectField(
 
   const selectOptions = getOptionValues(field.options);
 
-  // create mode supports multi-select.
-  if (opts.mode === 'create' && field.multiple) {
-    const selected = await promptMultiSelect(`Select ${fieldName}:`, selectOptions);
-    if (selected === null) throw new UserCancelledError();
-    return selected.length > 0 ? selected : (field.default ?? []);
+  // Multi-select fields use a checkbox-style multiselect across every mode so a
+  // template default can store more than one value (mirrors the
+  // multiple-relation template-edit flow).
+  if (field.multiple) {
+    return promptMultiSelectField(label, fieldName, selectOptions, field, opts);
   }
 
   const { options, hints, skipLabel } = buildSelectOptions(field, selectOptions, opts);
@@ -207,6 +207,52 @@ async function promptSelectField(
   // template-edit
   if (selected === '(keep)') return opts.currentValue;
   if (selected === '(clear)') return CLEAR;
+  return selected;
+}
+
+/**
+ * Prompt for a `multiple: true` select field, storing the chosen values as an
+ * array. Shared across all modes (mirrors the multiple-relation flow):
+ *
+ * - `create`: a checkbox multiselect; falls back to `field.default` (or `[]`)
+ *   when nothing is picked.
+ * - `template-default`: a checkbox multiselect; an empty selection skips
+ *   (returns `undefined`, so no default is stored).
+ * - `template-edit`: a `(keep)` / `(clear)` / `(set empty [])` / `(select
+ *   values)` action menu, where `(select values)` opens the checkbox multiselect.
+ */
+async function promptMultiSelectField(
+  label: string,
+  fieldName: string,
+  selectOptions: string[],
+  field: Field,
+  opts: FieldPromptOptions
+): Promise<unknown> {
+  if (opts.mode === 'create') {
+    const selected = await promptMultiSelect(`Select ${fieldName}:`, selectOptions);
+    if (selected === null) throw new UserCancelledError();
+    return selected.length > 0 ? selected : (field.default ?? []);
+  }
+
+  if (opts.mode === 'template-default') {
+    const selected = await promptMultiSelect(`Default ${label}:`, selectOptions);
+    if (selected === null) throw new UserCancelledError();
+    return selected.length > 0 ? selected : undefined;
+  }
+
+  // template-edit
+  const actionOptions = ['(keep)', '(clear)', '(set empty [])'];
+  if (selectOptions.length > 0) {
+    actionOptions.push('(select values)');
+  }
+  const action = await promptSelection(`How to update ${label}:`, actionOptions);
+  if (action === null) throw new UserCancelledError();
+  if (action === '(keep)') return opts.currentValue;
+  if (action === '(clear)') return CLEAR;
+  if (action === '(set empty [])') return [];
+
+  const selected = await promptMultiSelect(`Select ${label}:`, selectOptions);
+  if (selected === null) throw new UserCancelledError();
   return selected;
 }
 

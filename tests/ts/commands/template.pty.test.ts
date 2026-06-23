@@ -48,6 +48,22 @@ defaults:
 `,
 };
 
+const MULTI_LABELS_IDEA_TEMPLATE: TempVaultFile = {
+  path: '.bwrb/templates/idea/multi-labels.md',
+  content: `---
+type: template
+template-for: idea
+description: Idea template with multi-select labels default
+defaults:
+  labels:
+    - urgent
+    - review
+---
+
+# {title}
+`,
+};
+
 const RELATION_MULTIPLE_SCHEMA = {
   version: 2,
   config: {
@@ -221,6 +237,102 @@ describePty('template command PTY tests', () => {
           const content = await readFile(templatePath, 'utf-8');
           expect(content).toContain('defaults:');
           expect(content).toContain('status:');
+        },
+        { schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
+    it('should store multiple values for a multi-select default (issue #668)', async () => {
+      await withTempVault(
+        ['template', 'new', 'idea'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Template name', 10000);
+          await proc.typeAndEnter('multi-labels');
+
+          await proc.waitFor('Description', 5000);
+          await proc.typeAndEnter('Multi-select labels default');
+
+          await proc.waitFor('Set default values', 5000);
+          proc.write('y');
+
+          // status (select) - skip
+          await proc.waitFor('status', 5000);
+          proc.write('1');
+          // priority (select) - skip
+          await proc.waitFor('priority', 5000);
+          proc.write('1');
+
+          // labels (multi-select) - pick the first two options
+          await proc.waitFor('Default labels', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write(' ');      // select urgent
+          proc.write('\x1b[B'); // down to blocked
+          proc.write(' ');      // select blocked
+          proc.write('\r');     // submit
+
+          // effort (number) - skip
+          await proc.waitFor('Default effort', 5000);
+          proc.write('\r');
+          // archived (boolean) - skip
+          await proc.waitFor('Default archived', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write('1');
+
+          await proc.waitFor('Force prompting', 5000);
+          proc.write('n');
+          await proc.waitFor('Custom filename', 5000);
+          proc.write('n');
+          await proc.waitFor('Created:', 10000);
+
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'multi-labels.md');
+          const content = await readFile(templatePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          const defaults = frontmatter.defaults as Record<string, unknown>;
+          // Stored as an array with both chosen values, not a single string.
+          expect(defaults.labels).toEqual(['urgent', 'blocked']);
+        },
+        { schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
+    it('should omit a multi-select default when nothing is picked (issue #668)', async () => {
+      await withTempVault(
+        ['template', 'new', 'idea'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Template name', 10000);
+          await proc.typeAndEnter('no-labels');
+
+          await proc.waitFor('Description', 5000);
+          await proc.typeAndEnter('No labels default');
+
+          await proc.waitFor('Set default values', 5000);
+          proc.write('y');
+
+          await proc.waitFor('status', 5000);
+          proc.write('1');
+          await proc.waitFor('priority', 5000);
+          proc.write('1');
+
+          // labels (multi-select) - submit with no selection -> skipped
+          await proc.waitFor('Default labels', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write('\r');
+
+          await proc.waitFor('Default effort', 5000);
+          proc.write('\r');
+          await proc.waitFor('Default archived', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write('1');
+
+          await proc.waitFor('Custom filename', 5000);
+          proc.write('n');
+          await proc.waitFor('Created:', 10000);
+
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'no-labels.md');
+          const content = await readFile(templatePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          const defaults = (frontmatter.defaults as Record<string, unknown>) ?? {};
+          expect(defaults.labels).toBeUndefined();
         },
         { schema: TEST_SCHEMA }
       );
@@ -508,8 +620,8 @@ describePty('template command PTY tests', () => {
           // priority (select) - keep
           await proc.waitFor('New priority', 5000);
           proc.write('1'); // (keep)
-          // labels (multi relation? select multiple) - keep
-          await proc.waitFor('New labels', 5000);
+          // labels (multi-select) - keep
+          await proc.waitFor('How to update labels', 5000);
           proc.write('1'); // (keep)
 
           // effort (number) - Enter keeps current
@@ -555,7 +667,7 @@ describePty('template command PTY tests', () => {
           proc.write('1'); // keep
           await proc.waitFor('New priority', 5000);
           proc.write('1'); // keep
-          await proc.waitFor('New labels', 5000);
+          await proc.waitFor('How to update labels', 5000);
           proc.write('1'); // keep
 
           // effort (number) - change to a real number (invalid first, then valid)
@@ -603,7 +715,7 @@ describePty('template command PTY tests', () => {
           proc.write('1');
           await proc.waitFor('New priority', 5000);
           proc.write('1');
-          await proc.waitFor('New labels', 5000);
+          await proc.waitFor('How to update labels', 5000);
           proc.write('1');
 
           await proc.waitFor('New effort', 5000);
@@ -629,6 +741,147 @@ describePty('template command PTY tests', () => {
           expect(defaults.effort).toBe(3);
         },
         { files: [TYPED_DEFAULTS_IDEA_TEMPLATE], schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
+    it('should keep an existing multi-select default via (keep) (issue #668)', async () => {
+      await withTempVault(
+        ['template', 'edit', 'idea', 'multi-labels'],
+        async (proc, vaultPath) => {
+          const templatePath = join(vaultPath, '.bwrb/templates/idea/multi-labels.md');
+
+          await proc.waitFor('Current description:', 10000);
+          proc.write('\r');
+
+          await proc.waitFor('Edit default values', 5000);
+          proc.write('y');
+
+          await proc.waitFor('New status', 5000);
+          proc.write('1'); // keep
+          await proc.waitFor('New priority', 5000);
+          proc.write('1'); // keep
+
+          // labels (multi-select) - keep the current array
+          await proc.waitFor('How to update labels', 5000);
+          proc.write('1'); // (keep)
+
+          await proc.waitFor('New effort', 5000);
+          proc.write('\r');
+          await proc.waitFor('New archived', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write('1');
+
+          await proc.waitFor('Edit prompt-fields', 5000);
+          proc.write('n');
+          await proc.waitFor('Edit filename pattern', 5000);
+          proc.write('n');
+          await proc.waitFor('Edit body', 5000);
+          proc.write('n');
+          await proc.waitFor('Updated:', 5000);
+
+          const content = await readFile(templatePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          const defaults = frontmatter.defaults as Record<string, unknown>;
+          expect(defaults.labels).toEqual(['urgent', 'review']);
+        },
+        { files: [MULTI_LABELS_IDEA_TEMPLATE], schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
+    it('should clear a multi-select default via (clear) (issue #668)', async () => {
+      await withTempVault(
+        ['template', 'edit', 'idea', 'multi-labels'],
+        async (proc, vaultPath) => {
+          const templatePath = join(vaultPath, '.bwrb/templates/idea/multi-labels.md');
+
+          await proc.waitFor('Current description:', 10000);
+          proc.write('\r');
+
+          await proc.waitFor('Edit default values', 5000);
+          proc.write('y');
+
+          await proc.waitFor('New status', 5000);
+          proc.write('1');
+          await proc.waitFor('New priority', 5000);
+          proc.write('1');
+
+          // labels - clear removes the default entirely
+          await proc.waitFor('How to update labels', 5000);
+          proc.write('2'); // (clear)
+
+          await proc.waitFor('New effort', 5000);
+          proc.write('\r');
+          await proc.waitFor('New archived', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write('1');
+
+          await proc.waitFor('Edit prompt-fields', 5000);
+          proc.write('n');
+          await proc.waitFor('Edit filename pattern', 5000);
+          proc.write('n');
+          await proc.waitFor('Edit body', 5000);
+          proc.write('n');
+          await proc.waitFor('Updated:', 5000);
+
+          const content = await readFile(templatePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          const defaults = (frontmatter.defaults as Record<string, unknown>) ?? {};
+          expect(defaults.labels).toBeUndefined();
+        },
+        { files: [MULTI_LABELS_IDEA_TEMPLATE], schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
+    it('should change a multi-select default via (select values) (issue #668)', async () => {
+      await withTempVault(
+        ['template', 'edit', 'idea', 'multi-labels'],
+        async (proc, vaultPath) => {
+          const templatePath = join(vaultPath, '.bwrb/templates/idea/multi-labels.md');
+
+          await proc.waitFor('Current description:', 10000);
+          proc.write('\r');
+
+          await proc.waitFor('Edit default values', 5000);
+          proc.write('y');
+
+          await proc.waitFor('New status', 5000);
+          proc.write('1');
+          await proc.waitFor('New priority', 5000);
+          proc.write('1');
+
+          // labels - pick a fresh multi-value selection
+          await proc.waitFor('How to update labels', 5000);
+          proc.write('4'); // (select values)
+
+          await proc.waitFor('Select labels', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write('\x1b[B'); // down to blocked (options: urgent, blocked, review, wip)
+          proc.write(' ');      // select blocked
+          proc.write('\x1b[B'); // down to review
+          proc.write('\x1b[B'); // down to wip
+          proc.write(' ');      // select wip
+          proc.write('\r');     // submit
+
+          await proc.waitFor('New effort', 5000);
+          proc.write('\r');
+          await proc.waitFor('New archived', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write('1');
+
+          await proc.waitFor('Edit prompt-fields', 5000);
+          proc.write('n');
+          await proc.waitFor('Edit filename pattern', 5000);
+          proc.write('n');
+          await proc.waitFor('Edit body', 5000);
+          proc.write('n');
+          await proc.waitFor('Updated:', 5000);
+
+          const content = await readFile(templatePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          const defaults = frontmatter.defaults as Record<string, unknown>;
+          expect(defaults.labels).toEqual(['blocked', 'wip']);
+        },
+        { files: [MULTI_LABELS_IDEA_TEMPLATE], schema: TEST_SCHEMA }
       );
     }, 30000);
 

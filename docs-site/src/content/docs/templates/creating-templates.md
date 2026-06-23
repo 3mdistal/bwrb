@@ -56,6 +56,25 @@ defaults:
   tags: []
 ```
 
+Fields declared with `multiple: true` (multi-select and multi-relation fields)
+store their defaults as an **array**, so a template can pre-fill more than one
+value:
+
+```yaml
+defaults:
+  labels:
+    - urgent
+    - review
+```
+
+When you build or edit a template interactively (`bwrb template new` /
+`bwrb template edit`), multi-select fields use a checkbox-style multi-select
+prompt in both modes, so you can choose several values at once. Multi-relation
+fields offer the same checkbox multi-select in `bwrb template edit`, but in
+`bwrb template new` they currently set a single relation default. In `template
+edit`, a multi-select default offers `(keep)`, `(clear)`, `(set empty [])`, and
+`(select values)`.
+
 ### Dynamic Defaults (Date Expressions)
 
 Use date expressions for dynamic values that evaluate at note creation time. A
