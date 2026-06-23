@@ -65,7 +65,7 @@ concrete per-note before→after edits, e.g.:
 Per-note changes:
   Objectives/Tasks/Task A.md:
     priority: (empty) → medium
-    owner → assignee: alice
+    owner: (deleted)
 ```
 
 Null/missing values render as `(empty)` (consistent with the bulk change
@@ -73,6 +73,22 @@ preview). To keep output manageable on large vaults, the per-note list is
 capped (currently 200 lines) with a trailing `... and N more changes` summary;
 the schema-level summary always prints in full. The flag also applies to
 `--execute` to echo what was applied.
+
+> **Field renames are not auto-detected.** The schema diff engine compares two
+> schema snapshots and has no way to tell an intentional rename apart from an
+> unrelated drop-and-add: renaming a field in `schema.json` always surfaces as a
+> separate **add field** + **remove field** pair (which deletes the old field's
+> data). The `old → new: value` rename preview only appears for an explicit
+> `rename-field` operation. To rename a field while preserving its values, use
+> the bulk command, which moves the data in one step:
+>
+> ```bash
+> bwrb bulk --all --rename owner=assignee --execute
+> ```
+>
+> Canonical user-facing behavior lives in the docs-site
+> [Migrations](../../docs-site/src/content/docs/concepts/migrations.md) page; see
+> [issue #694](https://github.com/3mdistal/bwrb/issues/694) for background.
 
 In `--output json` mode the per-note changes are **always** included under
 `data.fileChanges` (an array of `{ relativePath, changes[] }`), uncapped, for
@@ -103,7 +119,7 @@ bwrb schema history --json
 |--------|---------------|------------------|
 | Add field | Deterministic | No action needed (field absent in old notes is valid) |
 | Remove field | Non-deterministic | Removes field from affected notes |
-| Rename field | Non-deterministic | Renames field in affected notes |
+| Rename field | Not detected by diff | A schema rename is seen as add + remove. Use `bwrb bulk --rename old=new` to rename while preserving values |
 | Add select option | Deterministic | No action needed |
 | Remove select option | Non-deterministic | Prompts for value mapping |
 | Rename select option | Non-deterministic | Updates references in notes |
