@@ -756,36 +756,118 @@ export async function collectFilesForType(
 }
 
 /**
- * Collect files from a pooled (flat) directory.
+ * Boundaries that stop a recursive pooled scan from crossing into a subtree
+ * that belongs to a *different* type's discovery path.
+ *
+ * - `claimedDirs`: relative paths that are another concrete type's `output_dir`.
+ *   Those notes are assigned to that type by its own pooled scan, so we must not
+ *   claim them here (avoids misassigning a nested type's notes to the parent).
+ * - `ownedFieldFolders`: owned-field folder basenames (e.g. `research`). Owned
+ *   notes live under `<owner>/<field>/` and are collected (with ownership
+ *   metadata and the correct child type) by `collectOwnedFiles`. We must not
+ *   descend into those folders here or we'd double-count them under the wrong
+ *   type.
+ */
+export interface PooledScanBoundaries {
+  claimedDirs: Set<string>;
+  ownedFieldFolders: Set<string>;
+}
+
+/**
+ * Compute the subtree boundaries for a recursive pooled scan of `typeName`.
+ *
+ * Other types' output directories that are nested *under* this type's output
+ * directory are excluded so each note is claimed by the most specific type. The
+ * type's own output_dir is never treated as a boundary against itself.
+ */
+function getPooledScanBoundaries(
+  schema: LoadedSchema,
+  typeName: string
+): PooledScanBoundaries {
+  const selfDir = (getOutputDirFromSchema(schema, typeName) ?? '').replace(/\/$/, '');
+
+  const claimedDirs = new Set<string>();
+  for (const other of getConcreteTypeNames(schema)) {
+    if (other === typeName) continue;
+    const dir = getOutputDirFromSchema(schema, other);
+    if (!dir) continue;
+    const normalized = dir.replace(/\/$/, '');
+    if (normalized && normalized !== selfDir) {
+      claimedDirs.add(normalized);
+    }
+  }
+
+  const ownedFieldFolders = new Set<string>();
+  for (const [, ownedFields] of schema.ownership.owns) {
+    for (const field of ownedFields as OwnedFieldInfo[]) {
+      if (field.fieldName) ownedFieldFolders.add(field.fieldName);
+    }
+  }
+
+  return { claimedDirs, ownedFieldFolders };
+}
+
+/**
+ * Collect files from a type's output directory.
+ *
+ * Recurses into nested subdirectories so that notes filed in subfolders under a
+ * type's `output_dir` (e.g. `People/Sub/X.md` for a `people` type rooted at
+ * `People`) are discovered and associated with that type — consistent with how
+ * `audit`'s wrong-directory check already treats a subdirectory of `output_dir`
+ * as a correct location.
+ *
+ * Recursion stops at `boundaries` so notes belonging to a more specific nested
+ * type, or owned notes living in owner folders, are not misassigned here.
  */
 export async function collectPooledFiles(
   vaultDir: string,
   outputDir: string,
   expectedType: string,
   excluded: Set<string>,
-  ignoreMatcher: Ignore | null
+  ignoreMatcher: Ignore | null,
+  boundaries?: PooledScanBoundaries
 ): Promise<ManagedFile[]> {
   const normalizedOutputDir = outputDir.replace(/\/$/, '');
-  const fullDir = join(vaultDir, normalizedOutputDir);
-  if (!existsSync(fullDir)) return [];
+  const rootDir = join(vaultDir, normalizedOutputDir);
+  if (!existsSync(rootDir)) return [];
 
   if (shouldExcludePath(normalizedOutputDir, excluded, ignoreMatcher, true)) return [];
 
+  const claimedDirs = boundaries?.claimedDirs ?? new Set<string>();
+  const ownedFieldFolders = boundaries?.ownedFieldFolders ?? new Set<string>();
   const files: ManagedFile[] = [];
-  const entries = await readdir(fullDir, { withFileTypes: true });
 
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+  const walk = async (dir: string, relDir: string): Promise<void> => {
+    const entries = await readdir(dir, { withFileTypes: true });
 
-    const relativePath = join(normalizedOutputDir, entry.name);
-    if (shouldExcludePath(relativePath, excluded, ignoreMatcher)) continue;
+    for (const entry of entries) {
+      const entryRel = join(relDir, entry.name);
 
-    files.push({
-      path: join(fullDir, entry.name),
-      relativePath,
-      expectedType,
-    });
-  }
+      if (entry.isDirectory()) {
+        // Never descend into hidden/system directories.
+        if (entry.name.startsWith('.')) continue;
+        // Stop at another type's output directory (it owns its own notes).
+        if (claimedDirs.has(entryRel)) continue;
+        // Stop at owned-field folders (owned notes are collected elsewhere with
+        // their correct child type and ownership metadata).
+        if (ownedFieldFolders.has(entry.name)) continue;
+        if (shouldExcludePath(entryRel, excluded, ignoreMatcher, true)) continue;
+        await walk(join(dir, entry.name), entryRel);
+        continue;
+      }
+
+      if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+      if (shouldExcludePath(entryRel, excluded, ignoreMatcher)) continue;
+
+      files.push({
+        path: join(dir, entry.name),
+        relativePath: entryRel,
+        expectedType,
+      });
+    }
+  };
+
+  await walk(rootDir, normalizedOutputDir);
 
   // Sort for deterministic ordering across platforms
   return files.sort(stablePathCompare);
@@ -901,13 +983,23 @@ async function collectFilesForTypeWithOwnership(
   const excluded = getExcludedDirectories(schema);
   const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
 
-  // Collect files in the type's output_dir (non-owned notes)
+  // Collect files in the type's output_dir (non-owned notes), recursing into
+  // nested subdirectories while skipping subtrees owned by other types or
+  // ownership folders.
   const outputDir = getOutputDirFromSchema(schema, typeName);
   if (outputDir) {
-    const typeFiles = await collectPooledFiles(vaultDir, outputDir, typeName, excluded, ignoreMatcher);
+    const boundaries = getPooledScanBoundaries(schema, typeName);
+    const typeFiles = await collectPooledFiles(
+      vaultDir,
+      outputDir,
+      typeName,
+      excluded,
+      ignoreMatcher,
+      boundaries
+    );
     files.push(...typeFiles);
   }
-  
+
   // If this type can be owned, also collect owned instances
   if (canTypeBeOwned(schema, typeName)) {
     // Find all owner types and collect owned files from each
@@ -921,9 +1013,19 @@ async function collectFilesForTypeWithOwnership(
       }
     }
   }
-  
+
+  // Dedupe by path, preferring entries that carry ownership metadata so an owned
+  // note is never represented by a plain pooled entry with the wrong type.
+  const byPath = new Map<string, ManagedFile>();
+  for (const file of files) {
+    const existing = byPath.get(file.relativePath);
+    if (!existing || (!existing.ownership && file.ownership)) {
+      byPath.set(file.relativePath, file);
+    }
+  }
+
   // Sort for deterministic ordering across platforms
-  return files.sort(stablePathCompare);
+  return Array.from(byPath.values()).sort(stablePathCompare);
 }
 
 // ============================================================================

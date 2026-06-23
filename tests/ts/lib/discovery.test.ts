@@ -627,10 +627,112 @@ describe('Discovery', () => {
 
     it('should not have duplicates', async () => {
       const files = await discoverFilesForNavigation(schema, vaultDir);
-      
+
       const paths = files.map(f => f.relativePath);
       const uniquePaths = new Set(paths);
       expect(paths.length).toBe(uniquePaths.size);
+    });
+  });
+
+  describe('nested subdirectories under output_dir (#619)', () => {
+    it('indexes notes in a nested subdir and assigns the parent type', async () => {
+      await mkdir(join(vaultDir, 'Ideas', 'Sub'), { recursive: true });
+      await writeFile(
+        join(vaultDir, 'Ideas', 'Sub', 'Nested Idea.md'),
+        '---\ntype: idea\nstatus: raw\n---\n'
+      );
+
+      const files = await collectFilesForType(schema, vaultDir, 'idea');
+      const nested = files.find(f => f.relativePath === 'Ideas/Sub/Nested Idea.md');
+
+      expect(nested).toBeDefined();
+      expect(nested!.expectedType).toBe('idea');
+    });
+
+    it('indexes deeply nested notes (2+ levels)', async () => {
+      await mkdir(join(vaultDir, 'Ideas', 'A', 'B'), { recursive: true });
+      await writeFile(
+        join(vaultDir, 'Ideas', 'A', 'B', 'Deep Idea.md'),
+        '---\ntype: idea\nstatus: raw\n---\n'
+      );
+
+      const files = await collectFilesForType(schema, vaultDir, 'idea');
+      const deep = files.find(f => f.relativePath === 'Ideas/A/B/Deep Idea.md');
+
+      expect(deep).toBeDefined();
+      expect(deep!.expectedType).toBe('idea');
+    });
+
+    it('makes nested notes discoverable for navigation', async () => {
+      await mkdir(join(vaultDir, 'Ideas', 'Sub'), { recursive: true });
+      await writeFile(
+        join(vaultDir, 'Ideas', 'Sub', 'Nested Idea.md'),
+        '---\ntype: idea\nstatus: raw\n---\n'
+      );
+
+      const files = await discoverFilesForNavigation(schema, vaultDir);
+      const paths = files.map(f => f.relativePath);
+      expect(paths).toContain('Ideas/Sub/Nested Idea.md');
+    });
+
+    it('does not misassign a nested note from another type subtree', async () => {
+      // Objectives is the `objective` output_dir; Objectives/Tasks belongs to `task`.
+      // A note nested directly under Objectives is an `objective`, while one nested
+      // under Objectives/Tasks must stay a `task` (not bleed up to `objective`).
+      await mkdir(join(vaultDir, 'Objectives', 'Tasks', 'Sub'), { recursive: true });
+      await writeFile(
+        join(vaultDir, 'Objectives', 'Tasks', 'Sub', 'Nested Task.md'),
+        '---\ntype: task\nstatus: backlog\n---\n'
+      );
+
+      const objectiveFiles = await collectFilesForType(schema, vaultDir, 'objective');
+      const taskFiles = await collectFilesForType(schema, vaultDir, 'task');
+
+      // `task` is a descendant of `objective`, so the nested task IS reachable via
+      // the objective family, but it must carry the `task` type, never `objective`.
+      const viaObjective = objectiveFiles.find(
+        f => f.relativePath === 'Objectives/Tasks/Sub/Nested Task.md'
+      );
+      const viaTask = taskFiles.find(
+        f => f.relativePath === 'Objectives/Tasks/Sub/Nested Task.md'
+      );
+
+      expect(viaTask).toBeDefined();
+      expect(viaTask!.expectedType).toBe('task');
+      if (viaObjective) {
+        expect(viaObjective.expectedType).toBe('task');
+      }
+
+      // A type that is NOT a parent of task must never see the nested task.
+      const ideaFiles = await collectFilesForType(schema, vaultDir, 'idea');
+      expect(
+        ideaFiles.some(f => f.relativePath === 'Objectives/Tasks/Sub/Nested Task.md')
+      ).toBe(false);
+    });
+
+    it('excludes hidden subdirectories under a type output_dir', async () => {
+      await mkdir(join(vaultDir, 'Ideas', '.hidden'), { recursive: true });
+      await writeFile(
+        join(vaultDir, 'Ideas', '.hidden', 'Secret.md'),
+        '---\ntype: idea\n---\n'
+      );
+
+      const excluded = getExcludedDirectories(schema);
+      const gitignore = await loadGitignore(vaultDir);
+      const files = await collectPooledFiles(vaultDir, 'Ideas', 'idea', excluded, gitignore, {
+        claimedDirs: new Set(),
+        ownedFieldFolders: new Set(),
+      });
+      const paths = files.map(f => f.relativePath);
+
+      expect(paths.some(p => p.includes('.hidden'))).toBe(false);
+    });
+
+    it('does not double-count notes in a nested type output_dir', async () => {
+      const files = await discoverAllTypeFiles(schema, vaultDir);
+      const paths = files.map(f => f.relativePath);
+      const unique = new Set(paths);
+      expect(paths.length).toBe(unique.size);
     });
   });
 });
