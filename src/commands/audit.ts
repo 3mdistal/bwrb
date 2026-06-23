@@ -55,6 +55,7 @@ import {
   findUndocumentedSchemaEntries,
   type UndocumentedSchemaEntries,
 } from '../lib/audit/schema-docs.js';
+import { parseFuzzyThreshold } from '../lib/audit/unlinked-mention.js';
 import chalk from 'chalk';
 
 const FIX_TARGETING_ERROR_SUMMARY =
@@ -165,6 +166,8 @@ Examples:
   bwrb audit --ignore unknown-field
   bwrb audit --output json        # JSON output for CI
   bwrb audit --allow-field custom # Allow specific extra field
+  bwrb audit --only unlinked-mention --mention-fuzzy-threshold 3 # Looser fuzzy "did you mean?"
+  bwrb audit --only unlinked-mention --no-mention-fuzzy          # Disable fuzzy tier
   bwrb audit --all --fix                  # Interactive guided fixes across vault (writes)
   bwrb audit --fix --path "Ideas/**"      # Interactive guided fixes (writes)
   bwrb audit --fix --dry-run --path "Ideas/**"    # Preview guided fixes (no writes)
@@ -187,6 +190,11 @@ Examples:
   .option('--dry-run', 'With --fix: preview fixes without writing')
   .option('--execute', 'With --fix --auto: apply fixes (omit to preview)')
   .option('--allow-field <fields...>', 'Allow additional fields beyond schema (repeatable)')
+  .option(
+    '--mention-fuzzy-threshold <n>',
+    'unlinked-mention fuzzy "did you mean?" max edit distance (0-5; default from config or 2)'
+  )
+  .option('--no-mention-fuzzy', 'Disable the unlinked-mention fuzzy "did you mean?" tier')
   .option('--check-schema-docs', 'Also report schema types/fields that have no description')
   .action(async (target: string | undefined, options: AuditOptions & {
     type?: string;
@@ -255,6 +263,20 @@ Examples:
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
+
+      // Resolve the unlinked-mention fuzzy tuning (#622). Precedence: CLI flag
+      // > schema config > built-in default. `--no-mention-fuzzy` disables the
+      // tier outright. The CLI threshold is validated to a sensible range.
+      const mentionFuzzyEnabled = options.mentionFuzzy !== false;
+      let mentionFuzzyThreshold = schema.config.mentionFuzzyThreshold;
+      if (options.mentionFuzzyThreshold !== undefined) {
+        const parsed = parseFuzzyThreshold(options.mentionFuzzyThreshold);
+        if (!parsed.ok) {
+          exitWithValidationError(parsed.error);
+        } else {
+          mentionFuzzyThreshold = parsed.value;
+        }
+      }
 
       if (globalOpts.nonInteractive && fixMode && !autoMode) {
         exitWithValidationError('bwrb audit --fix requires --auto when --non-interactive is set.');
@@ -347,6 +369,8 @@ Examples:
         allowedFields,
         vaultDir,
         schema,
+        mentionFuzzyThreshold,
+        mentionFuzzyEnabled,
       });
 
       // Handle fix mode

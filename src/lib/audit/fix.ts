@@ -3501,8 +3501,14 @@ async function handleTrailingWhitespaceFix(
  * Handle an unlinked-mention fix interactively.
  *
  * Exact/alias mentions (autoFixable) offer to convert the plain-text mention to
- * a wikilink. Fuzzy/ambiguous mentions are flag-only: we surface the suggestion
- * and skip, honoring the trust line (never auto-resolve fuzziness/ambiguity).
+ * a wikilink. Ambiguous mentions (multiple candidate entities) prompt the human
+ * to pick one candidate (or skip), then rewrite using the SAME mention-rewrite
+ * as the exact/alias auto-fix (#622). Fuzzy mentions remain flag-only: we
+ * surface the suggestion and skip (never auto-resolve fuzziness).
+ *
+ * This handler runs ONLY in interactive `--fix` (a TTY). `--auto` and non-TTY
+ * paths never reach here for non-autoFixable issues, so ambiguous mentions are
+ * never auto-resolved.
  */
 async function handleUnlinkedMentionFix(
   schema: LoadedSchema,
@@ -3510,7 +3516,15 @@ async function handleUnlinkedMentionFix(
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
   if (!issue.autoFixable) {
-    // Fuzzy / ambiguous — review only.
+    // Ambiguous mentions: interactive pick-a-candidate (#622).
+    if (
+      issue.meta?.['tier'] === 'ambiguous' &&
+      issue.candidates &&
+      issue.candidates.length > 0
+    ) {
+      return handleAmbiguousMentionFix(schema, result, issue);
+    }
+    // Fuzzy — review only.
     if (issue.suggestion) {
       console.log(chalk.dim(`    ${issue.suggestion}`));
     }
@@ -3531,6 +3545,74 @@ async function handleUnlinkedMentionFix(
   const fixResult = await applyFix(schema, result.path, issue);
   if (fixResult.action === 'fixed') {
     console.log(chalk.green(`    ✓ Linked '${String(issue.value)}' → ${replacement}`));
+    return 'fixed';
+  } else if (fixResult.action === 'skipped') {
+    console.log(chalk.dim(`    → Skipped: ${fixResult.message}`));
+    return 'skipped';
+  } else {
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
+}
+
+/**
+ * Interactive resolution of an *ambiguous* unlinked mention (#622): the surface
+ * matches multiple distinct entities, so it is never auto-resolved. In a TTY,
+ * offer the candidate entities (plus skip/quit) and, on selection, rewrite the
+ * plain-text mention to `[[Chosen]]` (or `[[Chosen|surface]]` when the surface
+ * differs from the chosen note name).
+ *
+ * The rewrite REUSES the exact/alias auto-fix path: it synthesizes a
+ * `replacement` + `surface` on the issue meta and dispatches to
+ * {@link applyUnlinkedMentionFix} via {@link applyFix}, so the masking and
+ * word-boundary guarantees are identical and idempotent. Never invoked outside
+ * interactive `--fix` (so `--auto`/non-TTY never auto-resolve ambiguity).
+ */
+async function handleAmbiguousMentionFix(
+  schema: LoadedSchema,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  const candidates = issue.candidates ?? [];
+  const surface =
+    (issue.meta?.['surface'] as string | undefined) ??
+    (typeof issue.value === 'string' ? issue.value : undefined);
+  if (candidates.length === 0 || !surface) {
+    console.log(chalk.dim('    (Cannot resolve — no candidates)'));
+    return 'skipped';
+  }
+
+  const options = [...candidates, '[skip]', '[quit]'];
+  const selected = await promptSelection(
+    `    Resolve ambiguous mention '${surface}' to:`,
+    options
+  );
+
+  if (selected === null || selected === '[quit]') {
+    return 'quit';
+  }
+  if (selected === '[skip]') {
+    console.log(chalk.dim('    → Skipped'));
+    return 'skipped';
+  }
+
+  const canonical = selected;
+  // Mirror the exact-tier replacement logic: keep the author's surface via the
+  // display form when it differs from the chosen canonical note name.
+  const replacement =
+    surface !== canonical ? `[[${canonical}|${surface}]]` : `[[${canonical}]]`;
+
+  // Synthesize an auto-fixable issue that the shared mention-rewrite understands.
+  const fixIssue: AuditIssue = {
+    ...issue,
+    autoFixable: true,
+    targetName: canonical,
+    meta: { ...(issue.meta ?? {}), surface, replacement },
+  };
+
+  const fixResult = await applyFix(schema, result.path, fixIssue);
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Linked '${surface}' → ${replacement}`));
     return 'fixed';
   } else if (fixResult.action === 'skipped') {
     console.log(chalk.dim(`    → Skipped: ${fixResult.message}`));

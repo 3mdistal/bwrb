@@ -526,6 +526,9 @@ function resolveConfig(config: Schema['config']): ResolvedConfig {
     defaultDashboard: config?.default_dashboard,
     dateFormat: config?.date_format ?? 'YYYY-MM-DD',
     dateGranularity: config?.date_granularity ?? 'day',
+    // Default mirrors DEFAULT_FUZZY_MAX_DISTANCE in audit/unlinked-mention.ts.
+    // Inlined to avoid importing the audit module into the schema loader (#622).
+    mentionFuzzyThreshold: config?.mention_fuzzy_threshold ?? 2,
   };
 }
 

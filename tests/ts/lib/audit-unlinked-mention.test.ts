@@ -10,6 +10,7 @@ import {
   buildEntityMentionIndex,
   detectUnlinkedMentions,
   maskNonProse,
+  parseFuzzyThreshold,
 } from '../../../src/lib/audit/unlinked-mention.js';
 import { buildVaultNoteSnapshot } from '../../../src/lib/discovery.js';
 import type { Schema } from '../../../src/types/schema.js';
@@ -174,6 +175,117 @@ describe('unlinked-mention: detectUnlinkedMentions', () => {
     ]);
     const issues = detectUnlinkedMentions('Hi there.', 'Notes/Daily.md', index);
     expect(issues).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Configurable fuzzy threshold (#622)
+// ---------------------------------------------------------------------------
+
+describe('unlinked-mention: configurable fuzzy threshold', () => {
+  const schema = resolveSchema(SCHEMA);
+
+  function indexFor(
+    notes: Array<{ relativePath: string; frontmatter?: Record<string, unknown>; resolvedType?: string }>
+  ) {
+    return buildEntityMentionIndex(
+      {
+        notes: notes.map((n) => ({
+          path: n.relativePath,
+          relativePath: n.relativePath,
+          ...(n.frontmatter ? { frontmatter: n.frontmatter } : {}),
+          ...(n.resolvedType ? { resolvedType: n.resolvedType } : {}),
+        })),
+      },
+      schema
+    );
+  }
+
+  // "Canadians" is Levenshtein distance 3 from "Canada" — just outside the
+  // conservative default of 2.
+  const notes = [
+    { relativePath: 'People/Canada.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+  ];
+
+  it('does NOT fuzzy-flag a near-match just outside the default threshold', () => {
+    const index = indexFor(notes);
+    // "Canadians" → "Canada": distance 3 — outside default 2.
+    const issues = detectUnlinkedMentions('Visiting Canadians today.', 'Notes/Daily.md', index);
+    const fuzzy = issues.filter((i) => i.meta?.['tier'] === 'fuzzy');
+    expect(fuzzy).toHaveLength(0);
+  });
+
+  it('flags the same near-match when the threshold is raised', () => {
+    const index = indexFor(notes);
+    const issues = detectUnlinkedMentions(
+      'Visiting Canadians today.',
+      'Notes/Daily.md',
+      index,
+      { fuzzyThreshold: 3 }
+    );
+    const fuzzy = issues.find((i) => i.meta?.['tier'] === 'fuzzy');
+    expect(fuzzy).toBeDefined();
+    expect(fuzzy!.similarFiles).toContain('Canada');
+  });
+
+  it('lowering the threshold reduces fuzzy flags (distance-2 match suppressed at threshold 1)', () => {
+    const index = indexFor([
+      { relativePath: 'People/Steve Yegge.md', resolvedType: 'person', frontmatter: { type: 'person' } },
+    ]);
+    // "Steve Yeg" → "Steve Yegge": distance 2.
+    const atDefault = detectUnlinkedMentions('Reading Steve Yeg.', 'Notes/Daily.md', index);
+    expect(atDefault.some((i) => i.meta?.['tier'] === 'fuzzy')).toBe(true);
+
+    const lowered = detectUnlinkedMentions('Reading Steve Yeg.', 'Notes/Daily.md', index, {
+      fuzzyThreshold: 1,
+    });
+    expect(lowered.some((i) => i.meta?.['tier'] === 'fuzzy')).toBe(false);
+  });
+
+  it('a threshold of 0 disables the fuzzy tier entirely', () => {
+    const index = indexFor([
+      { relativePath: 'People/Steve Yegge.md', resolvedType: 'person', frontmatter: { type: 'person' } },
+    ]);
+    const issues = detectUnlinkedMentions('Reading Steve Yeg.', 'Notes/Daily.md', index, {
+      fuzzyThreshold: 0,
+    });
+    expect(issues.some((i) => i.meta?.['tier'] === 'fuzzy')).toBe(false);
+  });
+
+  it('fuzzyEnabled:false disables the fuzzy tier but keeps exact/ambiguous', () => {
+    const index = indexFor([
+      { relativePath: 'People/Steve Yegge.md', resolvedType: 'person', frontmatter: { type: 'person', aliases: ['Stevey'] } },
+    ]);
+    const body = 'Reading Steve Yeg, said Stevey.';
+    const issues = detectUnlinkedMentions(body, 'Notes/Daily.md', index, { fuzzyEnabled: false });
+    expect(issues.some((i) => i.meta?.['tier'] === 'fuzzy')).toBe(false);
+    // The exact alias mention ("Stevey") is still flagged + auto-fixable.
+    expect(issues.some((i) => i.meta?.['tier'] === 'exact' && i.autoFixable)).toBe(true);
+  });
+});
+
+describe('unlinked-mention: parseFuzzyThreshold validation', () => {
+  it('accepts valid integers in range (string and number)', () => {
+    expect(parseFuzzyThreshold('2')).toEqual({ ok: true, value: 2 });
+    expect(parseFuzzyThreshold(0)).toEqual({ ok: true, value: 0 });
+    expect(parseFuzzyThreshold('5')).toEqual({ ok: true, value: 5 });
+  });
+
+  it('rejects out-of-range values', () => {
+    const tooHigh = parseFuzzyThreshold('6');
+    expect(tooHigh.ok).toBe(false);
+    const negative = parseFuzzyThreshold('-1');
+    expect(negative.ok).toBe(false);
+  });
+
+  it('rejects non-integers and garbage with a clear message', () => {
+    const frac = parseFuzzyThreshold('2.5');
+    expect(frac.ok).toBe(false);
+    const garbage = parseFuzzyThreshold('abc');
+    expect(garbage.ok).toBe(false);
+    if (!garbage.ok) {
+      expect(garbage.error).toMatch(/integer between 0 and 5/);
+    }
   });
 });
 
