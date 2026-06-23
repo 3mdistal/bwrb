@@ -250,6 +250,7 @@ interface OpenOptions {
 export const openCommand = new Command("open")
   .description("Open a note (alias for search --open)")
   .argument("[query]", "Note name or path to open")
+  .argument("[mode]", "App mode to open with: system, editor, visual, obsidian, print")
   .option("-a, --app <mode>", "Application to open with: system, editor, visual, obsidian, print")
   .option("--picker <mode>", "Picker mode: fzf, numbered, none", "fzf")
   .option("--output <format>", "Output format: text, json", "text")
@@ -277,12 +278,14 @@ Picker Modes:
 
 Precedence (for default app):
   1. --app flag (explicit)
-  2. BWRB_DEFAULT_APP environment variable
-  3. config.open_with in .bwrb/schema.json
-  4. Fallback: system
+  2. [mode] positional argument (e.g. bwrb open "My Note" print)
+  3. BWRB_DEFAULT_APP environment variable
+  4. config.open_with in .bwrb/schema.json
+  5. Fallback: system
 
 Examples:
   bwrb open "My Note"                   Open note (uses config default)
+  bwrb open "My Note" print             Print path to stdout (positional mode)
   bwrb open "My Note" --app obsidian    Open in Obsidian
   bwrb open "My Note" --app editor      Open in $EDITOR
   bwrb open --type task                 Pick from all tasks
@@ -291,7 +294,12 @@ Examples:
   bwrb open --body "TODO"               Find and open note containing TODO
 `
   )
-  .action(async (query: string | undefined, options: OpenOptions, cmd) => {
+  // Reject excess positional args (e.g. `open "Note" print bogus`). Only
+  // [query] and [mode] are accepted; a third+ token is almost certainly a
+  // mistake and silently swallowing it (commander's default) hides the typo
+  // — which is precisely the failure mode #662 set out to fix.
+  .allowExcessArguments(false)
+  .action(async (query: string | undefined, mode: string | undefined, options: OpenOptions, cmd) => {
     const jsonMode = options.output === "json";
 
     try {
@@ -306,8 +314,13 @@ Examples:
       // Parse picker mode
       const pickerMode = parsePickerMode(resolveGlobalPickerMode(options.picker, globalOpts, "fzf"));
 
-      // Resolve app mode using precedence: CLI > env > config > default
-      const appMode = resolveAppMode(options.app, schema.config);
+      // Resolve app mode using precedence:
+      //   --app flag > positional [mode] > BWRB_DEFAULT_APP > config > default
+      // The positional mode (e.g. `bwrb open "X" print`) is a convenience form;
+      // an explicit --app flag always wins. A positional that is not a valid app
+      // mode throws via parseAppMode, surfacing the typo instead of silently
+      // running the default app and producing no output.
+      const appMode = resolveAppMode(options.app ?? mode, schema.config);
 
       // Check if we have any targeting options
       const hasTargeting = options.type || options.path || options.where?.length || options.id || options.body;
