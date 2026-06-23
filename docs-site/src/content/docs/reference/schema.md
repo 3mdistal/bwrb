@@ -24,7 +24,7 @@ my-vault/
 
 ```json
 {
-  "$schema": "https://bwrb.dev/schema.schema.json",
+  "$schema": "https://bwrb.dev/schema.json",
   "version": 2,
   "schemaVersion": "1.0.0",
   "traits": { ... },
@@ -717,7 +717,7 @@ Add `$schema` to your schema file for editor autocomplete and validation:
 
 ```json
 {
-  "$schema": "https://bwrb.dev/schema.schema.json",
+  "$schema": "https://bwrb.dev/schema.json",
   "types": { ... }
 }
 ```
@@ -737,7 +737,7 @@ If the URL isn't reachable, configure the schema manually in `.vscode/settings.j
 }
 ```
 
-Or reference a local copy of `schema.schema.json` from the bwrb repository.
+Or reference a local copy of `schema.schema.json` (shipped with the `bwrb` package) from the bwrb repository.
 
 ### Neovim
 
@@ -750,7 +750,7 @@ require('lspconfig').jsonls.setup({
       schemas = {
         {
           fileMatch = { "*/.bwrb/schema.json" },
-          url = "https://bwrb.dev/schema.schema.json"
+          url = "https://bwrb.dev/schema.json"
         }
       }
     }
@@ -766,7 +766,7 @@ A full schema demonstrating inheritance, relations, body sections, and config:
 
 ```json
 {
-  "$schema": "https://bwrb.dev/schema.schema.json",
+  "$schema": "https://bwrb.dev/schema.json",
   "version": 2,
   "schemaVersion": "1.0.0",
   
