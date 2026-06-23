@@ -844,6 +844,14 @@ describe('list command', () => {
       expect(result.stderr).toContain('Unknown type');
     });
 
+    it('suggests the canonical-case type for a case-only mismatch (#670)', async () => {
+      const result = await runCLI(['list', '--type', 'TASK'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Unknown type: TASK');
+      expect(result.stderr).toContain("Did you mean 'task'?");
+    });
+
     it('should show ambiguous error for positional that could be type or path', async () => {
       const result = await runCLI(['list', 'nonexistent'], vaultDir);
 

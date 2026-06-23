@@ -595,12 +595,24 @@ describe('schema', () => {
       // 'low' is not a type name and not within threshold of any type
       expect(suggestTypeName(schema, 'low')).toBeUndefined();
     });
+
+    it('suggests the canonical-case type for a case-only mismatch', () => {
+      // Right name, wrong case → the canonical-case name is the best hint.
+      expect(suggestTypeName(schema, 'TASK')).toBe('task');
+      expect(suggestTypeName(schema, 'Idea')).toBe('idea');
+    });
   });
 
   describe('formatUnknownTypeError', () => {
     it('includes a "Did you mean" hint when there is a close match', () => {
       const msg = formatUnknownTypeError(schema, 'taks');
       expect(msg).toContain('Unknown type: taks');
+      expect(msg).toContain("Did you mean 'task'?");
+    });
+
+    it('suggests the canonical-case type for a case-only mismatch', () => {
+      const msg = formatUnknownTypeError(schema, 'TASK');
+      expect(msg).toContain('Unknown type: TASK');
       expect(msg).toContain("Did you mean 'task'?");
     });
 

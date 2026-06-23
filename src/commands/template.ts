@@ -6,6 +6,7 @@ import {
   loadSchema,
   getTypeDefByPath,
   getFieldsForType,
+  formatUnknownTypeError,
 } from '../lib/schema.js';
 import {
   findAllTemplates,
@@ -212,7 +213,7 @@ templateCommand
       if (typePath) {
         const typeDef = getTypeDefByPath(schema, typePath);
         if (!typeDef) {
-          const error = `Unknown type: ${typePath}`;
+          const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {
             printJson(jsonError(error));
             process.exit(ExitCodes.VALIDATION_ERROR);
@@ -583,7 +584,7 @@ templateCommand
       if (typePath) {
         const typeDef = getTypeDefByPath(schema, typePath);
         if (!typeDef) {
-          const error = `Unknown type: ${typePath}`;
+          const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {
             printJson(jsonError(error));
             process.exit(ExitCodes.VALIDATION_ERROR);
@@ -713,7 +714,7 @@ templateCommand
       // Validate type path
       const typeDef = getTypeDefByPath(schema, resolvedTypePath);
       if (!typeDef) {
-        const error = `Unknown type: ${resolvedTypePath}`;
+        const error = formatUnknownTypeError(schema, resolvedTypePath);
         if (jsonMode) {
           printJson(jsonError(error));
           process.exit(ExitCodes.VALIDATION_ERROR);
@@ -1090,7 +1091,7 @@ templateCommand
         // Validate type path
         const typeDef = getTypeDefByPath(schema, typePath);
         if (!typeDef) {
-          const error = `Unknown type: ${typePath}`;
+          const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {
             printJson(jsonError(error));
             process.exit(ExitCodes.VALIDATION_ERROR);
@@ -1480,7 +1481,7 @@ templateCommand
         // Validate type path
         const typeDef = getTypeDefByPath(schema, typePath);
         if (!typeDef) {
-          const error = `Unknown type: ${typePath}`;
+          const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {
             printJson(jsonError(error));
             process.exit(ExitCodes.VALIDATION_ERROR);
