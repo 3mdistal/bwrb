@@ -30,7 +30,7 @@ import { getRecurrenceForType, getFieldsForType, getType, getOutputDir } from '.
 import { parseDate, parsePartialIsoDate } from './local-date.js';
 import { formatDateWithPattern } from './local-date.js';
 import { formatValue } from './vault.js';
-import { getFilenamePattern } from './template.js';
+import { getFilenamePattern, resolveFilenamePattern } from './template.js';
 import { createNoteFromJson } from '../commands/new/json-mode.js';
 import { findDefaultTemplateWithInheritance } from './template.js';
 import { buildNoteIndex } from './navigation.js';
@@ -182,6 +182,17 @@ export function validateRecurrenceRule(
     });
   }
 
+  // The optional successor name template (#679) must be a non-empty string when
+  // present. Its interpolation tokens (`{name}`, `{date}`, `{field}`) are
+  // resolved at spawn time against the predecessor — an unresolvable token there
+  // falls back to the carried name rather than failing — so there is nothing
+  // further to validate statically here.
+  if (recurrence.name_template !== undefined && recurrence.name_template.trim() === '') {
+    issues.push({
+      message: `Recurrence trait '${trait}' on type '${typeName}' has an empty 'name_template'. Provide a name pattern (e.g. "Review: {name}") or omit it.`,
+    });
+  }
+
   // The successor's type is the spawned type. Without a named template we spawn
   // the same type (a task begets a task), so validate offsets against this type.
   const targetFields = getFieldsForType(schema, typeName);
@@ -307,6 +318,58 @@ export function computeOffsetFields(
  */
 function basenameNoExt(filePath: string): string {
   return basename(filePath, '.md');
+}
+
+/**
+ * Resolve the successor's BASE name (before uniqueness disambiguation).
+ *
+ * Without `recurrence.name_template` (#679): carry the predecessor's `name`
+ * forward verbatim (falling back to its filename), exactly as before.
+ *
+ * With `name_template`: interpolate the template against the predecessor's
+ * frontmatter using the SAME token engine the rest of bwrb uses for filename
+ * patterns (`resolveFilenamePattern`) — `{name}` (the predecessor's name),
+ * `{date}` / `{date:FORMAT}` (today), and any predecessor field `{field}`. The
+ * result is sanitized for a filename (so `Review: {name}` → `Review Chapter
+ * One`, the colon being filesystem-illegal). Uniqueness (#632) is enforced
+ * separately, on top of this result, by `resolveSuccessorName`.
+ *
+ * Falls back to the carried name when the template references an unresolvable
+ * token or sanitizes to empty — we never want a recurrence rule to be unable to
+ * name its successor.
+ */
+function resolveSuccessorBaseName(
+  schema: LoadedSchema,
+  recurringTypeName: string,
+  predecessor: Record<string, unknown>,
+  predecessorName: string
+): string {
+  const carriedName =
+    typeof predecessor['name'] === 'string' && predecessor['name'].trim() !== ''
+      ? (predecessor['name'] as string)
+      : predecessorName;
+
+  const resolved = getRecurrenceForType(schema, recurringTypeName);
+  const nameTemplate = resolved?.recurrence.name_template;
+  if (!nameTemplate || nameTemplate.trim() === '') {
+    return carriedName;
+  }
+
+  // Interpolate `{name}`/`{date}`/`{field}` against the predecessor frontmatter,
+  // ensuring `{name}` resolves to the carried name even when the predecessor's
+  // own `name` field is blank.
+  const interpolationContext: Record<string, unknown> = { ...predecessor, name: carriedName };
+  const result = resolveFilenamePattern(
+    nameTemplate,
+    interpolationContext,
+    schema.config.dateFormat
+  );
+  if (result.resolved && result.filename) {
+    return result.filename;
+  }
+  // Unresolvable template (missing token / empty after sanitization): fall back
+  // to the carried name so the spawn still succeeds.
+  return carriedName;
 }
 
 /**
@@ -493,22 +556,22 @@ export async function prepareSuccessor(
   const offsetFields = computeOffsetFields(schema, typeName, predecessor);
 
   // Resolve a successor name whose basename is UNIQUE across the whole vault.
-  // When the spawn type uses a filename pattern, the pattern disambiguates (so we
-  // keep the carried-forward name); otherwise we suffix a counter until no
-  // existing note shares the basename. Vault-global (not per-output-dir) so a
-  // cross-type successor doesn't reuse the predecessor's basename and break
-  // name-based `next`/`prev` resolution (#632).
-  const carriedName =
-    typeof predecessor['name'] === 'string' && predecessor['name'].trim() !== ''
-      ? (predecessor['name'] as string)
-      : predecessorName;
+  // The BASE name is the predecessor's carried name, OR — when the rule defines a
+  // `name_template` (#679) — that template interpolated (e.g. "Review: {name}").
+  // On TOP of the base, resolveSuccessorName enforces uniqueness: when the spawn
+  // type uses a filename pattern, the pattern disambiguates (so the base is kept
+  // as-is); otherwise it suffixes a counter until no existing note shares the
+  // basename. Vault-global (not per-output-dir) so a cross-type successor doesn't
+  // reuse the predecessor's basename and break name-based `next`/`prev`
+  // resolution (#632).
+  const baseName = resolveSuccessorBaseName(schema, typeName, predecessor, predecessorName);
   const noteIndex = await buildNoteIndex(schema, vaultDir);
   const successorName = resolveSuccessorName(
     schema,
     vaultDir,
     spawnType,
     template,
-    carriedName,
+    baseName,
     noteIndex
   );
 

@@ -231,6 +231,7 @@ A trait may carry a `recurrence` block. Any type that composes the trait then sp
 |----------|------|----------|-------------|
 | `on` | string | Yes | Trigger transition, `<field> = <value>` (e.g. `"status = done"`). The successor is spawned when the field transitions **into** this value |
 | `template` | string | No | Template to spawn from. Defaults to the type's own default template (a task begets a task); a named template can spawn a different type |
+| `name_template` | string | No | Name pattern for the successor (e.g. `"Review: {name}"`). Interpolated with the same tokens as filename patterns — `{name}` (predecessor's name), `{date}` / `{date:FORMAT}`, and any predecessor field `{field}` — then sanitized for a filename. Gives a cross-type successor a meaningful name instead of a numeric suffix; vault-global basename uniqueness is still enforced on the result. Defaults to carrying the predecessor's name forward |
 | `set` | object | No | Field-offset assignments. Each value is `<dateField> + <duration>` (e.g. `"deadline + 7d"`); the base **must** be a date field |
 
 The `next` relation field does triple duty: it is the **chain link** (history), the **idempotency guard** (a successor is spawned only when `next` is empty), and the basis for the audit **backstop** (`missing-successor`). See the [task system guide](/automation/task-system/) for the full two-path execution model and validation rules.

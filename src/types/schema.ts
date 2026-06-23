@@ -116,6 +116,16 @@ export const RecurrenceSchema = z.object({
   // type default template (a task begets a task). Naming a template can spawn a
   // different type (finish "draft" → spawn "review").
   template: z.string().optional(),
+  // Optional name template for the successor. When set, the successor's name is
+  // this string interpolated with the SAME tokens used elsewhere — `{name}` (the
+  // predecessor's name), `{date}` / `{date:FORMAT}` (today), and any predecessor
+  // field `{field}` — then sanitized for a filename (e.g. "Review: {name}" →
+  // "Review Chapter One"). This gives a cross-type successor a meaningful,
+  // distinct name instead of a numeric suffix (#679). When unset, the
+  // predecessor's name is carried forward as before. Vault-global basename
+  // uniqueness (#632) is still enforced on the RESULT — if the interpolated name
+  // also collides, a numeric suffix is appended on top.
+  name_template: z.string().optional(),
   // Field-offset assignments for the successor. Each value is a field-offset
   // expression `<dateField> <+|-> <duration>` (e.g. "deadline + 7d"). The base
   // must be a date field on the predecessor.

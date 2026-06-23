@@ -83,15 +83,40 @@ spawn a `review`:
 The audit validates that the referenced template exists (a rule pointing at a deleted
 template is a deterministic error — see below).
 
-**Successor naming.** The successor carries the predecessor's name so the chain reads
-naturally, but bwrb wikilinks are **name-based** (`[[Chapter One]]` resolves by basename
-across every directory). So the spawned successor's basename is guaranteed **unique across
-the whole vault**: if the carried name is already taken anywhere, bwrb appends ` 2`, ` 3`,
-… A same-type successor in a busy directory and a **cross-type** successor (finish a
-`draft` → spawn a `review`) are handled the same way — finishing `drafts/Chapter One.md`
-spawns `reviews/Chapter One 2.md`, not `reviews/Chapter One.md`, so the predecessor's
-`next` and the successor's `prev` resolve unambiguously to the right notes (a type whose
-template defines a filename pattern disambiguates via that pattern instead).
+**Successor naming.** By default the successor carries the predecessor's name so the chain
+reads naturally, but bwrb wikilinks are **name-based** (`[[Chapter One]]` resolves by
+basename across every directory). So the spawned successor's basename is guaranteed
+**unique across the whole vault**: if the carried name is already taken anywhere, bwrb
+appends ` 2`, ` 3`, … A same-type successor in a busy directory and a **cross-type**
+successor (finish a `draft` → spawn a `review`) are handled the same way — finishing
+`drafts/Chapter One.md` spawns `reviews/Chapter One 2.md`, not `reviews/Chapter One.md`, so
+the predecessor's `next` and the successor's `prev` resolve unambiguously to the right notes
+(a type whose template defines a filename pattern disambiguates via that pattern instead).
+
+**Naming a cross-type successor (`name_template`).** A numeric suffix keeps links
+unambiguous but is cosmetically ugly and decouples the name from a meaningful title. Set
+`name_template` on the recurrence rule to give the successor a **meaningful, distinct name**
+instead:
+
+```yaml
+    recurrence:
+      on: "status = done"
+      template: review-checklist     # spawns a `review`
+      name_template: "Review: {name}"  # → "Review Chapter One"
+```
+
+The template is interpolated with the **same tokens** used for filename patterns —
+`{name}` (the predecessor's name), `{date}` / `{date:FORMAT}` (today), and any predecessor
+field `{field}` — then sanitized for a filename (the `:` is filesystem-illegal, so
+`Review: Chapter One` is filed as `Review Chapter One`). Finishing `drafts/Chapter One.md`
+now spawns `reviews/Review Chapter One.md`.
+
+Vault-global uniqueness still applies **on top of** the result: if the interpolated name
+also collides (e.g. another `Review Chapter One` already exists), bwrb appends the same
+` 2`, ` 3`, … suffix, so `next`/`prev` always resolve to the right notes. If the template
+references a token the predecessor doesn't have, bwrb falls back to the carried name rather
+than failing the spawn. Omit `name_template` to keep the carried-name + numeric-suffix
+behavior described above.
 
 ### The `next` field does three jobs
 
