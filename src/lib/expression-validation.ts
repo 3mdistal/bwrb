@@ -10,6 +10,7 @@ import type { Expression, BinaryExpression, UnaryExpression, CallExpression, Ide
 import { parseExpression } from './expression.js';
 import type { LoadedSchema } from '../types/schema.js';
 import { getFieldsForType, getAllFieldsForType, getFieldOptions } from './schema.js';
+import type { Field } from '../types/schema.js';
 import { validateSelectOptionValue, suggestFieldName } from './validation.js';
 import { normalizeWhereExpression } from './where-normalize.js';
 import { FRONTMATTER_IDENTIFIER } from './where-constants.js';
@@ -113,6 +114,55 @@ export function extractFieldComparisons(expr: Expression): FieldComparison[] {
 
   walk(expr);
   return comparisons;
+}
+
+/**
+ * Extract the field-name references passed as the FIRST argument to `under(...)`.
+ *
+ * `under(field, '[[Node]]')` dereferences a relation FIELD (arg 0) and walks the
+ * target's ancestor chain; arg 1 is a node string, NOT a field. We collect only
+ * arg 0 so it can be validated against the schema (must exist, must be a relation
+ * field). The node string is deliberately ignored here.
+ */
+function extractUnderFieldRefs(expr: Expression): string[] {
+  const fields: string[] = [];
+
+  function walk(node: Expression): void {
+    switch (node.type) {
+      case 'BinaryExpression': {
+        const binary = node as BinaryExpression;
+        if (binary.operator === '&&' || binary.operator === '||') {
+          walk(binary.left);
+          walk(binary.right);
+        }
+        break;
+      }
+      case 'UnaryExpression': {
+        walk((node as UnaryExpression).argument);
+        break;
+      }
+      case 'CallExpression': {
+        const call = node as CallExpression;
+        const callee = call.callee as Identifier;
+        if (callee?.type === 'Identifier' && callee.name === 'under') {
+          const [arg1] = call.arguments;
+          // Only the first argument is a field reference; the second is a node.
+          const fieldName = arg1 ? getFieldName(arg1) : null;
+          if (fieldName) fields.push(fieldName);
+        }
+        // `under` is never nested inside another call's args in practice, but
+        // walk any call arguments that are themselves logical/call expressions
+        // so a future `... && under(...)` inside a call still gets validated.
+        for (const arg of call.arguments) {
+          walk(arg);
+        }
+        break;
+      }
+    }
+  }
+
+  walk(expr);
+  return fields;
 }
 
 /**
@@ -247,6 +297,22 @@ export function validateWhereExpressions(
     try {
       const normalized = normalizeWhereExpression(exprString, allFieldNames);
       const expr = parseExpression(normalized);
+
+      // Validate the FIRST argument of any `under(field, '[[Node]]')` call: it
+      // must be a known field on the type, and a relation-typed field (since
+      // `under` dereferences a relation). The node string (arg 2) is not a field
+      // and is not validated here.
+      for (const underField of extractUnderFieldRefs(expr)) {
+        const underError = validateUnderFieldRef(
+          exprString,
+          underField,
+          typeName,
+          allowedFields,
+          fields
+        );
+        if (underError) errors.push(underError);
+      }
+
       const comparisons = extractFieldComparisons(expr);
 
       for (const comparison of comparisons) {
@@ -301,6 +367,56 @@ export function validateWhereExpressions(
 }
 
 /**
+ * Validate the first argument of an `under(field, ...)` call.
+ *
+ * Returns an error when:
+ * - the field is unknown for the type (consistent with how other field
+ *   references are flagged when `--type` is known), or
+ * - the field exists but is not a relation field (so `under` would have nothing
+ *   to dereference).
+ *
+ * Returns null when the field is a valid relation field, or when the field
+ * definition isn't available to inspect (e.g. inherited/synthetic fields whose
+ * `prompt` we can't see) — we only flag what we can verify, to avoid breaking
+ * valid usage.
+ */
+function validateUnderFieldRef(
+  expression: string,
+  fieldName: string,
+  typeName: string,
+  allowedFields: Set<string>,
+  fields: Record<string, Field>
+): WhereValidationError | null {
+  // Unknown field for this type.
+  if (!allowedFields.has(fieldName)) {
+    const fieldList = Array.from(allowedFields);
+    const suggestion = suggestFieldName(fieldName, fieldList);
+    return {
+      expression,
+      field: fieldName,
+      value: '',
+      message: `Unknown field '${fieldName}' for type '${typeName}' in under()`,
+      validOptions: fieldList,
+      ...(suggestion && { suggestion }),
+    };
+  }
+
+  // Known field — verify it's a relation field when we can see its definition.
+  const field = fields[fieldName];
+  if (field && field.prompt !== 'relation') {
+    return {
+      expression,
+      field: fieldName,
+      value: '',
+      message: `under() expects a relation field, but '${fieldName}' is a '${field.prompt ?? 'non-relation'}' field on type '${typeName}'`,
+      validOptions: [],
+    };
+  }
+
+  return null;
+}
+
+/**
  * Validate a single field value against its options.
  */
 function validateFieldValue(
@@ -330,8 +446,10 @@ export function formatWhereValidationErrors(errors: WhereValidationError[]): str
 
   if (errors.length === 1) {
     const err = errors[0]!;
-    let msg = `Error: ${err.message}.\n`;
-    msg += `  Valid options: ${err.validOptions.join(', ')}`;
+    let msg = `Error: ${err.message}.`;
+    if (err.validOptions.length > 0) {
+      msg += `\n  Valid options: ${err.validOptions.join(', ')}`;
+    }
     if (err.suggestion) {
       msg += `\n  Did you mean '${err.suggestion}'?`;
     }
@@ -341,7 +459,9 @@ export function formatWhereValidationErrors(errors: WhereValidationError[]): str
   const lines: string[] = ['Expression validation errors:'];
   for (const err of errors) {
     let line = `  - ${err.message}`;
-    if (err.validOptions.length <= 5) {
+    if (err.validOptions.length === 0) {
+      // No options to suggest (e.g. a relation-field-type error).
+    } else if (err.validOptions.length <= 5) {
       line += `. Valid options: ${err.validOptions.join(', ')}`;
     } else {
       line += `. Valid options: ${err.validOptions.slice(0, 5).join(', ')}... (${err.validOptions.length} total)`;

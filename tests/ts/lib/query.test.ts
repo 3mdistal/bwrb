@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { join } from 'path';
 import { writeFile, rm } from 'fs/promises';
 import {
@@ -6,6 +6,7 @@ import {
   applyFrontmatterFilters,
   type FileWithFrontmatter,
 } from '../../../src/lib/query.js';
+import * as discovery from '../../../src/lib/discovery.js';
 import { loadSchema } from '../../../src/lib/schema.js';
 import { createTestVault, cleanupTestVault } from '../fixtures/setup.js';
 import type { Schema } from '../../../src/types/schema.js';
@@ -279,6 +280,33 @@ describe('query', () => {
           typePath: 'task',
         });
         expect(underResult).toHaveLength(1);
+      });
+
+      it('parses the vault exactly once (parent + alias maps share one snapshot)', async () => {
+        // Regression for #634: the full-vault augmentation used to walk + parse
+        // the vault twice per `under` query (once for the parent map via
+        // discoverManagedFiles + parseNote, once for the alias map via its own
+        // buildVaultNoteSnapshot). Both maps now come from a SINGLE snapshot.
+        const snapshotSpy = vi.spyOn(discovery, 'buildVaultNoteSnapshot');
+        try {
+          const files = makeFiles([
+            { path: 'Objectives/Tasks/Leaf.md', fm: { type: 'task', status: 'backlog', milestone: '"[[Vercel]]"' } },
+          ]);
+
+          const result = await applyFrontmatterFilters(files, {
+            whereExpressions: ["under(milestone, '[[career]]')"],
+            vaultDir,
+            schema,
+            typePath: 'task',
+          });
+
+          // Behavior unchanged: still matches the deep-descendant relation target.
+          expect(result).toHaveLength(1);
+          // And the vault snapshot was built exactly once for the query.
+          expect(snapshotSpy).toHaveBeenCalledTimes(1);
+        } finally {
+          snapshotSpy.mockRestore();
+        }
       });
 
       it('does not match (and does not crash) on a dangling relation target', async () => {
