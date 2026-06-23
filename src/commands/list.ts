@@ -18,6 +18,9 @@ import {
   buildDirectoryTree,
   extractNoteName,
   isFileSortKey,
+  isFileStatField,
+  formatFileStatDisplay,
+  fileStatJsonValue,
   type TreeNode,
   type DirectoryTreeNode,
   type FileStatMap,
@@ -544,12 +547,17 @@ export async function listObjects(
     }
   }
 
-  // When sorting by a filesystem-stat `file.*` key, stat the files first and
-  // thread the results into the comparator (which stays pure/synchronous).
-  const fileStats =
-    options.sortField && isFileSortKey(options.sortField)
-      ? await collectFileStats(filteredFiles.map(f => f.path))
-      : undefined;
+  // Stat the files first when a `file.*` stat key is needed — either for
+  // SORTING (`--sort file.mtime`) or for DISPLAY (`--fields file.size`). The
+  // same {@link FileStatMap} is threaded into the comparator (which stays
+  // pure/synchronous) and into the table/JSON renderers so `file.*` columns
+  // render real values instead of an empty column (#689).
+  const needsFileStats =
+    (options.sortField !== undefined && isFileSortKey(options.sortField)) ||
+    (options.fields?.some(isFileStatField) ?? false);
+  const fileStats = needsFileStats
+    ? await collectFileStats(filteredFiles.map(f => f.path))
+    : undefined;
 
   const fileComparator = createFileComparator(
     vaultDir,
@@ -643,6 +651,14 @@ export async function listObjects(
             selected[field] = noteName;
             continue;
           }
+          if (isFileStatField(field)) {
+            // `file.*` stat fields render from the stat map collected above
+            // (times as ISO-8601, size as a number). Mirrors the text table so
+            // JSON consumers see the same data the table shows (#689).
+            const value = fileStatJsonValue(field, fileStats?.get(path));
+            if (value !== undefined) selected[field] = value;
+            continue;
+          }
           if (Object.prototype.hasOwnProperty.call(frontmatter, field)) {
             selected[field] = frontmatter[field];
           }
@@ -690,7 +706,7 @@ export async function listObjects(
 
   // Default output (table with fields or simple names)
   if (options.fields && options.fields.length > 0) {
-    printTable(filteredFiles, vaultDir, showPaths, options.fields);
+    printTable(filteredFiles, vaultDir, showPaths, options.fields, fileStats);
   } else {
     for (const { path } of filteredFiles) {
       console.log(basename(path, '.md'));
@@ -705,7 +721,8 @@ function printTable(
   files: { path: string; frontmatter: Record<string, unknown> }[],
   vaultDir: string,
   showPaths: boolean,
-  fields: string[]
+  fields: string[],
+  fileStats?: FileStatMap
 ): void {
   const context = getTtyContext();
   const headerStyle = context.colorEnabled ? (text: string) => chalk.gray(text) : null;
@@ -740,6 +757,12 @@ function printTable(
     };
 
     for (const field of fields) {
+      if (isFileStatField(field)) {
+        // `file.*` stat columns render from the stat map collected for sorting
+        // and/or fields (times as YYYY-MM-DD HH:MM, size as bytes) (#689).
+        row[field] = formatFileStatDisplay(field, fileStats?.get(path)) ?? '—';
+        continue;
+      }
       const value = field === 'name' || field === '_name'
         ? basename(path, '.md')
         : field === '_path'

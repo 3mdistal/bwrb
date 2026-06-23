@@ -700,6 +700,142 @@ describe('list command', () => {
     });
   });
 
+  describe('--fields file.* stat columns (#689)', () => {
+    let statVault: string;
+
+    beforeEach(async () => {
+      statVault = await createTestVault();
+    });
+
+    afterEach(async () => {
+      await cleanupTestVault(statVault);
+    });
+
+    /** Set a file's mtime to a fixed epoch-seconds value. */
+    async function setMtime(rel: string, seconds: number): Promise<void> {
+      const { utimes } = await import('fs/promises');
+      const when = new Date(seconds * 1000);
+      await utimes(join(statVault, rel), when, when);
+    }
+
+    /** Local-time YYYY-MM-DD HH:MM rendering, matching formatFileTimestamp. */
+    function expectedStamp(seconds: number): string {
+      const d = new Date(seconds * 1000);
+      const pad = (n: number): string => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    it('renders file.mtime as a populated date column (regression: was empty)', async () => {
+      const seconds = 1_700_000_000;
+      await setMtime('Ideas/Sample Idea.md', seconds);
+
+      const result = await runCLI(['list', 'idea', '--fields', 'file.mtime'], statVault);
+
+      expect(result.exitCode).toBe(0);
+      // Header present and column populated (not the empty-cell placeholder).
+      expect(result.stdout).toContain('FILE.MTIME');
+      const stamp = expectedStamp(seconds);
+      expect(result.stdout).toContain(stamp);
+      // The Sample Idea row must carry the stamp, not the em-dash placeholder.
+      const sampleRow = result.stdout
+        .split('\n')
+        .find(line => line.includes('Sample Idea'));
+      expect(sampleRow).toBeDefined();
+      expect(sampleRow).toContain(stamp);
+    });
+
+    it('renders file.size as a numeric byte column', async () => {
+      const { stat } = await import('fs/promises');
+      const size = (await stat(join(statVault, 'Ideas/Sample Idea.md'))).size;
+
+      const result = await runCLI(['list', 'idea', '--fields', 'file.size'], statVault);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('FILE.SIZE');
+      const sampleRow = result.stdout
+        .split('\n')
+        .find(line => line.includes('Sample Idea'));
+      expect(sampleRow).toBeDefined();
+      expect(sampleRow).toContain(String(size));
+    });
+
+    it('mixes file.* columns with a frontmatter field', async () => {
+      const seconds = 1_700_000_000;
+      await setMtime('Ideas/Sample Idea.md', seconds);
+
+      const result = await runCLI(
+        ['list', 'idea', '--fields', 'file.mtime,file.size,status'],
+        statVault
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('FILE.MTIME');
+      expect(result.stdout).toContain('FILE.SIZE');
+      expect(result.stdout).toContain('STATUS');
+      // Frontmatter column still works alongside file.* columns.
+      expect(result.stdout).toContain('raw');
+      expect(result.stdout).toContain(expectedStamp(seconds));
+    });
+
+    it('includes file.* values in --output json (mtime ISO, size number)', async () => {
+      const seconds = 1_700_000_000;
+      await setMtime('Ideas/Sample Idea.md', seconds);
+      const { stat } = await import('fs/promises');
+      const size = (await stat(join(statVault, 'Ideas/Sample Idea.md'))).size;
+
+      const result = await runCLI(
+        ['list', 'idea', '--fields', 'file.mtime,file.size,status', '--output', 'json'],
+        statVault
+      );
+
+      expect(result.exitCode).toBe(0);
+      const parsed = JSON.parse(result.stdout) as Array<Record<string, unknown>>;
+      const sample = parsed.find(row => row['_name'] === 'Sample Idea');
+      expect(sample).toBeDefined();
+      expect(sample!['file.mtime']).toBe(new Date(seconds * 1000).toISOString());
+      expect(sample!['file.size']).toBe(size);
+      expect(typeof sample!['file.size']).toBe('number');
+      // Frontmatter field still present in JSON.
+      expect(sample!['status']).toBe('raw');
+    });
+
+    it('renders file.* columns even without --sort (stat map collected for fields)', async () => {
+      const seconds = 1_700_000_000;
+      await setMtime('Ideas/Sample Idea.md', seconds);
+
+      // No --sort here: previously the stat map was only collected when sorting,
+      // so this column was empty. It must now be populated.
+      const result = await runCLI(['list', 'idea', '--fields', 'file.mtime'], statVault);
+
+      expect(result.exitCode).toBe(0);
+      const sampleRow = result.stdout
+        .split('\n')
+        .find(line => line.includes('Sample Idea'));
+      expect(sampleRow).toContain(expectedStamp(seconds));
+      // The placeholder em-dash must NOT be the value for this column's cell.
+      expect(sampleRow).not.toMatch(/Sample Idea\s+—\s*$/);
+    });
+
+    it('still sorts by file.mtime while rendering it as a field', async () => {
+      const base = 1_700_000_000;
+      await setMtime('Ideas/Sample Idea.md', base + 100);
+      await setMtime('Ideas/Another Idea.md', base + 300);
+
+      const result = await runCLI(
+        ['list', 'idea', '--fields', 'file.mtime', '--sort', 'file.mtime', '--desc'],
+        statVault
+      );
+
+      expect(result.exitCode).toBe(0);
+      const lines = result.stdout.split('\n');
+      const anotherIdx = lines.findIndex(l => l.includes('Another Idea'));
+      const sampleIdx = lines.findIndex(l => l.includes('Sample Idea'));
+      expect(anotherIdx).toBeGreaterThanOrEqual(0);
+      expect(anotherIdx).toBeLessThan(sampleIdx);
+      expect(result.stdout).toContain(expectedStamp(base + 300));
+    });
+  });
+
   describe('error handling', () => {
     it('should error on unknown type', async () => {
       const result = await runCLI(['list', '--type', 'nonexistent'], vaultDir);

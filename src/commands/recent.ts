@@ -23,6 +23,7 @@ import {
 } from '../lib/targeting.js';
 import { getTtyContext } from '../lib/tty/context.js';
 import { renderTable } from '../lib/tty/table.js';
+import { formatFileTimestamp } from '../lib/list-helpers.js';
 import { openNote, resolveAppMode } from './open.js';
 import { pickFile, parsePickerMode } from '../lib/picker.js';
 import { createDashboard, updateDashboard, getDashboard } from '../lib/dashboard.js';
@@ -386,18 +387,6 @@ Examples:
   });
 
 /**
- * Format a timestamp for the default (human) table output.
- * Uses the local-timezone date and time, second precision dropped.
- */
-function formatModified(mtimeMs: number): string {
-  const d = new Date(mtimeMs);
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  return `${date} ${time}`;
-}
-
-/**
  * Render the default table: NAME + MODIFIED columns.
  */
 function printRecentTable(files: RecentFile[]): void {
@@ -427,7 +416,7 @@ function printRecentTable(files: RecentFile[]): void {
 
   const rows = files.map(({ path, mtimeMs }) => ({
     primary: basename(path, '.md'),
-    modified: formatModified(mtimeMs),
+    modified: formatFileTimestamp(mtimeMs),
   }));
 
   const lines = renderTable({ columns, rows, context });

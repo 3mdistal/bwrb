@@ -29,7 +29,7 @@ The positional argument is auto-detected as type, path (contains `/`), or where 
 | Option | Description |
 |--------|-------------|
 | `--output <format>` | Output format: `text`, `paths`, `tree`, `link`, `json` |
-| `--fields <fields>` | Show frontmatter fields in a table (comma-separated) |
+| `--fields <fields>` | Show fields in a table (comma-separated). Accepts frontmatter fields plus the file stats `file.mtime`, `file.ctime`, `file.size` |
 | `--sort <field>` | Sort by a frontmatter field, `name`, `_name`, `_path`, or a file stat (`file.mtime`, `file.ctime`, `file.size`) |
 | `--desc` | Sort descending (requires `--sort`) |
 | `--limit <n>` | Show only the first `n` matching notes |
@@ -66,6 +66,9 @@ bwrb list objective/milestone
 
 # With field columns
 bwrb list task --fields=status,priority
+
+# File stats can also be shown as columns (not just sorted on)
+bwrb list task --fields=status,file.mtime,file.size
 ```
 
 ### Filtering
@@ -165,11 +168,23 @@ bwrb list --type task --count
 bwrb list --type task --count --output json  # {"count": 12}
 ```
 
-The `file.*` sort keys read filesystem metadata and mirror the `file.*`
+The `file.*` keys read filesystem metadata and mirror the `file.*`
 accessors available in `--where`: `file.mtime` (modification time),
-`file.ctime` (creation time), and `file.size` (bytes). They compare
-numerically. `bwrb recent` is `bwrb list --sort file.mtime --desc` with a
-default limit of 20.
+`file.ctime` (creation time), and `file.size` (bytes). When used with
+`--sort` they compare numerically. `bwrb recent` is
+`bwrb list --sort file.mtime --desc` with a default limit of 20.
+
+The same `file.*` keys can also be passed to `--fields` to render them as
+table columns (and as keys in `--output json`):
+
+```bash
+bwrb list --type task --fields file.mtime,file.size,status
+```
+
+In the text table, `file.mtime`/`file.ctime` render as a local
+`YYYY-MM-DD HH:MM` timestamp (matching `bwrb recent`'s MODIFIED column) and
+`file.size` renders as a byte count. In `--output json`, `file.mtime`/
+`file.ctime` are ISO-8601 strings and `file.size` is a number.
 
 Missing sort values are always placed at the end, including with `--desc`.
 `--count` reports the total number of matching notes before any `--limit` is applied.
