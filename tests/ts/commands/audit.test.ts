@@ -3625,7 +3625,13 @@ effort: ""
       }
     });
 
-    it('should not flag a blank (whitespace) optional number as wrong-scalar-type', async () => {
+    it('should flag a blank (whitespace) optional number as wrong-scalar-type (write/audit parity)', async () => {
+      // Parity with the write path: validateFrontmatter computes emptiness with
+      // `value !== ''` (NOT trimmed), so a whitespace-only value like "   " is
+      // NOT treated as unset and is rejected as a wrong-type scalar. Audit must
+      // agree and flag it as wrong-scalar-type. Only the literal empty string
+      // ("") is skipped as "unset" (see the #664 test above). This keeps audit
+      // and `new --json`/`edit` in agreement on whitespace-only scalars.
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Blank Effort.md'),
         `---
@@ -3640,13 +3646,13 @@ effort: "   "
       const output = JSON.parse(result.stdout);
       const file = output.files.find((f: { path: string }) => f.path.includes('Blank Effort.md'));
 
-      if (file) {
-        const numberIssue = file.issues.find(
-          (i: { code: string; field?: string }) =>
-            i.code === 'wrong-scalar-type' && i.field === 'effort'
-        );
-        expect(numberIssue).toBeUndefined();
-      }
+      expect(file).toBeDefined();
+      const numberIssue = file.issues.find(
+        (i: { code: string; field?: string }) =>
+          i.code === 'wrong-scalar-type' && i.field === 'effort'
+      );
+      expect(numberIssue).toBeDefined();
+      expect(numberIssue.expected).toBe('number');
     });
 
     it('should still flag a non-numeric optional number value', async () => {
