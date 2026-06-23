@@ -349,6 +349,35 @@ describe('open command', () => {
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('No matching notes found');
     });
+
+    it('should reject excess positional args (open <query> <mode> <extra>)', async () => {
+      // A third positional is almost certainly a mistake. Rather than silently
+      // swallowing `bogus` and exiting 0, the command must error loudly.
+      const result = await runCLI(
+        ['open', 'Sample Idea', 'print', 'bogus'],
+        vaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain('too many arguments');
+    });
+
+    it('should still accept exactly two positionals (open <query> <mode>)', async () => {
+      const result = await runCLI(['open', 'Sample Idea', 'print'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Ideas/Sample Idea.md');
+    });
+
+    it('should still accept a single positional (open <query>)', async () => {
+      const result = await runCLI(
+        ['open', 'Sample Idea', '--app', 'print'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Ideas/Sample Idea.md');
+    });
   });
 });
 

@@ -278,9 +278,10 @@ Picker Modes:
 
 Precedence (for default app):
   1. --app flag (explicit)
-  2. BWRB_DEFAULT_APP environment variable
-  3. config.open_with in .bwrb/schema.json
-  4. Fallback: system
+  2. [mode] positional argument (e.g. bwrb open "My Note" print)
+  3. BWRB_DEFAULT_APP environment variable
+  4. config.open_with in .bwrb/schema.json
+  5. Fallback: system
 
 Examples:
   bwrb open "My Note"                   Open note (uses config default)
@@ -293,6 +294,11 @@ Examples:
   bwrb open --body "TODO"               Find and open note containing TODO
 `
   )
+  // Reject excess positional args (e.g. `open "Note" print bogus`). Only
+  // [query] and [mode] are accepted; a third+ token is almost certainly a
+  // mistake and silently swallowing it (commander's default) hides the typo
+  // — which is precisely the failure mode #662 set out to fix.
+  .allowExcessArguments(false)
   .action(async (query: string | undefined, mode: string | undefined, options: OpenOptions, cmd) => {
     const jsonMode = options.output === "json";
 
