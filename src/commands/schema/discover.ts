@@ -111,7 +111,15 @@ Examples:
         }
       }
 
-      const report = await buildDiscoverReport(root, { schema });
+      // buildDiscoverReport throws if the scanned ROOT directory is unreadable
+      // (its contents cannot be listed even though the path exists). Surface a
+      // clear IO error rather than silently reporting "0 files".
+      let report;
+      try {
+        report = await buildDiscoverReport(root, { schema });
+      } catch {
+        throw new Error(`Path not found or unreadable: ${root}`);
+      }
 
       if (jsonMode) {
         printJson(jsonSuccess({ data: report }));

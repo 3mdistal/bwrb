@@ -298,7 +298,7 @@ The `data` object has this shape:
   "root": "/abs/path/scanned",
   "totalFiles": 4,
   "filesWithFrontmatter": 3,
-  "unreadable": [],                 // { file, error } for files skipped (never fatal)
+  "unreadable": [],                 // { file, error } for skipped files AND nested unreadable subdirs (never fatal)
   "schemaPresent": true,            // whether a schema was loaded for drift
   "fields": [
     {
@@ -336,6 +336,13 @@ Value-types are coarse, frontmatter-shaped buckets: `string`, `number`,
 |------|---------|
 | `0` | Report produced (including for non-conforming data) |
 | `2` | Real error (for example, the path is missing or unreadable) |
+
+A scanned **root** that exists but whose contents cannot be listed (for example
+a directory with `chmod 000`) is a real error and exits `2` — it is never
+reported as "0 files". By contrast, an unreadable **nested** subdirectory found
+mid-walk is recoverable: the rest of the tree is still scanned (exit `0`) and the
+locked subdirectory is surfaced in the `unreadable` list rather than silently
+dropped.
 
 ---
 
