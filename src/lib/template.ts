@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
 import { closestMatch } from './close-match.js';
 import { TemplateFrontmatterSchema, type Template, type LoadedSchema, type Field, type Constraint, type InstanceScaffold, type ResolvedType } from '../types/schema.js';
-import { getType, getFieldsForType, getFieldOptions, getOutputDir } from './schema.js';
+import { getType, getFieldsForType, getFieldOptions, getOutputDir, formatUnknownTypeError } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
@@ -1467,7 +1467,7 @@ export async function createScaffoldedInstances(
         errors.push({
           subtype: instance.type,
           filename: instance.filename,
-          message: `Unknown type: ${instance.type}`,
+          message: formatUnknownTypeError(schema, instance.type),
         });
         continue;
       }

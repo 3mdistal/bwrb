@@ -614,4 +614,55 @@ Body
       expect(existsSync(templatePath)).toBe(false);
     });
   });
+
+  describe('unknown-type "did you mean" suggestions (#670)', () => {
+    it('suggests a close type for a typo on template list (text)', async () => {
+      const result = await runCLI(['template', 'list', 'taks'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Unknown type: taks');
+      expect(result.stderr).toContain("Did you mean 'task'?");
+    });
+
+    it('suggests a close type for a typo on template new (json)', async () => {
+      const result = await runCLI([
+        'template', 'new', 'taks',
+        '--name', 'test',
+        '--json', '{}',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('Unknown type: taks');
+      expect(json.error).toContain("Did you mean 'task'?");
+    });
+
+    it('suggests a close type for a typo on template delete (json)', async () => {
+      const result = await runCLI([
+        'template', 'delete', 'taks', 'default', '--force', '--output', 'json',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain("Did you mean 'task'?");
+    });
+
+    it('suggests the canonical-case type for a case-only mismatch', async () => {
+      const result = await runCLI(['template', 'list', 'TASK'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Unknown type: TASK');
+      expect(result.stderr).toContain("Did you mean 'task'?");
+    });
+
+    it('omits the hint for a far-unknown type', async () => {
+      const result = await runCLI(['template', 'list', 'completely-unknown-type'], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Unknown type: completely-unknown-type');
+      expect(result.stderr).not.toContain('Did you mean');
+    });
+  });
 });

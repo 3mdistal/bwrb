@@ -1010,6 +1010,17 @@ export function suggestTypeName(
   if (schema.types.has(typeName)) return undefined;
 
   const availableTypes = getConcreteTypeNames(schema);
+
+  // Case-only mismatch: if the input matches a real type name except for
+  // casing (e.g. `TASK` → `task`), the canonical-case name is the single most
+  // useful "did you mean" — surface it directly. The distance-based path below
+  // can't, because it case-folds both sides and then drops the resulting
+  // distance-0 row via `excludeExact`. Valid correct-case types already
+  // returned above, so this never fires for a genuinely valid type.
+  const lowered = typeName.toLowerCase();
+  const caseMatch = availableTypes.find((t) => t.toLowerCase() === lowered);
+  if (caseMatch) return caseMatch;
+
   // Threshold: at most 3 edits, but never more than 60% of the input length so
   // very short inputs don't match unrelated types and long gibberish is rejected.
   const maxDistance = Math.min(3, Math.ceil(typeName.length * 0.6));
@@ -1026,7 +1037,7 @@ export function suggestTypeName(
  *
  * This is the single shared formatter used by every command that accepts a
  * type name (`list`/`recent`/`search`/`audit`/`bulk`/`dashboard`/`new`/
- * `schema list`/`edit`). Keeping the `Unknown type: <name>` prefix preserves
+ * `schema list`/`edit`/`template *`). Keeping the `Unknown type: <name>` prefix preserves
  * the existing message shape (and JSON error payload), only adding the
  * suggestion — so valid types are unaffected and JSON consumers get the hint
  * inline in the error string.
