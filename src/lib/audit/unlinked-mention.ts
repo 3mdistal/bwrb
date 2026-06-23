@@ -46,11 +46,23 @@ import type { AuditIssue } from './types.js';
 const MIN_SURFACE_LENGTH = 3;
 
 /**
- * Fuzzy tier: maximum Levenshtein distance (case-insensitive) between an
+ * Fuzzy tier: default maximum Levenshtein distance (case-insensitive) between an
  * unmatched candidate phrase and a known entity surface for it to be offered as
  * a "did you mean?" review item. Kept small so only genuine near-misses surface.
+ *
+ * This is the *default*; it is configurable per run via
+ * {@link UnlinkedMentionOptions.fuzzyThreshold} (CLI `--mention-fuzzy-threshold`
+ * or schema `config.mention_fuzzy_threshold`). See #622.
  */
-const FUZZY_MAX_DISTANCE = 2;
+const DEFAULT_FUZZY_MAX_DISTANCE = 2;
+
+/**
+ * Inclusive bounds for a user-supplied fuzzy threshold. 0 disables the fuzzy
+ * tier (no near-miss is ever within distance 0 of a non-exact surface); the
+ * upper bound keeps the tier from degenerating into noise.
+ */
+const MIN_FUZZY_THRESHOLD = 0;
+const MAX_FUZZY_THRESHOLD = 5;
 
 /**
  * Fuzzy tier: a candidate must be at least this long to be eligible, so short
@@ -64,6 +76,54 @@ const FUZZY_MAX_SUGGESTIONS = 3;
 // ============================================================================
 // Types
 // ============================================================================
+
+/**
+ * Per-run tunables for the `unlinked-mention` fuzzy ("did you mean?") tier (#622).
+ *
+ * Both fields are optional and default to the conservative built-in behavior:
+ * fuzzy enabled at distance {@link DEFAULT_FUZZY_MAX_DISTANCE}. The exact/alias
+ * and ambiguous tiers are NOT affected by these options.
+ */
+export interface UnlinkedMentionOptions {
+  /**
+   * Maximum Levenshtein distance for a fuzzy near-match. Defaults to
+   * {@link DEFAULT_FUZZY_MAX_DISTANCE}. A value of 0 effectively disables the
+   * fuzzy tier (only an exact match has distance 0, and exact matches are
+   * handled by the exact tier). Must be within
+   * [{@link MIN_FUZZY_THRESHOLD}, {@link MAX_FUZZY_THRESHOLD}].
+   */
+  fuzzyThreshold?: number;
+  /**
+   * When false, the fuzzy ("did you mean?") tier is skipped entirely (the
+   * capitalized-phrase heuristic never runs). Exact/alias auto-fix and ambiguous
+   * flagging are unchanged. Defaults to true.
+   */
+  fuzzyEnabled?: boolean;
+}
+
+/**
+ * Validate a user-supplied fuzzy threshold, returning the parsed integer or a
+ * descriptive error. Accepts string (CLI) or number (config) input. Rejects
+ * non-integers and out-of-range values with a clear message (#622).
+ */
+export function parseFuzzyThreshold(
+  raw: string | number
+): { ok: true; value: number } | { ok: false; error: string } {
+  const n = typeof raw === 'number' ? raw : Number(raw.trim());
+  if (!Number.isFinite(n) || !Number.isInteger(n)) {
+    return {
+      ok: false,
+      error: `Invalid fuzzy threshold '${raw}': must be an integer between ${MIN_FUZZY_THRESHOLD} and ${MAX_FUZZY_THRESHOLD}.`,
+    };
+  }
+  if (n < MIN_FUZZY_THRESHOLD || n > MAX_FUZZY_THRESHOLD) {
+    return {
+      ok: false,
+      error: `Invalid fuzzy threshold '${raw}': must be between ${MIN_FUZZY_THRESHOLD} and ${MAX_FUZZY_THRESHOLD}.`,
+    };
+  }
+  return { ok: true, value: n };
+}
 
 /** How a known surface relates to its entity. */
 export type SurfaceKind = 'name' | 'alias';
@@ -298,10 +358,14 @@ function lineNumberAt(text: string, offset: number): number {
 export function detectUnlinkedMentions(
   body: string,
   selfPath: string,
-  index: EntityMentionIndex
+  index: EntityMentionIndex,
+  options?: UnlinkedMentionOptions
 ): AuditIssue[] {
   const issues: AuditIssue[] = [];
   if (!index.surfacePattern) return issues;
+
+  const fuzzyEnabled = options?.fuzzyEnabled ?? true;
+  const fuzzyThreshold = options?.fuzzyThreshold ?? DEFAULT_FUZZY_MAX_DISTANCE;
 
   const masked = maskNonProse(body);
 
@@ -385,8 +449,18 @@ export function detectUnlinkedMentions(
   // --- Fuzzy tier ("did you mean?") -------------------------------------
   // Only run on prose not already consumed by an exact match. Tokenize
   // capitalized words/phrases and offer near-miss entity names. Flag-only.
-  for (const fuzzy of detectFuzzyCandidates(masked, body, selfPath, index, consumed)) {
-    issues.push(fuzzy);
+  // Skipped entirely when disabled or when the threshold is 0 (#622).
+  if (fuzzyEnabled && fuzzyThreshold > 0) {
+    for (const fuzzy of detectFuzzyCandidates(
+      masked,
+      body,
+      selfPath,
+      index,
+      consumed,
+      fuzzyThreshold
+    )) {
+      issues.push(fuzzy);
+    }
   }
 
   return issues;
@@ -401,7 +475,8 @@ function detectFuzzyCandidates(
   body: string,
   selfPath: string,
   index: EntityMentionIndex,
-  consumed: Array<[number, number]>
+  consumed: Array<[number, number]>,
+  fuzzyMaxDistance: number
 ): AuditIssue[] {
   const issues: AuditIssue[] = [];
 
@@ -460,7 +535,7 @@ function detectFuzzyCandidates(
         if (name.length < FUZZY_MIN_CANDIDATE_LENGTH) continue;
         const dist = levenshteinDistance(lower, name.toLowerCase());
         if (dist === 0) continue;
-        if (dist <= FUZZY_MAX_DISTANCE) {
+        if (dist <= fuzzyMaxDistance) {
           suggestions.push({ name, distance: dist });
         }
       }

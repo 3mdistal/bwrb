@@ -777,7 +777,14 @@ export async function auditFile(
 
       if (wantsUnlinkedMention && hasBody && entityMentionIndex) {
         issues.push(
-          ...detectUnlinkedMentions(body, file.relativePath, entityMentionIndex)
+          ...detectUnlinkedMentions(body, file.relativePath, entityMentionIndex, {
+            ...(options.mentionFuzzyThreshold !== undefined
+              ? { fuzzyThreshold: options.mentionFuzzyThreshold }
+              : {}),
+            ...(options.mentionFuzzyEnabled !== undefined
+              ? { fuzzyEnabled: options.mentionFuzzyEnabled }
+              : {}),
+          })
         );
       }
 

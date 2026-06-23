@@ -33,6 +33,8 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `--ignore <issue-type>` | Ignore specific issue type |
 | `--strict` | Treat unknown fields as errors instead of warnings |
 | `--allow-field <fields>` | Allow additional fields beyond schema (repeatable) |
+| `--mention-fuzzy-threshold <n>` | Max edit distance (0–5) for the `unlinked-mention` fuzzy "did you mean?" tier (default: `config.mention_fuzzy_threshold` or `2`) |
+| `--no-mention-fuzzy` | Disable the `unlinked-mention` fuzzy "did you mean?" tier entirely |
 | `--check-schema-docs` | Also report schema types/fields that have no `description` |
 
 ### Repair
@@ -221,8 +223,8 @@ It enforces a strict **trust line** — only matches bwrb can be certain about a
 | Tier | What it matches | Behavior |
 |------|-----------------|----------|
 | **Exact / alias** | The literal note name, or a registered alias, present as unlinked plain text and resolving to exactly **one** entity | **Trusted → auto-fixable.** `--fix --auto --execute` converts it to a wikilink (`--fix --auto` alone previews). |
-| **Fuzzy** | A capitalized phrase that is a near (small Levenshtein distance) match to a known name, e.g. `Steve Yeg` ≈ `Steve Yegge` | **Review item ("did you mean?") — never auto-linked.** |
-| **Ambiguous** | A surface that matches **multiple** distinct entities/aliases, e.g. `Mercury` | **Never auto-resolved.** Listed as a review item with all candidates. |
+| **Fuzzy** | A capitalized phrase that is a near (small Levenshtein distance) match to a known name, e.g. `Steve Yeg` ≈ `Steve Yegge` | **Review item ("did you mean?") — never auto-linked.** Distance threshold is [configurable](#tuning-the-fuzzy-tier-622). |
+| **Ambiguous** | A surface that matches **multiple** distinct entities/aliases, e.g. `Mercury` | **Never auto-resolved by `--auto`.** Listed as a review item with all candidates; interactive `--fix` offers a [pick-a-candidate prompt](#resolving-ambiguous-mentions-interactively-622). |
 
 Auto-fix output format:
 
@@ -255,7 +257,49 @@ bwrb audit --only unlinked-mention
 bwrb audit --path "Notes/**" --fix --auto --execute
 ```
 
-Fuzzy and ambiguous mentions are reported with a suggestion but are **never** modified by `--fix --auto`; resolve them with interactive `--fix` (which will skip them with the suggestion) or by editing manually.
+Fuzzy and ambiguous mentions are **never** modified by `--fix --auto`. Fuzzy matches are always flag-only (resolve them with interactive `--fix`, which skips them with the suggestion, or by editing manually). Ambiguous matches can be resolved in an interactive `--fix` session — see below.
+
+#### Tuning the fuzzy tier (#622)
+
+The fuzzy "did you mean?" tier is deliberately conservative (max Levenshtein distance **2** by default), so only genuine near-misses surface. You can tune how aggressive it is:
+
+- **Per run (flag):** `--mention-fuzzy-threshold <n>` sets the max edit distance, where `n` is an integer in `0`–`5`. Raising it surfaces looser matches (more "did you mean?" suggestions); lowering it surfaces fewer. `0` (or `--no-mention-fuzzy`) disables the fuzzy tier entirely. Out-of-range or non-integer values produce a clear validation error.
+- **Persistent (config):** set `mention_fuzzy_threshold` in your vault `config` (integer `0`–`5`). The flag, when present, overrides the config value for that run.
+
+```bash
+# Loosen the fuzzy tier for one run (more "did you mean?" suggestions)
+bwrb audit --only unlinked-mention --mention-fuzzy-threshold 3
+
+# Turn off fuzzy suggestions entirely
+bwrb audit --only unlinked-mention --no-mention-fuzzy
+```
+
+```json
+// .bwrb/schema.json — persist a looser threshold for every run
+{
+  "config": { "mention_fuzzy_threshold": 3 }
+}
+```
+
+The threshold affects **only** the fuzzy tier. Exact/alias auto-fix and ambiguous flagging are unchanged.
+
+#### Resolving ambiguous mentions interactively (#622)
+
+When a surface matches more than one entity (for example `Mercury` resolving to both a `[[Mercury]]` note and a person aliased `Mercury`), bwrb never guesses. In an interactive `--fix` session (a real TTY), an ambiguous mention now prompts you to **pick a candidate** (or skip / quit):
+
+```text
+Notes/Daily.md
+  ⚠ Ambiguous unlinked mention on line 1: 'Mercury' could link to 2 entities
+    Resolve ambiguous mention 'Mercury' to:
+      1. Freddie
+      2. Mercury
+      3. [skip]
+      4. [quit]
+```
+
+Choosing a candidate rewrites the plain-text mention to a wikilink using the **same** rewrite as exact/alias auto-fix: `[[Chosen]]`, or `[[Chosen|surface]]` when the surface text differs from the chosen note name (so picking `Freddie` for the surface `Mercury` yields `[[Freddie|Mercury]]`). The same masking and word-boundary guarantees apply, so it never relinks inside code or existing links, and it is idempotent.
+
+This is **interactive-only**. In `--auto` / `--fix --auto` and any non-TTY (headless) run, ambiguous mentions remain flag-only and are never auto-resolved.
 
 ### Frequent-unlinked-term semantics (open-world nudge)
 

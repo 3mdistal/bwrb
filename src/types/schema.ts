@@ -241,6 +241,10 @@ export const ConfigSchema = z.object({
   // - year: YYYY or finer
   // Per-field `granularity` overrides this default.
   date_granularity: z.enum(['day', 'month', 'year']).optional(),
+  // Max Levenshtein distance for the `unlinked-mention` audit fuzzy ("did you
+  // mean?") tier (#622). Integer 0-5; default 2. 0 disables the fuzzy tier.
+  // Overridden per run by `--mention-fuzzy-threshold` / `--no-mention-fuzzy`.
+  mention_fuzzy_threshold: z.number().int().min(0).max(5).optional(),
 });
 
 // ============================================================================
@@ -386,6 +390,11 @@ export interface ResolvedConfig {
   dateFormat: string;
   /** Default coarsest date precision allowed for date fields (defaults to 'day') */
   dateGranularity: 'day' | 'month' | 'year';
+  /**
+   * Max Levenshtein distance for the `unlinked-mention` audit fuzzy tier (#622).
+   * Defaults to 2. A CLI flag (`--mention-fuzzy-threshold`) overrides this.
+   */
+  mentionFuzzyThreshold: number;
 }
 
 /**

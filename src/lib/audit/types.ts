@@ -220,6 +220,16 @@ export interface AuditOptions {
   execute?: boolean;
   all?: boolean;
   allowField?: string[];
+  /**
+   * Max Levenshtein distance for the unlinked-mention fuzzy tier (#622). Raw
+   * string as parsed by commander from `--mention-fuzzy-threshold <n>`.
+   */
+  mentionFuzzyThreshold?: string;
+  /**
+   * False when `--no-mention-fuzzy` is passed, disabling the fuzzy "did you
+   * mean?" tier. Commander stores the negatable boolean here.
+   */
+  mentionFuzzy?: boolean;
 }
 
 /**
@@ -240,6 +250,16 @@ export interface AuditRunOptions {
   vaultDir?: string | undefined;
   /** Schema for looking up field formats */
   schema?: LoadedSchema | undefined;
+  /**
+   * Resolved max Levenshtein distance for the unlinked-mention fuzzy tier
+   * (#622). Undefined means use the built-in default. Already validated.
+   */
+  mentionFuzzyThreshold?: number | undefined;
+  /**
+   * When false, the unlinked-mention fuzzy "did you mean?" tier is disabled
+   * (#622). Undefined means enabled (default).
+   */
+  mentionFuzzyEnabled?: boolean | undefined;
 }
 
 /**
