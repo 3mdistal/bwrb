@@ -52,13 +52,13 @@ describe('global --non-interactive create/edit flows', () => {
 
   it('requires explicit inputs for dashboard and template editing flows', async () => {
     const dashboardSeed = await runCLI(['dashboard', 'new', 'triage', '--json', '{"type":"idea"}'], vaultDir);
-    expect(dashboardSeed.exitCode).toBe(0);
+    expect(dashboardSeed.exitCode, `dashboard seed stderr: ${dashboardSeed.stderr}`).toBe(0);
 
     const templateSeed = await runCLI(
       ['template', 'new', 'idea', '--json', '{"name":"triage-template","body":"# Body"}'],
       vaultDir
     );
-    expect(templateSeed.exitCode).toBe(0);
+    expect(templateSeed.exitCode, `template seed stderr: ${templateSeed.stderr}`).toBe(0);
 
     const dashboardEdit = await runCLI(['--non-interactive', 'dashboard', 'edit', 'triage'], vaultDir);
     expect(dashboardEdit.exitCode).not.toBe(0);
