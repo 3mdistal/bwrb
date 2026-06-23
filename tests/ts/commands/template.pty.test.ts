@@ -33,6 +33,21 @@ defaults:
 `,
 };
 
+const TYPED_DEFAULTS_IDEA_TEMPLATE: TempVaultFile = {
+  path: '.bwrb/templates/idea/typed.md',
+  content: `---
+type: template
+template-for: idea
+description: Idea template with typed defaults
+defaults:
+  effort: 3
+  archived: false
+---
+
+# {title}
+`,
+};
+
 const RELATION_MULTIPLE_SCHEMA = {
   version: 2,
   config: {
@@ -211,12 +226,115 @@ describePty('template command PTY tests', () => {
       );
     }, 30000);
 
+    it('should store typed boolean/number defaults and skip via confirm/validation', async () => {
+      await withTempVault(
+        ['template', 'new', 'idea'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Template name', 10000);
+          await proc.typeAndEnter('typed-defaults');
+
+          await proc.waitFor('Description', 5000);
+          await proc.typeAndEnter('Typed boolean/number defaults');
+
+          await proc.waitFor('Set default values', 5000);
+          proc.write('y');
+
+          // status (select) - skip
+          await proc.waitFor('status', 5000);
+          proc.write('1');
+
+          // priority (select) - skip
+          await proc.waitFor('priority', 5000);
+          proc.write('1');
+
+          // labels (multi-select) - skip
+          await proc.waitFor('labels', 5000);
+          proc.write('\r');
+
+          // effort (number) - invalid first, then a real number
+          await proc.waitFor('Default effort', 5000);
+          await proc.typeAndEnter('not-a-number');
+          await proc.waitFor('Invalid number', 5000);
+          await proc.typeAndEnter('5');
+
+          // archived (boolean) - confirm-style selection: pick "true"
+          await proc.waitFor('Default archived', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write('2'); // options: (skip)=1, true=2, false=3
+
+          await proc.waitFor('Force prompting', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Custom filename', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Created:', 10000);
+
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'typed-defaults.md');
+          const content = await readFile(templatePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          const defaults = frontmatter.defaults as Record<string, unknown>;
+          // Real number, not a string
+          expect(defaults.effort).toBe(5);
+          // Real boolean, not a string
+          expect(defaults.archived).toBe(true);
+        },
+        { schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
+    it('should omit boolean/number defaults when skipped', async () => {
+      await withTempVault(
+        ['template', 'new', 'idea'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Template name', 10000);
+          await proc.typeAndEnter('skip-typed');
+
+          await proc.waitFor('Description', 5000);
+          await proc.typeAndEnter('Skip typed defaults');
+
+          await proc.waitFor('Set default values', 5000);
+          proc.write('y');
+
+          await proc.waitFor('status', 5000);
+          proc.write('1');
+          await proc.waitFor('priority', 5000);
+          proc.write('1');
+          await proc.waitFor('labels', 5000);
+          proc.write('\r');
+
+          // effort (number) - Enter to skip
+          await proc.waitFor('Default effort', 5000);
+          proc.write('\r');
+
+          // archived (boolean) - (skip) is the highlighted first option
+          await proc.waitFor('Default archived', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write('1'); // (skip)
+
+          // No defaults set -> no Force prompting question
+          await proc.waitFor('Custom filename', 5000);
+          proc.write('n');
+
+          await proc.waitFor('Created:', 10000);
+
+          const templatePath = join(vaultPath, '.bwrb/templates/idea', 'skip-typed.md');
+          const content = await readFile(templatePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          const defaults = (frontmatter.defaults as Record<string, unknown>) ?? {};
+          expect(defaults.effort).toBeUndefined();
+          expect(defaults.archived).toBeUndefined();
+        },
+        { schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
     it('should cancel cleanly on Ctrl+C', async () => {
       await withTempVault(
         ['template', 'new', 'idea'],
         async (proc, vaultPath) => {
           await proc.waitFor('Template name', 10000);
-          
+
           // Cancel with Ctrl+C
           proc.write('\x03');
 
@@ -371,6 +489,148 @@ describePty('template command PTY tests', () => {
         { files: [DEFAULT_IDEA_TEMPLATE], schema: TEST_SCHEMA }
       );
     }, 15000);
+
+    it('should keep boolean/number defaults via (keep)', async () => {
+      await withTempVault(
+        ['template', 'edit', 'idea', 'typed'],
+        async (proc, vaultPath) => {
+          const templatePath = join(vaultPath, '.bwrb/templates/idea/typed.md');
+
+          await proc.waitFor('Current description:', 10000);
+          proc.write('\r');
+
+          await proc.waitFor('Edit default values', 5000);
+          proc.write('y');
+
+          // status (select) - keep
+          await proc.waitFor('New status', 5000);
+          proc.write('1'); // (keep)
+          // priority (select) - keep
+          await proc.waitFor('New priority', 5000);
+          proc.write('1'); // (keep)
+          // labels (multi relation? select multiple) - keep
+          await proc.waitFor('New labels', 5000);
+          proc.write('1'); // (keep)
+
+          // effort (number) - Enter keeps current
+          await proc.waitFor('New effort', 5000);
+          proc.write('\r');
+
+          // archived (boolean) - (keep)
+          await proc.waitFor('New archived', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write('1'); // (keep)
+
+          await proc.waitFor('Edit prompt-fields', 5000);
+          proc.write('n');
+          await proc.waitFor('Edit filename pattern', 5000);
+          proc.write('n');
+          await proc.waitFor('Edit body', 5000);
+          proc.write('n');
+          await proc.waitFor('Updated:', 5000);
+
+          const content = await readFile(templatePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          const defaults = frontmatter.defaults as Record<string, unknown>;
+          expect(defaults.effort).toBe(3);
+          expect(defaults.archived).toBe(false);
+        },
+        { files: [TYPED_DEFAULTS_IDEA_TEMPLATE], schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
+    it('should change and clear boolean/number defaults with typed values', async () => {
+      await withTempVault(
+        ['template', 'edit', 'idea', 'typed'],
+        async (proc, vaultPath) => {
+          const templatePath = join(vaultPath, '.bwrb/templates/idea/typed.md');
+
+          await proc.waitFor('Current description:', 10000);
+          proc.write('\r');
+
+          await proc.waitFor('Edit default values', 5000);
+          proc.write('y');
+
+          await proc.waitFor('New status', 5000);
+          proc.write('1'); // keep
+          await proc.waitFor('New priority', 5000);
+          proc.write('1'); // keep
+          await proc.waitFor('New labels', 5000);
+          proc.write('1'); // keep
+
+          // effort (number) - change to a real number (invalid first, then valid)
+          await proc.waitFor('New effort', 5000);
+          await proc.typeAndEnter('nope');
+          await proc.waitFor('Invalid number', 5000);
+          await proc.typeAndEnter('8');
+
+          // archived (boolean) - clear it
+          await proc.waitFor('New archived', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write('2'); // (clear): (keep)=1, (clear)=2, true=3, false=4
+
+          await proc.waitFor('Edit prompt-fields', 5000);
+          proc.write('n');
+          await proc.waitFor('Edit filename pattern', 5000);
+          proc.write('n');
+          await proc.waitFor('Edit body', 5000);
+          proc.write('n');
+          await proc.waitFor('Updated:', 5000);
+
+          const content = await readFile(templatePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          const defaults = frontmatter.defaults as Record<string, unknown>;
+          expect(defaults.effort).toBe(8);
+          expect(defaults.archived).toBeUndefined();
+        },
+        { files: [TYPED_DEFAULTS_IDEA_TEMPLATE], schema: TEST_SCHEMA }
+      );
+    }, 30000);
+
+    it('should set a new boolean default via confirm-style selection', async () => {
+      await withTempVault(
+        ['template', 'edit', 'idea', 'typed'],
+        async (proc, vaultPath) => {
+          const templatePath = join(vaultPath, '.bwrb/templates/idea/typed.md');
+
+          await proc.waitFor('Current description:', 10000);
+          proc.write('\r');
+
+          await proc.waitFor('Edit default values', 5000);
+          proc.write('y');
+
+          await proc.waitFor('New status', 5000);
+          proc.write('1');
+          await proc.waitFor('New priority', 5000);
+          proc.write('1');
+          await proc.waitFor('New labels', 5000);
+          proc.write('1');
+
+          await proc.waitFor('New effort', 5000);
+          proc.write('\r'); // keep
+
+          // archived: change false -> true
+          await proc.waitFor('New archived', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write('3'); // true: (keep)=1, (clear)=2, true=3, false=4
+
+          await proc.waitFor('Edit prompt-fields', 5000);
+          proc.write('n');
+          await proc.waitFor('Edit filename pattern', 5000);
+          proc.write('n');
+          await proc.waitFor('Edit body', 5000);
+          proc.write('n');
+          await proc.waitFor('Updated:', 5000);
+
+          const content = await readFile(templatePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          const defaults = frontmatter.defaults as Record<string, unknown>;
+          expect(defaults.archived).toBe(true);
+          expect(defaults.effort).toBe(3);
+        },
+        { files: [TYPED_DEFAULTS_IDEA_TEMPLATE], schema: TEST_SCHEMA }
+      );
+    }, 30000);
 
     it('should allow setting empty array defaults for multiple relation fields', async () => {
       await withTempVault(

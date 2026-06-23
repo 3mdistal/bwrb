@@ -132,6 +132,43 @@ Body
     });
   });
 
+  describe('typed boolean/number defaults downstream', () => {
+    it('produces a correctly-typed note that passes audit', async () => {
+      // Template stores a real number and boolean default (as #648 ensures the
+      // interactive prompts do). A note created from it must have boolean/number
+      // frontmatter (not strings) and pass audit.
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/idea', 'typed.md'),
+        `---
+type: template
+template-for: idea
+description: Typed defaults
+defaults:
+  effort: 5
+  archived: true
+---
+
+# {title}
+`
+      );
+
+      const create = await runCLI(
+        ['new', 'idea', '--json', '{"name": "Typed Defaults Note"}', '--template', 'typed'],
+        vaultDir
+      );
+      expect(create.exitCode).toBe(0);
+      const output = JSON.parse(create.stdout);
+
+      const content = await readFile(join(vaultDir, output.path), 'utf-8');
+      // Real number and boolean, not quoted strings.
+      expect(content).toMatch(/^effort: 5$/m);
+      expect(content).toMatch(/^archived: true$/m);
+
+      const audit = await runCLI(['audit', '--path', output.path], vaultDir);
+      expect(audit.exitCode).toBe(0);
+    });
+  });
+
   describe('template validate', () => {
     it('should validate all templates', async () => {
       const result = await runCLI(['template', 'validate'], vaultDir);

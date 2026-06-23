@@ -148,11 +148,11 @@ export async function promptField(
 
     case 'boolean':
       if (opts.mode === 'create') return promptBooleanFieldCreate(label);
-      return promptTextOrDateTemplate(label, opts);
+      return promptBooleanTemplate(label, opts);
 
     case 'number':
       if (opts.mode === 'create') return promptNumberFieldCreate(label, field);
-      return promptTextOrDateTemplate(label, opts);
+      return promptNumberTemplate(label, opts);
 
     default:
       if (opts.mode === 'create') return field.default;
@@ -348,9 +348,8 @@ async function promptNumberFieldCreate(label: string, field: Field): Promise<unk
 }
 
 /**
- * The shared text/date/default branch for the template modes. In template-default
- * mode `boolean`/`number` fields also land here (raw text prompt for the default),
- * matching the historical template behavior.
+ * The shared text/date branch for the template modes (raw text prompt for the
+ * default, honoring `(skip)` / `(keep)` / `(clear)` semantics).
  */
 async function promptTextOrDateTemplate(
   label: string,
@@ -366,6 +365,74 @@ async function promptTextOrDateTemplate(
   if (!input.trim()) return opts.currentValue;
   if (input.toLowerCase() === 'clear') return CLEAR;
   return input.trim();
+}
+
+/**
+ * Prompt for a `boolean` template default. Stores a real boolean value (not a
+ * string) while honoring the mode's `(skip)` / `(keep)` / `(clear)` semantics:
+ *
+ * - `template-default`: a `(skip)` / `true` / `false` selection. `(skip)`
+ *   returns `undefined` (no default stored).
+ * - `template-edit`: a `(keep)` / `(clear)` / `true` / `false` selection.
+ *   `(keep)` returns the current value, `(clear)` returns {@link CLEAR}.
+ */
+async function promptBooleanTemplate(
+  label: string,
+  opts: Extract<FieldPromptOptions, { mode: 'template-default' } | { mode: 'template-edit' }>
+): Promise<unknown> {
+  if (opts.mode === 'template-default') {
+    const selected = await promptSelection(`Default ${label}:`, ['(skip)', 'true', 'false']);
+    if (selected === null) throw new UserCancelledError();
+    if (selected === '(skip)') return undefined;
+    return selected === 'true';
+  }
+
+  const selected = await promptSelection(`New ${label}:`, ['(keep)', '(clear)', 'true', 'false']);
+  if (selected === null) throw new UserCancelledError();
+  if (selected === '(keep)') return opts.currentValue;
+  if (selected === '(clear)') return CLEAR;
+  return selected === 'true';
+}
+
+/**
+ * Prompt for a `number` template default. Validates input and re-prompts on an
+ * invalid number, storing a real number value (not a string) while honoring the
+ * mode's `(skip)` / `(keep)` / `(clear)` semantics:
+ *
+ * - `template-default`: an empty input skips (returns `undefined`).
+ * - `template-edit`: an empty input keeps the current value; `clear` returns
+ *   {@link CLEAR}.
+ */
+async function promptNumberTemplate(
+  label: string,
+  opts: Extract<FieldPromptOptions, { mode: 'template-default' } | { mode: 'template-edit' }>
+): Promise<unknown> {
+  while (true) {
+    if (opts.mode === 'template-default') {
+      const input = await promptInput(`Default ${label} (or Enter to skip)`);
+      if (input === null) throw new UserCancelledError();
+      const trimmed = input.trim();
+      if (!trimmed) return undefined;
+      const parsed = parseFloat(trimmed);
+      if (Number.isNaN(parsed)) {
+        printWarning(`Invalid number: "${input}". Please enter a valid number.`);
+        continue;
+      }
+      return parsed;
+    }
+
+    const input = await promptInput(`New ${label} (Enter to keep, "clear" to remove)`);
+    if (input === null) throw new UserCancelledError();
+    const trimmed = input.trim();
+    if (!trimmed) return opts.currentValue;
+    if (trimmed.toLowerCase() === 'clear') return CLEAR;
+    const parsed = parseFloat(trimmed);
+    if (Number.isNaN(parsed)) {
+      printWarning(`Invalid number: "${input}". Please enter a valid number.`);
+      continue;
+    }
+    return parsed;
+  }
 }
 
 function formatUniqueRelationValues(
