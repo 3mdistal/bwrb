@@ -173,6 +173,22 @@ describe('schema command', () => {
       expect(result.stdout).toContain('Own fields:');
     });
 
+    it('should suggest a close match for a misspelled type', async () => {
+      const result = await runCLI(['schema', 'list', 'type', 'taks'], vaultDir);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain('Unknown type: taks');
+      expect(result.stderr).toContain("Did you mean 'task'?");
+    });
+
+    it('should not suggest for a wildly-unknown type', async () => {
+      const result = await runCLI(['schema', 'list', 'type', 'nonsense'], vaultDir);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain('Unknown type: nonsense');
+      expect(result.stderr).not.toContain('Did you mean');
+    });
+
     it('should ignore schema snapshot when showing type details in JSON', async () => {
       const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-type-snapshot-ignore-'));
       await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });

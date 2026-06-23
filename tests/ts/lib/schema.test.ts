@@ -22,7 +22,8 @@ import {
   getPluralName,
   computeDefaultOutputDir,
   getType,
-  resolveSourceType,
+  suggestTypeName,
+  formatUnknownTypeError,
   getFieldsByOrigin,
   getFieldOrderForOrigin,
   getAllOwnFieldNames,
@@ -573,81 +574,40 @@ describe('schema', () => {
     });
   });
 
-  describe('resolveSourceType', () => {
-    it('should return success for valid type names', () => {
-      const result = resolveSourceType(schema, 'idea');
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.typeName).toBe('idea');
-      }
+  describe('suggestTypeName', () => {
+    it('returns undefined for a valid type name (nothing to suggest)', () => {
+      expect(suggestTypeName(schema, 'idea')).toBeUndefined();
+      expect(suggestTypeName(schema, 'task')).toBeUndefined();
     });
 
-    it('should return success for nested type names', () => {
-      const result = resolveSourceType(schema, 'task');
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.typeName).toBe('task');
-      }
+    it('suggests the closest type for a typo', () => {
+      // 'ide' is one edit from 'idea'
+      expect(suggestTypeName(schema, 'ide')).toBe('idea');
+      // 'taks' is a transposition of 'task'
+      expect(suggestTypeName(schema, 'taks')).toBe('task');
     });
 
-    it('should report unknown type for unrecognized values', () => {
-      // 'raw' is not a type name
-      const result = resolveSourceType(schema, 'raw');
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error).toContain('does not exist');
-      }
+    it('returns undefined when no candidate is close enough', () => {
+      expect(suggestTypeName(schema, 'completely-unknown-type')).toBeUndefined();
     });
 
-    it('should report path format error for slash-containing names with valid last segment', () => {
-      // 'objective/task' has 'task' as valid type - suggest using just the type name
-      const result = resolveSourceType(schema, 'objective/task');
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error).toContain('uses path format');
-        expect(result.error).toContain('Use just the type name: "task"');
-        expect(result.suggestions).toContain('task');
-      }
+    it('does not over-suggest for very short unrelated input', () => {
+      // 'low' is not a type name and not within threshold of any type
+      expect(suggestTypeName(schema, 'low')).toBeUndefined();
+    });
+  });
+
+  describe('formatUnknownTypeError', () => {
+    it('includes a "Did you mean" hint when there is a close match', () => {
+      const msg = formatUnknownTypeError(schema, 'taks');
+      expect(msg).toContain('Unknown type: taks');
+      expect(msg).toContain("Did you mean 'task'?");
     });
 
-    it('should report path format error for invalid path format names', () => {
-      const result = resolveSourceType(schema, 'foo/bar');
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error).toContain('uses path format');
-        expect(result.error).toContain('Available types:');
-      }
-    });
-
-    it('should suggest similar type names for typos', () => {
-      // 'ide' is close to 'idea'
-      const result = resolveSourceType(schema, 'ide');
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error).toContain('does not exist');
-        expect(result.error).toContain('Did you mean:');
-        expect(result.suggestions).toContain('idea');
-      }
-    });
-
-    it('should list available types when no close match exists', () => {
-      const result = resolveSourceType(schema, 'completely-unknown-type');
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error).toContain('does not exist');
-        expect(result.error).toContain('Available types:');
-        // Should not have suggestions for very different names
-        expect(result.suggestions).toBeUndefined();
-      }
-    });
-
-    it('should report unknown for short unrecognized values', () => {
-      // 'low' is not a type name
-      const result = resolveSourceType(schema, 'low');
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error).toContain('does not exist');
-      }
+    it('omits the hint when there is no close match', () => {
+      const msg = formatUnknownTypeError(schema, 'completely-unknown-type');
+      expect(msg).toBe('Unknown type: completely-unknown-type');
+      expect(msg).not.toContain('Did you mean');
     });
   });
 

@@ -8,6 +8,7 @@ import {
   getFieldsForType,
   getFrontmatterOrder,
   getTypeDefByPath,
+  formatUnknownTypeError,
 } from '../../lib/schema.js';
 import {
   applyDefaults,
@@ -40,7 +41,7 @@ export async function createNoteFromJson(
 ): Promise<NoteCreationResult> {
   const typeDef = getTypeDefByPath(schema, typePath);
   if (!typeDef) {
-    throwJsonError(jsonError(`Unknown type: ${typePath}`), ExitCodes.VALIDATION_ERROR);
+    throwJsonError(jsonError(formatUnknownTypeError(schema, typePath)), ExitCodes.VALIDATION_ERROR);
   }
 
   const ownership = await resolveJsonOwnership(schema, vaultDir, typePath, typeDef, ownershipOptions);

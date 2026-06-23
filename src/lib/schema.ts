@@ -982,15 +982,8 @@ export function getEntityAliases(
 }
 
 // ============================================================================
-// Source Type Resolution (for dynamic fields)
+// Unknown Type Suggestions ("did you mean a type?")
 // ============================================================================
-
-/**
- * Result of resolving a source type name.
- */
-export type SourceTypeResolution =
-  | { success: true; typeName: string }
-  | { success: false; error: string; suggestions?: string[] };
 
 /**
  * Find close matches for a string within a list of candidates.
@@ -1012,70 +1005,53 @@ function findCloseMatches(target: string, candidates: string[], maxDistance: num
   return matches.map(m => m.candidate);
 }
 
-
-
 /**
- * Resolve a source type name with helpful error messages.
- * 
- * This function validates that a source type exists and provides
- * actionable error messages when it doesn't, including:
- * - Detecting enum value confusion (e.g., "person" being an enum value, not a type)
- * - Suggesting similar type names for typos
- * - Listing available types when no close match is found
+ * Suggest the closest concrete type name for a (likely-misspelled) type name.
+ *
+ * Used to surface a "Did you mean 'X'?" hint when a user supplies an unknown
+ * type on the CLI (`--type`, a positional type arg, etc.). Mirrors the
+ * field/option typo-suggestion behavior used elsewhere:
+ * - Returns undefined for an exact match (nothing to suggest) or when no
+ *   candidate is within a sensible edit-distance threshold.
+ * - The threshold scales with the input length (so short type names like
+ *   `ide`→`idea` still match) but is capped so wildly-different input
+ *   (`completely-unknown`) yields no bogus suggestion.
+ *
+ * Returns only the single closest match to keep the hint focused and
+ * consistent with `suggestFieldName`.
  */
-export function resolveSourceType(
+export function suggestTypeName(
   schema: LoadedSchema,
-  source: string
-): SourceTypeResolution {
-  // Direct match - source is a valid type
-  if (schema.types.has(source)) {
-    return { success: true, typeName: source };
-  }
+  typeName: string
+): string | undefined {
+  if (schema.types.has(typeName)) return undefined;
 
   const availableTypes = getConcreteTypeNames(schema);
+  // Threshold: at most 3 edits, but never more than 60% of the input length so
+  // very short inputs don't match unrelated types and long gibberish is rejected.
+  const maxDistance = Math.min(3, Math.ceil(typeName.length * 0.6));
+  const matches = findCloseMatches(typeName, availableTypes, maxDistance);
+  return matches[0];
+}
 
-  // Check for old path format (e.g., "note/task" or "foo/bar")
-  // V2 uses flat type names, not paths
-  if (source.includes('/')) {
-    const parts = source.split('/');
-    const lastPart = parts[parts.length - 1] ?? '';
-    
-    // Check if the last segment is a valid type
-    if (lastPart && schema.types.has(lastPart)) {
-      return {
-        success: false,
-        error: `Source "${source}" uses path format which is no longer supported.\n` +
-          `Use just the type name: "${lastPart}"`,
-        suggestions: [lastPart],
-      };
-    }
-    
-    // Neither segment is valid - generic path format error
-    return {
-      success: false,
-      error: `Source "${source}" uses path format which is not supported.\n` +
-        `Available types: ${availableTypes.join(', ')}`,
-    };
-  }
-
-  // Check for typos using fuzzy matching
-  const closeMatches = findCloseMatches(source, availableTypes, 3);
-
-  if (closeMatches.length > 0) {
-    return {
-      success: false,
-      error: `Source type "${source}" does not exist.\n` +
-        `Did you mean: ${closeMatches.join(', ')}?`,
-      suggestions: closeMatches,
-    };
-  }
-
-  // No close match - list all available types
-  return {
-    success: false,
-    error: `Source type "${source}" does not exist.\n` +
-      `Available types: ${availableTypes.join(', ')}`,
-  };
+/**
+ * Build the standard "Unknown type" error message, appending a
+ * "Did you mean 'X'?" hint when a close match exists.
+ *
+ * This is the single shared formatter used by every command that accepts a
+ * type name (`list`/`recent`/`search`/`audit`/`bulk`/`dashboard`/`new`/
+ * `schema list`/`edit`). Keeping the `Unknown type: <name>` prefix preserves
+ * the existing message shape (and JSON error payload), only adding the
+ * suggestion — so valid types are unaffected and JSON consumers get the hint
+ * inline in the error string.
+ */
+export function formatUnknownTypeError(
+  schema: LoadedSchema,
+  typeName: string
+): string {
+  const suggestion = suggestTypeName(schema, typeName);
+  const base = `Unknown type: ${typeName}`;
+  return suggestion ? `${base}. Did you mean '${suggestion}'?` : base;
 }
 
 // ============================================================================

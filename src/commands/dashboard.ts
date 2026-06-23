@@ -9,7 +9,7 @@ import {
   listDashboards,
 } from '../lib/dashboard.js';
 import { resolveTargets, type TargetingOptions } from '../lib/targeting.js';
-import { loadSchema, getTypeDefByPath } from '../lib/schema.js';
+import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
 import { setDefaultDashboard } from '../lib/schema-writer.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
@@ -471,7 +471,7 @@ Examples:
       if (options.type) {
         const typeDef = getTypeDefByPath(schema, options.type);
         if (!typeDef) {
-          const error = `Unknown type: ${options.type}`;
+          const error = formatUnknownTypeError(schema, options.type);
           if (jsonMode) {
             printJson(jsonError(error));
             process.exit(ExitCodes.VALIDATION_ERROR);
@@ -770,7 +770,7 @@ Examples:
       if (options.type) {
         const typeDef = getTypeDefByPath(schema, options.type);
         if (!typeDef) {
-          const error = `Unknown type: ${options.type}`;
+          const error = formatUnknownTypeError(schema, options.type);
           if (jsonMode) {
             printJson(jsonError(error));
             process.exit(ExitCodes.VALIDATION_ERROR);

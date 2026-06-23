@@ -6,6 +6,7 @@ import {
   loadSchema,
   getTypeDefByPath,
   getAllFieldsForType,
+  formatUnknownTypeError,
 } from '../lib/schema.js';
 import {
   buildParentMap,
@@ -276,7 +277,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       if (targeting.type) {
         const typeDef = getTypeDefByPath(schema, targeting.type);
         if (!typeDef) {
-          const error = `Unknown type: ${targeting.type}`;
+          const error = formatUnknownTypeError(schema, targeting.type);
           if (jsonMode) {
             printJson(jsonError(error));
             process.exit(ExitCodes.VALIDATION_ERROR);

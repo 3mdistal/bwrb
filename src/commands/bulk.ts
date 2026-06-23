@@ -17,6 +17,7 @@ import {
   getTypeFamilies,
   getOptionsForField,
   resolveTypeFromFrontmatter,
+  formatUnknownTypeError,
 } from '../lib/schema.js';
 import { discoverManagedFiles } from '../lib/discovery.js';
 import { parseNote } from '../lib/frontmatter.js';
@@ -235,7 +236,7 @@ Examples:
       if (typePath) {
         const typeDef = getTypeDefByPath(schema, typePath);
         if (!typeDef) {
-          const error = `Unknown type: ${typePath}`;
+          const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {
             printJson(jsonError(error));
             process.exit(ExitCodes.VALIDATION_ERROR);

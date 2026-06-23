@@ -10,7 +10,7 @@ import { basename, isAbsolute, relative } from 'path';
 import fs from 'fs/promises';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
-import { loadSchema, getTypeDefByPath } from '../lib/schema.js';
+import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
 import { configurePromptMode, printError, printSuccess } from '../lib/prompt.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError } from '../lib/output.js';
 import { buildNoteIndex, type ManagedFile } from '../lib/navigation.js';
@@ -128,7 +128,7 @@ Examples:
       if (options.type) {
         const typeDef = getTypeDefByPath(schema, options.type);
         if (!typeDef) {
-          const error = `Unknown type: ${options.type}`;
+          const error = formatUnknownTypeError(schema, options.type);
           if (jsonMode) {
             printJson(jsonError(error));
             process.exit(ExitCodes.VALIDATION_ERROR);

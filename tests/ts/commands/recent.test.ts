@@ -96,6 +96,28 @@ describe('recent command', () => {
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toContain('Unknown type: nonsense');
     });
+
+    it('suggests a close match for a misspelled type', async () => {
+      // 'taks' is a transposition of the real type 'task'
+      const result = await runCLI(['recent', '--type', 'taks'], vaultDir);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain('Unknown type: taks');
+      expect(result.stderr).toContain("Did you mean 'task'?");
+    });
+
+    it('does not suggest for a wildly-unknown type', async () => {
+      const result = await runCLI(['recent', '--type', 'nonsense'], vaultDir);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).not.toContain('Did you mean');
+    });
+
+    it('includes the suggestion in the JSON error payload', async () => {
+      const result = await runCLI(['recent', '--type', 'taks', '--output', 'json'], vaultDir);
+      expect(result.exitCode).not.toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.error).toContain('Unknown type: taks');
+      expect(json.error).toContain("Did you mean 'task'?");
+    });
   });
 
   describe('--output json', () => {
