@@ -66,12 +66,3 @@ export async function hasSchemaSnapshot(vaultPath: string): Promise<boolean> {
     return false;
   }
 }
-
-/**
- * Get the schema version from the last snapshot.
- * Returns undefined if no snapshot exists.
- */
-export async function getSnapshotVersion(vaultPath: string): Promise<string | undefined> {
-  const snapshot = await loadSchemaSnapshot(vaultPath);
-  return snapshot?.schemaVersion;
-}

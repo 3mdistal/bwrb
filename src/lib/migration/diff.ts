@@ -298,32 +298,6 @@ function classifyChanges(
 }
 
 /**
- * Get a human-readable description of a migration operation.
- */
-export function describeMigrationOp(op: MigrationOp): string {
-  switch (op.op) {
-    case 'add-field':
-      return op.default !== undefined
-        ? `Add field '${op.field}' to type '${op.targetType}' (default: ${JSON.stringify(op.default)})`
-        : `Add field '${op.field}' to type '${op.targetType}' (no default)`;
-    case 'remove-field':
-      return `Remove field '${op.field}' from type '${op.targetType}'`;
-    case 'rename-field':
-      return `Rename field '${op.from}' to '${op.to}' on type '${op.targetType}'`;
-    case 'add-type':
-      return `Add type '${op.typeName}'`;
-    case 'remove-type':
-      return `Remove type '${op.typeName}'`;
-    case 'rename-type':
-      return `Rename type '${op.from}' to '${op.to}'`;
-    case 'reparent-type':
-      return `Change parent of '${op.typeName}' from '${op.from ?? 'root'}' to '${op.to ?? 'root'}'`;
-    case 'normalize-links':
-      return `Normalize all links from '${op.fromFormat}' to '${op.toFormat}'`;
-  }
-}
-
-/**
  * Suggest a version bump based on the migration plan.
  * - Major: breaking changes (removals, renames)
  * - Minor: additions
@@ -360,13 +334,6 @@ function parseVersion(version: string): [number, number, number] {
     parseInt(match[2] ?? '0', 10),
     parseInt(match[3] ?? '0', 10),
   ];
-}
-
-/**
- * Validate a version string.
- */
-export function isValidVersion(version: string): boolean {
-  return /^\d+\.\d+\.\d+/.test(version);
 }
 
 /**
