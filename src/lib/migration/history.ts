@@ -38,7 +38,7 @@ export async function loadMigrationHistory(vaultPath: string): Promise<Migration
  * Save migration history to .bwrb/migrations.json
  * Uses atomic write (temp file + rename).
  */
-export async function saveMigrationHistory(
+async function saveMigrationHistory(
   vaultPath: string,
   history: MigrationHistory
 ): Promise<void> {
@@ -72,15 +72,3 @@ export async function recordMigration(
   history.applied.push(record);
   await saveMigrationHistory(vaultPath, history);
 }
-
-/**
- * Get the latest applied migration, if any.
- */
-export async function getLatestMigration(
-  vaultPath: string
-): Promise<AppliedMigration | undefined> {
-  const history = await loadMigrationHistory(vaultPath);
-  return history.applied.at(-1);
-}
-
-
