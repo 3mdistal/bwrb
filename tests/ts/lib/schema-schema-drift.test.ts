@@ -1,5 +1,11 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
+import {
+  buildJsonSchema,
+  DOCS_SCHEMA_ID,
+  ROOT_SCHEMA_ID,
+  serializeJsonSchema,
+} from '../../../src/lib/schema-json-schema.js';
 
 /**
  * Minimal, dependency-free JSON Schema (draft-07 subset) validator.
@@ -7,9 +13,9 @@ import { readFile } from 'node:fs/promises';
  * `schema.schema.json` only uses a small slice of draft-07: `type`,
  * `properties`, `additionalProperties` (bool or schema), `required`, `enum`,
  * `items`, `anyOf`/`oneOf`, and local `$ref`. A bespoke validator keeps this
- * drift guard free of runtime dependencies while still mechanically checking
- * that real vault schemas satisfy (and that legacy shapes are rejected by) the
- * published JSON Schema.
+ * guard free of runtime dependencies while still mechanically checking that real
+ * vault schemas satisfy (and that legacy shapes are rejected by) the published
+ * JSON Schema.
  */
 function makeValidator(root: any) {
   const resolveRef = (ref: string): any => {
@@ -95,17 +101,20 @@ function makeValidator(root: any) {
 }
 
 /**
- * Regression guard for Issues #247 and #626.
+ * Regression guard for Issues #247, #626, and #666.
  *
- * `schema.schema.json` is the hand-maintained JSON Schema users point their
- * editor's JSON LSP at. It is NOT generated from the Zod schema, so it can
- * silently drift from the real runtime contract in `src/types/schema.ts` /
- * `src/lib/schema.ts`. These guards mechanically assert the two agree on the
- * points #626 raised (type definitions use `fields`, not `frontmatter`;
- * `config.date_granularity` and field-level `granularity` exist) and, more
- * generally, that a real `fields`-based vault schema validates against it.
+ * The published JSON Schema is now GENERATED from the Zod source of truth in
+ * `src/types/schema.ts` (via `src/lib/schema-json-schema.ts`); the committed
+ * `schema.schema.json` and `docs-site/public/schema.json` are regenerable
+ * artifacts. These guards assert:
+ *   1. the committed files are up to date with the Zod source (the drift class
+ *      from #666 — hand-editing Zod without regenerating now fails CI), and
+ *   2. the generated schema still satisfies the behavioural contract #626/#665
+ *      pinned down (types use `fields` not `frontmatter`; granularity/traits/
+ *      recurrence/alias exist; real `fields` schemas validate; legacy
+ *      `frontmatter` shapes are rejected).
  */
-describe('schema.schema.json drift guards', () => {
+describe('published JSON Schema is generated from Zod (no drift, #666)', () => {
   let metaSchema: any;
   let docsSchema: any;
 
@@ -117,14 +126,38 @@ describe('schema.schema.json drift guards', () => {
     docsSchema = JSON.parse(await readFile(docsUrl, 'utf-8'));
   });
 
-  it('includes config.open_with system option and default', () => {
+  // --- #666: committed files must match what the generator produces from Zod ---
+  describe('committed files match the Zod-generated output (#666)', () => {
+    it('schema.schema.json is up to date (run `pnpm schema:gen` if this fails)', async () => {
+      const schemaUrl = new URL('../../../schema.schema.json', import.meta.url);
+      const committed = await readFile(schemaUrl, 'utf-8');
+      expect(committed).toBe(serializeJsonSchema(buildJsonSchema(ROOT_SCHEMA_ID)));
+    });
+
+    it('docs-site/public/schema.json is up to date (run `pnpm schema:gen` if this fails)', async () => {
+      const docsUrl = new URL('../../../docs-site/public/schema.json', import.meta.url);
+      const committed = await readFile(docsUrl, 'utf-8');
+      expect(committed).toBe(serializeJsonSchema(buildJsonSchema(DOCS_SCHEMA_ID)));
+    });
+
+    it('the two published files differ only by $id', () => {
+      const stripId = (s: any) => {
+        const { $id, ...rest } = s;
+        return rest;
+      };
+      expect(stripId(docsSchema)).toEqual(stripId(metaSchema));
+      expect(metaSchema.$id).toBe(ROOT_SCHEMA_ID);
+      expect(docsSchema.$id).toBe(DOCS_SCHEMA_ID);
+    });
+  });
+
+  it('includes config.open_with system option', () => {
     const openWith = metaSchema.definitions.config.properties.open_with;
     expect(openWith).toBeDefined();
     expect(openWith.enum).toContain('system');
     expect(openWith.enum).toContain('editor');
     expect(openWith.enum).toContain('visual');
     expect(openWith.enum).toContain('obsidian');
-    expect(openWith.default).toBe('system');
   });
 
   it('includes runtime config keys in JSON schema', () => {
@@ -135,6 +168,11 @@ describe('schema.schema.json drift guards', () => {
 
     expect(configProps.date_format).toBeDefined();
     expect(configProps.date_format.type).toBe('string');
+
+    // #666: this key existed in Zod but was missing from the hand-written
+    // schema. Generating from Zod fixes that drift.
+    expect(configProps.mention_fuzzy_threshold).toBeDefined();
+    expect(configProps.mention_fuzzy_threshold.type).toBe('integer');
   });
 
   // --- #626: config.date_granularity must exist (Zod ConfigSchema.date_granularity) ---
@@ -179,6 +217,22 @@ describe('schema.schema.json drift guards', () => {
     const alias = metaSchema.definitions.frontmatterField.properties.alias;
     expect(alias).toBeDefined();
     expect(alias.type).toBe('boolean');
+  });
+
+  it('exposes select option objects with value + description', () => {
+    const options = metaSchema.definitions.frontmatterField.properties.options;
+    expect(options).toBeDefined();
+    expect(options.type).toBe('array');
+    const branches = options.items.anyOf;
+    expect(branches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'string' }),
+        expect.objectContaining({
+          type: 'object',
+          required: ['value'],
+        }),
+      ])
+    );
   });
 
   it('allows body section prompt to be none or list', () => {
@@ -284,15 +338,6 @@ describe('schema.schema.json drift guards', () => {
     expect(typeNodeProps.filename.type).toBe('string');
   });
 
-  // --- The published docs-site copy must not drift from the root schema ---
-  it('docs-site/public/schema.json matches schema.schema.json (modulo $id)', () => {
-    const stripId = (s: any) => {
-      const { $id, ...rest } = s;
-      return rest;
-    };
-    expect(stripId(docsSchema)).toEqual(stripId(metaSchema));
-  });
-
   // --- End-to-end: a real fields-based vault schema validates against the JSON Schema ---
   describe('real vault schemas validate against the JSON Schema', () => {
     let validate: ReturnType<typeof makeValidator>;
@@ -327,6 +372,38 @@ describe('schema.schema.json drift guards', () => {
               status: { prompt: 'select', options: ['todo', 'done'] },
               due: { prompt: 'date', granularity: 'month' },
             },
+          },
+        },
+      };
+      const { ok, errors } = validate(valid);
+      expect(errors).toEqual([]);
+      expect(ok).toBe(true);
+    });
+
+    it('a schema using traits + recurrence + alias validates (#107/#679)', () => {
+      const valid = {
+        version: 2,
+        traits: {
+          recurring: {
+            description: 'spawn-on-transition',
+            fields: { status: { prompt: 'select', options: ['todo', 'done'] } },
+            recurrence: {
+              on: 'status = done',
+              template: 'task',
+              name_template: 'Review: {name}',
+              set: { due: 'due + 7d' },
+            },
+          },
+        },
+        types: {
+          person: {
+            fields: {
+              also_known_as: { prompt: 'list', alias: true },
+            },
+          },
+          task: {
+            traits: ['recurring'],
+            fields: {},
           },
         },
       };

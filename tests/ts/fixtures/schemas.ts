@@ -104,7 +104,6 @@ export const BASELINE_SCHEMA: TestSchema = {
           prompt: 'relation',
           source: 'milestone',
           filter: { status: { not_in: ['settled'] } },
-          format: 'quoted-wikilink',
         },
         parent: {
           prompt: 'relation',

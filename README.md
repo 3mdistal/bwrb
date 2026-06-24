@@ -383,6 +383,12 @@ The schema structure is defined by `schema.schema.json` (JSON Schema draft-07). 
 ./validate_schema.sh
 ```
 
+> **Contributors:** `schema.schema.json` and `docs-site/public/schema.json` are
+> **generated** from the Zod source of truth in `src/types/schema.ts` — do not
+> edit them by hand. After changing the Zod schema run `pnpm schema:gen` and
+> commit the result. CI (`pnpm schema:check`, part of `pnpm qa`) fails if the
+> committed files are stale.
+
 ## File Structure
 
 **bwrb repo:**
@@ -400,14 +406,17 @@ bwrb/
 │   │   ├── query.ts          # Filter parsing & evaluation
 │   │   ├── vault.ts          # Vault operations
 │   │   └── prompt.ts         # Interactive prompts
-│   └── types/
-│       └── schema.ts         # Zod schema definitions
+│   ├── types/
+│   │   └── schema.ts         # Zod schema definitions (source of truth)
+│   └── tools/
+│       └── schema/
+│           └── generate-json-schema.ts  # Generates the JSON Schema from Zod
 ├── tests/
 │   └── ts/                   # TypeScript test suite
 ├── package.json
 ├── tsconfig.json
 ├── vitest.config.ts
-├── schema.schema.json        # JSON Schema for validating vault schemas
+├── schema.schema.json        # GENERATED JSON Schema (run `pnpm schema:gen`)
 └── README.md
 ```
 

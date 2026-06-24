@@ -35,7 +35,7 @@ describe('#637 list --output tree renders parent hierarchy', () => {
         recursive: true,
         fields: {
           type: { value: 'context' },
-          parent: { prompt: 'relation', source: 'context', format: 'quoted-wikilink' },
+          parent: { prompt: 'relation', source: 'context' },
         },
         field_order: ['type', 'parent'],
       },
@@ -45,7 +45,7 @@ describe('#637 list --output tree renders parent hierarchy', () => {
         output_dir: 'Domains',
         fields: {
           type: { value: 'domain' },
-          parent: { prompt: 'relation', source: 'domain', format: 'quoted-wikilink' },
+          parent: { prompt: 'relation', source: 'domain' },
         },
         field_order: ['type', 'parent'],
       },

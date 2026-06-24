@@ -40,7 +40,7 @@ describe('#554 hierarchical scope — contexts as notes + under()', () => {
         fields: {
           type: { value: 'context' },
           // Self-referential parent relation — entities already support this.
-          parent: { prompt: 'relation', source: 'context', format: 'quoted-wikilink' },
+          parent: { prompt: 'relation', source: 'context' },
           aliases: { prompt: 'list', alias: true, list_format: 'yaml-array', default: [] },
         },
         field_order: ['type', 'parent', 'aliases'],
@@ -56,7 +56,7 @@ describe('#554 hierarchical scope — contexts as notes + under()', () => {
             required: true,
           },
           // The leaf context only — the domain is DERIVABLE, so no `scope`.
-          context: { prompt: 'relation', source: 'context', format: 'quoted-wikilink' },
+          context: { prompt: 'relation', source: 'context' },
         },
         field_order: ['type', 'status', 'context'],
       },
@@ -283,7 +283,7 @@ describe('#636 under() canonicalizes aliases', () => {
         recursive: true,
         fields: {
           type: { value: 'context' },
-          parent: { prompt: 'relation', source: 'context', format: 'quoted-wikilink' },
+          parent: { prompt: 'relation', source: 'context' },
           aliases: { prompt: 'list', alias: true, list_format: 'yaml-array', default: [] },
         },
         field_order: ['type', 'parent', 'aliases'],
@@ -298,7 +298,7 @@ describe('#636 under() canonicalizes aliases', () => {
             default: 'backlog',
             required: true,
           },
-          context: { prompt: 'relation', source: 'context', format: 'quoted-wikilink' },
+          context: { prompt: 'relation', source: 'context' },
         },
         field_order: ['type', 'status', 'context'],
       },
@@ -462,7 +462,7 @@ describe('#659 isChildOf/isDescendantOf canonicalize aliased parent values', () 
         recursive: true,
         fields: {
           type: { value: 'context' },
-          parent: { prompt: 'relation', source: 'context', format: 'quoted-wikilink' },
+          parent: { prompt: 'relation', source: 'context' },
           aliases: { prompt: 'list', alias: true, list_format: 'yaml-array', default: [] },
         },
         field_order: ['type', 'parent', 'aliases'],

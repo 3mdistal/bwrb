@@ -45,7 +45,6 @@ const FULL_SCHEMA = {
           prompt: 'relation',
           source: 'milestone',
           filter: { status: { not_in: ['settled'] } },
-          format: 'quoted-wikilink',
         },
       },
       field_order: ['type', 'status', 'milestone'],
