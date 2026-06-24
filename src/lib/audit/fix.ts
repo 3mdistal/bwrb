@@ -1326,6 +1326,63 @@ export async function runAutoFix(
           skipped++;
           registerManualReview(manualReviewNeeded, result.relativePath, issue);
         }
+      } else if (
+        issue.code === 'wrong-scalar-type' &&
+        issue.field &&
+        issue.listIndex !== undefined &&
+        issue.meta?.['action'] === 'quote-element'
+      ) {
+        // Per-element quoting (#673): a VALID numeric element of a multiple date
+        // field (e.g. unquoted `2026` at year granularity) only needs to be
+        // quoted as a string — quote THAT element in place, leaving the rest of
+        // the array intact. We must NOT reuse the whole-field scalar coercion
+        // below (getScalarFromList collapses the array to one scalar).
+        //
+        // Index-safe mutation, mirroring the #683 blank-removal pattern: each
+        // issue is applied as its own read-modify-write, so re-derive the target
+        // from the live array and only quote an element that is still a number.
+        // Storing the JS string `String(2026)` is what makes this idempotent and
+        // round-trip-stable (the #700 trap): yaml serializes a numeric-looking
+        // JS string as a quoted scalar (`"2026"`) and gray-matter re-reads it as
+        // a string, so a second pass finds no numeric element. We never quote a
+        // non-number (e.g. a value already fixed earlier in the run).
+        const listIndex = issue.listIndex;
+        const quoted =
+          typeof issue.meta['quoted'] === 'string' ? issue.meta['quoted'] : undefined;
+
+        if (dryRun) {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ Would quote ${issue.field}[${listIndex}]`));
+          skipped++;
+          continue;
+        }
+
+        const fixResult = await updateFrontmatterValue(schema, result, (frontmatter) => {
+          const current = frontmatter[issue.field!];
+          if (!Array.isArray(current)) return false;
+          if (listIndex < 0 || listIndex >= current.length) return false;
+          if (typeof current[listIndex] !== 'number') return false;
+          // Prefer the exact string detection computed; fall back to String() of
+          // the live value if the meta is missing for any reason.
+          current[listIndex] = quoted ?? String(current[listIndex]);
+          frontmatter[issue.field!] = current;
+          return true;
+        });
+
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.green(`    ✓ Quoted ${issue.field}[${listIndex}]`));
+          fixed++;
+        } else if (fixResult.action === 'skipped') {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+          skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
+        } else {
+          console.log(chalk.cyan(`  ${result.relativePath}`));
+          console.log(chalk.red(`    ✗ Failed to quote ${issue.field}[${listIndex}]: ${fixResult.message}`));
+          failed++;
+        }
       } else if (issue.code === 'wrong-scalar-type' && issue.field) {
         const parsed = await parseNote(result.path);
         const currentValue = parsed.frontmatter[issue.field];
@@ -3682,6 +3739,42 @@ async function handleWrongScalarTypeFix(
   issue: AuditIssue
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
   if (!issue.field) return 'skipped';
+
+  // Per-element numeric date quoting (#673): a valid numeric element of a
+  // multiple date field just needs quoting in place. Handle it before the
+  // whole-field paths below (which would otherwise try to collapse the array).
+  // Index-safe + idempotent: only quote an element that is still a number, and
+  // store the JS string so yaml force-quotes it (round-trip stable, #700).
+  if (issue.listIndex !== undefined && issue.meta?.['action'] === 'quote-element') {
+    const listIndex = issue.listIndex;
+    const quoted =
+      typeof issue.meta['quoted'] === 'string' ? issue.meta['quoted'] : undefined;
+    const confirm = await promptConfirm(`    → Quote ${issue.field}[${listIndex}] as a string?`);
+    if (confirm === null) return 'quit';
+    if (!confirm) {
+      console.log(chalk.dim('    → Skipped'));
+      return 'skipped';
+    }
+    const fixResult = await updateFrontmatterValue(schema, result, (frontmatter) => {
+      const current = frontmatter[issue.field!];
+      if (!Array.isArray(current)) return false;
+      if (listIndex < 0 || listIndex >= current.length) return false;
+      if (typeof current[listIndex] !== 'number') return false;
+      current[listIndex] = quoted ?? String(current[listIndex]);
+      frontmatter[issue.field!] = current;
+      return true;
+    });
+    if (fixResult.action === 'fixed') {
+      console.log(chalk.green(`    ✓ Quoted ${issue.field}[${listIndex}]`));
+      return 'fixed';
+    }
+    if (fixResult.action === 'skipped') {
+      console.log(chalk.dim(`    → ${fixResult.message}`));
+      return 'skipped';
+    }
+    console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+    return 'failed';
+  }
 
   const parsed = await parseNote(result.path);
   const currentValue = parsed.frontmatter[issue.field];

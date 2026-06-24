@@ -662,8 +662,13 @@ export async function auditFile(
           // owns every numeric element of a date field (just as create/edit
           // validates numeric elements as dates), so `checkListElementIntegrity`
           // skips numeric date elements and we report exactly one issue per bad
-          // element (#641). For scalar dates the field-level auto-fixer can quote
-          // the value; a list element is surfaced for a manual fix.
+          // element (#641). For scalar dates the field-level auto-fixer quotes the
+          // value; for a list element the per-element fixer quotes THAT element in
+          // place, leaving the rest of the array intact (#673). Both are
+          // auto-fixable. The fix is idempotent: yaml serializes the JS string
+          // `"2026"` as a quoted scalar, and gray-matter re-reads it as a string,
+          // so a second run sees no numeric element (avoids the #700 round-trip
+          // trap). The fixer reads `meta.quoted` for the exact string to write.
           issues.push({
             severity: 'error',
             code: 'wrong-scalar-type',
@@ -672,7 +677,10 @@ export async function auditFile(
             value: element,
             expected: 'string',
             ...(listIndex !== undefined && { listIndex }),
-            autoFixable: listIndex === undefined,
+            ...(listIndex !== undefined && {
+              meta: { action: 'quote-element', quoted: String(element) },
+            }),
+            autoFixable: true,
           });
         }
       };

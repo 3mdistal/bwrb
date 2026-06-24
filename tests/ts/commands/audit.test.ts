@@ -4221,6 +4221,170 @@ effort: "3"
     });
   });
 
+  describe('per-element numeric date-list auto-fix (#673)', () => {
+    let tempVaultDir: string;
+
+    // A list of years modeled as a `date` prompt with `multiple: true` at year
+    // granularity: a bare numeric year is a VALID date that only needs quoting.
+    const YEAR_LIST_SCHEMA = {
+      version: 2,
+      types: {
+        log: {
+          output_dir: 'Logs',
+          fields: {
+            type: { value: 'log' },
+            years: { prompt: 'date' as const, multiple: true, granularity: 'year' as const },
+          },
+        },
+      },
+    };
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-673-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(YEAR_LIST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Logs'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    async function auditIssues(filename: string) {
+      const result = await runCLI(['audit', 'log', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes(filename));
+      const issues: { code: string; field?: string; listIndex?: number; value?: unknown; autoFixable?: boolean }[] =
+        file?.issues ?? [];
+      return issues;
+    }
+
+    it('flags a valid numeric date-list element as auto-fixable wrong-scalar-type', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Logs', 'OneNumber.md'),
+        `---\ntype: log\nyears:\n  - 2026\n---\n`
+      );
+      const issues = await auditIssues('OneNumber.md');
+      const wrongScalar = issues.filter((i) => i.code === 'wrong-scalar-type');
+      expect(wrongScalar).toHaveLength(1);
+      expect(wrongScalar[0].listIndex).toBe(0);
+      expect(wrongScalar[0].autoFixable).toBe(true);
+    });
+
+    it('quotes a valid numeric element in place, leaving the array intact', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Logs', 'Quote.md'),
+        `---\ntype: log\nyears:\n  - "2024"\n  - 2026\n  - "2025"\n---\n`
+      );
+      const result = await runCLI(['audit', 'log', '--fix', '--auto', '--execute'], tempVaultDir);
+      expect(result.stdout).toContain('Quoted years[1]');
+
+      const content = await readFile(join(tempVaultDir, 'Logs', 'Quote.md'), 'utf-8');
+      // The numeric element is now a quoted string; array order + other elements preserved.
+      expect(content).toContain('"2024"');
+      expect(content).toContain('"2026"');
+      expect(content).toContain('"2025"');
+      // No bare numeric element remains (no array collapse to a single scalar).
+      expect(content).not.toMatch(/^\s*-\s*2026\s*$/m);
+      expect(content).toContain('years:');
+
+      // Re-read through the parser: every element is a string, order preserved.
+      const reaudit = await auditIssues('Quote.md');
+      expect(reaudit.filter((i) => i.code === 'wrong-scalar-type')).toHaveLength(0);
+    });
+
+    it('is idempotent and round-trip stable (the #700 trap)', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Logs', 'Idem.md'),
+        `---\ntype: log\nyears:\n  - 2026\n---\n`
+      );
+      // First fix run quotes the element.
+      const first = await runCLI(['audit', 'log', '--fix', '--auto', '--execute'], tempVaultDir);
+      expect(first.stdout).toContain('Quoted years[0]');
+      const afterFirst = await readFile(join(tempVaultDir, 'Logs', 'Idem.md'), 'utf-8');
+      expect(afterFirst).toContain('"2026"');
+
+      // A second audit finds nothing: the value stays a quoted string across the
+      // YAML round-trip (no re-flag, no re-quote, never converges-and-diverges).
+      const reaudit = await auditIssues('Idem.md');
+      expect(reaudit.filter((i) => i.code === 'wrong-scalar-type')).toHaveLength(0);
+
+      // A second fix run is a no-op and the value is unchanged on disk.
+      const second = await runCLI(['audit', 'log', '--fix', '--auto', '--execute'], tempVaultDir);
+      expect(second.stdout).not.toContain('Quoted years[0]');
+      const afterSecond = await readFile(join(tempVaultDir, 'Logs', 'Idem.md'), 'utf-8');
+      expect(afterSecond).toBe(afterFirst);
+    });
+
+    it('quotes multiple numeric elements in one list, with no collapse', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Logs', 'Multi.md'),
+        `---\ntype: log\nyears:\n  - 2024\n  - 2025\n  - 2026\n---\n`
+      );
+      await runCLI(['audit', 'log', '--fix', '--auto', '--execute'], tempVaultDir);
+      const content = await readFile(join(tempVaultDir, 'Logs', 'Multi.md'), 'utf-8');
+      expect(content).toContain('"2024"');
+      expect(content).toContain('"2025"');
+      expect(content).toContain('"2026"');
+      const reaudit = await auditIssues('Multi.md');
+      expect(reaudit.filter((i) => i.code === 'wrong-scalar-type')).toHaveLength(0);
+      expect(reaudit.filter((i) => i.code === 'invalid-list-element')).toHaveLength(0);
+    });
+
+    it('quotes only the numeric element in a mixed numeric + string list', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Logs', 'Mixed.md'),
+        `---\ntype: log\nyears:\n  - "2024"\n  - 2026\n---\n`
+      );
+      await runCLI(['audit', 'log', '--fix', '--auto', '--execute'], tempVaultDir);
+      const content = await readFile(join(tempVaultDir, 'Logs', 'Mixed.md'), 'utf-8');
+      expect(content).toContain('"2024"');
+      expect(content).toContain('"2026"');
+      const reaudit = await auditIssues('Mixed.md');
+      expect(reaudit.filter((i) => i.code === 'wrong-scalar-type')).toHaveLength(0);
+    });
+
+    it('does NOT auto-quote an invalid numeric date element (stays invalid-date-format)', async () => {
+      // At day granularity (default), numeric 13 is not a valid date: it must
+      // remain an invalid-date-format flag and must NOT be "fixed" by quoting.
+      const daySchema = {
+        version: 2,
+        config: { date_granularity: 'day' as const },
+        types: {
+          log: {
+            output_dir: 'Logs',
+            fields: {
+              type: { value: 'log' },
+              dates: { prompt: 'date' as const, multiple: true },
+            },
+          },
+        },
+      };
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(daySchema, null, 2)
+      );
+      await writeFile(
+        join(tempVaultDir, 'Logs', 'Invalid.md'),
+        `---\ntype: log\ndates:\n  - "2026-01-01"\n  - 13\n---\n`
+      );
+      const before = await auditIssues('Invalid.md');
+      const dateIssues = before.filter((i) => i.code === 'invalid-date-format');
+      expect(dateIssues).toHaveLength(1);
+      expect(dateIssues[0].listIndex).toBe(1);
+
+      await runCLI(['audit', 'log', '--fix', '--auto', '--execute'], tempVaultDir);
+      const content = await readFile(join(tempVaultDir, 'Logs', 'Invalid.md'), 'utf-8');
+      // The invalid element is NOT quoted; it stays a bare number and stays flagged.
+      expect(content).not.toContain('"13"');
+      const after = await auditIssues('Invalid.md');
+      expect(after.filter((i) => i.code === 'invalid-date-format')).toHaveLength(1);
+    });
+  });
+
   describe('unknown-enum-casing detection and fix', () => {
     let tempVaultDir: string;
 

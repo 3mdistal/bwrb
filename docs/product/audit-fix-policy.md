@@ -53,6 +53,8 @@ For list fields, `invalid-list-element` may auto-fix only when deterministic:
 - Flatten a single nested list only when exactly one level deep and all elements are valid
 - Apply safe scalar coercions per `wrong-scalar-type` when unambiguous
 
+A **valid numeric element of a `multiple` date field** (e.g. an unquoted `2026` at year granularity) is reported as `wrong-scalar-type` with a `listIndex` and is auto-fixable per-element (#673): the fix quotes that single element in place (`2026` → `"2026"`), preserving array order and all other elements — it never collapses the array to one scalar. Quoting is index-safe (each element is re-derived from the live array, like the #683 blank removal) and idempotent: the quoted string is written and re-read as a string, so the value survives the YAML round-trip and a second pass finds nothing (avoiding the #700 non-idempotency trap). An **invalid** numeric date element (not a valid date at the field's granularity) is left as `invalid-date-format` for manual correction and is never auto-quoted.
+
 ## Trailing Whitespace (Raw Frontmatter, Minimal Diff)
 
 `trailing-whitespace` policy is intentionally narrow and deterministic:
