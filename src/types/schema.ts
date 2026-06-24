@@ -6,10 +6,10 @@ import { z } from 'zod';
 
 // Filter condition for type-based source queries
 export const FilterConditionSchema = z.object({
-  equals: z.string().optional(),
-  not_equals: z.string().optional(),
-  in: z.array(z.string()).optional(),
-  not_in: z.array(z.string()).optional(),
+  equals: z.string().optional().describe('Field must equal this value'),
+  not_equals: z.string().optional().describe('Field must not equal this value'),
+  in: z.array(z.string()).optional().describe('Field must be one of these values'),
+  not_in: z.array(z.string()).optional().describe('Field must not be one of these values'),
 });
 
 /**
@@ -22,8 +22,8 @@ export const FilterConditionSchema = z.object({
 export const FieldOptionSchema = z.union([
   z.string(),
   z.object({
-    value: z.string(),
-    description: z.string().optional(),
+    value: z.string().describe('The option value stored in frontmatter'),
+    description: z.string().optional().describe('What this option means / when to choose it'),
   }),
 ]);
 
@@ -33,58 +33,127 @@ export const FieldOptionSchema = z.union([
  */
 export const FieldSchema = z.object({
   // Prompt type (how the field is collected)
-  prompt: z.enum(['text', 'select', 'list', 'date', 'relation', 'boolean', 'number']).optional(),
+  prompt: z
+    .enum(['text', 'select', 'list', 'date', 'relation', 'boolean', 'number'])
+    .optional()
+    .describe(
+      'Type of prompt: text (free text), select (from options), relation (from vault query), list (comma-separated list), date (date picker), boolean (yes/no), number (numeric input)'
+    ),
   // Coarsest date precision allowed for `date` fields (finer is always allowed).
   // - day (default): full YYYY-MM-DD only
   // - month: YYYY-MM or YYYY-MM-DD (e.g. last-contact known to the month)
   // - year: YYYY, YYYY-MM, or YYYY-MM-DD (e.g. "around 2021")
   // Overrides the global config.date_granularity for this field.
-  granularity: z.enum(['day', 'month', 'year']).optional(),
+  granularity: z
+    .enum(['day', 'month', 'year'])
+    .optional()
+    .describe(
+      'Coarsest date precision allowed for this `date` field, finer is always allowed (day = full YYYY-MM-DD, month = YYYY-MM or finer, year = YYYY or finer). Overrides the global config.date_granularity for this field.'
+    ),
   // Static value (no prompting)
-  value: z.string().optional(),
+  value: z
+    .string()
+    .optional()
+    .describe('Static value (use $NOW for current datetime, $TODAY for date)'),
   // Human-readable description of what this field is for and when to use it.
   // Surfaced by `bwrb schema list` (text + JSON); distinct from `label`, which
   // is the imperative prompt shown during input.
-  description: z.string().optional(),
+  description: z
+    .string()
+    .optional()
+    .describe(
+      'Human-readable description of what this field is for and when to use it. Surfaced by `bwrb schema list`; distinct from `label`.'
+    ),
   // Inline options for select prompts (replaces global enums).
   // Each option is a bare value or a { value, description } pair.
-  options: z.array(FieldOptionSchema).optional(),
+  options: z
+    .array(FieldOptionSchema)
+    .optional()
+    .describe(
+      'Allowed values for select fields (inline options). Each entry is a bare value or a { value, description } pair that documents what the option means.'
+    ),
   // Type name(s) for relation prompts (e.g., "milestone", "objective")
   // When specified, queryByType() fetches notes of this type (and descendants)
   // Can be an array to allow multiple valid types (e.g., for recursive types with extends)
-  source: z.union([z.string(), z.array(z.string())]).optional(),
+  source: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .describe(
+      'Type name(s) for relation prompts. When a relation\'s value is ambiguous because two notes share a name, path-qualify the link (e.g. `[[contexts/Betson]]`); see the search command docs for the shortest-unambiguous-form rule.'
+    ),
   // Filter conditions for type-based source queries
   // Applies frontmatter conditions to filter results (e.g., { status: { not_in: ["settled"] } })
-  filter: z.record(FilterConditionSchema).optional(),
+  filter: z
+    .record(FilterConditionSchema)
+    .optional()
+    .describe('Filter conditions for type-based source queries'),
   // Whether the field is required
-  required: z.boolean().optional(),
+  required: z
+    .boolean()
+    .optional()
+    .describe('Whether this field is required (user cannot skip)'),
   // Default value
-  default: z.union([z.string(), z.array(z.string())]).optional(),
+  default: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .describe('Default value if user skips the prompt'),
   // How list values are formatted in YAML
-  list_format: z.enum(['yaml-array', 'comma-separated']).optional(),
+  list_format: z
+    .enum(['yaml-array', 'comma-separated'])
+    .optional()
+    .describe('For list fields, how to format the list'),
   // Prompt label override
-  label: z.string().optional(),
+  label: z
+    .string()
+    .optional()
+    .describe(
+      'Label shown to user for input prompts (the imperative prompt text, e.g. "Select status"). Distinct from `description`, which explains what the field is for.'
+    ),
   // Whether this field can hold multiple values (for context fields)
-  multiple: z.boolean().optional(),
+  multiple: z
+    .boolean()
+    .optional()
+    .describe('Whether this field can hold multiple values'),
   // Whether children referenced by this field are owned (colocate with parent)
-  owned: z.boolean().optional(),
+  owned: z
+    .boolean()
+    .optional()
+    .describe('Whether children referenced by this field are owned (colocate with parent)'),
   // Field role: marks this field as holding the entity's aliases — alternate
   // names the entity is also known by. A recognized role (like `owned`) that
   // name-resolution and linking consult uniformly, so an entity is findable by
   // its aliases wherever it's findable by its name. The value must be an array
   // of non-empty, unique strings (Obsidian `aliases` format).
-  alias: z.boolean().optional(),
+  alias: z
+    .boolean()
+    .optional()
+    .describe(
+      'Field role: marks this field as holding the entity\'s aliases (alternate names). bwrb consults aliases during name resolution and linking, so an entity is findable by its aliases wherever it is findable by its name. The value must be an array of non-empty, unique strings (Obsidian `aliases` format).'
+    ),
 });
 
 // Body section definition
 export const BodySectionSchema: z.ZodType<BodySection, z.ZodTypeDef, BodySectionInput> = z.lazy(() =>
   z.object({
-    title: z.string(),
-    level: z.number().optional().default(2),
-    content_type: z.enum(['none', 'paragraphs', 'bullets', 'checkboxes']).optional(),
-    prompt: z.enum(['none', 'list']).optional(),
-    prompt_label: z.string().optional(),
-    children: z.array(BodySectionSchema).optional(),
+    title: z.string().describe('Section heading text'),
+    level: z
+      .number()
+      .int()
+      .min(2)
+      .max(6)
+      .optional()
+      .default(2)
+      .describe('Heading level (2 = ##, 3 = ###, etc.)'),
+    content_type: z
+      .enum(['none', 'paragraphs', 'bullets', 'checkboxes'])
+      .optional()
+      .describe('Type of content placeholder to add'),
+    prompt: z
+      .enum(['none', 'list'])
+      .optional()
+      .describe('If set, prompts user for initial content during creation'),
+    prompt_label: z.string().optional().describe('Label for the content prompt'),
+    children: z.array(BodySectionSchema).optional().describe('Nested subsections'),
   })
 );
 
@@ -111,11 +180,20 @@ export const BodySectionSchema: z.ZodType<BodySection, z.ZodTypeDef, BodySection
 export const RecurrenceSchema = z.object({
   // The trigger transition, written as `<field> = <value>` (e.g. "status = done").
   // The successor is spawned when the trigger field transitions INTO this value.
-  on: z.string(),
+  on: z
+    .string()
+    .describe(
+      'Trigger transition, written as `<field> = <value>` (e.g. "status = done"). The successor is spawned when the trigger field transitions INTO this value.'
+    ),
   // Template name to spawn the successor from. Defaults to the completed note's
   // type default template (a task begets a task). Naming a template can spawn a
   // different type (finish "draft" → spawn "review").
-  template: z.string().optional(),
+  template: z
+    .string()
+    .optional()
+    .describe(
+      'Template to spawn the successor from. Defaults to the completed note\'s type default template (a task begets a task). A named template can spawn a different type (finish "draft" -> spawn "review").'
+    ),
   // Optional name template for the successor. When set, the successor's name is
   // this string interpolated with the SAME tokens used elsewhere — `{name}` (the
   // predecessor's name), `{date}` / `{date:FORMAT}` (today), and any predecessor
@@ -125,11 +203,21 @@ export const RecurrenceSchema = z.object({
   // predecessor's name is carried forward as before. Vault-global basename
   // uniqueness (#632) is still enforced on the RESULT — if the interpolated name
   // also collides, a numeric suffix is appended on top.
-  name_template: z.string().optional(),
+  name_template: z
+    .string()
+    .optional()
+    .describe(
+      'Optional name template for the successor (#679). Interpolated with the same tokens as filename patterns -- {name} (the predecessor\'s name), {date} / {date:FORMAT} (today), and any predecessor field {field} -- then sanitized for a filename (e.g. "Review: {name}" -> "Review Chapter One"). Gives a cross-type successor a meaningful, distinct name instead of a numeric suffix. When omitted, the predecessor\'s name is carried forward. Vault-global basename uniqueness is still enforced on the result -- if the interpolated name also collides, a numeric suffix is appended on top.'
+    ),
   // Field-offset assignments for the successor. Each value is a field-offset
   // expression `<dateField> <+|-> <duration>` (e.g. "deadline + 7d"). The base
   // must be a date field on the predecessor.
-  set: z.record(z.string()).optional(),
+  set: z
+    .record(z.string())
+    .optional()
+    .describe(
+      'Field-offset assignments for the successor. Each value is a field-offset expression `<dateField> <+|-> <duration>` (e.g. "deadline + 7d"). The base must be a date field on the predecessor. Transition-time offsets and calendar-anchored bases are not supported.'
+    ),
 });
 
 export type Recurrence = z.infer<typeof RecurrenceSchema>;
@@ -150,9 +238,17 @@ export type Recurrence = z.infer<typeof RecurrenceSchema>;
 export const TraitSchema = z.object({
   // Human-readable description of what this trait bundles and when to use it.
   // Surfaced by `bwrb schema list` (text + JSON).
-  description: z.string().optional(),
+  description: z
+    .string()
+    .optional()
+    .describe(
+      'Human-readable description of what this trait bundles and when to use it. Surfaced by `bwrb schema list`.'
+    ),
   // Field definitions contributed by this trait.
-  fields: z.record(FieldSchema).optional(),
+  fields: z
+    .record(FieldSchema)
+    .optional()
+    .describe('Field definitions contributed by this trait'),
   // Recurrence configuration (spawn-on-transition). When present, types that
   // compose this trait gain event-driven successor spawning. See RecurrenceSchema.
   recurrence: RecurrenceSchema.optional(),
@@ -173,30 +269,67 @@ export const TraitSchema = z.object({
  */
 export const TypeSchema = z.object({
   // Parent type name (implicit 'meta' if not specified)
-  extends: z.string().optional(),
+  extends: z
+    .string()
+    .optional()
+    .describe(
+      "Parent type name (implicit 'meta' if not specified). Single-parent is-a inheritance."
+    ),
   // Trait names composed into this type (composition, alongside `extends`).
   // `extends` is *is-a* (single-parent inheritance); `traits` are *also-has*
   // (multiple reusable field bundles). Resolved at load time into the type's
   // effective fields. See `TraitSchema` and the resolver for precedence.
-  traits: z.array(z.string()).optional(),
+  traits: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Trait names composed into this type (composition alongside `extends`). Precedence: own fields > traits > inherited; later traits in the array win over earlier ones.'
+    ),
   // Human-readable description of what this type is for and when to use it.
   // Surfaced by `bwrb schema list` (text + JSON).
-  description: z.string().optional(),
+  description: z
+    .string()
+    .optional()
+    .describe(
+      'Human-readable description of what this type is for and when to use it. Surfaced by `bwrb schema list`.'
+    ),
   // Field definitions (merged with ancestors at load time)
-  fields: z.record(FieldSchema).optional(),
+  fields: z
+    .record(FieldSchema)
+    .optional()
+    .describe('Field definitions, merged with ancestors and traits at load time'),
   // Explicit field ordering (optional - defaults to definition order)
-  field_order: z.array(z.string()).optional(),
+  field_order: z
+    .array(z.string())
+    .optional()
+    .describe('Explicit field ordering (optional; defaults to definition order)'),
   // Body section definitions
-  body_sections: z.array(BodySectionSchema).optional(),
+  body_sections: z
+    .array(BodySectionSchema)
+    .optional()
+    .describe('Body section definitions generated after frontmatter'),
   // Whether this type can contain instances of itself
-  recursive: z.boolean().optional(),
+  recursive: z
+    .boolean()
+    .optional()
+    .describe('Whether this type can contain instances of itself'),
   // Output directory (computed from hierarchy if not specified)
-  output_dir: z.string().optional(),
+  output_dir: z
+    .string()
+    .optional()
+    .describe(
+      'Directory path relative to vault root where files of this type are created (computed from hierarchy if not specified)'
+    ),
   // Filename pattern
-  filename: z.string().optional(),
+  filename: z.string().optional().describe('Filename pattern'),
   // Custom plural form for folder naming (e.g., "research" instead of "researches")
   // If not specified, auto-pluralization is used (add 's', handle 'y' -> 'ies', etc.)
-  plural: z.string().optional(),
+  plural: z
+    .string()
+    .optional()
+    .describe(
+      "Custom plural form for folder naming (e.g., 'research' instead of 'researches'). Auto-pluralized if not specified."
+    ),
 });
 
 // ============================================================================
@@ -204,8 +337,14 @@ export const TypeSchema = z.object({
 // ============================================================================
 
 export const AuditConfigSchema = z.object({
-  ignored_directories: z.array(z.string()).optional(),
-  allowed_extra_fields: z.array(z.string()).optional(),
+  ignored_directories: z
+    .array(z.string())
+    .optional()
+    .describe('Directories to skip during audit'),
+  allowed_extra_fields: z
+    .array(z.string())
+    .optional()
+    .describe('Extra frontmatter fields that are allowed without warning'),
 });
 
 // ============================================================================
@@ -220,41 +359,78 @@ export const ConfigSchema = z.object({
   // Link format for relation fields in frontmatter
   // wikilink: "[[Note Name]]" (default, Obsidian-compatible)
   // markdown: "[Note Name](Note Name.md)"
-  link_format: z.enum(['wikilink', 'markdown']).optional(),
+  link_format: z
+    .enum(['wikilink', 'markdown'])
+    .optional()
+    .describe(
+      'Link format for relation fields: wikilink ("[[Note]]") or markdown ("[Note](Note.md)")'
+    ),
   // Terminal editor command (defaults to $EDITOR)
-  editor: z.string().optional(),
+  editor: z.string().optional().describe('Terminal editor command (defaults to $EDITOR)'),
   // GUI editor command (defaults to $VISUAL)
-  visual: z.string().optional(),
+  visual: z.string().optional().describe('GUI editor command (defaults to $VISUAL)'),
   // Default behavior for --open flag
   // system: Open with OS default handler (default)
   // editor: Open in terminal editor ($EDITOR)
   // visual: Open in GUI editor ($VISUAL)
   // obsidian: Open via Obsidian URI
-  open_with: z.enum(['system', 'editor', 'visual', 'obsidian']).optional(),
+  open_with: z
+    .enum(['system', 'editor', 'visual', 'obsidian'])
+    .optional()
+    .describe('Default behavior for --open flag'),
   // Obsidian vault name for URI scheme (auto-detected from .obsidian if not set)
-  obsidian_vault: z.string().optional(),
+  obsidian_vault: z
+    .string()
+    .optional()
+    .describe('Obsidian vault name for URI scheme (auto-detected if not set)'),
   // Default dashboard to run when `bwrb dashboard` is called without arguments
-  default_dashboard: z.string().optional(),
+  default_dashboard: z
+    .string()
+    .optional()
+    .describe('Dashboard to run when `bwrb dashboard` is called without arguments'),
   // Directories to exclude from all discovery/targeting operations
   // Values are vault-root-relative directory prefixes (e.g., "Archive", "Templates", "Archive/Old")
-  excluded_directories: z.array(z.string()).optional(),
+  excluded_directories: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Vault-root-relative directory prefixes excluded from all discovery/targeting operations (e.g., "Archive", "Templates")'
+    ),
   // Date format for date fields in frontmatter
   // YYYY-MM-DD: ISO 8601 format (default)
   // MM/DD/YYYY: US format
   // DD/MM/YYYY: EU format
   // DD-MM-YYYY: EU format with dashes
   // Custom patterns using YYYY, MM, DD tokens are also supported
-  date_format: z.string().optional(),
+  date_format: z
+    .string()
+    .optional()
+    .describe(
+      'Date format for date fields (YYYY, MM, DD tokens), e.g. YYYY-MM-DD (default), MM/DD/YYYY, DD-MM-YYYY'
+    ),
   // Default coarsest date precision allowed for all `date` fields.
   // - day (default): full YYYY-MM-DD only
   // - month: YYYY-MM or finer
   // - year: YYYY or finer
   // Per-field `granularity` overrides this default.
-  date_granularity: z.enum(['day', 'month', 'year']).optional(),
+  date_granularity: z
+    .enum(['day', 'month', 'year'])
+    .optional()
+    .describe(
+      'Default coarsest date precision allowed for all date fields (day = full YYYY-MM-DD, month = YYYY-MM or finer, year = YYYY or finer). Per-field `granularity` overrides this default.'
+    ),
   // Max Levenshtein distance for the `unlinked-mention` audit fuzzy ("did you
   // mean?") tier (#622). Integer 0-5; default 2. 0 disables the fuzzy tier.
   // Overridden per run by `--mention-fuzzy-threshold` / `--no-mention-fuzzy`.
-  mention_fuzzy_threshold: z.number().int().min(0).max(5).optional(),
+  mention_fuzzy_threshold: z
+    .number()
+    .int()
+    .min(0)
+    .max(5)
+    .optional()
+    .describe(
+      'Max Levenshtein distance for the `unlinked-mention` audit fuzzy ("did you mean?") tier (#622). Integer 0-5; default 2. 0 disables the fuzzy tier. Overridden per run by `--mention-fuzzy-threshold` / `--no-mention-fuzzy`.'
+    ),
 });
 
 // ============================================================================
@@ -272,19 +448,35 @@ export const ConfigSchema = z.object({
  */
 export const BwrbSchema = z.object({
   // JSON Schema reference for editor support
-  $schema: z.string().optional(),
+  $schema: z
+    .string()
+    .optional()
+    .describe('Reference to this JSON Schema for editor support'),
   // Schema format version (2 = inheritance model)
-  version: z.number().optional().default(2),
+  version: z
+    .number()
+    .int()
+    .optional()
+    .default(2)
+    .describe('Schema format version (2 = inheritance model)'),
   // User-controlled schema content version for migrations (semver)
   // This tracks the evolution of your schema over time
-  schemaVersion: z.string().optional(),
+  schemaVersion: z
+    .string()
+    .optional()
+    .describe('User-controlled schema content version for migrations (semver)'),
   // Vault-wide configuration
   config: ConfigSchema.optional(),
   // Reusable field bundles composed into types via each type's `traits` array.
   // Optional: schemas without traits are unchanged.
-  traits: z.record(TraitSchema).optional(),
+  traits: z
+    .record(TraitSchema)
+    .optional()
+    .describe(
+      "Reusable field bundles composed into types via each type's `traits` array. Composition (`also-has`) alongside `extends` inheritance (`is-a`). Optional; schemas without traits are unchanged."
+    ),
   // Type definitions (flat with 'extends')
-  types: z.record(TypeSchema),
+  types: z.record(TypeSchema).describe('Type definitions with inheritance support'),
   // Audit configuration
   audit: AuditConfigSchema.optional(),
 });

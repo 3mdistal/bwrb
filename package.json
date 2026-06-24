@@ -24,6 +24,8 @@
     "test:pty": "vitest run --reporter=verbose .pty.test.ts",
     "test:pty:ci": "sh -c 'mkdir -p artifacts && vitest run --reporter=json --outputFile=artifacts/pty-results.json .pty.test.ts'",
     "docs:check": "tsx src/tools/docs/check-concepts-sidebar.ts",
+    "schema:gen": "tsx src/tools/schema/generate-json-schema.ts",
+    "schema:check": "tsx src/tools/schema/generate-json-schema.ts --check",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -33,7 +35,7 @@
     "docs:preview": "pnpm -C docs-site preview",
     "docs:lint": "node scripts/docs-link-consistency.mjs",
     "docs:doctor": "node scripts/docs-doctor.mjs",
-    "qa": "pnpm typecheck && pnpm lint && pnpm docs:lint && pnpm docs:doctor && pnpm build && pnpm test",
+    "qa": "pnpm typecheck && pnpm lint && pnpm schema:check && pnpm docs:lint && pnpm docs:doctor && pnpm build && pnpm test",
     "verify:pack": "node scripts/verify-pack.mjs",
     "knip": "knip",
     "knip:prod": "knip --production",
@@ -75,7 +77,8 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.54.0",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "zod-to-json-schema": "^3.25.2"
   },
   "engines": {
     "node": ">=22"
