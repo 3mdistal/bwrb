@@ -4,6 +4,8 @@
  */
 
 import { Schema, Field, getOptionValues } from '../../types/schema.js';
+import { resolveSchema, getConcreteTypeNames } from '../schema.js';
+import type { LoadedSchema } from '../../types/schema.js';
 import {
   MigrationPlan,
   MigrationOp,
@@ -24,19 +26,37 @@ export function diffSchemas(
   fromVersion: string,
   toVersion: string
 ): MigrationPlan {
-  const changes = detectChanges(oldSchema, newSchema);
-  const { deterministic, nonDeterministic } = classifyChanges(changes, newSchema);
-  
+  // Resolve both schemas up front. Field-changed detection reasons about the
+  // EFFECTIVE (inheritance-resolved) field definition per concrete type rather
+  // than raw per-type entries, because that is the structure existing notes were
+  // actually written against (see detectEffectiveFieldChanges).
+  const resolvedNew = resolveSchema(newSchema);
+  const resolvedOld = oldSchema ? resolveSchema(oldSchema) : undefined;
+
+  const changes = detectChanges(oldSchema, newSchema, resolvedOld, resolvedNew);
+  const { deterministic, nonDeterministic } = classifyChanges(
+    changes,
+    resolvedOld,
+    resolvedNew
+  );
+
   // Check for config.linkFormat changes
   const configOps = detectConfigChanges(oldSchema, newSchema);
   deterministic.push(...configOps);
-  
+
+  // `schemaChanged` tracks migration-relevant *shape* differences vs the
+  // snapshot, including ones that emit no op (e.g. a select option was added).
+  // `detectChanges`/`detectConfigChanges` already exclude cosmetic edits
+  // (descriptions, labels, key reordering), so this stays quiet for those.
+  const schemaChanged = changes.length > 0 || configOps.length > 0;
+
   return {
     fromVersion,
     toVersion,
     deterministic,
     nonDeterministic,
     hasChanges: deterministic.length > 0 || nonDeterministic.length > 0,
+    schemaChanged,
   };
 }
 
@@ -71,20 +91,45 @@ function detectConfigChanges(
 /**
  * Detect all changes between two schemas.
  */
-function detectChanges(oldSchema: Schema | undefined, newSchema: Schema): DetectedChange[] {
+function detectChanges(
+  oldSchema: Schema | undefined,
+  newSchema: Schema,
+  resolvedOld: LoadedSchema | undefined,
+  resolvedNew: LoadedSchema
+): DetectedChange[] {
   const changes: DetectedChange[] = [];
-  
+
   // If no old schema, everything in new schema is "added" but no migration needed
-  if (!oldSchema) {
+  if (!oldSchema || !resolvedOld) {
     return [];
   }
-  
+
   // Note: Global enums have been removed in favor of inline options on fields.
   // Options changes are detected as part of field changes.
-  
-  // Compare types
+
+  // Compare types (added/removed/reparented only — field add/remove/change are
+  // all derived from the EFFECTIVE resolved schemas below).
   changes.push(...detectTypeChanges(oldSchema.types ?? {}, newSchema.types ?? {}));
-  
+
+  // Field *additions* are computed from the EFFECTIVE resolved schemas, NOT raw
+  // per-type entries. A field can enter a concrete type's effective schema in
+  // three ways — a new raw own field, a field added to a TRAIT the type
+  // composes, or a trait (already carrying fields) newly attached to the type.
+  // Comparing effective old → new captures all three uniformly and is the SINGLE
+  // source of truth for additions, so the raw per-type path no longer emits them
+  // (see detectEffectiveFieldAdditions for why).
+  changes.push(...detectEffectiveFieldAdditions(resolvedOld, resolvedNew));
+
+  // Field-*changed* detection is computed from the EFFECTIVE resolved schemas,
+  // not raw per-type entries (see detectEffectiveFieldChanges for why).
+  changes.push(...detectEffectiveFieldChanges(resolvedOld, resolvedNew));
+
+  // Field *removal* is likewise computed from the EFFECTIVE resolved schemas so
+  // a parent field removal fans out to every inheriting descendant that loses it
+  // (see detectEffectiveFieldRemovals for why). The raw per-type path no longer
+  // emits removals, so there is no double-emit for the declaring type.
+  changes.push(...detectEffectiveFieldRemovals(resolvedOld, resolvedNew));
+
   return changes;
 }
 
@@ -135,61 +180,199 @@ function detectTypeChanges(
         }
         changes.push(reparentChange);
       }
-      
-      // Check field changes
-      changes.push(...detectFieldChanges(
-        name,
-        oldType.fields ?? {},
-        newType.fields ?? {}
-      ));
+
+      // Field add/change/remove detection is NOT done here — it is all derived
+      // from the EFFECTIVE resolved schemas (see detectEffectiveFieldAdditions,
+      // detectEffectiveFieldChanges, detectEffectiveFieldRemovals). Raw per-type
+      // comparison can't see trait-composed or inherited fields and so misses
+      // (or double-counts) additions/removals/changes that only exist in the
+      // resolved schema.
     }
   }
-  
+
   return changes;
 }
 
 /**
- * Detect changes in field definitions for a type.
+ * Detect field ADDITIONS from the EFFECTIVE resolved schemas.
+ *
+ * Mirrors detectEffectiveFieldChanges / detectEffectiveFieldRemovals: a field is
+ * *effectively added* for a concrete type T when T has it in the NEW effective
+ * schema but did NOT have it in the OLD effective schema. Deriving additions from
+ * the effective (inheritance- and trait-resolved) schema — rather than the raw
+ * per-type entry — is what makes this complete:
+ *
+ *   - A genuinely new raw OWN field appears in the type's new effective set →
+ *     emitted (same behavior as the old raw add path).
+ *   - A field added to a TRAIT the type composes, or a trait (already carrying
+ *     fields) newly ATTACHED to the type, enters the type's effective set even
+ *     though `schema.types[T].fields` (raw) never mentions it. The raw path
+ *     missed these entirely, so a later removal of the now-populated field was
+ *     diffed against a stale snapshot (#728 effective-addition defect). Computing
+ *     additions effectively catches them and flips `schemaChanged` so migrate
+ *     refreshes the snapshot.
+ *   - A field merely INHERITED (or trait-contributed) UNCHANGED in both old and
+ *     new is present in BOTH effective sets → NOT an addition.
+ *   - A raw redeclaration of an already-inherited field whose structural override
+ *     the resolver IGNORES leaves the effective field present in BOTH sets → NOT
+ *     an addition (round-9 behavior preserved without a special case).
+ *
+ * One detection is emitted per CONCRETE type that effectively gains the field,
+ * matching how executeMigration groups field ops by exact `expectedType`. Only
+ * types present concretely in BOTH schemas are considered: a brand-new type is
+ * handled by the type-added path (its notes don't exist yet).
+ *
+ * The resulting `add-field` op preserves prior semantics: it backfills only when
+ * the (effective) field carries a default and the note omits it; an OPTIONAL
+ * field with no default produces no note mutation — it simply flips
+ * `schemaChanged` so the snapshot advances.
  */
-function detectFieldChanges(
-  typeName: string,
-  oldFields: Record<string, Field>,
-  newFields: Record<string, Field>
+function detectEffectiveFieldAdditions(
+  resolvedOld: LoadedSchema,
+  resolvedNew: LoadedSchema
 ): DetectedChange[] {
   const changes: DetectedChange[] = [];
-  const oldNames = new Set(Object.keys(oldFields));
-  const newNames = new Set(Object.keys(newFields));
-  
-  // Added fields
-  for (const name of newNames) {
-    if (!oldNames.has(name)) {
-      const field = newFields[name];
-      const hasDefault = field !== undefined && (field.default !== undefined || field.value !== undefined);
-      changes.push({ kind: 'field-added', type: typeName, field: name, hasDefault });
+
+  const oldConcrete = new Set(getConcreteTypeNames(resolvedOld));
+
+  for (const typeName of getConcreteTypeNames(resolvedNew)) {
+    // A type that is new wholesale is handled by the type-added path.
+    if (!oldConcrete.has(typeName)) continue;
+
+    const oldType = resolvedOld.types.get(typeName);
+    const newType = resolvedNew.types.get(typeName);
+    if (!oldType || !newType) continue;
+
+    const oldFields = oldType.fields;
+
+    for (const [fieldName, newField] of Object.entries(newType.fields)) {
+      if (fieldName in oldFields) continue;
+      const hasDefault =
+        newField.default !== undefined || newField.value !== undefined;
+      changes.push({ kind: 'field-added', type: typeName, field: fieldName, hasDefault });
     }
   }
-  
-  // Removed fields
-  for (const name of oldNames) {
-    if (!newNames.has(name)) {
-      changes.push({ kind: 'field-removed', type: typeName, field: name });
-    }
-  }
-  
-  // Changed fields (detect significant changes)
-  for (const name of oldNames) {
-    if (newNames.has(name)) {
-      const oldField = oldFields[name];
-      const newField = newFields[name];
-      if (oldField !== undefined && newField !== undefined) {
-        const fieldChanges = detectFieldPropertyChanges(oldField, newField);
-        if (fieldChanges.length > 0) {
-          changes.push({ kind: 'field-changed', type: typeName, field: name, changes: fieldChanges });
-        }
+
+  return changes;
+}
+
+/**
+ * Detect field-changed migrations from the EFFECTIVE resolved schemas.
+ *
+ * The schema resolver applies a RESTRICTED merge for inherited fields: when a
+ * child type re-declares a field it inherits, only metadata (`default`/`value`/
+ * `description`/`granularity`) merges onto the parent's definition — the child's
+ * raw STRUCTURAL keys (`options`/`multiple`/`required`/`source`) are IGNORED and
+ * the parent's structure wins (see computeEffectiveFields in src/lib/schema.ts).
+ *
+ * Because notes are written against the EFFECTIVE schema, field-changed ops must
+ * be derived by comparing each concrete type's effective field definition old →
+ * new, NOT its raw entry. Doing so is correct in both directions:
+ *
+ *   - A child that raw-overrides `options` on an INHERITED field changes nothing
+ *     effectively (the resolver drops the override). Its effective field is
+ *     unchanged old → new, so NO op is emitted — its valid note values survive
+ *     (fixes the data-loss defect, #728 P1).
+ *   - A parent field change flows into every concrete descendant that inherits it
+ *     (including metadata-only-override children and children whose raw
+ *     same-name structural override the resolver ignores). Each such descendant's
+ *     effective field changes, so it receives its own op and its notes are
+ *     cleaned under its exact type (fixes the missed-cleanup defect, #728 P2).
+ *
+ * One detection is emitted per CONCRETE type, because `executeMigration` matches
+ * ops to notes by the note's exact `expectedType`. The OLD effective definition
+ * is used as the baseline for the per-aspect classification (it describes the
+ * allowed value set the existing notes were written against).
+ */
+function detectEffectiveFieldChanges(
+  resolvedOld: LoadedSchema,
+  resolvedNew: LoadedSchema
+): DetectedChange[] {
+  const changes: DetectedChange[] = [];
+
+  // Only types present (concretely) in BOTH schemas can have a field *changed*:
+  // a type that is new or removed is handled by the type-added/-removed path,
+  // and its fields are not "changed" relative to an existing snapshot.
+  const newConcrete = new Set(getConcreteTypeNames(resolvedNew));
+
+  for (const typeName of getConcreteTypeNames(resolvedOld)) {
+    if (!newConcrete.has(typeName)) continue;
+
+    const oldType = resolvedOld.types.get(typeName);
+    const newType = resolvedNew.types.get(typeName);
+    if (!oldType || !newType) continue;
+
+    const oldFields = oldType.fields;
+    const newFields = newType.fields;
+
+    // Compare every field the type effectively had before AND still has. A field
+    // that only appears in one of the two effective sets is an add/remove, not a
+    // change (and the add/remove path handles the declaring type already).
+    for (const [fieldName, oldField] of Object.entries(oldFields)) {
+      const newField = newFields[fieldName];
+      if (newField === undefined) continue;
+
+      const fieldChanges = detectFieldPropertyChanges(oldField, newField);
+      if (fieldChanges.length > 0) {
+        changes.push({
+          kind: 'field-changed',
+          type: typeName,
+          field: fieldName,
+          changes: fieldChanges,
+        });
       }
     }
   }
-  
+
+  return changes;
+}
+
+/**
+ * Detect field REMOVALS from the EFFECTIVE resolved schemas.
+ *
+ * Mirrors detectEffectiveFieldChanges: a field is *effectively removed* for a
+ * concrete type T when T had it in the OLD effective schema but no longer has it
+ * in the NEW effective schema. Deriving removal from the effective (inheritance-
+ * resolved) schema — rather than the raw per-type entry — is what makes the
+ * cleanup fan out correctly:
+ *
+ *   - Removing a field declared on a PARENT drops it from the effective schema of
+ *     EVERY inheriting descendant that didn't re-declare it as its own genuine
+ *     field. Each such concrete type's effective field disappears old → new, so
+ *     each gets its own `remove-field` op and its notes are cleaned under their
+ *     exact `expectedType` (executeMigration groups field ops by exact type).
+ *   - A descendant that defines the same-named field as its OWN genuine
+ *     (non-inherited) field still has it in the NEW effective schema after the
+ *     parent's removal, so it is correctly NOT emitted — its own field survives.
+ *
+ * One detection is emitted per CONCRETE type that effectively loses the field.
+ * Only types present concretely in BOTH schemas are considered: a type that is
+ * new or removed wholesale is handled by the type-added/-removed path.
+ */
+function detectEffectiveFieldRemovals(
+  resolvedOld: LoadedSchema,
+  resolvedNew: LoadedSchema
+): DetectedChange[] {
+  const changes: DetectedChange[] = [];
+
+  const newConcrete = new Set(getConcreteTypeNames(resolvedNew));
+
+  for (const typeName of getConcreteTypeNames(resolvedOld)) {
+    if (!newConcrete.has(typeName)) continue;
+
+    const oldType = resolvedOld.types.get(typeName);
+    const newType = resolvedNew.types.get(typeName);
+    if (!oldType || !newType) continue;
+
+    const newFields = newType.fields;
+
+    for (const fieldName of Object.keys(oldType.fields)) {
+      if (newFields[fieldName] === undefined) {
+        changes.push({ kind: 'field-removed', type: typeName, field: fieldName });
+      }
+    }
+  }
+
   return changes;
 }
 
@@ -212,7 +395,16 @@ function detectFieldPropertyChanges(oldField: Field, newField: Field): string[] 
 
   // Other properties that matter for migration. Note: `description` and `label`
   // are intentionally excluded — they are documentation, never data shape.
-  const props: (keyof Field)[] = ['source', 'required', 'multiple'];
+  //
+  // `default` is tracked because it participates in the required-exposure rule:
+  // bwrb validation exempts a missing required value only while `default !==
+  // undefined`, so REMOVING a default from an already-required field newly
+  // invalidates notes that omit it. The required-aspect classifier consults the
+  // effective default to decide whether to emit a review op; without tracking
+  // `default` here a default-only change would never surface as a `field-changed`
+  // detection at all (#728). A default change that does NOT cross the
+  // exposure boundary is harmless and produces no op.
+  const props: (keyof Field)[] = ['source', 'required', 'multiple', 'default'];
 
   for (const prop of props) {
     if (JSON.stringify(oldField[prop]) !== JSON.stringify(newField[prop])) {
@@ -228,18 +420,22 @@ function detectFieldPropertyChanges(oldField: Field, newField: Field): string[] 
  */
 function classifyChanges(
   changes: DetectedChange[],
-  newSchema: Schema
+  resolvedOld: LoadedSchema | undefined,
+  resolvedNew: LoadedSchema
 ): { deterministic: MigrationOp[]; nonDeterministic: MigrationOp[] } {
   const deterministic: MigrationOp[] = [];
   const nonDeterministic: MigrationOp[] = [];
-  
+
   for (const change of changes) {
     switch (change.kind) {
       // Field operations
       case 'field-added': {
-        // Adding a field is always deterministic - old notes just won't have it
-        // If there's a default, we include it for potential backfill
-        const field = newSchema.types[change.type]?.fields?.[change.field];
+        // Adding a field is always deterministic - old notes just won't have it.
+        // If there's a default, we include it for potential backfill. The default
+        // is read from the EFFECTIVE (resolved) field, not the raw type entry, so
+        // a backfill default that lives on a composed TRAIT (or an inherited
+        // field) is honored — the raw lookup would miss it.
+        const field = resolvedNew.types.get(change.type)?.fields[change.field];
         const defaultValue = field?.default ?? field?.value;
         deterministic.push({
           op: 'add-field',
@@ -249,7 +445,7 @@ function classifyChanges(
         });
         break;
       }
-        
+
       case 'field-removed':
         // Removing data is always non-deterministic
         nonDeterministic.push({
@@ -258,13 +454,25 @@ function classifyChanges(
           field: change.field,
         });
         break;
-        
-      case 'field-changed':
-        // Field property changes might need migration
-        // For now, treat as informational (no note changes needed)
-        // Future: handle options changes, format changes, etc.
+
+      case 'field-changed': {
+        // `change.type` is a CONCRETE type and the field definitions compared are
+        // its EFFECTIVE (resolved) ones — exactly what its notes were written
+        // against. detectEffectiveFieldChanges already emits one detection per
+        // concrete type that has the field, so classification just maps this
+        // single type's effective old → new field to the safest op.
+        const oldField = resolvedOld?.types.get(change.type)?.fields[change.field];
+        const newField = resolvedNew.types.get(change.type)?.fields[change.field];
+        classifyFieldChange(
+          change,
+          oldField,
+          newField,
+          deterministic,
+          nonDeterministic
+        );
         break;
-        
+      }
+
       // Type operations
       case 'type-added':
         // No migration needed - just a new type
@@ -298,10 +506,260 @@ function classifyChanges(
 }
 
 /**
+ * Classify a single `field-changed` detection into migration ops.
+ *
+ * The detection is already scoped to ONE concrete type (`change.type`) and the
+ * `oldField`/`newField` are that type's EFFECTIVE (resolved) definitions, so this
+ * function emits at most one op for that single `targetType`. The descendant
+ * fan-out is handled upstream by emitting a separate detection per concrete type
+ * whose effective field changed (see detectEffectiveFieldChanges), which is both
+ * simpler than and strictly more correct than the previous raw override-exclusion
+ * heuristic.
+ *
+ * Each property change is mapped to the safest action that keeps existing notes
+ * consistent with the new field definition:
+ *
+ * - `options` narrowed (values removed) while the field stays a constrained
+ *   select (a non-empty allowed set remains): existing notes may hold a value
+ *   that is no longer allowed → `clear-invalid-options` (non-deterministic, lossy
+ *   cleanup). Options *added* to an already-constrained set keep every existing
+ *   value valid → no op.
+ * - `options` gained for the first time (old field had no constraining options,
+ *   i.e. was unconstrained text/list, and the new field has a non-empty allowed
+ *   set): existing arbitrary values outside the new set are now invalid →
+ *   `clear-invalid-options` (non-deterministic, lossy cleanup). This is the
+ *   inverse of "removed entirely" and keeps the change non-silent so notes are
+ *   actually cleaned rather than left invalid behind an advanced snapshot.
+ * - `options` removed *entirely* (the allowed set becomes empty, i.e. the field
+ *   is no longer a constrained select): every existing value is valid for the
+ *   now-unconstrained field, so clearing would be data loss → `review-field`
+ *   (non-deterministic, no note mutation).
+ * - `multiple` false → true: a scalar value is still valid as a single-element
+ *   array → `widen-field-to-multiple` (deterministic, lossless wrap).
+ * - `multiple` true → false, `required` toggled on, or `source` narrowed/retargeted
+ *   (an allowed source type is removed): existing values may now be invalid but
+ *   there is no safe deterministic fix → `review-field` (non-deterministic, no note
+ *   mutation, surfaced for the user). A pure `source` widening (new allowed set ⊇
+ *   old) or reorder keeps existing links valid → no op.
+ */
+function classifyFieldChange(
+  change: Extract<DetectedChange, { kind: 'field-changed' }>,
+  oldField: Field | undefined,
+  newField: Field | undefined,
+  deterministic: MigrationOp[],
+  nonDeterministic: MigrationOp[]
+): void {
+  const { type: targetType, field, changes: changedProps } = change;
+
+  if (changedProps.includes('options')) {
+    const oldValues = getOptionValues(oldField?.options);
+    const newValues = new Set(getOptionValues(newField?.options));
+    const removed = oldValues.filter((value) => !newValues.has(value));
+    // A field that gained its FIRST constraining option set: the old effective
+    // field was unconstrained (text/list, no allowed values) and the new one is a
+    // non-empty select/multi-select. Existing notes may hold arbitrary values that
+    // are not in the new allowed set, so those are now invalid → lossy cleanup.
+    const newlyConstrained = oldValues.length === 0 && newValues.size > 0;
+    // Only a *narrowing* (removed allowed values) or a *newly added* constraint can
+    // orphan existing data. Pure additions to an already-constrained set leave every
+    // existing value valid, so they need no op.
+    if (newlyConstrained) {
+      // Unconstrained → constrained: clean values outside the new allowed set.
+      // This makes the change NON-silent (hasChanges true → major bump suggested
+      // → notes actually cleaned on execute) rather than letting the snapshot
+      // advance past now-invalid values. Uses the same op as per-option removal:
+      // invalid scalars are removed, arrays are filtered to still-valid members,
+      // and values that happen to match an allowed option are kept.
+      nonDeterministic.push({
+        op: 'clear-invalid-options',
+        targetType,
+        field,
+        allowedValues: [...newValues],
+      });
+    } else if (removed.length > 0) {
+      if (newValues.size > 0) {
+        // The field is still a constrained select with a smaller allowed set.
+        // Existing values outside that set are now invalid → lossy cleanup.
+        nonDeterministic.push({
+          op: 'clear-invalid-options',
+          targetType,
+          field,
+          allowedValues: [...newValues],
+        });
+      } else {
+        // Options were removed *entirely*: the field no longer constrains its
+        // values (it has become free-text / unconstrained). Every existing value
+        // is still valid for the new definition, so clearing them would be silent
+        // data loss. Surface the change for review instead of mutating notes.
+        nonDeterministic.push({
+          op: 'review-field',
+          targetType,
+          field,
+          reason:
+            'field is no longer a constrained select (all options removed); existing values are kept as free text',
+        });
+      }
+    }
+  }
+
+  if (changedProps.includes('multiple')) {
+    // Normalize `multiple`: an absent/`undefined` value means single-valued,
+    // exactly like an explicit `false`. Without this, merely ADDING (or removing)
+    // an explicit `multiple: false` — a pure no-op for data shape — was treated
+    // as a narrowing and wrongly emitted a `review-field` + suggested a MAJOR
+    // bump (#728 / Codex defect B).
+    const oldMultiple = oldField?.multiple === true;
+    const newMultiple = newField?.multiple === true;
+
+    if (newMultiple && !oldMultiple) {
+      // Widening to multiple: existing scalar values wrap losslessly.
+      deterministic.push({
+        op: 'widen-field-to-multiple',
+        targetType,
+        field,
+      });
+    } else if (!newMultiple && oldMultiple) {
+      // Narrowing to single: collapsing an array is lossy and ambiguous.
+      nonDeterministic.push({
+        op: 'review-field',
+        targetType,
+        field,
+        reason: 'field no longer accepts multiple values; existing arrays need manual review',
+      });
+    }
+    // Otherwise effective `multiple` is unchanged (e.g. false↔absent): no op.
+  }
+
+  if (changedProps.includes('required') || changedProps.includes('default')) {
+    // Required-exposure rule. bwrb's validation (validateFrontmatter,
+    // validation.ts) flags a note that OMITS a field only when:
+    //   `field.required && !hasValue && field.default === undefined`
+    // i.e. a missing value is an error exactly when the field is required AND has
+    // NO `default`. A static `value` does NOT satisfy that check (validation
+    // consults `default` only), so it never exempts the field here either.
+    //
+    // We define a field as "exposes required-ness" when omitting it would be
+    // invalid: required === true AND default === undefined. A transition INTO that
+    // state newly invalidates existing notes that omit the field, and there is no
+    // safe deterministic fix (we can't fabricate a value), so it warrants a
+    // non-deterministic `review-field`.
+    //
+    // This fires for BOTH symmetric cases that cross the boundary:
+    //   - required false → true with no default (the classic required-toggle), and
+    //   - a `default` REMOVED from an already-required field (#728 defect B): the
+    //     default previously satisfied missing values; without it, notes that omit
+    //     the field are now invalid.
+    // It does NOT fire when the field was ALREADY exposed (already required, no
+    // default — no change in exposure), when the new field still has a `default`
+    // (still exempt), or when the new field is not required. A single boundary
+    // crossing emits exactly ONE review-field even if both `required` and `default`
+    // changed at once.
+    const oldExposed = oldField?.required === true && oldField?.default === undefined;
+    const newExposed = newField?.required === true && newField?.default === undefined;
+
+    if (newExposed && !oldExposed) {
+      nonDeterministic.push({
+        op: 'review-field',
+        targetType,
+        field,
+        reason: 'field is now required without a default; notes missing a value need manual review',
+      });
+    }
+  }
+
+  if (changedProps.includes('source')) {
+    // Normalize both old and new `source` into a SET of allowed source types so
+    // the comparison is order-insensitive and treats a bare string identically to
+    // a one-element array. `source: "task"` and `source: ["task"]` are the same
+    // allowed set; reordering an array changes nothing.
+    //
+    // CRUCIAL distinction (validation.ts semantics): an ABSENT source — and an
+    // explicit `source: "any"` — both mean "any note type is allowed", i.e. the
+    // relation is UNCONSTRAINED. That is NOT the same as an empty allowed set that
+    // every other set is a superset of; it is the opposite (the universal set).
+    // `normalizeSourceSet` collapses both forms to `null` to mark "unconstrained".
+    const oldSources = normalizeSourceSet(oldField?.source);
+    const newSources = normalizeSourceSet(newField?.source);
+
+    const oldUnconstrained = oldSources === null;
+    const newUnconstrained = newSources === null;
+
+    if (newUnconstrained) {
+      // New definition allows any type (source removed or `any`). Every existing
+      // link — whether it was previously unconstrained or pointed at a now-still-
+      // allowed type — remains valid. This covers both "unchanged unconstrained"
+      // and the LOOSENING case (constrained → unconstrained). No op.
+    } else if (oldUnconstrained) {
+      // Unconstrained → constrained: the field gains a non-empty allowed set for
+      // the first time. Existing links were free to point anywhere and may now
+      // target a DISALLOWED type. Unlike select scalars (whose invalid values can
+      // be auto-cleaned), relation links can't be safely auto-mutated, so flag for
+      // manual review rather than silently advancing the snapshot.
+      nonDeterministic.push({
+        op: 'review-field',
+        targetType,
+        field,
+        reason:
+          'relation source is now constrained (was unconstrained); existing links may point at a disallowed type and need manual review',
+      });
+    } else {
+      // Both old and new are constrained (non-empty sets). A change is only risky
+      // for existing links when an allowed source is REMOVED (the field is narrowed
+      // or retargeted so previously-valid links may now point at a type that is no
+      // longer accepted). A pure WIDENING (new ⊇ old) or a reorder (sets equal)
+      // keeps every existing link valid → no op for this aspect.
+      const removedSource = [...oldSources].some((s) => !newSources.has(s));
+      if (removedSource) {
+        nonDeterministic.push({
+          op: 'review-field',
+          targetType,
+          field,
+          reason: 'relation source changed; existing links may need manual review',
+        });
+      }
+    }
+  }
+}
+
+/**
+ * Normalize a relation `source` (a bare type name, an array of type names, or
+ * `undefined`) into a representation the migration diff can compare:
+ *
+ * - `null` means UNCONSTRAINED — any note type is allowed. Per validation.ts an
+ *   ABSENT source and an explicit `source: "any"` are equivalent ("any type is
+ *   valid"), so both collapse to `null`. This is the universal set, NOT an empty
+ *   set; callers must treat it as "everything allowed".
+ * - Otherwise a non-empty, order-insensitive SET of the specific allowed types.
+ *   A bare string becomes a one-element set; an array becomes a set. This lets the
+ *   diff treat `"task"`, `["task"]`, and a reordered `["task", "project"]`
+ *   consistently.
+ *
+ * An empty array (`source: []`) is treated as unconstrained too: it pins no
+ * specific type, so it cannot meaningfully narrow existing links.
+ */
+function normalizeSourceSet(
+  source: string | string[] | undefined
+): Set<string> | null {
+  if (source === undefined) {
+    return null;
+  }
+  const list = Array.isArray(source) ? source : [source];
+  if (list.length === 0 || list.includes('any')) {
+    return null;
+  }
+  return new Set(list);
+}
+
+/**
  * Suggest a version bump based on the migration plan.
- * - Major: breaking changes (removals, renames)
- * - Minor: additions
- * - Patch: no changes (shouldn't happen in migration context)
+ *
+ * This is the single source of truth for migration version-bump suggestions
+ * (the `schema migrate` command reuses it rather than reimplementing the rule).
+ *
+ * - Major: any non-deterministic op is present (removals, value re-validation,
+ *   invalid-option cleanup) — these are potentially breaking for existing notes.
+ * - Minor: only deterministic ops (additions, lossless widenings).
+ * - No bump: no changes (kept current; `schema migrate` guards this path).
  */
 export function suggestVersionBump(
   currentVersion: string,
@@ -375,6 +833,12 @@ function formatOpForDisplay(op: MigrationOp): string {
       return `- Remove field "${op.field}" from type "${op.targetType}"`;
     case 'rename-field':
       return `~ Rename field "${op.from}" to "${op.to}" on type "${op.targetType}"`;
+    case 'clear-invalid-options':
+      return `! Clear invalid values of field "${op.field}" on type "${op.targetType}" (allowed: ${op.allowedValues.map((v) => JSON.stringify(v)).join(', ')})`;
+    case 'widen-field-to-multiple':
+      return `~ Widen field "${op.field}" on type "${op.targetType}" to allow multiple values`;
+    case 'review-field':
+      return `! Review field "${op.field}" on type "${op.targetType}": ${op.reason}`;
     case 'add-type':
       return `+ Add type "${op.typeName}"`;
     case 'remove-type':
@@ -394,6 +858,10 @@ function formatOpForDisplay(op: MigrationOp): string {
 export function formatDiffForJson(plan: MigrationPlan): Record<string, unknown> {
   return {
     hasChanges: plan.hasChanges,
+    // A schema-shape change can occur with no note ops (e.g. a select option was
+    // added). Surface it so `schema diff` consumers can tell the snapshot will
+    // refresh on migrate even when no note migrations are needed (#728 defect B).
+    schemaChanged: plan.schemaChanged,
     fromVersion: plan.fromVersion,
     toVersion: plan.toVersion,
     deterministic: plan.deterministic,

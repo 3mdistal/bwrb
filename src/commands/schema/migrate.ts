@@ -22,7 +22,7 @@ import {
 } from '../../lib/output.js';
 import { UserCancelledError } from '../../lib/errors.js';
 import { loadRawSchemaJson, writeSchema } from '../../lib/schema-writer.js';
-import { diffSchemas, formatDiffForDisplay, formatDiffForJson } from '../../lib/migration/diff.js';
+import { diffSchemas, formatDiffForDisplay, formatDiffForJson, suggestVersionBump } from '../../lib/migration/diff.js';
 import { loadSchemaSnapshot, saveSchemaSnapshot, hasSchemaSnapshot } from '../../lib/migration/snapshot.js';
 import { loadMigrationHistory, recordMigration } from '../../lib/migration/history.js';
 import {
@@ -59,42 +59,6 @@ function toFileChangesJson(fileResults: FileMigrationResult[]): Array<{
 interface HistoryOptions {
   output?: string;
   limit?: string;
-}
-
-/**
- * Suggest a version bump based on the type of changes.
- * - Major: type removals, field removals, breaking changes
- * - Minor: type additions, field additions
- * - Patch: renames, non-breaking changes
- */
-function suggestVersionBump(currentVersion: string, diff: MigrationPlan): string {
-  const parts = currentVersion.split('.').map(Number);
-  const major = parts[0] ?? 1;
-  const minor = parts[1] ?? 0;
-  const patch = parts[2] ?? 0;
-  
-  // Check for breaking changes (non-deterministic usually means breaking)
-  const hasBreakingChanges = diff.nonDeterministic.some(op => 
-    op.op === 'remove-field' || 
-    op.op === 'remove-type'
-  );
-  
-  if (hasBreakingChanges) {
-    return `${major + 1}.0.0`;
-  }
-  
-  // Check for additions (minor bump)
-  const hasAdditions = diff.deterministic.some(op =>
-    op.op === 'add-field' ||
-    op.op === 'add-type'
-  );
-  
-  if (hasAdditions) {
-    return `${major}.${minor + 1}.0`;
-  }
-  
-  // Default to patch for renames and other changes
-  return `${major}.${minor}.${patch + 1}`;
 }
 
 /**
@@ -147,13 +111,32 @@ Examples:
         const snapshotVersion = snapshot.schemaVersion ?? '1.0.0';
         const diff = diffSchemas(snapshot.schema, currentSchema.raw, snapshotVersion, currentVersion);
         
+        // A schema-shape change can produce no note ops (e.g. a select option
+        // was *added*). `migrate --execute` still refreshes the snapshot in that
+        // case, so `schema diff` must report the schema-only change instead of
+        // claiming "No schema changes" (#728 defect B). "Anything to report?" is
+        // therefore keyed off both `hasChanges` and `schemaChanged`.
+        const schemaOnlyChange = !diff.hasChanges && diff.schemaChanged;
+
         if (jsonMode) {
+          const message = diff.hasChanges
+            ? 'Schema changes detected'
+            : diff.schemaChanged
+              ? 'Schema shape changed; snapshot will refresh on migrate (no note changes)'
+              : 'No changes';
           printJson(jsonSuccess({
-            message: diff.hasChanges ? 'Schema changes detected' : 'No changes',
+            message,
             data: formatDiffForJson(diff),
           }));
         } else {
-          if (!diff.hasChanges) {
+          if (schemaOnlyChange) {
+            console.log(chalk.bold('\nPending Schema Changes\n'));
+            console.log(chalk.green('Schema shape changed, but no note changes are required.'));
+            console.log(chalk.gray('Examples: a select option was added, or a no-op shape edit.'));
+            console.log('');
+            console.log(chalk.gray('The snapshot will be refreshed so future changes diff correctly.'));
+            console.log('Run `bwrb schema migrate --execute` to refresh the snapshot.');
+          } else if (!diff.hasChanges) {
             console.log(chalk.green('No schema changes since last migration.'));
           } else {
             console.log(chalk.bold('\nPending Schema Changes\n'));
@@ -231,6 +214,7 @@ Examples:
             deterministic: [],
             nonDeterministic: [],
             hasChanges: false,
+            schemaChanged: false,
           };
         } else {
           // Load snapshot and diff
@@ -242,15 +226,79 @@ Examples:
           diff = diffSchemas(snapshot.schema, currentSchema.raw, snapshotVersion, currentVersion);
         }
         
-        // If no changes and not initial snapshot
+        // If there are no note-mutating ops and this isn't the initial snapshot,
+        // there is nothing to migrate. But the schema may still have changed
+        // shape in a way that produces no op (e.g. a select option was *added*).
+        // In that case we must refresh the stored snapshot so a *later* edit
+        // (e.g. removing that option) is diffed against the current schema rather
+        // than a stale one — otherwise the orphaned values would be missed.
         if (!diff.hasChanges && !isInitialSnapshot) {
+          // No ops AND no shape change: truly nothing to do.
+          if (!diff.schemaChanged) {
+            if (jsonMode) {
+              printJson(jsonSuccess({
+                message: 'No schema changes to migrate',
+                data: { hasChanges: false },
+              }));
+            } else {
+              console.log(chalk.green('No schema changes to migrate.'));
+            }
+            return;
+          }
+
+          // Shape changed but no note ops. In dry-run, report no note changes
+          // (matching the no-op nature) and note the snapshot refresh. In
+          // execute, persist the updated snapshot without prompting for a
+          // version bump or recording any note migration.
+          if (!execute) {
+            if (jsonMode) {
+              printJson(jsonSuccess({
+                message: 'Migration preview (dry-run)',
+                data: {
+                  dryRun: true,
+                  fromVersion: diff.fromVersion,
+                  toVersion: diff.toVersion,
+                  totalFiles: 0,
+                  affectedFiles: 0,
+                  changes: diff,
+                  fileChanges: [],
+                  snapshotWillRefresh: true,
+                },
+              }));
+            } else {
+              console.log(chalk.bold('\nMigration Preview (Dry-Run)\n'));
+              console.log(chalk.green('No note changes required.'));
+              console.log(chalk.gray('The schema snapshot will be refreshed so future changes diff correctly.'));
+              console.log('');
+              console.log('Run `bwrb schema migrate --execute` to update the snapshot.');
+            }
+            return;
+          }
+
+          // Execute: refresh the snapshot to the current schema at the current
+          // version. No version prompt (no note-affecting change) and no history
+          // entry (no notes migrated).
+          const refreshedSchema = await loadRawSchemaJson(vaultDir);
+          await saveSchemaSnapshot(vaultDir, refreshedSchema, currentVersion);
+
           if (jsonMode) {
             printJson(jsonSuccess({
-              message: 'No schema changes to migrate',
-              data: { hasChanges: false },
+              message: 'Schema snapshot refreshed',
+              data: {
+                // Report the actual refreshed range (prior snapshot version →
+                // current schema version), matching the dry-run path above. Using
+                // `currentVersion` for both misreported e.g. 1.1.0 → 1.1.0 when the
+                // snapshot was at 1.0.0 and the schema bumped to 1.1.0.
+                fromVersion: diff.fromVersion,
+                toVersion: diff.toVersion,
+                totalFiles: 0,
+                affectedFiles: 0,
+                snapshotRefreshed: true,
+              },
             }));
           } else {
-            console.log(chalk.green('No schema changes to migrate.'));
+            console.log('');
+            printSuccess('Schema snapshot refreshed (no note changes required)');
           }
           return;
         }
