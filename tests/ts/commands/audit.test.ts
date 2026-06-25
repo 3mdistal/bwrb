@@ -5256,6 +5256,120 @@ effort: "3"
       expect(content).not.toContain('archived: "true"');
       expect(content).not.toContain('effort: "3"');
     });
+
+    it('coerces a numeric list element to a quoted string that survives re-audit (#700)', async () => {
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      const taskPath = join(tempVaultDir, 'Objectives/Tasks', 'Numeric Tag.md');
+      await writeFile(
+        taskPath,
+        `---
+type: task
+status: backlog
+tags:
+  - alpha
+  - 42
+  - beta
+---
+`
+      );
+
+      // First pass: coerce the numeric element.
+      const fix = await runCLI(['audit', 'task', '--fix', '--auto', '--execute'], tempVaultDir);
+      expect(fix.stdout).toContain('Fixed tags[1] (coerce)');
+
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(taskPath, 'utf-8');
+      // The coerced value must serialize as a QUOTED string so it round-trips as
+      // a string, not as bare `42` (which would re-flag forever — the #700 trap).
+      expect(content).toContain('- "42"');
+      expect(content).not.toMatch(/^\s*-\s*42\s*$/m);
+
+      // Second pass: a re-audit must find the element clean — no re-flag. The fix
+      // converges in ONE pass (idempotent).
+      const reaudit = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(reaudit.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Numeric Tag.md'));
+      const listIssues = file
+        ? file.issues.filter((i: { code: string }) => i.code === 'invalid-list-element')
+        : [];
+      expect(listIssues).toHaveLength(0);
+
+      // Re-running the fix must be a no-op (nothing left to coerce).
+      const fixAgain = await runCLI(['audit', 'task', '--fix', '--auto', '--execute'], tempVaultDir);
+      expect(fixAgain.stdout).not.toContain('coerce');
+      const contentAfter = await readFile(taskPath, 'utf-8');
+      expect(contentAfter).toBe(content);
+    });
+
+    it('coerces multiple numeric list elements idempotently in one pass (#700)', async () => {
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      const taskPath = join(tempVaultDir, 'Objectives/Tasks', 'Multi Numeric.md');
+      await writeFile(
+        taskPath,
+        `---
+type: task
+status: backlog
+tags:
+  - 1
+  - alpha
+  - 2
+  - 3
+---
+`
+      );
+
+      const fix = await runCLI(['audit', 'task', '--fix', '--auto', '--execute'], tempVaultDir);
+      expect(fix.stdout).toContain('Fixed tags[0] (coerce)');
+      expect(fix.stdout).toContain('Fixed tags[2] (coerce)');
+      expect(fix.stdout).toContain('Fixed tags[3] (coerce)');
+
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(taskPath, 'utf-8');
+      // Every numeric element is now a quoted string; the distinct 'alpha' is kept.
+      expect(content).toContain('- "1"');
+      expect(content).toContain('- alpha');
+      expect(content).toContain('- "2"');
+      expect(content).toContain('- "3"');
+
+      const reaudit = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(reaudit.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Multi Numeric.md'));
+      const listIssues = file
+        ? file.issues.filter((i: { code: string }) => i.code === 'invalid-list-element')
+        : [];
+      expect(listIssues).toHaveLength(0);
+    });
+
+    it('coerces a boolean list element to a quoted string that survives re-audit (#700)', async () => {
+      await mkdir(join(tempVaultDir, 'Objectives/Tasks'), { recursive: true });
+      const taskPath = join(tempVaultDir, 'Objectives/Tasks', 'Bool Tag.md');
+      await writeFile(
+        taskPath,
+        `---
+type: task
+status: backlog
+tags:
+  - alpha
+  - true
+---
+`
+      );
+
+      const fix = await runCLI(['audit', 'task', '--fix', '--auto', '--execute'], tempVaultDir);
+      expect(fix.stdout).toContain('Fixed tags[1] (coerce)');
+
+      const { readFile } = await import('fs/promises');
+      const content = await readFile(taskPath, 'utf-8');
+      expect(content).toContain('- "true"');
+
+      const reaudit = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(reaudit.stdout);
+      const file = output.files.find((f: { path: string }) => f.path.includes('Bool Tag.md'));
+      const listIssues = file
+        ? file.issues.filter((i: { code: string }) => i.code === 'invalid-list-element')
+        : [];
+      expect(listIssues).toHaveLength(0);
+    });
   });
 
   describe('partial date granularity', () => {
