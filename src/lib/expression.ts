@@ -21,10 +21,32 @@ jsep.addUnaryOp('!');
  * Built once per query and passed through context.
  */
 export interface HierarchyData {
-  /** Map from note name to parent note name */
+  /**
+   * Map from note name to STRUCTURAL parent note name, sourced ONLY from the
+   * literal `parent` frontmatter field. This is the chain walked by `isChildOf`,
+   * `isDescendantOf`, and `under` (after dereferencing the relation), and it is
+   * the same chain `--output tree` renders. Parent-LIKE relations (e.g.
+   * `task.milestone`) are intentionally NOT folded in here — query them with the
+   * `under` operator instead, and see `nonRootNames` for `isRoot`'s broader
+   * notion of "attached".
+   */
   parentMap: Map<string, string>;
-  /** Map from note name to set of child note names */
+  /** Map from note name to set of child note names (structural `parent` only). */
   childrenMap: Map<string, Set<string>>;
+  /**
+   * Names of notes that are NOT roots because they carry ANY parent-like note
+   * link — the literal `parent`, an `owner`, or a single-valued same-ancestry
+   * relation (e.g. `task.milestone`). `isRoot()` consults this set rather than
+   * `parentMap`, so a task attached only via its `milestone` relation is
+   * correctly not a root even though that relation is not its structural parent.
+   * Built from the candidate set only (it answers a question about the candidate
+   * note itself, not about ancestors elsewhere in the vault).
+   *
+   * Optional: when absent (e.g. a direct unit-test context that only models a
+   * structural `parent` map), `isRoot` falls back to "has no structural parent"
+   * via `parentMap`.
+   */
+  nonRootNames?: Set<string>;
   /**
    * Optional map from a declared alias to the canonical note name it resolves
    * to. Used by `under` to canonicalize aliased relation targets and aliased
@@ -35,6 +57,19 @@ export interface HierarchyData {
    * silently picking one note's subtree.
    */
   aliasMap?: Map<string, string>;
+  /**
+   * Basenames of the CANDIDATE notes being filtered/evaluated. A candidate's own
+   * hierarchy identity is authoritative: the full-vault augmentation pass must
+   * NOT overwrite a candidate's `parent` entry, nor invent a `parent` for a
+   * parentless candidate, just because a DIFFERENT note elsewhere in the vault
+   * shares its basename (`parentMap` is basename-keyed). Reserving every
+   * candidate basename here keeps a parentless candidate at the root and stops a
+   * same-basename note elsewhere from hijacking its hierarchy
+   * (`isChildOf`/`isDescendantOf` false positives). Non-candidate intermediate
+   * ancestors are NOT reserved, so the vault pass still fills chains that climb
+   * through filtered-out notes (#709).
+   */
+  reservedNames?: Set<string>;
 }
 
 /**
@@ -356,6 +391,14 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
   isRoot: (_args, context) => {
     const noteName = context.file?.name;
     if (!noteName || !context.hierarchyData) return false;
+    // A note is a root when it has NO parent-like note link of any kind — not
+    // just no structural `parent`. `nonRootNames` captures the broader notion
+    // (parent / owner / single-valued same-ancestry relation), so a task
+    // attached only via its `milestone` relation is correctly not a root. When
+    // `nonRootNames` is absent (a minimal context), fall back to the structural
+    // `parent` map.
+    const nonRootNames = context.hierarchyData.nonRootNames;
+    if (nonRootNames) return !nonRootNames.has(noteName);
     return !context.hierarchyData.parentMap.has(noteName);
   },
 

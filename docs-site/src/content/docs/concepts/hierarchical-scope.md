@@ -97,7 +97,7 @@ bwrb list --type task --where "under(context, '[[career]]')"
 `under` is **inclusive of the direct target**: `under(context, '[[career]]')` matches a note tagged `[[career]]` directly as well as any descendant. This is exactly what lets you collapse two fields into one — you can still ask "everything in the career domain" without ever storing the domain on the note.
 
 :::note[`under` vs `isDescendantOf`]
-`isDescendantOf('[[X]]')` walks the **current note's own** `parent` chain. `under(field, '[[X]]')` first **dereferences a relation field**, then walks **that target's** chain. The context lives in a *field*, not the note's structural parent, so `under` is the operator you want here. See [Targeting Model](/reference/targeting/#underfield-node-vs-isdescendantofnode).
+`isDescendantOf('[[X]]')` walks the **current note's own** literal `parent` chain. `under(field, '[[X]]')` first **dereferences a relation field**, then walks **that target's** chain. The context lives in a *field*, not the note's structural `parent`, so `under` is the operator you want here — `isDescendantOf` will **not** treat a relation field (like `context` or `milestone`) as a structural parent. See [Targeting Model](/reference/targeting/#how-the-three-operators-differ).
 :::
 
 ## See the hierarchy as a tree
@@ -150,7 +150,7 @@ Concretely, if `Builder` has an alias `BuilderProject`, then a task with `contex
 
 Ambiguous aliases (the same alias declared on more than one note) are the one exception: they are **not** auto-resolved, so they match nothing rather than silently picking a winner. Disambiguate by renaming the alias or referencing the canonical note name.
 
-The structural operators `isChildOf` and `isDescendantOf` are alias-aware in the same way: if a context note writes its own `parent` as an alias of the real parent (`Vercel.parent = "[[BuilderProject]]"`), it is still matched by `isChildOf('[[Builder]]')` and `isDescendantOf('[[career]]')`, and an aliased query node resolves to the canonical note too.
+The structural operators `isChildOf` and `isDescendantOf` are alias-aware in the same way: if a context note writes its own `parent` as an alias of the real parent (`Vercel.parent = "[[BuilderProject]]"`), it is still matched by `isChildOf('[[Builder]]')` and `isDescendantOf('[[career]]')`, and an aliased query node resolves to the canonical note too. They resolve the `parent` chain over the **whole vault**, so a chain that climbs through a note of a different type (one filtered out by `--type`) is still followed to the true ancestor rather than stopping early.
 :::
 - **Validation for free.** A task pointing at a non-existent context is flagged by the existing relation-source audit (see [Validation and Audit](/concepts/validation-and-audit/)), exactly like any other broken relation.
 
