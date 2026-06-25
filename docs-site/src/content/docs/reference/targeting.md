@@ -70,9 +70,9 @@ bwrb audit --where "isEmpty(tags)"
 - In all modes: invalid expression syntax and runtime expression errors are hard errors
 
 **Hierarchy functions** (for parent-child note relationships):
-- `isRoot()` — note has no parent-like note link (for example `parent`, `owner`, or a singular relation like `milestone`)
-- `isChildOf('[[Note]]')` — direct child of specified note
-- `isDescendantOf('[[Note]]')` — any descendant of specified note
+- `isRoot()` — note has no parent-like note link of any kind (for example `parent`, `owner`, or a singular relation like `milestone`)
+- `isChildOf('[[Note]]')` — **direct** child of the specified note (one `parent` hop)
+- `isDescendantOf('[[Note]]')` — the note is **transitively** beneath the specified note via its `parent` chain (any depth)
 - `under(field, '[[Note]]')` — the note's `field` relation points at `Note` **or any descendant of `Note`**
 
 ```bash
@@ -81,6 +81,27 @@ bwrb list --type task --where "isChildOf('[[Epic]]')"
 bwrb list --type task --where "isDescendantOf('[[Q1 Goals]]')" --depth 2
 bwrb list --type task --where "under(context, '[[career]]')"
 ```
+
+##### How the three operators differ
+
+| Operator | What it reads | Direct vs transitive |
+| --- | --- | --- |
+| `isChildOf('[[X]]')` | the note's own **structural `parent`** | direct (one hop) |
+| `isDescendantOf('[[X]]')` | the note's own **structural `parent` chain** | transitive (any depth) |
+| `under(field, '[[X]]')` | a **relation `field`** dereferenced to another note, then **that target's** `parent` chain | transitive, inclusive of the direct target |
+
+The key split: `isChildOf`/`isDescendantOf` walk the **`parent`** field of the
+note itself (the same chain `--output tree` renders), while `under` follows an
+arbitrary **relation field** to *another* note and walks *its* ancestry. `under`
+is therefore the operator for relation fields such as `context` or `milestone` —
+those are **not** treated as a structural parent by `isChildOf`/`isDescendantOf`
+(see the `isRoot` note below).
+
+`isChildOf`/`isDescendantOf` resolve the `parent` chain over the **whole vault**,
+not just the filtered candidate set. So a chain that climbs **through** a note of
+a different type — e.g. a `task` whose `parent` is a `milestone` that
+`--type task` filters out — is followed all the way to the true ancestor instead
+of stopping early at the filtered-out note.
 
 `isChildOf` and `isDescendantOf` are **alias-aware on both sides**, just like
 `under` (see below): a note whose `parent` is written as an alias of the real
@@ -92,13 +113,30 @@ canonicalized at every step of the walked `parent` chain. Ambiguous aliases
 (declared by more than one note) and dangling aliases are left literal, so they
 simply don't match rather than guessing; cycles remain safe.
 
+:::note[`isRoot()` counts parent-LIKE links; the walk operators do not]
+`isRoot()` asks "is this note attached to anything?" and so treats **any**
+parent-like link as disqualifying a root — the literal `parent`, an `owner`, or
+a single-valued relation whose target type shares the note's ancestry (the
+canonical example is `task.milestone`). A `task` whose only link is its
+`milestone` is therefore **not** a root.
+
+`isChildOf`/`isDescendantOf` (and `--output tree`) are stricter: they walk the
+literal **`parent`** field only. That same milestone-only task is **not** a
+descendant of the milestone's ancestors — to query a relation field
+structurally, use `under(milestone, '[[X]]')`. This keeps the operators distinct:
+a relation like `milestone` participates in `isRoot`'s "attached?" check but is
+queried as a subtree only through `under`, never silently folded into the
+structural `parent` chain.
+:::
+
 #### `under(field, '[[Node]]')` vs `isDescendantOf('[[Node]]')`
 
 Both ask a hierarchy question, but they walk **different** chains:
 
-- `isDescendantOf('[[Node]]')` walks the **filtered note's own** `parent`
-  chain. It answers "is *this note* structurally beneath `Node`?" (for example
-  task → milestone → objective).
+- `isDescendantOf('[[Node]]')` walks the **filtered note's own** literal
+  `parent` chain. It answers "is *this note* structurally beneath `Node`?" (for
+  example task → milestone → objective, **when those links are written as
+  `parent`**).
 - `under(field, '[[Node]]')` first **dereferences a relation `field`** on the
   note, then walks **that target's** `parent` chain. It answers "does this
   note's `field` point into the subtree rooted at `Node`?"
