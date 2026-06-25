@@ -3020,6 +3020,80 @@ status: raw
       expect(albumOwnedIssue).toBeUndefined();
     });
 
+    // Fake-owner DECLARED-ownership guard (Codex review of #734): a note that
+    // sits where an owner note would live (`Albums/Fake/Fake.md`) but whose
+    // `type` does NOT resolve to the owner type (`album`) is a FAKE owner. Its
+    // `owned`-field declarations must NOT populate `declaredOwned`, so a
+    // same-named child-type note elsewhere is left to normal handling and is
+    // NEVER flagged owned-wrong-location nor moved under the fake owner. This is
+    // the declared-ownership analogue of the colocated/physical fake-owner guard
+    // (#661).
+    it('does not index declared ownership from a fake (wrong-type) owner note', async () => {
+      // Fake owner: lives at an owner-looking path but `type: note`, not album.
+      // It still declares `songs: [[Stray Song]]` in frontmatter.
+      await mkdir(join(tempVaultDir, 'Albums/Fake'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Albums/Fake', 'Fake.md'),
+        `---\ntype: note\nsongs:\n  - "[[Stray Song]]"\n---\n`
+      );
+      // A genuine `track` named "Stray Song" sits correctly in Tracks/. Since the
+      // fake owner must NOT own it, it has no location issue at all (Tracks is its
+      // correct output_dir) and must NOT be flagged owned-wrong-location.
+      await writeFile(
+        join(tempVaultDir, 'Tracks', 'Stray Song.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+
+      const song = output.files.find((f: { path: string }) =>
+        f.path.includes('Tracks/Stray Song.md')
+      );
+      const ownedIssue = song?.issues?.find(
+        (i: { code: string }) => i.code === 'owned-wrong-location'
+      );
+      expect(ownedIssue).toBeUndefined();
+    });
+
+    it('falls back to wrong-directory (not owned-wrong-location) for a child of a fake owner', async () => {
+      // Same fake owner declaring `[[Stray Song]]`, but the same-named track is
+      // genuinely misplaced (in Misc/, not Tracks/). Because the fake owner does
+      // NOT contribute declared ownership, this is handled by the normal generic
+      // wrong-directory path targeting `track`'s own output_dir (Tracks) — NOT
+      // restored under the fake owner via owned-wrong-location.
+      await mkdir(join(tempVaultDir, 'Albums/Fake'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Albums/Fake', 'Fake.md'),
+        `---\ntype: note\nsongs:\n  - "[[Stray Song]]"\n---\n`
+      );
+      await mkdir(join(tempVaultDir, 'Misc'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Misc', 'Stray Song.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+
+      const song = output.files.find((f: { path: string }) =>
+        f.path.includes('Misc/Stray Song.md')
+      );
+      expect(song).toBeDefined();
+      // Normal wrong-directory against the track's own output_dir...
+      const wrongDirIssue = song.issues.find(
+        (i: { code: string }) => i.code === 'wrong-directory'
+      );
+      expect(wrongDirIssue).toBeDefined();
+      expect(wrongDirIssue.expected).toBe('Tracks');
+      // ...and NOT restored under the fake owner.
+      const ownedIssue = song.issues.find(
+        (i: { code: string }) => i.code === 'owned-wrong-location'
+      );
+      expect(ownedIssue).toBeUndefined();
+    });
+
     // Defect 1 (DATA LOSS): when the owned-note restore destination is already
     // occupied by a DIFFERENT file, --fix must SKIP the move, report it as a
     // conflict (not "fixed"), and leave BOTH files intact on disk.

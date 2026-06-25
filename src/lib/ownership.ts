@@ -10,9 +10,11 @@
 import { readdir } from 'fs/promises';
 import { join, dirname, relative } from 'path';
 import { existsSync } from 'fs';
-import { 
+import {
   getOwnedFields,
   getOutputDir,
+  getDescendants,
+  resolveTypeFromFrontmatter,
 } from './schema.js';
 import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
 import type { LoadedSchema } from '../types/schema.js';
@@ -187,12 +189,33 @@ async function indexOwnerNote(
     ownerFrontmatter = {};
   }
 
+  // Validate that this note is a GENUINE owner of `ownerTypeName` before letting
+  // its `owned` declarations into `declaredOwned`. The physical-folder scan above
+  // reached this note purely because it sits at `<owner-dir>/<owner>.md` — it
+  // never checked that the note's actual `type` resolves to the expected owner
+  // type. A "fake owner" (e.g. `Albums/Fake/Fake.md` with `type: note`, not
+  // `album`) would otherwise contribute declared ownership, making any same-named
+  // child-type note elsewhere look `owned-wrong-location` and get restored under
+  // the fake owner. This mirrors the #661 fake-owner guard on the colocated
+  // (physical) path in detection.ts (`ownerNoteIsValid`): only honor the owner
+  // when its resolved type equals `ownerTypeName` (or is a descendant of it).
+  // When the note has no resolvable type we conservatively skip its declarations
+  // rather than risk crediting a fake owner.
+  const ownerNoteResolvedType = resolveTypeFromFrontmatter(schema, ownerFrontmatter);
+  const ownerNoteIsGenuine =
+    ownerNoteResolvedType !== undefined &&
+    (ownerNoteResolvedType === ownerTypeName ||
+      getDescendants(schema, ownerTypeName).includes(ownerNoteResolvedType));
+
   // For each owned field, look for the owned field subfolder
   for (const ownedField of ownedFields) {
     // Record declared ownership from the owner's frontmatter (`owned` field).
     // Keyed by the lowercased wikilink target name so a misplaced owned note can
     // be matched by basename regardless of where it currently lives.
-    for (const refName of extractWikilinkReferences(ownerFrontmatter[ownedField.fieldName])) {
+    // Skipped entirely for a fake/wrong-type owner (see `ownerNoteIsGenuine`).
+    for (const refName of ownerNoteIsGenuine
+      ? extractWikilinkReferences(ownerFrontmatter[ownedField.fieldName])
+      : []) {
       const key = refName.toLowerCase();
       if (!declaredOwned.has(key)) {
         declaredOwned.set(key, {
