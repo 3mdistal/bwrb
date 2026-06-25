@@ -107,8 +107,18 @@ function detectChanges(
   // Note: Global enums have been removed in favor of inline options on fields.
   // Options changes are detected as part of field changes.
 
-  // Compare types (added/removed/reparented + raw field add/remove).
-  changes.push(...detectTypeChanges(oldSchema.types ?? {}, newSchema.types ?? {}, resolvedOld));
+  // Compare types (added/removed/reparented only — field add/remove/change are
+  // all derived from the EFFECTIVE resolved schemas below).
+  changes.push(...detectTypeChanges(oldSchema.types ?? {}, newSchema.types ?? {}));
+
+  // Field *additions* are computed from the EFFECTIVE resolved schemas, NOT raw
+  // per-type entries. A field can enter a concrete type's effective schema in
+  // three ways — a new raw own field, a field added to a TRAIT the type
+  // composes, or a trait (already carrying fields) newly attached to the type.
+  // Comparing effective old → new captures all three uniformly and is the SINGLE
+  // source of truth for additions, so the raw per-type path no longer emits them
+  // (see detectEffectiveFieldAdditions for why).
+  changes.push(...detectEffectiveFieldAdditions(resolvedOld, resolvedNew));
 
   // Field-*changed* detection is computed from the EFFECTIVE resolved schemas,
   // not raw per-type entries (see detectEffectiveFieldChanges for why).
@@ -130,8 +140,7 @@ function detectChanges(
  */
 function detectTypeChanges(
   oldTypes: Record<string, unknown>,
-  newTypes: Record<string, unknown>,
-  resolvedOld: LoadedSchema
+  newTypes: Record<string, unknown>
 ): DetectedChange[] {
   const changes: DetectedChange[] = [];
   const oldNames = new Set(Object.keys(oldTypes));
@@ -171,73 +180,78 @@ function detectTypeChanges(
         }
         changes.push(reparentChange);
       }
-      
-      // Check field changes. The OLD effective (resolved) field set is passed so
-      // a raw add of a field name the type already INHERITS (a redeclaration the
-      // resolver ignores) is not mistaken for a genuinely new field.
-      const oldEffectiveFields = resolvedOld.types.get(name)?.fields ?? {};
-      changes.push(...detectFieldChanges(
-        name,
-        oldType.fields ?? {},
-        newType.fields ?? {},
-        oldEffectiveFields
-      ));
+
+      // Field add/change/remove detection is NOT done here — it is all derived
+      // from the EFFECTIVE resolved schemas (see detectEffectiveFieldAdditions,
+      // detectEffectiveFieldChanges, detectEffectiveFieldRemovals). Raw per-type
+      // comparison can't see trait-composed or inherited fields and so misses
+      // (or double-counts) additions/removals/changes that only exist in the
+      // resolved schema.
     }
   }
-  
+
   return changes;
 }
 
 /**
- * Detect raw field ADDS for a type.
+ * Detect field ADDITIONS from the EFFECTIVE resolved schemas.
  *
- * Only structural presence (a field appearing in the type's RAW definition) is
- * detected here. Two things are intentionally NOT detected from raw entries:
+ * Mirrors detectEffectiveFieldChanges / detectEffectiveFieldRemovals: a field is
+ * *effectively added* for a concrete type T when T has it in the NEW effective
+ * schema but did NOT have it in the OLD effective schema. Deriving additions from
+ * the effective (inheritance- and trait-resolved) schema — rather than the raw
+ * per-type entry — is what makes this complete:
  *
- *   - Field *content* changes — derived from the EFFECTIVE resolved schema
- *     instead (see detectEffectiveFieldChanges), because a raw structural
- *     override on a child is silently dropped by the resolver's restricted merge
- *     and raw ≠ effective for inherited fields.
- *   - Field *removals* — also derived from the EFFECTIVE resolved schema (see
- *     detectEffectiveFieldRemovals). A field declared on a PARENT and removed
- *     disappears from every inheriting descendant's effective schema too, so the
- *     cleanup must fan out per concrete type; a raw per-type loop would only emit
- *     for the declaring parent and leave child-type notes with now-invalid
- *     inherited frontmatter (#728 removal-fan-out defect).
+ *   - A genuinely new raw OWN field appears in the type's new effective set →
+ *     emitted (same behavior as the old raw add path).
+ *   - A field added to a TRAIT the type composes, or a trait (already carrying
+ *     fields) newly ATTACHED to the type, enters the type's effective set even
+ *     though `schema.types[T].fields` (raw) never mentions it. The raw path
+ *     missed these entirely, so a later removal of the now-populated field was
+ *     diffed against a stale snapshot (#728 effective-addition defect). Computing
+ *     additions effectively catches them and flips `schemaChanged` so migrate
+ *     refreshes the snapshot.
+ *   - A field merely INHERITED (or trait-contributed) UNCHANGED in both old and
+ *     new is present in BOTH effective sets → NOT an addition.
+ *   - A raw redeclaration of an already-inherited field whose structural override
+ *     the resolver IGNORES leaves the effective field present in BOTH sets → NOT
+ *     an addition (round-9 behavior preserved without a special case).
  *
- * Raw ADD detection is kept here because adding a field to a parent makes it
- * inherited by descendants as an OPTIONAL field they simply lack — no per-note
- * mutation is needed for the descendants, so a single declaring-type op is
- * sufficient and the effective fan-out add-path would be redundant.
+ * One detection is emitted per CONCRETE type that effectively gains the field,
+ * matching how executeMigration groups field ops by exact `expectedType`. Only
+ * types present concretely in BOTH schemas are considered: a brand-new type is
+ * handled by the type-added path (its notes don't exist yet).
+ *
+ * The resulting `add-field` op preserves prior semantics: it backfills only when
+ * the (effective) field carries a default and the note omits it; an OPTIONAL
+ * field with no default produces no note mutation — it simply flips
+ * `schemaChanged` so the snapshot advances.
  */
-function detectFieldChanges(
-  typeName: string,
-  oldFields: Record<string, Field>,
-  newFields: Record<string, Field>,
-  oldEffectiveFields: Record<string, Field>
+function detectEffectiveFieldAdditions(
+  resolvedOld: LoadedSchema,
+  resolvedNew: LoadedSchema
 ): DetectedChange[] {
   const changes: DetectedChange[] = [];
-  const oldNames = new Set(Object.keys(oldFields));
-  const newNames = new Set(Object.keys(newFields));
 
-  // Added fields
-  for (const name of newNames) {
-    if (!oldNames.has(name)) {
-      // Only emit `add-field` for fields that are genuinely NEW in the type's
-      // effective schema. If the field name already exists in the OLD effective
-      // (resolved) schema, this raw addition is a REDECLARATION of an already-
-      // inherited field whose structural override the resolver IGNORES — the
-      // effective schema is unchanged, so no migration is warranted. This mirrors
-      // the effective-schema basis used for field changes/removals.
-      if (name in oldEffectiveFields) continue;
-      const field = newFields[name];
-      const hasDefault = field !== undefined && (field.default !== undefined || field.value !== undefined);
-      changes.push({ kind: 'field-added', type: typeName, field: name, hasDefault });
+  const oldConcrete = new Set(getConcreteTypeNames(resolvedOld));
+
+  for (const typeName of getConcreteTypeNames(resolvedNew)) {
+    // A type that is new wholesale is handled by the type-added path.
+    if (!oldConcrete.has(typeName)) continue;
+
+    const oldType = resolvedOld.types.get(typeName);
+    const newType = resolvedNew.types.get(typeName);
+    if (!oldType || !newType) continue;
+
+    const oldFields = oldType.fields;
+
+    for (const [fieldName, newField] of Object.entries(newType.fields)) {
+      if (fieldName in oldFields) continue;
+      const hasDefault =
+        newField.default !== undefined || newField.value !== undefined;
+      changes.push({ kind: 'field-added', type: typeName, field: fieldName, hasDefault });
     }
   }
-
-  // Removed fields are detected from the EFFECTIVE schema, not here — see
-  // detectEffectiveFieldRemovals.
 
   return changes;
 }
@@ -416,9 +430,12 @@ function classifyChanges(
     switch (change.kind) {
       // Field operations
       case 'field-added': {
-        // Adding a field is always deterministic - old notes just won't have it
-        // If there's a default, we include it for potential backfill
-        const field = resolvedNew.raw.types[change.type]?.fields?.[change.field];
+        // Adding a field is always deterministic - old notes just won't have it.
+        // If there's a default, we include it for potential backfill. The default
+        // is read from the EFFECTIVE (resolved) field, not the raw type entry, so
+        // a backfill default that lives on a composed TRAIT (or an inherited
+        // field) is honored — the raw lookup would miss it.
+        const field = resolvedNew.types.get(change.type)?.fields[change.field];
         const defaultValue = field?.default ?? field?.value;
         deterministic.push({
           op: 'add-field',

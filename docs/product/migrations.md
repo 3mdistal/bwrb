@@ -130,7 +130,7 @@ bwrb schema history --json
 
 | Change | Classification | Migration Action |
 |--------|---------------|------------------|
-| Add field | Deterministic | No action needed (field absent in old notes is valid) |
+| Add field | Deterministic | No action needed (field absent in old notes is valid). Detected from the **effective** schema, so a field added to a composed **trait** (or a trait newly attached to a type) is detected the same as a new own field — the snapshot is refreshed on `--execute` so a *later* removal of that now-populated field is diffed correctly. An optional addition mutates no note (a backfill `default` is applied only when present and the note omits the field) |
 | Remove field | Non-deterministic | Removes field from affected notes, including descendant-type notes that inherit a removed parent field (see effective-schema note below) |
 | Rename field | Not detected by diff | A schema rename is seen as add + remove. Use `bwrb bulk --rename old=new` to rename while preserving values |
 | Add select option | No note op | Existing values stay valid, so no note is changed. The schema snapshot is still refreshed on `--execute` so a *later* removal of that option is diffed correctly (not against a stale snapshot). |
@@ -147,11 +147,17 @@ bwrb schema history --json
 | Widen / reorder relation `source` (new set ⊇ old, both constrained) | No note op | Every existing link stays valid; allowing a *wider* set (or merely reordering one) cannot invalidate any link |
 | Loosen a relation `source` to unconstrained (a specific set → absent or `any`) | No note op | Removing the constraint allows any type, so all existing links remain valid |
 
-Field-changed **and field-removal** migrations are derived from the **effective
-(resolved) schema** — the field definition each concrete type actually resolves to
-after inheritance — not from raw per-type entries. So when a changed or removed
-field is declared on a **parent** type, the migration applies to notes of that type
-**and** every descendant type that inherits the field via `extends` (e.g. changing
+Field **addition**, **field-changed**, **and field-removal** migrations are all
+derived from the **effective (resolved) schema** — the field definition each
+concrete type actually resolves to after inheritance **and trait composition** —
+not from raw per-type entries. Deriving *additions* this way is what lets a field
+introduced only through composition (added to a composed trait, or a trait newly
+attached to a type) be detected at all: such a field never appears in the type's
+raw `fields`, so a raw-only check would miss it, leave the snapshot stale, and then
+fail to detect a later removal of the now-populated field. So when a changed or
+removed field is declared on a **parent** type, the migration applies to notes of
+that type **and** every descendant type that inherits the field via `extends` (e.g.
+changing
 `objective.phase` cleans `task` notes, and removing `objective.legacy` strips the
 inherited `legacy` field from `task` notes too, when `task` extends `objective`). A
 descendant that defines its **own** same-named field still resolves to that field

@@ -5,7 +5,13 @@ import { tmpdir } from "os";
 import { executeMigration } from "../../../../src/lib/migration/execute.js";
 import { diffSchemas } from "../../../../src/lib/migration/diff.js";
 import { loadSchema } from "../../../../src/lib/schema.js";
-import type { MigrationPlan } from "../../../../src/types/migration.js";
+import {
+  saveSchemaSnapshot,
+  loadSchemaSnapshot,
+} from "../../../../src/lib/migration/snapshot.js";
+import type { MigrationPlan, SchemaSnapshot } from "../../../../src/types/migration.js";
+import type { BwrbSchema } from "../../../../src/types/schema.js";
+import type { z } from "zod";
 
 describe("executeMigration", () => {
   let testDir: string;
@@ -1116,6 +1122,91 @@ parent: "[[Task Two]]"
       expect(result.affectedFiles).toBe(0);
       const content = await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8");
       expect(content).toBe(original);
+    });
+  });
+
+  // #728 effective-addition round-trip: adding a field to a composed trait must
+  // refresh the snapshot on migrate, so that a LATER removal of that now-populated
+  // trait field is diffed against the CURRENT snapshot (with the field) rather
+  // than a stale one (without it) — otherwise the removal is missed and notes are
+  // left with now-invalid frontmatter.
+  describe("trait-field addition refreshes snapshot, later removal is detected", () => {
+    type BwrbSchemaType = z.infer<typeof BwrbSchema>;
+
+    const v1: BwrbSchemaType = {
+      version: 2,
+      schemaVersion: "1.0.0",
+      traits: {
+        tracked: {
+          fields: { phase: { prompt: "select", options: ["open", "done"] } },
+        },
+      },
+      types: {
+        task: {
+          output_dir: "Tasks",
+          traits: ["tracked"],
+          fields: { title: { prompt: "text" } },
+        },
+      },
+    };
+
+    // v2 adds `assignee` to the `tracked` trait — task gains it effectively.
+    const v2: BwrbSchemaType = {
+      ...v1,
+      schemaVersion: "1.1.0",
+      traits: {
+        tracked: {
+          fields: {
+            phase: { prompt: "select", options: ["open", "done"] },
+            assignee: { prompt: "text" },
+          },
+        },
+      },
+    };
+
+    // v3 removes `assignee` from the trait again.
+    const v3: BwrbSchemaType = {
+      ...v1,
+      schemaVersion: "2.0.0",
+    };
+
+    it("refreshes the snapshot on the addition so a later trait-field removal is detected", async () => {
+      // 1. Baseline snapshot at v1 (no `assignee`).
+      await saveSchemaSnapshot(testDir, v1, "1.0.0");
+
+      // 2. Schema advances to v2 (trait gains `assignee`). The diff against the
+      //    snapshot must report a schema-relevant change (the gap this fixes).
+      const addDiff = diffSchemas(v1, v2, "1.0.0", "1.1.0");
+      expect(addDiff.schemaChanged).toBe(true);
+      expect(
+        addDiff.deterministic.some(
+          (op) => op.op === "add-field" && op.targetType === "task" && op.field === "assignee"
+        )
+      ).toBe(true);
+
+      // 3. migrate --execute refreshes the snapshot to v2 (mirrors what the
+      //    migrate command does once `assignee` is part of the schema).
+      await saveSchemaSnapshot(testDir, v2, "1.1.0");
+      const refreshed = (await loadSchemaSnapshot(testDir)) as SchemaSnapshot;
+      expect(refreshed.schema.traits?.tracked?.fields?.assignee).toBeDefined();
+
+      // 4. Schema advances to v3 (trait drops `assignee`). Diffed against the
+      //    REFRESHED snapshot (which has the field), the removal IS detected.
+      const removeDiff = diffSchemas(refreshed.schema, v3, "1.1.0", "2.0.0");
+      expect(
+        removeDiff.nonDeterministic.some(
+          (op) => op.op === "remove-field" && op.targetType === "task" && op.field === "assignee"
+        )
+      ).toBe(true);
+
+      // Sanity: had the snapshot NEVER refreshed (still at v1), the removal would
+      // be invisible — proving the refresh is what makes the round-trip correct.
+      const staleDiff = diffSchemas(v1, v3, "1.0.0", "2.0.0");
+      expect(
+        staleDiff.nonDeterministic.some(
+          (op) => op.op === "remove-field" && op.field === "assignee"
+        )
+      ).toBe(false);
     });
   });
 });

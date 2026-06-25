@@ -1880,6 +1880,167 @@ describe("diffSchemas", () => {
       });
     });
   });
+
+  // #728 effective-addition defect: a field can enter a concrete type's EFFECTIVE
+  // schema through trait composition (a field added to a composed trait, or a
+  // trait newly attached to a type) without appearing in `schema.types[T].fields`
+  // (raw). The old raw add path missed these, so `diffSchemas` returned
+  // schemaChanged:false and `migrate --execute` never refreshed the snapshot —
+  // leaving a later removal of the now-populated field diffed against a stale
+  // snapshot. Additions are now derived from the EFFECTIVE schema, the single
+  // source of truth (mirroring changed/removed).
+  describe("effective field additions (trait composition)", () => {
+    // task composes the `tracked` trait; adding a field to that trait must be
+    // detected even though task's raw fields never mention it.
+    const traitBase: BwrbSchemaType = {
+      version: 2,
+      schemaVersion: "1.0.0",
+      traits: {
+        tracked: {
+          fields: {
+            status: { prompt: "select", options: ["open", "done"] },
+          },
+        },
+      },
+      types: {
+        task: {
+          traits: ["tracked"],
+          fields: {
+            title: { prompt: "text" },
+          },
+        },
+      },
+    };
+
+    it("detects a field ADDED to an existing trait as schemaChanged with no note-mutating op (optional field)", () => {
+      const newSchema: BwrbSchemaType = {
+        ...traitBase,
+        schemaVersion: "1.1.0",
+        traits: {
+          tracked: {
+            fields: {
+              status: { prompt: "select", options: ["open", "done"] },
+              // New OPTIONAL trait field — enters task's effective schema only.
+              assignee: { prompt: "text" },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(traitBase, newSchema, "1.0.0", "1.1.0");
+
+      // The snapshot must refresh on migrate so a later removal is diffed
+      // correctly.
+      expect(plan.schemaChanged).toBe(true);
+
+      // An add-field op is emitted (deterministic), but for an OPTIONAL field
+      // with no default it produces NO note mutation on execute (backfill only
+      // fires when there is a default). So there must be no note-mutating op
+      // beyond the bare add-field, and certainly no remove/clear/review.
+      const addOps = plan.deterministic.filter(
+        (op) => op.op === "add-field" && op.targetType === "task" && op.field === "assignee"
+      );
+      expect(addOps).toHaveLength(1);
+      expect(addOps[0]).not.toHaveProperty("default");
+      // No lossy / review ops for an optional addition.
+      expect(plan.nonDeterministic).toHaveLength(0);
+    });
+
+    it("detects fields from a trait NEWLY ATTACHED to a type", () => {
+      // A second type starts WITHOUT the trait and then composes it.
+      const oldSchema: BwrbSchemaType = {
+        version: 2,
+        schemaVersion: "1.0.0",
+        traits: {
+          tracked: {
+            fields: { status: { prompt: "select", options: ["open", "done"] } },
+          },
+        },
+        types: {
+          note: {
+            fields: { title: { prompt: "text" } },
+          },
+        },
+      };
+      const newSchema: BwrbSchemaType = {
+        ...oldSchema,
+        schemaVersion: "1.1.0",
+        types: {
+          note: {
+            traits: ["tracked"],
+            fields: { title: { prompt: "text" } },
+          },
+        },
+      };
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(plan.schemaChanged).toBe(true);
+      expect(
+        plan.deterministic.some(
+          (op) => op.op === "add-field" && op.targetType === "note" && op.field === "status"
+        )
+      ).toBe(true);
+    });
+
+    it("does NOT flag a trait field that is unchanged in both old and new", () => {
+      // Same trait, same fields — nothing added.
+      const plan = diffSchemas(traitBase, { ...traitBase, schemaVersion: "1.0.1" }, "1.0.0", "1.0.1");
+      expect(plan.schemaChanged).toBe(false);
+      expect(plan.hasChanges).toBe(false);
+    });
+
+    it("detects exactly once (no double-count) for a genuinely new raw OWN field", () => {
+      const newSchema: BwrbSchemaType = {
+        ...traitBase,
+        schemaVersion: "1.1.0",
+        types: {
+          task: {
+            traits: ["tracked"],
+            fields: {
+              title: { prompt: "text" },
+              // genuinely new own field
+              estimate: { prompt: "number" },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(traitBase, newSchema, "1.0.0", "1.1.0");
+
+      const addOps = plan.deterministic.filter(
+        (op) => op.op === "add-field" && op.field === "estimate"
+      );
+      expect(addOps).toHaveLength(1);
+      expect(plan.hasChanges).toBe(true);
+    });
+
+    it("backfills a default that lives on a composed trait field (effective default honored)", () => {
+      const newSchema: BwrbSchemaType = {
+        ...traitBase,
+        schemaVersion: "1.1.0",
+        traits: {
+          tracked: {
+            fields: {
+              status: { prompt: "select", options: ["open", "done"] },
+              // Trait field carrying a default — the raw type entry never
+              // mentions it, so the default must be read from the effective field.
+              priority: { prompt: "select", options: ["low", "high"], default: "low" },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(traitBase, newSchema, "1.0.0", "1.1.0");
+
+      expect(plan.deterministic).toContainEqual({
+        op: "add-field",
+        targetType: "task",
+        field: "priority",
+        default: "low",
+      });
+    });
+  });
 });
 
 describe("suggestVersionBump", () => {
