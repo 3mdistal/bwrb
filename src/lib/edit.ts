@@ -160,9 +160,6 @@ export async function editNoteFromJson(
   const mergedFrontmatter = mergeFrontmatter(frontmatter, patchData);
   const updatedFields = Object.keys(patchData).filter(k => patchData[k] !== undefined);
 
-  // Normalize date-like fields to canonical YYYY-MM-DD strings
-  const normalizedFrontmatter = normalizeDateFields(schema, typePath, mergedFrontmatter);
-
   // Materialize defaults BEFORE validating/writing — but ONLY for the parity
   // case, SURGICALLY scoped to the keys the user blanked in THIS patch.
   //
@@ -189,12 +186,23 @@ export async function editNoteFromJson(
       (key) => typeof patchData[key] === 'string' && isBlankScalar(patchData[key])
     )
   );
-  const resolvedFrontmatter = applyDefaults(
+  const defaultedFrontmatter = applyDefaults(
     schema,
     typePath,
-    normalizedFrontmatter,
+    mergedFrontmatter,
     blankPatchKeys
   );
+
+  // Normalize date-like fields to canonical YYYY-MM-DD strings — AFTER defaults
+  // are materialized (#707). A materialized date default can be non-canonical
+  // (e.g. `default: "12/25/2026"`); `validateFrontmatter` accepts the slash form,
+  // so without normalizing it here the raw default would be PERSISTED and `audit`
+  // would then flag `invalid-date-format`. Running the single date-normalization
+  // pass after `applyDefaults` canonicalizes BOTH user-supplied date values and
+  // any date default we just filled in, so write and audit agree on the stored
+  // form. (Mirrors `new`/json-mode, which materializes defaults before building
+  // the note.)
+  const resolvedFrontmatter = normalizeDateFields(schema, typePath, defaultedFrontmatter);
 
   // Validate merged result
   const validation = validateFrontmatter(schema, typePath, resolvedFrontmatter);

@@ -23,7 +23,8 @@ import type { Schema } from '../../../src/types/schema.js';
  */
 
 // `status` is a REQUIRED select WITH a default; `priority` is an OPTIONAL select
-// WITH a default; `owner` is a REQUIRED text field with NO default.
+// WITH a default; `owner` is a REQUIRED text field with NO default; `deadline` is
+// an OPTIONAL date field whose default is in NON-canonical slash form.
 const SCHEMA: Schema = {
   version: 2,
   types: {
@@ -33,6 +34,7 @@ const SCHEMA: Schema = {
         name: { prompt: 'text', required: true },
         status: { prompt: 'select', options: ['todo', 'doing', 'done'], required: true, default: 'todo' },
         priority: { prompt: 'select', options: ['low', 'high'], default: 'low' },
+        deadline: { prompt: 'date', default: '12/25/2026' },
       },
     },
     record: {
@@ -242,5 +244,40 @@ note: something
     expect(codes).not.toContain('empty-string-required');
 
     await rm(v, { recursive: true, force: true });
+  });
+
+  it('blanking a date field with a NON-canonical default persists the CANONICAL date; audit stays clean (#707)', async () => {
+    // Defect: `editNoteFromJson` ran `normalizeDateFields` on the merged
+    // frontmatter FIRST, then `applyDefaults` wrote the RAW default afterward, so
+    // a slash-format date default (`12/25/2026`) was persisted un-normalized.
+    // `validateFrontmatter` accepts the slash form, so the edit succeeded — but
+    // the next `audit` flagged `invalid-date-format`. The fix materializes the
+    // default BEFORE the single date-normalization pass, canonicalizing it.
+    const taskPath = join(vaultDir, 'tasks', 'Deadline.md');
+    await writeFile(
+      taskPath,
+      `---
+type: task
+name: Deadline
+status: doing
+deadline: 2026-01-01
+---
+
+# Deadline
+`
+    );
+
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(schema, vaultDir, taskPath, JSON.stringify({ deadline: '   ' }), {
+      jsonMode: false,
+    });
+
+    // The materialized default is the CANONICAL ISO form, not the raw slash date.
+    const fm = await readFrontmatter(taskPath);
+    expect(fm['deadline']).toBe('2026-12-25');
+
+    // Parity: audit finds no invalid-date-format for the materialized default.
+    const results = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    expect(auditIssues(results, 'Deadline.md')).not.toContain('invalid-date-format');
   });
 });

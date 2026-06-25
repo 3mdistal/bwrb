@@ -221,9 +221,26 @@ export function validateFrontmatter(
   // Check for required fields
   for (const [fieldName, field] of Object.entries(fields)) {
     const value = frontmatter[fieldName];
-    // A blank optional value (null/undefined/empty/whitespace-only) counts as
-    // "unset" uniformly across all scalar types (#707), matching the audit path.
-    const hasValue = !isBlankScalar(value);
+
+    // The blank-as-unset shortcut (#707) applies only to SCALAR (`multiple`
+    // falsy) fields. For a `multiple: true` field a whitespace-only scalar string
+    // is NOT a valid "unset": it is the wrong SHAPE (a scalar where a list is
+    // expected) and has no sensible list interpretation. Audit flags any non-array
+    // scalar on a list field as `wrong-scalar-type`, including a whitespace blank
+    // (it does NOT route list fields through `isBlankScalar`). If we let
+    // `isBlankScalar` treat `dates: "   "` as unset here, write would SKIP every
+    // shape/type check and silently PERSIST the blank scalar, while audit still
+    // flagged it — the write↔audit parity break this PR exists to close.
+    //
+    // So we do NOT short-circuit blank scalars on `multiple` fields; they fall
+    // through to the type check below, where a blank scalar on (e.g.) a
+    // `multiple` date field is rejected as an invalid value — keeping write and
+    // audit in agreement (both reject). A genuine non-array scalar that DOES carry
+    // a value (e.g. `labels: "urgent"`) is unaffected: it was never blank, so its
+    // long-standing accept-on-write / autofix-on-audit behavior is preserved.
+    // `null`/`undefined`/absent and empty arrays remain "unset" exactly as before.
+    const treatBlankAsUnset = field.multiple !== true;
+    const hasValue = treatBlankAsUnset ? !isBlankScalar(value) : value !== undefined && value !== null;
 
     // Check required fields
     if (field.required && !hasValue && field.default === undefined) {
