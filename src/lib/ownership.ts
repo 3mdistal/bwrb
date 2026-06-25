@@ -103,13 +103,22 @@ export interface OwnershipIndex {
   ambiguousDeclaredOwners: Set<string>;
   /**
    * Map from a declared owned-note name (normalized via `declaredOwnerKey`) →
-   * the list of ALL distinct declaring owners for that basename (deduplicated by
-   * owner path). Unlike `declaredOwned` (first owner only) this preserves every
-   * owner's `OwnedNoteInfo` (owner path/type + the declaring field), so callers
-   * can re-evaluate ambiguity AFTER filtering to the owners whose owned child
+   * the list of ALL distinct PER-FIELD declarations of that basename
+   * (deduplicated by owner path + declaring field). Unlike `declaredOwned`
+   * (first owner only) this preserves every declaration's `OwnedNoteInfo` (owner
+   * path/type + the declaring field + declared target), so callers can
+   * re-evaluate ambiguity AFTER filtering to the declarations whose owned child
    * TYPE matches the audited note's resolved type. This is what lets audit avoid
    * flagging an unrelated, different-typed note that merely shares a basename
    * with an ambiguous owned declaration (#734 follow-up).
+   *
+   * Keyed per FIELD (not per owner) so one owner that declares the same basename
+   * in TWO owned fields of DIFFERENT child types (e.g. `tracks -> track` AND
+   * `notes -> note` both listing `[[Shared]]`) keeps BOTH declarations; the
+   * type-aware filter then resolves the audited note via the declaration whose
+   * child type matches it. Because one owner can therefore contribute multiple
+   * entries, callers that judge MULTI-OWNER ambiguity must re-dedup by owner path
+   * (a single owner spanning two fields is not two owners) (#734).
    */
   declaredOwnersByName: Map<string, OwnedNoteInfo[]>;
 }
@@ -312,17 +321,36 @@ async function indexOwnerNote(
         ambiguousDeclaredOwners.add(key);
       }
 
-      // Record EVERY distinct declaring owner for this basename (deduplicated by
-      // owner path), preserving each owner's type + declaring field. This is the
-      // type-aware source of truth: audit filters this list to the owners whose
-      // owned child TYPE matches the audited note's resolved type before deciding
-      // whether the note is ambiguous, misplaced, or simply not owned (#734
-      // follow-up). A repeat declaration from the SAME owner is collapsed so the
-      // same owner never counts twice toward ambiguity.
+      // Record EVERY distinct PER-FIELD declaration of this basename, preserving
+      // each owner's type + the declaring field + the path-qualified target. This
+      // is the type-aware source of truth: audit filters this list to the
+      // declarations whose owned child TYPE matches the audited note's resolved
+      // type before deciding whether the note is ambiguous, misplaced, or simply
+      // not owned (#734 follow-up).
+      //
+      // The dedup key is owner path + declaring FIELD (not owner path alone): one
+      // owner can declare the same basename in TWO owned fields with DIFFERENT
+      // child types (e.g. `tracks -> track` AND `notes -> note` both listing
+      // `[[Shared]]`). Keying by owner path alone would drop the second field's
+      // declaration and its child type, so the type-aware filter would never see
+      // the matching child type and would misclassify the note (#734). Keying by
+      // owner+field keeps both, so the audited file resolves via the declaration
+      // whose child type matches it. A TRUE duplicate (same owner, same field,
+      // same basename — e.g. listed twice in one multi-value field) still
+      // collapses to one. The downstream filter additionally re-dedups the
+      // surviving declarations by owner path before counting toward ambiguity, so
+      // a single owner declaring this basename across two fields never counts as
+      // two distinct owners.
       const owners = declaredOwnersByName.get(key);
       if (owners === undefined) {
         declaredOwnersByName.set(key, [info]);
-      } else if (!owners.some(o => o.ownerPath === relativeOwnerPath)) {
+      } else if (
+        !owners.some(
+          o =>
+            o.ownerPath === relativeOwnerPath &&
+            o.fieldName === ownedField.fieldName
+        )
+      ) {
         owners.push(info);
       }
     }
@@ -404,17 +432,23 @@ export function findDeclaredOwner(
 }
 
 /**
- * Return ALL distinct owners that declare this note's basename as owned (each
- * via one of its `owned` frontmatter fields), deduplicated by owner path.
+ * Return ALL distinct PER-FIELD declarations of this note's basename as owned
+ * (each via one of an owner's `owned` frontmatter fields), deduplicated by owner
+ * path + declaring field.
  *
  * Unlike `findDeclaredOwner` (which returns only the first-scanned owner) and
  * `isDeclaredOwnershipAmbiguous` (a type-blind basename check), this exposes
- * every declaring owner together with the field that declared it, so a caller
- * holding the schema can derive each owner's owned child TYPE and decide
- * ambiguity using ONLY the owners whose child type matches the audited note.
- * That type filter is what prevents a correctly-filed, different-typed note that
- * merely shares a basename with an ambiguous owned declaration from being
- * mislabeled an ownership conflict (#734 follow-up).
+ * every declaration together with the owner and field that declared it, so a
+ * caller holding the schema can derive each declaration's owned child TYPE and
+ * decide ambiguity using ONLY the declarations whose child type matches the
+ * audited note. That type filter is what prevents a correctly-filed,
+ * different-typed note that merely shares a basename with an ambiguous owned
+ * declaration from being mislabeled an ownership conflict (#734 follow-up).
+ *
+ * Because the list is keyed per field, a single owner that declares the same
+ * basename across two fields appears more than once. Callers judging MULTI-OWNER
+ * ambiguity must re-dedup by owner path after the type filter (one owner across
+ * two fields is not two owners).
  *
  * Keyed via the same `declaredOwnerKey` normalization as the index, so all
  * wikilink forms agree with the lookup. Returns an empty array when no owner

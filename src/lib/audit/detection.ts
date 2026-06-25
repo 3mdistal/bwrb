@@ -1830,25 +1830,41 @@ function findMisplacedOwnedNote(
   // declaration must NOT be treated as owned (neither ambiguous nor misplaced).
   // The path filter additionally drops a path-qualified declaration that is
   // satisfied by a different (correctly-placed) note at the declared path.
-  const matchingOwners = getDeclaredOwners(ownershipIndex, noteName).filter(
+  //
+  // `getDeclaredOwners` is now keyed per-FIELD (one owner may appear more than
+  // once if it declares this basename in several fields), so the matching
+  // declaration that resolves the audited note via the field whose child type
+  // matches it is preserved even when the SAME owner also declares the basename
+  // in a field of a DIFFERENT child type (#734). The first owned field declaring
+  // `[[Shared]]` no longer shadows a later field of a different type.
+  const matchingDeclarations = getDeclaredOwners(ownershipIndex, noteName).filter(
     o => typeMatchesAudited(declaredChildType(o)) && declarationMatchesAuditedFile(o)
   );
 
-  // 0 type-matching owners → not an owned note of this type. Fall through to
-  // ordinary wrong-directory handling (a correctly-placed note stays put).
-  if (matchingOwners.length === 0) return undefined;
+  // AMBIGUITY is about DISTINCT OWNERS, not distinct fields. Re-dedup the
+  // type-matching declarations by owner path: a single owner that declares this
+  // basename for the matching child type across two fields is NOT a multi-owner
+  // conflict — the type filter already disambiguates, and the destination is the
+  // same owner. (If that one owner declares the same basename in two fields of
+  // the SAME child type — a degenerate schema with two candidate subfolders — we
+  // still treat it as a single owner and restore under the first such field's
+  // subfolder; documented as an acceptable choice for that degenerate case.)
+  const matchingOwnerPaths = new Set(matchingDeclarations.map(o => o.ownerPath));
 
-  // 2+ distinct type-matching owners → genuine multi-owner conflict (#734,
+  // 0 type-matching declarations → not an owned note of this type. Fall through
+  // to ordinary wrong-directory handling (a correctly-placed note stays put).
+  if (matchingDeclarations.length === 0) return undefined;
+
+  // 2+ distinct type-matching OWNERS → genuine multi-owner conflict (#734,
   // defect A). We cannot choose one without guessing, so surface it as an
   // ambiguous conflict regardless of where the note physically sits, so the
-  // caller never auto-restores it under an arbitrary owner. (`getDeclaredOwners`
-  // already deduplicates by owner path, so the same owner never double-counts.)
-  if (matchingOwners.length >= 2) {
+  // caller never auto-restores it under an arbitrary owner.
+  if (matchingOwnerPaths.size >= 2) {
     return { kind: 'ambiguous', actualDir };
   }
 
   // Exactly one type-matching owner declares this note → normal owned-note logic.
-  const declared = matchingOwners[0]!;
+  const declared = matchingDeclarations[0]!;
 
   // If the note is physically under the SAME owner that declares it, it is
   // already correctly placed (discovery's `file.ownership` records the physical
