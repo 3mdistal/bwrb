@@ -855,6 +855,82 @@ status: paused
         await cleanupTestVault(tempVaultDir);
       }
     });
+
+    /**
+     * Regression for #728 defect B (schema-only execute JSON misreported the
+     * refreshed version range). When a schema-only change (e.g. an added option)
+     * also advances `schemaVersion` (snapshot 1.0.0, current 1.1.0), the execute
+     * JSON used `currentVersion` for BOTH from/to, reporting 1.1.0 → 1.1.0. It must
+     * instead report the actual refreshed range (prior snapshot version → new
+     * version), matching what the dry-run path already reports.
+     */
+    it('reports the actual from/to version range in schema-only execute JSON (matching dry-run)', async () => {
+      const tempVaultDir = await createTestVault();
+      try {
+        const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+        const snapshotPath = join(tempVaultDir, '.bwrb', 'schema.applied.json');
+
+        const baselineSchema = JSON.parse(await readFile(schemaPath, 'utf8'));
+        // Snapshot is at the PRIOR version 1.0.0.
+        await writeFile(
+          snapshotPath,
+          JSON.stringify(
+            {
+              schemaVersion: '1.0.0',
+              snapshotAt: new Date().toISOString(),
+              schema: baselineSchema,
+            },
+            null,
+            2
+          )
+        );
+
+        // Current schema ADDS an option (a schema-only, no note-op change) AND
+        // bumps schemaVersion to 1.1.0.
+        const withAddedOption = JSON.parse(JSON.stringify(baselineSchema));
+        withAddedOption.schemaVersion = '1.1.0';
+        withAddedOption.types.task.fields.status.options = [
+          'raw',
+          'backlog',
+          'in-flight',
+          'settled',
+          'paused',
+        ];
+        await writeFile(schemaPath, JSON.stringify(withAddedOption, null, 2));
+
+        // Dry-run reports the true range 1.0.0 → 1.1.0.
+        const dryResult = await runCLI(
+          ['schema', 'migrate', '--output', 'json'],
+          tempVaultDir
+        );
+        expect(dryResult.exitCode).toBe(0);
+        const dryResponse = JSON.parse(dryResult.stdout);
+        expect(dryResponse.success).toBe(true);
+        expect(dryResponse.data.fromVersion).toBe('1.0.0');
+        expect(dryResponse.data.toVersion).toBe('1.1.0');
+
+        // Execute must report the SAME range — not 1.1.0 → 1.1.0.
+        const execResult = await runCLI(
+          ['schema', 'migrate', '--output', 'json', '--execute', '--no-backup'],
+          tempVaultDir
+        );
+        expect(execResult.exitCode).toBe(0);
+        const execResponse = JSON.parse(execResult.stdout);
+        expect(execResponse.success).toBe(true);
+        expect(execResponse.data.snapshotRefreshed).toBe(true);
+        expect(execResponse.data.fromVersion).toBe('1.0.0');
+        expect(execResponse.data.toVersion).toBe('1.1.0');
+        // The version actually advanced, so the two must differ.
+        expect(execResponse.data.fromVersion).not.toBe(
+          execResponse.data.toVersion
+        );
+        // And it matches the dry-run range exactly.
+        expect(execResponse.data.fromVersion).toBe(dryResponse.data.fromVersion);
+        expect(execResponse.data.toVersion).toBe(dryResponse.data.toVersion);
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
   });
 
   describe('schema list type <name> --output json', () => {

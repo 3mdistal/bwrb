@@ -9,7 +9,7 @@ import {
   formatValidationErrors,
 } from '../../../src/lib/validation.js';
 import { loadSchema, resolveSchema } from '../../../src/lib/schema.js';
-import type { LoadedSchema } from '../../../src/types/schema.js';
+import type { LoadedSchema, Schema } from '../../../src/types/schema.js';
 import { createTestVault, cleanupTestVault } from '../fixtures/setup.js';
 
 describe('validation', () => {
@@ -229,6 +229,66 @@ describe('validation', () => {
       });
       expect(yearResult.valid).toBe(false);
       expect(yearResult.errors[0].type).toBe('invalid_date');
+    });
+
+    // #728 defect A: a required field with a `default` is satisfied even when the
+    // note is missing the field. This is the validation rule the migration diff
+    // classifier mirrors (no spurious review-field on a required+default toggle).
+    it('treats a missing required field WITH a default as valid', () => {
+      const raw: Schema = {
+        version: 2,
+        types: {
+          widget: {
+            output_dir: 'Widgets',
+            fields: {
+              priority: {
+                prompt: 'select',
+                options: ['low', 'high'],
+                required: true,
+                default: 'low',
+              },
+            },
+          },
+        },
+      } as unknown as Schema;
+      const loaded = resolveSchema(raw);
+
+      const result = validateFrontmatter(loaded, 'widget', { type: 'widget' });
+
+      expect(result.valid).toBe(true);
+      expect(
+        result.errors.some((e) => e.type === 'required_field_missing')
+      ).toBe(false);
+    });
+
+    // The paired case: a required field WITHOUT a default is NOT satisfied when
+    // missing — this is why the diff classifier still emits review-field there.
+    it('flags a missing required field WITHOUT a default', () => {
+      const raw: Schema = {
+        version: 2,
+        types: {
+          widget: {
+            output_dir: 'Widgets',
+            fields: {
+              priority: {
+                prompt: 'select',
+                options: ['low', 'high'],
+                required: true,
+              },
+            },
+          },
+        },
+      } as unknown as Schema;
+      const loaded = resolveSchema(raw);
+
+      const result = validateFrontmatter(loaded, 'widget', { type: 'widget' });
+
+      expect(result.valid).toBe(false);
+      expect(
+        result.errors.some(
+          (e) => e.type === 'required_field_missing' && e.field === 'priority'
+        )
+      ).toBe(true);
     });
   });
 

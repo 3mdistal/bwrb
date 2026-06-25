@@ -285,8 +285,12 @@ Examples:
             printJson(jsonSuccess({
               message: 'Schema snapshot refreshed',
               data: {
-                fromVersion: currentVersion,
-                toVersion: currentVersion,
+                // Report the actual refreshed range (prior snapshot version →
+                // current schema version), matching the dry-run path above. Using
+                // `currentVersion` for both misreported e.g. 1.1.0 → 1.1.0 when the
+                // snapshot was at 1.0.0 and the schema bumped to 1.1.0.
+                fromVersion: diff.fromVersion,
+                toVersion: diff.toVersion,
                 totalFiles: 0,
                 affectedFiles: 0,
                 snapshotRefreshed: true,

@@ -352,6 +352,84 @@ describe("diffSchemas", () => {
       ).toBe(true);
     });
 
+    it("does NOT emit review-field when a field becomes required AND has a default", () => {
+      // #728 defect A: bwrb validation (validation.ts) exempts a required field
+      // whose definition supplies a `default` — notes missing the value stay valid
+      // because the default satisfies them. So the required-toggle must NOT produce
+      // a non-deterministic review op (which would needlessly force a major bump and
+      // record empty history). See validation.test.ts for the matching assertion
+      // that such notes actually validate.
+      const newSchema: BwrbSchemaType = {
+        ...baseSchema,
+        schemaVersion: "1.1.0",
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              priority: {
+                prompt: "select",
+                options: ["low", "medium", "high"],
+                required: true,
+                default: "low",
+              },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(baseSchema, newSchema, "1.0.0", "1.1.0");
+
+      // The required-toggle itself produces no review op.
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "priority"
+        )
+      ).toBe(false);
+    });
+
+    it("still classifies other concurrent aspects when a required+default change is also widened", () => {
+      // The required-toggle is exempt (has a default), but a concurrent
+      // multiple:false→true on the same field must still be classified
+      // independently as a deterministic widen.
+      const newSchema: BwrbSchemaType = {
+        ...baseSchema,
+        schemaVersion: "1.1.0",
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              priority: {
+                prompt: "select",
+                options: ["low", "medium", "high"],
+                required: true,
+                default: "low",
+                multiple: true,
+              },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(baseSchema, newSchema, "1.0.0", "1.1.0");
+
+      // No review op from the required-toggle...
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "priority"
+        )
+      ).toBe(false);
+      // ...but the widen-to-multiple is still emitted.
+      expect(
+        plan.deterministic.some(
+          (op) => op.op === "widen-field-to-multiple" && op.field === "priority"
+        )
+      ).toBe(true);
+    });
+
     it("emits review-field when a relation source changes", () => {
       const oldSchema: BwrbSchemaType = {
         ...baseSchema,

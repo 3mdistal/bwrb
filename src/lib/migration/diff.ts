@@ -590,14 +590,26 @@ function classifyFieldChange(
   }
 
   if (changedProps.includes('required') && newField?.required === true && oldField?.required !== true) {
-    // Field became required: notes missing the value now violate the schema,
-    // but we cannot fabricate a value, so surface it for review.
-    nonDeterministic.push({
-      op: 'review-field',
-      targetType,
-      field,
-      reason: 'field is now required; notes missing a value need manual review',
-    });
+    // Field became required. Notes missing the value would normally violate the
+    // schema, BUT bwrb's validation (validateFrontmatter, validation.ts) exempts a
+    // required field whose definition supplies a `default`:
+    //   `if (field.required && !hasValue && field.default === undefined)`
+    // i.e. a missing value is only an error when there is no `default`. A static
+    // `value` does NOT satisfy that check (validation consults `default` only), so
+    // it does not exempt the field here either.
+    //
+    // Only surface a review op when the new required field lacks a `default`. If it
+    // has one, notes missing the field stay valid (the default satisfies them), so a
+    // non-deterministic `review-field` would be a false positive that needlessly
+    // forces a major bump and records empty history.
+    if (newField?.default === undefined) {
+      nonDeterministic.push({
+        op: 'review-field',
+        targetType,
+        field,
+        reason: 'field is now required; notes missing a value need manual review',
+      });
+    }
   }
 
   if (changedProps.includes('source')) {
