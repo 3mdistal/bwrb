@@ -259,8 +259,11 @@ describe('query', () => {
       });
 
       it('is distinct from isDescendantOf — relation chain vs the note\'s own chain', async () => {
-        // The candidate has no parent, so isDescendantOf('[[career]]') is false,
-        // but under(milestone, '[[career]]') follows the relation and is true.
+        // The candidate has no structural `parent`, only a `milestone` relation.
+        // isDescendantOf walks the literal `parent` chain (empty) -> false; the
+        // `milestone` relation is NOT folded into the structural chain (#709), so
+        // these stay distinct. under(milestone, '[[career]]') follows the
+        // relation -> true.
         const files = makeFiles([
           { path: 'Objectives/Tasks/Leaf.md', fm: { type: 'task', status: 'backlog', milestone: '"[[Vercel]]"' } },
         ]);
@@ -322,6 +325,191 @@ describe('query', () => {
         });
 
         expect(result).toHaveLength(0);
+      });
+    });
+
+    describe('isChildOf / isDescendantOf full-vault ancestor resolution (#709)', () => {
+      // Build a structural `parent` chain that deliberately climbs THROUGH a
+      // note of a DIFFERENT type than the filtered candidate, so the
+      // intermediate note is excluded from a `--type task` candidate set:
+      //   career (task, root)
+      //     └── Release Alpha (milestone)   <- filtered out by --type task
+      //           └── (candidate task's parent)
+      // The candidate task's own `parent` is the milestone, so its ancestor
+      // chain only reaches `career` if the milestone -> career link is resolved
+      // from the FULL vault. With the old candidate-only parent map the walk
+      // stopped at the milestone and missed `career`.
+      const builtNotes: string[] = [];
+
+      beforeAll(async () => {
+        const writeNote = async (
+          dir: string,
+          name: string,
+          fm: string
+        ): Promise<void> => {
+          const path = join(vaultDir, dir, `${name}.md`);
+          await writeFile(path, `---\n${fm}\n---\n`);
+          builtNotes.push(path);
+        };
+        await writeNote('Objectives/Tasks', 'career', 'type: task\nstatus: backlog');
+        await writeNote(
+          'Objectives/Milestones',
+          'Release Alpha',
+          'type: milestone\nstatus: backlog\nparent: "[[career]]"'
+        );
+      });
+
+      afterAll(async () => {
+        await Promise.all(builtNotes.map(p => rm(p, { force: true })));
+      });
+
+      it('finds an ancestor reachable only THROUGH a type-filtered-out note', async () => {
+        // The candidate is a task whose parent is a milestone (filtered out of a
+        // --type task candidate set). The true ancestor `career` sits above the
+        // milestone. isDescendantOf must walk past the milestone to find it.
+        const files = makeFiles([
+          {
+            path: 'Objectives/Tasks/Deep Task.md',
+            fm: { type: 'task', status: 'backlog', parent: '"[[Release Alpha]]"' },
+          },
+        ]);
+
+        const result = await applyFrontmatterFilters(files, {
+          whereExpressions: ["isDescendantOf('[[career]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+
+        expect(result).toHaveLength(1);
+      });
+
+      it('isChildOf still matches only the DIRECT parent (not a grandparent)', async () => {
+        const files = makeFiles([
+          {
+            path: 'Objectives/Tasks/Deep Task.md',
+            fm: { type: 'task', status: 'backlog', parent: '"[[Release Alpha]]"' },
+          },
+        ]);
+
+        // Direct child of the milestone: matches.
+        const directResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ["isChildOf('[[Release Alpha]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(directResult).toHaveLength(1);
+
+        // career is the GRANDparent, not the direct parent: isChildOf must NOT
+        // match (only isDescendantOf walks transitively).
+        const grandparentResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ["isChildOf('[[career]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(grandparentResult).toHaveLength(0);
+      });
+
+      it('isRoot uses parent-LIKE links but isDescendantOf uses only structural parent', async () => {
+        // A task attached ONLY via its `milestone` relation (no literal `parent`)
+        // is NOT a root (isRoot consults the broad parent-like set), yet it is
+        // NOT a descendant of the milestone's ancestors either, because
+        // isDescendantOf walks only the literal `parent` chain (empty here). This
+        // locks the getHierarchyFields decision: parent-like relations count for
+        // isRoot, but are queried structurally only via `under` (#709).
+        const files = makeFiles([
+          {
+            path: 'Objectives/Tasks/Milestone Only.md',
+            fm: { type: 'task', status: 'backlog', milestone: '"[[Release Alpha]]"' },
+          },
+        ]);
+
+        const rootResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ['isRoot()'],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(rootResult).toHaveLength(0); // attached via milestone -> not a root
+
+        const descResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ["isDescendantOf('[[career]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        // No structural `parent`, so the milestone's own ancestor (career) is not
+        // reached by isDescendantOf — that is `under(milestone, ...)`'s job.
+        expect(descResult).toHaveLength(0);
+      });
+
+      it('keeps the three operators semantically distinct on one vault', async () => {
+        // One candidate task that simultaneously:
+        //   - has its own structural parent chain (parent -> milestone -> career)
+        //   - records a separate `milestone` relation pointing at career directly
+        // so the operators read DIFFERENT inputs and must disagree.
+        const files = makeFiles([
+          {
+            path: 'Objectives/Tasks/Mixed Task.md',
+            fm: {
+              type: 'task',
+              status: 'backlog',
+              parent: '"[[Release Alpha]]"',
+              milestone: '"[[career]]"',
+            },
+          },
+        ]);
+
+        // isChildOf: direct structural parent only -> the milestone, NOT career.
+        const childOfCareer = await applyFrontmatterFilters(files, {
+          whereExpressions: ["isChildOf('[[career]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(childOfCareer).toHaveLength(0);
+
+        // isDescendantOf: own parent chain, transitively reaches career.
+        const descOfCareer = await applyFrontmatterFilters(files, {
+          whereExpressions: ["isDescendantOf('[[career]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(descOfCareer).toHaveLength(1);
+
+        // under(milestone, ...): dereferences the RELATION field, which points at
+        // career directly (inclusive of the direct target) -> matches even though
+        // career is not the note's structural parent.
+        const underCareer = await applyFrontmatterFilters(files, {
+          whereExpressions: ["under(milestone, '[[career]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(underCareer).toHaveLength(1);
+
+        // And under reading the relation field disagrees with the structural
+        // operators on a DIFFERENT node: the milestone relation does not point at
+        // Release Alpha nor under it, so under(milestone, '[[Release Alpha]]')
+        // is false even though isChildOf('[[Release Alpha]]') is true.
+        const underAlpha = await applyFrontmatterFilters(files, {
+          whereExpressions: ["under(milestone, '[[Release Alpha]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(underAlpha).toHaveLength(0);
+
+        const childOfAlpha = await applyFrontmatterFilters(files, {
+          whereExpressions: ["isChildOf('[[Release Alpha]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(childOfAlpha).toHaveLength(1);
       });
     });
 
