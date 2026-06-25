@@ -131,7 +131,7 @@ bwrb schema history --json
 | Change | Classification | Migration Action |
 |--------|---------------|------------------|
 | Add field | Deterministic | No action needed (field absent in old notes is valid) |
-| Remove field | Non-deterministic | Removes field from affected notes |
+| Remove field | Non-deterministic | Removes field from affected notes, including descendant-type notes that inherit a removed parent field (see effective-schema note below) |
 | Rename field | Not detected by diff | A schema rename is seen as add + remove. Use `bwrb bulk --rename old=new` to rename while preserving values |
 | Add select option | No note op | Existing values stay valid, so no note is changed. The schema snapshot is still refreshed on `--execute` so a *later* removal of that option is diffed correctly (not against a stale snapshot). |
 | Remove *some* select options (field stays a constrained select) | Non-deterministic (`clear-invalid-options`) | Drops any note value that is no longer in the remaining allowed set — a scalar becomes empty, an array is filtered to its still-valid members |
@@ -141,12 +141,15 @@ bwrb schema history --json
 | Disallow multiple values (`multiple` true → false) | Non-deterministic (`review-field`) | Surfaced for manual review; collapsing an array is lossy, so notes are flagged, not changed |
 | Change relation `source` | Non-deterministic (`review-field`) | Surfaced for manual review; existing links may now point at the wrong type |
 
-Field-changed migrations are derived from the **effective (resolved) schema** —
-the field definition each concrete type actually resolves to after inheritance —
-not from raw per-type entries. So when a changed field is declared on a **parent**
-type, the migration applies to notes of that type **and** every descendant type
-that inherits the field via `extends` (e.g. changing `objective.phase` also cleans
-`task` notes when `task` extends `objective`).
+Field-changed **and field-removal** migrations are derived from the **effective
+(resolved) schema** — the field definition each concrete type actually resolves to
+after inheritance — not from raw per-type entries. So when a changed or removed
+field is declared on a **parent** type, the migration applies to notes of that type
+**and** every descendant type that inherits the field via `extends` (e.g. changing
+`objective.phase` cleans `task` notes, and removing `objective.legacy` strips the
+inherited `legacy` field from `task` notes too, when `task` extends `objective`). A
+descendant that defines its **own** same-named field still resolves to that field
+after the parent's removal, so it is correctly left untouched.
 
 This includes descendants that re-declare the inherited field. The schema
 resolver applies a *restricted merge* to an inherited field: a child may override

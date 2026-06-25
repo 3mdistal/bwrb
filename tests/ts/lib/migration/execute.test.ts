@@ -653,6 +653,80 @@ parent: "[[Task Two]]"
     });
   });
 
+  // #728 (removal fan-out) — removing a field declared on a PARENT must clean the
+  // inherited frontmatter from descendant-type notes too, under their OWN type.
+  describe("inherited field-removal reaches descendant-type notes", () => {
+    it("removes an inherited field from a child-type note when the parent field is removed", async () => {
+      // objective declares `legacy`; task extends objective and inherits it.
+      const oldSchema = {
+        version: 2 as const,
+        schemaVersion: "1.0.0",
+        types: {
+          objective: {
+            output_dir: "Objectives",
+            fields: {
+              name: { prompt: "text", required: true },
+              legacy: { prompt: "text" },
+            },
+          },
+          task: {
+            extends: "objective",
+            output_dir: "Tasks",
+            fields: { name: { prompt: "text", required: true } },
+          },
+        },
+      };
+      // Remove objective.legacy.
+      const newSchema = {
+        ...oldSchema,
+        schemaVersion: "2.0.0",
+        types: {
+          ...oldSchema.types,
+          objective: {
+            ...oldSchema.types.objective,
+            fields: { name: { prompt: "text", required: true } },
+          },
+        },
+      };
+
+      await writeFile(
+        join(testDir, ".bwrb/schema.json"),
+        JSON.stringify(newSchema)
+      );
+      await mkdir(join(testDir, "Tasks"), { recursive: true });
+      // A TASK note (descendant type) carrying the inherited `legacy` field.
+      await writeFile(
+        join(testDir, "Tasks/Task-1.md"),
+        `---\ntype: task\nname: Task One\nlegacy: stale value\n---\n# Task One\n`
+      );
+
+      const schema = await loadSchema(testDir);
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "2.0.0");
+
+      // The diff fans out remove-field to BOTH the declaring and inheriting type.
+      const removeTargets = plan.nonDeterministic
+        .filter((op) => op.op === "remove-field" && op.field === "legacy")
+        .map((op) => (op.op === "remove-field" ? op.targetType : ""));
+      expect(removeTargets).toContain("objective");
+      expect(removeTargets).toContain("task");
+
+      const result = await executeMigration({
+        vaultDir: testDir,
+        schema,
+        plan,
+        execute: true,
+        backup: false,
+      });
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.affectedFiles).toBe(1);
+      const content = await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8");
+      // The inherited field is gone from the child-type note.
+      expect(content).not.toContain("legacy:");
+      expect(content).not.toContain("stale value");
+    });
+  });
+
   // P1 (#728, fourth review) — data-loss guard. A subtype that edits its OWN raw
   // structural override of an INHERITED field changes nothing EFFECTIVELY (the
   // resolver drops the child's structural keys for an inherited field). The diff

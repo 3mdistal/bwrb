@@ -778,6 +778,132 @@ describe("diffSchemas", () => {
     });
   });
 
+  // #728 (removal fan-out): field REMOVAL, like field-changed, is derived from
+  // the EFFECTIVE (resolved) schema. Removing a field declared on a PARENT drops
+  // it from every inheriting descendant's effective schema, so a `remove-field`
+  // op must be emitted per concrete type that loses it — the declaring parent AND
+  // each inheriting descendant — so each type's notes are cleaned under their own
+  // exact `expectedType` (executeMigration groups field ops by exact type).
+  describe("field-removal inheritance (declaring type + inheriting descendants)", () => {
+    // objective declares `legacy` (and `phase`); task extends objective and
+    // inherits both; standalone has its OWN `legacy` field (genuine, not
+    // inherited from objective).
+    const removalBase: BwrbSchemaType = {
+      version: 2,
+      schemaVersion: "1.0.0",
+      types: {
+        objective: {
+          fields: {
+            phase: { prompt: "select", options: ["planned", "active", "done"] },
+            legacy: { prompt: "text" },
+          },
+        },
+        task: {
+          extends: "objective",
+          fields: {
+            title: { prompt: "text" },
+          },
+        },
+        standalone: {
+          fields: {
+            // OWN genuine `legacy` field — NOT inherited from objective.
+            legacy: { prompt: "text" },
+          },
+        },
+      },
+    };
+
+    it("fans out remove-field to the declaring type AND every inheriting descendant", () => {
+      // Remove objective.legacy. task INHERITS legacy → its notes hold `legacy`
+      // and must be cleaned too.
+      const newSchema: BwrbSchemaType = {
+        ...removalBase,
+        schemaVersion: "2.0.0",
+        types: {
+          ...removalBase.types,
+          objective: {
+            ...removalBase.types.objective,
+            fields: {
+              phase: removalBase.types.objective.fields!.phase,
+              // legacy removed
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(removalBase, newSchema, "1.0.0", "2.0.0");
+
+      const removeOps = plan.nonDeterministic.filter(
+        (op) => op.op === "remove-field" && op.field === "legacy"
+      );
+      const targetedTypes = removeOps.map((op) =>
+        op.op === "remove-field" ? op.targetType : ""
+      );
+
+      // Declaring type AND inheriting descendant are both targeted.
+      expect(targetedTypes).toContain("objective");
+      expect(targetedTypes).toContain("task");
+      // The descendant op references the field under its OWN type so notes whose
+      // expectedType is `task` get cleaned.
+      expect(removeOps).toContainEqual({
+        op: "remove-field",
+        targetType: "task",
+        field: "legacy",
+      });
+    });
+
+    it("emits the declaring-type remove-field exactly once (no double-emit)", () => {
+      const newSchema: BwrbSchemaType = {
+        ...removalBase,
+        schemaVersion: "2.0.0",
+        types: {
+          ...removalBase.types,
+          objective: {
+            ...removalBase.types.objective,
+            fields: { phase: removalBase.types.objective.fields!.phase },
+          },
+        },
+      };
+
+      const plan = diffSchemas(removalBase, newSchema, "1.0.0", "2.0.0");
+
+      const objectiveRemoveOps = plan.nonDeterministic.filter(
+        (op) =>
+          op.op === "remove-field" &&
+          op.field === "legacy" &&
+          op.targetType === "objective"
+      );
+      expect(objectiveRemoveOps).toHaveLength(1);
+    });
+
+    it("does NOT emit remove-field for a descendant that has its OWN same-named field when an unrelated parent field is removed", () => {
+      // Remove objective.legacy. `standalone` has its OWN `legacy` (not inherited
+      // from objective), so its effective `legacy` survives — it must NOT be
+      // targeted.
+      const newSchema: BwrbSchemaType = {
+        ...removalBase,
+        schemaVersion: "2.0.0",
+        types: {
+          ...removalBase.types,
+          objective: {
+            ...removalBase.types.objective,
+            fields: { phase: removalBase.types.objective.fields!.phase },
+          },
+        },
+      };
+
+      const plan = diffSchemas(removalBase, newSchema, "1.0.0", "2.0.0");
+
+      const removeOps = plan.nonDeterministic.filter(
+        (op) => op.op === "remove-field" && op.field === "legacy"
+      );
+      const targetedTypes = removeOps.map((op) =>
+        op.op === "remove-field" ? op.targetType : ""
+      );
+      expect(targetedTypes).not.toContain("standalone");
+    });
+  });
+
   // P1 (#728, fourth review): field-changed ops are derived from the EFFECTIVE
   // (resolved) schema, not raw field entries. A subtype that edits its OWN raw
   // structural override of an INHERITED field changes NOTHING effectively — the

@@ -114,6 +114,12 @@ function detectChanges(
   // not raw per-type entries (see detectEffectiveFieldChanges for why).
   changes.push(...detectEffectiveFieldChanges(resolvedOld, resolvedNew));
 
+  // Field *removal* is likewise computed from the EFFECTIVE resolved schemas so
+  // a parent field removal fans out to every inheriting descendant that loses it
+  // (see detectEffectiveFieldRemovals for why). The raw per-type path no longer
+  // emits removals, so there is no double-emit for the declaring type.
+  changes.push(...detectEffectiveFieldRemovals(resolvedOld, resolvedNew));
+
   return changes;
 }
 
@@ -178,14 +184,26 @@ function detectTypeChanges(
 }
 
 /**
- * Detect raw field add/remove for a type.
+ * Detect raw field ADDS for a type.
  *
- * Only structural presence (a field appearing or disappearing in the type's RAW
- * definition) is detected here. Field *content* changes are intentionally NOT
- * detected from raw entries — those are derived from the EFFECTIVE resolved
- * schema instead (see detectEffectiveFieldChanges), because a raw structural
- * override on a child is silently dropped by the resolver's restricted merge and
- * raw ≠ effective for inherited fields.
+ * Only structural presence (a field appearing in the type's RAW definition) is
+ * detected here. Two things are intentionally NOT detected from raw entries:
+ *
+ *   - Field *content* changes — derived from the EFFECTIVE resolved schema
+ *     instead (see detectEffectiveFieldChanges), because a raw structural
+ *     override on a child is silently dropped by the resolver's restricted merge
+ *     and raw ≠ effective for inherited fields.
+ *   - Field *removals* — also derived from the EFFECTIVE resolved schema (see
+ *     detectEffectiveFieldRemovals). A field declared on a PARENT and removed
+ *     disappears from every inheriting descendant's effective schema too, so the
+ *     cleanup must fan out per concrete type; a raw per-type loop would only emit
+ *     for the declaring parent and leave child-type notes with now-invalid
+ *     inherited frontmatter (#728 removal-fan-out defect).
+ *
+ * Raw ADD detection is kept here because adding a field to a parent makes it
+ * inherited by descendants as an OPTIONAL field they simply lack — no per-note
+ * mutation is needed for the descendants, so a single declaring-type op is
+ * sufficient and the effective fan-out add-path would be redundant.
  */
 function detectFieldChanges(
   typeName: string,
@@ -205,12 +223,8 @@ function detectFieldChanges(
     }
   }
 
-  // Removed fields
-  for (const name of oldNames) {
-    if (!newNames.has(name)) {
-      changes.push({ kind: 'field-removed', type: typeName, field: name });
-    }
-  }
+  // Removed fields are detected from the EFFECTIVE schema, not here — see
+  // detectEffectiveFieldRemovals.
 
   return changes;
 }
@@ -279,6 +293,55 @@ function detectEffectiveFieldChanges(
           field: fieldName,
           changes: fieldChanges,
         });
+      }
+    }
+  }
+
+  return changes;
+}
+
+/**
+ * Detect field REMOVALS from the EFFECTIVE resolved schemas.
+ *
+ * Mirrors detectEffectiveFieldChanges: a field is *effectively removed* for a
+ * concrete type T when T had it in the OLD effective schema but no longer has it
+ * in the NEW effective schema. Deriving removal from the effective (inheritance-
+ * resolved) schema — rather than the raw per-type entry — is what makes the
+ * cleanup fan out correctly:
+ *
+ *   - Removing a field declared on a PARENT drops it from the effective schema of
+ *     EVERY inheriting descendant that didn't re-declare it as its own genuine
+ *     field. Each such concrete type's effective field disappears old → new, so
+ *     each gets its own `remove-field` op and its notes are cleaned under their
+ *     exact `expectedType` (executeMigration groups field ops by exact type).
+ *   - A descendant that defines the same-named field as its OWN genuine
+ *     (non-inherited) field still has it in the NEW effective schema after the
+ *     parent's removal, so it is correctly NOT emitted — its own field survives.
+ *
+ * One detection is emitted per CONCRETE type that effectively loses the field.
+ * Only types present concretely in BOTH schemas are considered: a type that is
+ * new or removed wholesale is handled by the type-added/-removed path.
+ */
+function detectEffectiveFieldRemovals(
+  resolvedOld: LoadedSchema,
+  resolvedNew: LoadedSchema
+): DetectedChange[] {
+  const changes: DetectedChange[] = [];
+
+  const newConcrete = new Set(getConcreteTypeNames(resolvedNew));
+
+  for (const typeName of getConcreteTypeNames(resolvedOld)) {
+    if (!newConcrete.has(typeName)) continue;
+
+    const oldType = resolvedOld.types.get(typeName);
+    const newType = resolvedNew.types.get(typeName);
+    if (!oldType || !newType) continue;
+
+    const newFields = newType.fields;
+
+    for (const fieldName of Object.keys(oldType.fields)) {
+      if (newFields[fieldName] === undefined) {
+        changes.push({ kind: 'field-removed', type: typeName, field: fieldName });
       }
     }
   }
