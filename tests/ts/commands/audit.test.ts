@@ -3239,6 +3239,14 @@ status: raw
           fields: { type: { value: 'track' } },
           field_order: ['type'],
         },
+        // An UNRELATED, non-owned type. A `note` named the same as an ambiguous
+        // owned `track` declaration must NOT be dragged into the ownership
+        // machinery (#734 follow-up).
+        note: {
+          output_dir: 'Notes',
+          fields: { type: { value: 'note' } },
+          field_order: ['type'],
+        },
       },
     };
 
@@ -3252,6 +3260,7 @@ status: raw
       await mkdir(join(tempVaultDir, 'Albums/Best Album/songs'), { recursive: true });
       await mkdir(join(tempVaultDir, 'Mixtapes/Summer Mix/tracks'), { recursive: true });
       await mkdir(join(tempVaultDir, 'Tracks'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Notes'), { recursive: true });
     });
 
     afterEach(async () => {
@@ -3398,6 +3407,102 @@ status: raw
       // Ambiguous conflict still present afterwards.
       const after = await runCLI(['audit', '--output', 'json'], tempVaultDir);
       expect(after.exitCode).toBe(1);
+    });
+
+    // ---- #734 follow-up: child-type filter on the ambiguity determination ----
+
+    it('does NOT flag a correctly-filed DIFFERENT-typed note sharing the basename of an ambiguous owned declaration', async () => {
+      // Both owners declare ownership of "[[Shared]]" for their owned TRACK
+      // fields, so "shared" is an ambiguous owned-track basename. But the actual
+      // file Notes/Shared.md is a `type: note`, correctly placed under Notes/.
+      // The ambiguity is about TRACKS, not notes — the note must NOT be flagged
+      // (neither owned-ambiguous-owner nor owned-wrong-location) and must stay
+      // put.
+      await writeFile(
+        join(tempVaultDir, 'Albums/Best Album', 'Best Album.md'),
+        `---\ntype: album\nsongs:\n  - "[[Shared]]"\n---\n`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Mixtapes/Summer Mix', 'Summer Mix.md'),
+        `---\ntype: mixtape\ntracks:\n  - "[[Shared]]"\n---\n`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Notes', 'Shared.md'),
+        `---\ntype: note\nmarker: KEEP\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const note = output.files.find((f: { path: string }) =>
+        f.path.includes('Notes/Shared.md')
+      );
+      // Either the note has no issues at all (so it's not in the report), or it
+      // is present but carries NONE of the ownership conflict codes.
+      if (note) {
+        expect(
+          note.issues.find((i: { code: string }) => i.code === 'owned-ambiguous-owner')
+        ).toBeUndefined();
+        expect(
+          note.issues.find((i: { code: string }) => i.code === 'owned-wrong-location')
+        ).toBeUndefined();
+        expect(
+          note.issues.find((i: { code: string }) => i.code === 'wrong-directory')
+        ).toBeUndefined();
+      }
+
+      // --fix --auto --execute must leave the correctly-filed note untouched.
+      await runCLI(['audit', '--fix', '--all', '--auto', '--execute'], tempVaultDir);
+      const stillThere = await readFile(
+        join(tempVaultDir, 'Notes', 'Shared.md'),
+        'utf-8'
+      ).catch(() => null);
+      expect(stillThere).not.toBeNull();
+      expect(stillThere).toContain('KEEP');
+      // It was NOT pulled under either owner's owned subtree.
+      const underAlbum = await readFile(
+        join(tempVaultDir, 'Albums/Best Album/songs', 'Shared.md'),
+        'utf-8'
+      ).catch(() => null);
+      expect(underAlbum).toBeNull();
+      const underMixtape = await readFile(
+        join(tempVaultDir, 'Mixtapes/Summer Mix/tracks', 'Shared.md'),
+        'utf-8'
+      ).catch(() => null);
+      expect(underMixtape).toBeNull();
+    });
+
+    it('STILL flags a genuinely misplaced TRACK named like an ambiguous declaration', async () => {
+      // Same two ambiguous track declarations, but now the basename-sharing file
+      // really IS a `track` (and misplaced in Tracks/). The genuine ambiguous
+      // case must still fire and must NOT be auto-fixed.
+      await writeFile(
+        join(tempVaultDir, 'Albums/Best Album', 'Best Album.md'),
+        `---\ntype: album\nsongs:\n  - "[[Shared]]"\n---\n`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Mixtapes/Summer Mix', 'Summer Mix.md'),
+        `---\ntype: mixtape\ntracks:\n  - "[[Shared]]"\n---\n`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Tracks', 'Shared.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const track = output.files.find((f: { path: string }) =>
+        f.path.includes('Tracks/Shared.md')
+      );
+      expect(track).toBeDefined();
+      const ambiguous = track.issues.find(
+        (i: { code: string }) => i.code === 'owned-ambiguous-owner'
+      );
+      expect(ambiguous).toBeDefined();
+      expect(ambiguous.autoFixable).toBe(false);
+      expect(
+        track.issues.find((i: { code: string }) => i.code === 'owned-wrong-location')
+      ).toBeUndefined();
     });
 
     // ---- Defect B: declared owner ≠ physical owner ----

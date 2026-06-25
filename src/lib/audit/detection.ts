@@ -78,11 +78,11 @@ import {
 // Import ownership tracking
 import {
   buildOwnershipIndex,
-  findDeclaredOwner,
-  isDeclaredOwnershipAmbiguous,
+  getDeclaredOwners,
   canReference,
   extractWikilinkReferences,
   type OwnershipIndex,
+  type OwnedNoteInfo,
 } from '../ownership.js';
 
 // Import unlinked-mention detection (ingest safety net, #600)
@@ -1736,6 +1736,16 @@ type MisplacedOwnedNote =
  *     caller reports a conflict for manual resolution instead of auto-moving the
  *     note under whichever owner happened to be scanned first (#734, defect A).
  *
+ * Crucially, the SAME child-type filter from (1) is applied BEFORE deciding
+ * ambiguity in (2): ambiguity is judged using only the declaring owners whose
+ * owned child type matches the audited note's resolved type. Otherwise a
+ * correctly-filed, different-typed note (e.g. `type: note` `Notes/Shared.md`)
+ * would be falsely flagged `owned-ambiguous-owner` merely because two owners
+ * both declare `[[Shared]]` for their owned `track` fields. After the type
+ * filter: 2+ matching owners → ambiguous; exactly 1 → normal
+ * misplaced/correct-placement logic; 0 → not owned of this type → `undefined`
+ * (the note falls through to ordinary wrong-directory handling) (#734 follow-up).
+ *
  * Defect B: a note declared by owner A may be physically placed under a
  * DIFFERENT valid owner B's subtree, in which case discovery sets
  * `file.ownership` (= owner B). We must NOT early-return on `file.ownership`:
@@ -1753,17 +1763,44 @@ function findMisplacedOwnedNote(
   const noteName = basename(file.relativePath, '.md');
   const actualDir = dirname(file.relativePath);
 
-  // Multi-owner conflict (#734, defect A): two or more distinct owners declare
-  // this basename. We cannot choose one without guessing, so surface it as an
-  // ambiguous conflict — regardless of where the note physically sits — so the
-  // caller never auto-restores it under an arbitrary owner. This is checked
-  // first so it also wins over an arbitrary single-owner restore.
-  if (isDeclaredOwnershipAmbiguous(ownershipIndex, noteName)) {
+  // Resolve the owned child TYPE that a given declaring owner expects for the
+  // field that declared this basename. A same-named note of a DIFFERENT type is
+  // not this owned note (guard #1). Returns the child type, or `undefined` when
+  // the field can't be resolved (treated as a non-match by the filter below).
+  const declaredChildType = (declared: OwnedNoteInfo): string | undefined =>
+    getOwnedFields(schema, declared.ownerType).find(
+      f => f.fieldName === declared.fieldName
+    )?.childType;
+
+  const typeMatchesAudited = (childType: string | undefined): boolean =>
+    childType !== undefined &&
+    (resolvedTypePath === childType ||
+      getDescendants(schema, childType).includes(resolvedTypePath));
+
+  // Only declarations whose owned child type matches the AUDITED note's resolved
+  // type count toward ownership of this note. Applying this type filter BEFORE
+  // deciding ambiguity is the fix for #734's follow-up: a correctly-filed note of
+  // a different type that merely shares a basename with an ambiguous owned
+  // declaration must NOT be treated as owned (neither ambiguous nor misplaced).
+  const matchingOwners = getDeclaredOwners(ownershipIndex, noteName).filter(o =>
+    typeMatchesAudited(declaredChildType(o))
+  );
+
+  // 0 type-matching owners → not an owned note of this type. Fall through to
+  // ordinary wrong-directory handling (a correctly-placed note stays put).
+  if (matchingOwners.length === 0) return undefined;
+
+  // 2+ distinct type-matching owners → genuine multi-owner conflict (#734,
+  // defect A). We cannot choose one without guessing, so surface it as an
+  // ambiguous conflict regardless of where the note physically sits, so the
+  // caller never auto-restores it under an arbitrary owner. (`getDeclaredOwners`
+  // already deduplicates by owner path, so the same owner never double-counts.)
+  if (matchingOwners.length >= 2) {
     return { kind: 'ambiguous', actualDir };
   }
 
-  const declared = findDeclaredOwner(ownershipIndex, noteName);
-  if (!declared) return undefined;
+  // Exactly one type-matching owner declares this note → normal owned-note logic.
+  const declared = matchingOwners[0]!;
 
   // If the note is physically under the SAME owner that declares it, it is
   // already correctly placed (discovery's `file.ownership` records the physical
@@ -1773,17 +1810,6 @@ function findMisplacedOwnedNote(
   if (file.ownership && file.ownership.ownerPath === declared.ownerPath) {
     return undefined;
   }
-
-  // Verify the candidate's ACTUAL type matches the owned field's source type.
-  // A same-named note of a different type is not this owned note.
-  const ownedChildType = getOwnedFields(schema, declared.ownerType).find(
-    f => f.fieldName === declared.fieldName
-  )?.childType;
-  if (ownedChildType === undefined) return undefined;
-  const typeMatches =
-    resolvedTypePath === ownedChildType ||
-    getDescendants(schema, ownedChildType).includes(resolvedTypePath);
-  if (!typeMatches) return undefined;
 
   const expectedDir = getOwnedChildFolder(declared.ownerPath, declared.fieldName);
 

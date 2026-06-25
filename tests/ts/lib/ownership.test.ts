@@ -7,6 +7,7 @@ import {
   buildOwnershipIndex,
   isNoteOwned,
   findDeclaredOwner,
+  getDeclaredOwners,
   isDeclaredOwnershipAmbiguous,
   canReference,
   validateNewOwned,
@@ -339,6 +340,49 @@ describe('Ownership Index Building', () => {
 
     expect(isDeclaredOwnershipAmbiguous(index, 'Stray Notes')).toBe(false);
     expect(findDeclaredOwner(index, 'Stray Notes')).toBeDefined();
+  });
+
+  // `getDeclaredOwners` exposes EVERY distinct declaring owner (with the field
+  // that declared it) so callers can re-evaluate ambiguity AFTER filtering by
+  // the audited note's resolved child type (#734 follow-up).
+  it('returns all distinct declaring owners (each with its declaring field) for a basename', async () => {
+    // Both draft (via `research`) and project (via `notes`) declare "Shared Notes".
+    createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+      type: 'draft',
+      status: 'active',
+      research: ['[[Shared Notes]]'],
+    });
+    createNote(vaultDir, 'projects/Big Project/Big Project.md', {
+      type: 'project',
+      status: 'active',
+      notes: ['[[Shared Notes]]'],
+    });
+
+    const schema = await loadSchema(vaultDir);
+    const index = await buildOwnershipIndex(schema, vaultDir);
+
+    const owners = getDeclaredOwners(index, 'Shared Notes');
+    expect(owners).toHaveLength(2);
+    // Both declaring fields are preserved (the data the type filter relies on).
+    expect(owners.map(o => o.fieldName).sort()).toEqual(['notes', 'research']);
+    expect(owners.map(o => o.ownerType).sort()).toEqual(['draft', 'project']);
+    // Case-insensitive, all wikilink forms.
+    expect(getDeclaredOwners(index, 'shared notes')).toHaveLength(2);
+    // Unknown basenames resolve to an empty list.
+    expect(getDeclaredOwners(index, 'Unknown')).toEqual([]);
+  });
+
+  it('deduplicates the SAME owner declaring a basename more than once', async () => {
+    createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+      type: 'draft',
+      status: 'active',
+      research: ['[[Stray Notes]]', '[[Stray Notes]]'],
+    });
+
+    const schema = await loadSchema(vaultDir);
+    const index = await buildOwnershipIndex(schema, vaultDir);
+
+    expect(getDeclaredOwners(index, 'Stray Notes')).toHaveLength(1);
   });
 });
 

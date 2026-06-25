@@ -71,8 +71,27 @@ export interface OwnershipIndex {
    * misplaced note of that name truly belongs to, so audit must surface it as a
    * conflict requiring MANUAL resolution rather than auto-restoring it under an
    * arbitrarily-chosen owner (#734 / multi-owner data-safety gap).
+   *
+   * NOTE: this set answers ambiguity by BASENAME ALONE and is intentionally
+   * type-blind. It is retained for callers that only care that a basename is
+   * declared by multiple owners. Audit's misplaced-owned-note logic must NOT use
+   * it directly to decide a conflict, because two owners declaring the same
+   * basename for owned fields of one type does not make a DIFFERENT-typed,
+   * correctly-filed note of that name ambiguous. For type-aware ambiguity, use
+   * `getDeclaredOwners` and filter by the audited note's resolved child type.
    */
   ambiguousDeclaredOwners: Set<string>;
+  /**
+   * Map from a declared owned-note name (normalized via `declaredOwnerKey`) →
+   * the list of ALL distinct declaring owners for that basename (deduplicated by
+   * owner path). Unlike `declaredOwned` (first owner only) this preserves every
+   * owner's `OwnedNoteInfo` (owner path/type + the declaring field), so callers
+   * can re-evaluate ambiguity AFTER filtering to the owners whose owned child
+   * TYPE matches the audited note's resolved type. This is what lets audit avoid
+   * flagging an unrelated, different-typed note that merely shares a basename
+   * with an ambiguous owned declaration (#734 follow-up).
+   */
+  declaredOwnersByName: Map<string, OwnedNoteInfo[]>;
 }
 
 /**
@@ -119,6 +138,7 @@ export async function buildOwnershipIndex(
   const ownerToOwned = new Map<string, Set<string>>();
   const declaredOwned = new Map<string, OwnedNoteInfo>();
   const ambiguousDeclaredOwners = new Set<string>();
+  const declaredOwnersByName = new Map<string, OwnedNoteInfo[]>();
 
   // Find all types that can own things
   const ownerTypes = new Set<string>();
@@ -150,7 +170,8 @@ export async function buildOwnershipIndex(
             ownedNotes,
             ownerToOwned,
             declaredOwned,
-            ambiguousDeclaredOwners
+            ambiguousDeclaredOwners,
+            declaredOwnersByName
           );
         }
       } else if (entry.isFile() && entry.name.endsWith('.md')) {
@@ -164,13 +185,20 @@ export async function buildOwnershipIndex(
           ownedNotes,
           ownerToOwned,
           declaredOwned,
-          ambiguousDeclaredOwners
+          ambiguousDeclaredOwners,
+          declaredOwnersByName
         );
       }
     }
   }
 
-  return { ownedNotes, ownerToOwned, declaredOwned, ambiguousDeclaredOwners };
+  return {
+    ownedNotes,
+    ownerToOwned,
+    declaredOwned,
+    ambiguousDeclaredOwners,
+    declaredOwnersByName,
+  };
 }
 
 /**
@@ -184,7 +212,8 @@ async function indexOwnerNote(
   ownedNotes: Map<string, OwnedNoteInfo>,
   ownerToOwned: Map<string, Set<string>>,
   declaredOwned: Map<string, OwnedNoteInfo>,
-  ambiguousDeclaredOwners: Set<string>
+  ambiguousDeclaredOwners: Set<string>,
+  declaredOwnersByName: Map<string, OwnedNoteInfo[]>
 ): Promise<void> {
   const relativeOwnerPath = relative(vaultDir, ownerNotePath);
   const ownedFields = getOwnedFields(schema, ownerTypeName);
@@ -239,14 +268,15 @@ async function indexOwnerNote(
       : []) {
       const normalizedName = wikilinkTargetBasename(refName);
       const key = declaredOwnerKey(normalizedName);
+      const info: OwnedNoteInfo = {
+        notePath: normalizedName,
+        ownerPath: relativeOwnerPath,
+        ownerType: ownerTypeName,
+        fieldName: ownedField.fieldName,
+      };
       const existing = declaredOwned.get(key);
       if (existing === undefined) {
-        declaredOwned.set(key, {
-          notePath: normalizedName,
-          ownerPath: relativeOwnerPath,
-          ownerType: ownerTypeName,
-          fieldName: ownedField.fieldName,
-        });
+        declaredOwned.set(key, info);
       } else if (existing.ownerPath !== relativeOwnerPath) {
         // A DIFFERENT owner already declares this basename. We cannot pick one
         // owner without guessing, so flag the key as ambiguous. The first-seen
@@ -256,6 +286,20 @@ async function indexOwnerNote(
         // (#734). A repeat declaration from the SAME owner (e.g. the basename
         // listed twice, or under two of its own fields) is not a conflict.
         ambiguousDeclaredOwners.add(key);
+      }
+
+      // Record EVERY distinct declaring owner for this basename (deduplicated by
+      // owner path), preserving each owner's type + declaring field. This is the
+      // type-aware source of truth: audit filters this list to the owners whose
+      // owned child TYPE matches the audited note's resolved type before deciding
+      // whether the note is ambiguous, misplaced, or simply not owned (#734
+      // follow-up). A repeat declaration from the SAME owner is collapsed so the
+      // same owner never counts twice toward ambiguity.
+      const owners = declaredOwnersByName.get(key);
+      if (owners === undefined) {
+        declaredOwnersByName.set(key, [info]);
+      } else if (!owners.some(o => o.ownerPath === relativeOwnerPath)) {
+        owners.push(info);
       }
     }
 
@@ -333,6 +377,30 @@ export function findDeclaredOwner(
   noteName: string
 ): OwnedNoteInfo | undefined {
   return index.declaredOwned.get(declaredOwnerKey(noteName));
+}
+
+/**
+ * Return ALL distinct owners that declare this note's basename as owned (each
+ * via one of its `owned` frontmatter fields), deduplicated by owner path.
+ *
+ * Unlike `findDeclaredOwner` (which returns only the first-scanned owner) and
+ * `isDeclaredOwnershipAmbiguous` (a type-blind basename check), this exposes
+ * every declaring owner together with the field that declared it, so a caller
+ * holding the schema can derive each owner's owned child TYPE and decide
+ * ambiguity using ONLY the owners whose child type matches the audited note.
+ * That type filter is what prevents a correctly-filed, different-typed note that
+ * merely shares a basename with an ambiguous owned declaration from being
+ * mislabeled an ownership conflict (#734 follow-up).
+ *
+ * Keyed via the same `declaredOwnerKey` normalization as the index, so all
+ * wikilink forms agree with the lookup. Returns an empty array when no owner
+ * declares the basename.
+ */
+export function getDeclaredOwners(
+  index: OwnershipIndex,
+  noteName: string
+): OwnedNoteInfo[] {
+  return index.declaredOwnersByName.get(declaredOwnerKey(noteName)) ?? [];
 }
 
 /**
