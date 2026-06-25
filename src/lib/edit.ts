@@ -32,6 +32,7 @@ import {
   validateFrontmatter,
   validateContextFields,
   normalizeDateFields,
+  applyDefaults,
 } from './validation.js';
 import { validateParentNoCycle } from './hierarchy.js';
 import {
@@ -161,8 +162,19 @@ export async function editNoteFromJson(
   // Normalize date-like fields to canonical YYYY-MM-DD strings
   const normalizedFrontmatter = normalizeDateFields(schema, typePath, mergedFrontmatter);
 
+  // Materialize defaults BEFORE validating/writing, mirroring the `new` path
+  // (json-mode.ts). Without this, a blank (incl. whitespace-only) REQUIRED field
+  // that HAS a default would pass validation — `validateFrontmatter` treats it as
+  // "unset → satisfied by the default" (#707) — but the blank value would be
+  // PERSISTED, so a subsequent `audit` flags it `empty-string-required`: write
+  // says OK, audit says broken. `applyDefaults` only fills blanks (it never
+  // overwrites a real user value) and only where a `default`/`value` is declared,
+  // so optional fields with no default stay unset (trim-everywhere preserved) and
+  // required fields with no default remain blank → still rejected below.
+  const resolvedFrontmatter = applyDefaults(schema, typePath, normalizedFrontmatter);
+
   // Validate merged result
-  const validation = validateFrontmatter(schema, typePath, normalizedFrontmatter);
+  const validation = validateFrontmatter(schema, typePath, resolvedFrontmatter);
   if (!validation.valid) {
     if (jsonMode) {
       printJson({
@@ -183,7 +195,7 @@ export async function editNoteFromJson(
   }
 
   // Validate context fields (source type constraints)
-  const contextValidation = await validateContextFields(schema, vaultDir, typePath, normalizedFrontmatter);
+  const contextValidation = await validateContextFields(schema, vaultDir, typePath, resolvedFrontmatter);
   if (!contextValidation.valid) {
     if (jsonMode) {
       printJson({
@@ -204,13 +216,13 @@ export async function editNoteFromJson(
   }
 
   // Validate parent field doesn't create a cycle (for recursive types)
-  if (typeDef.recursive && normalizedFrontmatter['parent']) {
+  if (typeDef.recursive && resolvedFrontmatter['parent']) {
     const noteName = filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
     const cycleError = await validateParentNoCycle(
       schema,
       vaultDir,
       noteName,
-      normalizedFrontmatter['parent'] as string
+      resolvedFrontmatter['parent'] as string
     );
     if (cycleError) {
       if (jsonMode) {
@@ -230,7 +242,7 @@ export async function editNoteFromJson(
 
   // Get field order
   const fieldOrder = getFrontmatterOrder(typeDef);
-  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(normalizedFrontmatter);
+  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(resolvedFrontmatter);
 
   // Recurrence fast path (atomicity, #107): VALIDATE + COMPUTE the successor
   // BEFORE mutating the predecessor. If this completion would spawn a successor
@@ -243,12 +255,12 @@ export async function editNoteFromJson(
     typeDef.name,
     filePath,
     frontmatter,
-    normalizedFrontmatter,
+    resolvedFrontmatter,
     body
   );
 
   // Write updated note (predecessor status change is now safe to commit).
-  await writeNote(filePath, normalizedFrontmatter, body, orderedFields);
+  await writeNote(filePath, resolvedFrontmatter, body, orderedFields);
 
   // Commit the prepared spawn (create successor + back-link `next`). Identical
   // result to the audit backstop, which shares the same engine.
