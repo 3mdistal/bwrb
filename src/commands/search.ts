@@ -12,7 +12,7 @@ import { basename } from 'path';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
 import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
-import { configurePromptMode, printError, printSuccess } from '../lib/prompt.js';
+import { configurePromptMode, printError, printSuccess, printWarning } from '../lib/prompt.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError, warnDeprecated, type SearchOutputFormat } from '../lib/output.js';
 import { openNote, resolveAppMode } from './open.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
@@ -152,7 +152,7 @@ export const searchCommand = new Command('search')
   .option('-b, --body', 'Full-text content search (uses ripgrep)')
   .option('--text', 'DEPRECATED: use --body')
   .option('-t, --type <type>', 'Restrict search to a type (e.g., idea, objective/task)')
-  .option('-p, --path <pattern>', 'Filter by file path glob pattern (e.g., "Projects/**")')
+  .option('-p, --path <pattern>', 'Filter by file path glob pattern, e.g. "Projects/**" (works in name, --fuzzy, and --body modes)')
   .option('--path-glob <pattern>', 'DEPRECATED: use --path')
   .option('-w, --where <expression...>', 'Filter results by frontmatter expression')
   .option('-C, --context <lines>', 'Lines of context around matches (default: 2)')
@@ -167,7 +167,12 @@ export const searchCommand = new Command('search')
   .addHelpText('after', `
 Name Search (default):
   Searches by note name, basename, or path.
-  
+
+  -p, --path <pat>     Scope resolution to a path glob (e.g. "Projects/**").
+                       Applies in name, --fuzzy, and --body modes. If both
+                       --path and the deprecated --path-glob are passed, --path
+                       wins and --path-glob is ignored (with a warning).
+
   Output Formats (--output):
     name        Output just the note name (default)
     paths       Output vault-relative path with extension
@@ -264,10 +269,19 @@ Examples:
       options.body = true;
     }
 
-    // Handle deprecated --path-glob flag
-    if (options.pathGlob && !options.path) {
-      warnDeprecated('--path-glob', '--path');
-      options.path = options.pathGlob;
+    // Handle deprecated --path-glob flag.
+    // --path-glob is a deprecated alias for --path. If both are given, --path
+    // wins and --path-glob is ignored; warn so the user isn't surprised that
+    // their --path-glob value silently had no effect (#705).
+    if (options.pathGlob) {
+      if (options.path) {
+        printWarning(
+          `Warning: both --path and --path-glob were provided; --path-glob is a deprecated alias for --path, so --path ("${options.path}") wins and --path-glob ("${options.pathGlob}") is ignored.`
+        );
+      } else {
+        warnDeprecated('--path-glob', '--path');
+        options.path = options.pathGlob;
+      }
     }
 
     // Validate mutual exclusivity of --open and --edit
@@ -377,9 +391,43 @@ async function handleContentSearch(
     }
   }
 
-  // Parse options
-  const contextLines = options.noContext ? 0 : parseInt(options.context ?? '2', 10);
-  const limit = parseInt(options.limit ?? '100', 10);
+  // Parse options. Use the same strict integer parsing as the fuzzy path so
+  // malformed values (e.g. "abc", "2.7", "1e1") are rejected with a clear error
+  // instead of being silently coerced by parseInt's lenient parsing (#705).
+  // Commander maps --no-context to options.context === false (see the option
+  // definition). Treat that sentinel (and the legacy noContext flag) as 0 lines
+  // BEFORE strict parsing, so we never try to parse the boolean as an integer.
+  let contextLines = 2;
+  if (options.noContext || (options.context as unknown) === false) {
+    contextLines = 0;
+  } else if (options.context !== undefined) {
+    const parsed = parseStrictInteger(options.context);
+    if (parsed === null || parsed < 0) {
+      const error = `Invalid --context "${options.context}": must be a non-negative integer`;
+      if (jsonMode) {
+        printJson(jsonError(error));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      printError(error);
+      process.exit(1);
+    }
+    contextLines = parsed;
+  }
+
+  let limit = 100;
+  if (options.limit !== undefined) {
+    const parsed = parseStrictInteger(options.limit);
+    if (parsed === null || parsed < 1) {
+      const error = `Invalid --limit "${options.limit}": must be a positive integer`;
+      if (jsonMode) {
+        printJson(jsonError(error));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      printError(error);
+      process.exit(1);
+    }
+    limit = parsed;
+  }
 
   // Run content search.
   //
@@ -665,7 +713,8 @@ async function handleFuzzySearch(
     process.exit(1);
   }
 
-  const index = await buildNoteIndex(schema, vaultDir);
+  // Scope to --path when provided, consistent with name and content search (#705).
+  const index = await buildNoteIndex(schema, vaultDir, options.path);
   const matches = await fuzzySearch(index, query, schema, vaultDir, { threshold, limit });
 
   // --open / --edit: act on the matched note(s), reusing the exact open/edit +
@@ -839,8 +888,11 @@ async function handleNameSearch(
   // JSON mode implies non-interactive (but returns all matches instead of error)
   const effectivePickerMode: PickerMode = jsonMode ? 'none' : pickerMode;
 
-  // Build note index
-  const index = await buildNoteIndex(schema, vaultDir);
+  // Build note index, scoping to --path when provided. Name-mode --path is
+  // honored (not ignored) for consistency with content search: the same
+  // filterByPath glob normalization narrows the candidate set before every
+  // resolution step (path/basename/alias/fuzzy) runs against it (#705).
+  const index = await buildNoteIndex(schema, vaultDir, options.path);
 
   // Resolve query to file(s)
   const result = await resolveAndPick(index, query, {

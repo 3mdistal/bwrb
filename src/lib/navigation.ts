@@ -12,6 +12,7 @@ import type { LoadedSchema } from '../types/schema.js';
 import {
   buildVaultNoteSnapshot,
   discoverFilesForNavigation,
+  filterByPath,
   findSimilarFiles,
   type ManagedFile
 } from './discovery.js';
@@ -53,9 +54,23 @@ export type { ManagedFile };
   *
   * Uses the same global discovery rules as the rest of the CLI (exclusions apply
   * consistently across list/search/open/edit/audit).
+  *
+  * When `pathFilter` is provided, the candidate file set is narrowed by the same
+  * glob normalization used by content search and bulk commands (`filterByPath`)
+  * BEFORE any maps are built. This scopes every downstream resolution (path,
+  * basename, alias, and fuzzy/partial matching) to the path-filtered set, so
+  * name-mode `search --path` behaves consistently with `search --body --path`.
   */
-export async function buildNoteIndex(schema: LoadedSchema, vaultDir: string): Promise<NoteIndex> {
-  const files = await discoverFilesForNavigation(schema, vaultDir);
+export async function buildNoteIndex(
+  schema: LoadedSchema,
+  vaultDir: string,
+  pathFilter?: string
+): Promise<NoteIndex> {
+  let files = await discoverFilesForNavigation(schema, vaultDir);
+
+  if (pathFilter) {
+    files = filterByPath(files, pathFilter);
+  }
 
   const byPath = new Map<string, ManagedFile>();
   const byBasename = new Map<string, ManagedFile[]>();
