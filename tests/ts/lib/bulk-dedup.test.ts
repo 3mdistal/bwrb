@@ -11,7 +11,8 @@
  * entry, while genuinely distinct files are left untouched.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, mkdir, writeFile, symlink } from 'fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, symlink, link } from 'fs/promises';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { executeBulk } from '../../../src/lib/bulk/execute.js';
@@ -134,5 +135,96 @@ describe('bulk same-file dedup (issue #720)', () => {
       .map(c => c.relativePath.split('/').pop())
       .sort();
     expect(basenames).toEqual(['Task A.md', 'Task B.md']);
+  });
+});
+
+/**
+ * Regression coverage for the inode-dedup defect (#736): genuine HARDLINKS share
+ * one inode but are DISTINCT directory entries with DISTINCT canonical paths. The
+ * candidate dedup must key on realpath, NOT `dev:ino`, or a path-based bulk `move`
+ * silently leaves every hardlinked sibling after the first unmoved (and omits it
+ * from the candidate count/results). On a case-sensitive FS this is reachable
+ * without any case trickery; the hardlinks here verify both casings of the bug.
+ */
+const MOVE_SCHEMA = {
+  meta: { type: 'meta' },
+  types: {
+    task: {
+      name: 'task',
+      output_dir: 'Tasks',
+      fields: { status: { prompt: 'select', options: ['active', 'done'] } },
+    },
+  },
+};
+
+describe('bulk move preserves hardlinked paths (issue #736)', () => {
+  let vaultDir: string;
+  let schema: LoadedSchema;
+
+  beforeEach(async () => {
+    vaultDir = await mkdtemp(join(tmpdir(), 'bwrb-736-'));
+    await mkdir(join(vaultDir, '.bwrb'), { recursive: true });
+    await writeFile(
+      join(vaultDir, '.bwrb', 'schema.json'),
+      JSON.stringify(MOVE_SCHEMA, null, 2)
+    );
+    await mkdir(join(vaultDir, 'Tasks'), { recursive: true });
+    // Two DISTINCT directory entries sharing one inode (a hardlink). Distinct
+    // paths => distinct realpaths => must NOT collapse.
+    const primary = join(vaultDir, 'Tasks', 'Primary.md');
+    await writeFile(primary, '---\ntype: task\nstatus: active\n---\nbody\n');
+    await link(primary, join(vaultDir, 'Tasks', 'Linked.md'));
+    schema = await loadSchema(vaultDir);
+  });
+
+  afterEach(async () => {
+    await rm(vaultDir, { recursive: true, force: true });
+  });
+
+  it('reports BOTH hardlinked paths in dry-run (not collapsed)', async () => {
+    const result = await executeBulk({
+      operations: [{ type: 'move', targetPath: 'Done' }],
+      whereExpressions: [],
+      execute: false,
+      backup: false,
+      verbose: false,
+      quiet: false,
+      jsonMode: false,
+      vaultDir,
+      schema,
+      all: true,
+    });
+
+    expect(result.dryRun).toBe(true);
+    // Inode dedup would yield 1; realpath dedup keeps both distinct entries.
+    expect(result.affectedFiles).toBe(2);
+    const basenames = result.moveResults
+      .map(r => r.oldRelativePath.split('/').pop())
+      .sort();
+    expect(basenames).toEqual(['Linked.md', 'Primary.md']);
+  });
+
+  it('relocates BOTH hardlinked paths on execute', async () => {
+    const result = await executeBulk({
+      operations: [{ type: 'move', targetPath: 'Done' }],
+      whereExpressions: [],
+      execute: true,
+      backup: false,
+      verbose: false,
+      quiet: false,
+      jsonMode: false,
+      vaultDir,
+      schema,
+      all: true,
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.affectedFiles).toBe(2);
+
+    // Both directory entries relocated; neither left behind in Tasks/.
+    expect(existsSync(join(vaultDir, 'Done', 'Primary.md'))).toBe(true);
+    expect(existsSync(join(vaultDir, 'Done', 'Linked.md'))).toBe(true);
+    expect(existsSync(join(vaultDir, 'Tasks', 'Primary.md'))).toBe(false);
+    expect(existsSync(join(vaultDir, 'Tasks', 'Linked.md'))).toBe(false);
   });
 });

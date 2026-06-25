@@ -16,7 +16,7 @@ import {
   deriveNoteTypeMap,
   deriveNoteTargetIndex,
   discoverManagedFiles,
-  dedupeByFilesystemIdentity,
+  dedupeByCanonicalPath,
   collectFilesForType,
   collectPooledFiles,
   findSimilarFiles,
@@ -29,7 +29,7 @@ import {
 } from '../../../src/lib/discovery.js';
 import { loadSchema } from '../../../src/lib/schema.js';
 import type { LoadedSchema } from '../../../src/types/schema.js';
-import { writeFile, mkdir, rm, symlink } from 'fs/promises';
+import { writeFile, mkdir, rm, symlink, link } from 'fs/promises';
 import { join } from 'path';
 
 describe('Discovery', () => {
@@ -329,11 +329,12 @@ describe('Discovery', () => {
     });
   });
 
-  describe('dedupeByFilesystemIdentity', () => {
-    it('collapses entries that resolve to the same physical file (case-variant duplicate)', async () => {
+  describe('dedupeByCanonicalPath', () => {
+    it('collapses entries that resolve to the same canonical path (case-variant duplicate)', async () => {
       // Simulate a case-insensitive FS surfacing one note under two path casings:
-      // a directory symlink gives a second path that stat()s to the SAME inode,
-      // which is exactly what `Tasks/` vs `tasks/` produce on macOS/Windows.
+      // a directory symlink gives a second path whose realpath() resolves to the
+      // SAME canonical path, which is exactly what `Tasks/` vs `tasks/` produce on
+      // macOS/Windows.
       await mkdir(join(vaultDir, 'CaseDir'), { recursive: true });
       await writeFile(join(vaultDir, 'CaseDir', 'Note.md'), '---\ntype: idea\n---\n');
       await symlink(join(vaultDir, 'CaseDir'), join(vaultDir, 'casedir-alias'));
@@ -347,14 +348,14 @@ describe('Discovery', () => {
         relativePath: 'casedir-alias/Note.md',
       };
 
-      const result = await dedupeByFilesystemIdentity([realEntry, aliasEntry]);
+      const result = await dedupeByCanonicalPath([realEntry, aliasEntry]);
 
       expect(result).toHaveLength(1);
       // First occurrence wins, preserving caller-controlled display casing.
       expect(result[0]!.relativePath).toBe('CaseDir/Note.md');
     });
 
-    it('keeps genuinely distinct files (distinct inodes) separate', async () => {
+    it('keeps genuinely distinct files separate', async () => {
       await mkdir(join(vaultDir, 'Distinct'), { recursive: true });
       await writeFile(join(vaultDir, 'Distinct', 'Alpha.md'), '---\ntype: idea\n---\n');
       await writeFile(join(vaultDir, 'Distinct', 'Beta.md'), '---\ntype: idea\n---\n');
@@ -364,7 +365,7 @@ describe('Discovery', () => {
         { path: join(vaultDir, 'Distinct', 'Beta.md'), relativePath: 'Distinct/Beta.md' },
       ];
 
-      const result = await dedupeByFilesystemIdentity(entries);
+      const result = await dedupeByCanonicalPath(entries);
 
       expect(result.map(f => f.relativePath).sort()).toEqual([
         'Distinct/Alpha.md',
@@ -372,13 +373,37 @@ describe('Discovery', () => {
       ]);
     });
 
-    it('preserves entries whose path cannot be stat-ed instead of dropping them', async () => {
+    it('does NOT collapse genuine hardlinks (distinct paths, shared inode)', async () => {
+      // Two HARDLINKS share an inode but are DISTINCT directory entries with
+      // DISTINCT canonical paths. Inode-based dedup would wrongly collapse them;
+      // canonical-path dedup keeps both — required so a path-based bulk `move`
+      // relocates each directory entry rather than silently leaving one behind.
+      await mkdir(join(vaultDir, 'Hard'), { recursive: true });
+      const primary = join(vaultDir, 'Hard', 'Primary.md');
+      const linked = join(vaultDir, 'Hard', 'Linked.md');
+      await writeFile(primary, '---\ntype: idea\n---\n');
+      await link(primary, linked);
+
+      const entries: ManagedFile[] = [
+        { path: primary, relativePath: 'Hard/Primary.md' },
+        { path: linked, relativePath: 'Hard/Linked.md' },
+      ];
+
+      const result = await dedupeByCanonicalPath(entries);
+
+      expect(result.map(f => f.relativePath).sort()).toEqual([
+        'Hard/Linked.md',
+        'Hard/Primary.md',
+      ]);
+    });
+
+    it('preserves entries whose path cannot be resolved instead of dropping them', async () => {
       const entries: ManagedFile[] = [
         { path: join(vaultDir, 'does-not-exist-a.md'), relativePath: 'does-not-exist-a.md' },
         { path: join(vaultDir, 'does-not-exist-b.md'), relativePath: 'does-not-exist-b.md' },
       ];
 
-      const result = await dedupeByFilesystemIdentity(entries);
+      const result = await dedupeByCanonicalPath(entries);
 
       expect(result).toHaveLength(2);
     });

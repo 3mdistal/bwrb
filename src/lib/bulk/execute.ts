@@ -5,7 +5,7 @@
 import { parseNote, writeNote } from '../frontmatter.js';
 import { resolveTypeFromFrontmatter } from '../schema.js';
 import { prepareRecurrenceFastPath, commitRecurrenceFastPath } from '../recurrence-fast-path.js';
-import { discoverManagedFiles, dedupeByFilesystemIdentity } from '../discovery.js';
+import { discoverManagedFiles, dedupeByCanonicalPath } from '../discovery.js';
 import { searchContent } from '../content-search.js';
 import { filterByPath } from '../targeting.js';
 import { applyWhereExpressions } from '../where-targeting.js';
@@ -93,11 +93,12 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
     files = files.filter(file => textMatchingPaths!.has(file.path));
   }
 
-  // Collapse entries that resolve to the SAME physical file under different path
-  // casings (case-insensitive filesystems) so each note is processed/reported
-  // exactly once. Keyed on filesystem identity so genuinely distinct files on a
-  // case-sensitive FS are never wrongly merged.
-  files = await dedupeByFilesystemIdentity(files);
+  // Collapse entries that resolve to the SAME canonical path under different
+  // path casings (case-insensitive filesystems) so each note is processed/
+  // reported exactly once. Keyed on realpath, not inode, so case-variant aliases
+  // of one directory entry collapse while genuinely distinct files — and
+  // distinct hardlinked paths — are kept apart.
+  files = await dedupeByCanonicalPath(files);
 
   result.candidateFiles = files.length;
   result.totalFiles = files.length;
@@ -316,11 +317,12 @@ async function executeBulkWithMove(
     files = files.filter(file => textMatchingPaths!.has(file.path));
   }
 
-  // Collapse entries that resolve to the SAME physical file under different path
+  // Collapse entries that resolve to the SAME canonical path under different path
   // casings (case-insensitive filesystems) so each note is moved/reported exactly
-  // once. Keyed on filesystem identity, not lowercased path, so genuinely
-  // distinct files on a case-sensitive FS are never wrongly merged.
-  files = await dedupeByFilesystemIdentity(files);
+  // once. Keyed on realpath, not inode: a `move` is path-based (`rename` relocates
+  // one directory entry), so distinct hardlinked paths must be kept apart and each
+  // relocated — only case-variant aliases of one directory entry collapse.
+  files = await dedupeByCanonicalPath(files);
 
   result.candidateFiles = files.length;
   result.totalFiles = files.length;

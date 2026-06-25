@@ -7,7 +7,7 @@
 
 import ignore, { type Ignore } from 'ignore';
 import { minimatch } from 'minimatch';
-import { readdir, readFile, stat } from 'fs/promises';
+import { readdir, readFile, realpath } from 'fs/promises';
 import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import {
@@ -625,29 +625,33 @@ export async function discoverManagedFiles(
 }
 
 /**
- * Collapse a list of {@link ManagedFile}s that point at the SAME physical file to
- * a single entry, keyed on real filesystem identity (`device + inode`).
+ * Collapse a list of {@link ManagedFile}s that resolve to the SAME canonical
+ * on-disk path to a single entry, keyed on `fs.realpath`.
  *
  * On a case-insensitive filesystem (e.g. macOS APFS, Windows NTFS) a single note
  * can be enumerated under two different path casings — for example a type whose
  * `output_dir` is declared `Tasks` but lives on disk as `tasks/`, where the
  * managed-type walk roots the path at `Tasks/...` while the unmanaged vault walk
- * sees the real `tasks/...`. Both refer to one file, so a consumer that processes
- * each entry (like `bulk`) would otherwise write and report that note twice.
+ * sees the real `tasks/...`. Both casings name the SAME directory entry, so
+ * `realpath('Tasks/X.md')` and `realpath('tasks/X.md')` resolve to one canonical
+ * path and collapse — a consumer like `bulk` then writes/reports that note once.
  *
- * We dedupe on `stat().ino`/`dev` rather than a lowercased path so the collapse
- * is driven by true on-disk identity: on a case-SENSITIVE filesystem two paths
- * differing only by case are genuinely distinct files (distinct inodes) and are
- * correctly kept apart, while hardlinks/case-variants of one file collapse. This
- * mirrors the inode-based identity check already used by bulk `move`
- * (`destinationIsOccupiedByDifferentFile`).
+ * We key on the canonical PATH rather than `stat().dev:ino` precisely so that
+ * genuine HARDLINKS are NOT collapsed: two hardlinked notes share an inode but
+ * are DISTINCT directory entries with DISTINCT realpaths. A bulk `move` is
+ * path-based — `rename` only relocates the one kept directory entry — so keying
+ * on inode would silently leave the other hardlink unmoved and omit it from the
+ * candidate count/results. Distinct realpaths keep both, so each is moved and
+ * reported. (Genuinely distinct files have distinct realpaths too, so they are
+ * unaffected.)
  *
  * The first occurrence wins, so callers can pre-order to control which on-disk
- * casing is kept for display. Entries whose `path` cannot be `stat`ed (e.g. a
- * race deletion) fall back to keying on the literal path so they are never
- * silently dropped. Output order follows first-seen order of the input.
+ * casing is kept for display. Entries whose `path` cannot be resolved (e.g. a
+ * race deletion, or a broken symlink) fall back to keying on the literal
+ * normalized path so they are never silently dropped. Output order follows
+ * first-seen order of the input.
  */
-export async function dedupeByFilesystemIdentity(
+export async function dedupeByCanonicalPath(
   files: ManagedFile[]
 ): Promise<ManagedFile[]> {
   const seen = new Set<string>();
@@ -656,11 +660,13 @@ export async function dedupeByFilesystemIdentity(
   for (const file of files) {
     let key: string;
     try {
-      const info = await stat(file.path);
-      key = `${info.dev}:${info.ino}`;
+      // Canonical on-disk path: collapses case-variant aliases of one directory
+      // entry, keeps distinct hardlinked paths apart.
+      key = `canonical:${await realpath(file.path)}`;
     } catch {
-      // If we can't stat (file vanished mid-run), fall back to the literal path
-      // so distinct unresolved entries are preserved rather than collapsed.
+      // If we can't resolve (file vanished mid-run, broken symlink), fall back
+      // to the literal path so distinct unresolved entries are preserved rather
+      // than collapsed.
       key = `path:${file.path}`;
     }
 
