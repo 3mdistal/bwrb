@@ -4,6 +4,7 @@ import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { queryByType } from './vault.js';
 import { extractWikilinkTarget } from './links.js';
 import { levenshteinDistance } from './levenshtein.js';
+import { isBlankScalar } from './emptiness.js';
 import {
   expandStaticValue,
   parseDate,
@@ -131,7 +132,9 @@ export function normalizeDateFields(
     if (!(fieldName in normalized)) continue;
 
     const value = normalized[fieldName];
-    if (value === undefined || value === null || value === '') continue;
+    // A blank optional value (null/undefined/empty/whitespace-only) is "unset";
+    // leave it untouched so it isn't normalized into a bogus date (#707).
+    if (isBlankScalar(value)) continue;
 
     // Handle any residual Date objects (defense-in-depth).
     // Use UTC components since YAML dates are stored as midnight UTC.
@@ -218,7 +221,9 @@ export function validateFrontmatter(
   // Check for required fields
   for (const [fieldName, field] of Object.entries(fields)) {
     const value = frontmatter[fieldName];
-    const hasValue = value !== undefined && value !== null && value !== '';
+    // A blank optional value (null/undefined/empty/whitespace-only) counts as
+    // "unset" uniformly across all scalar types (#707), matching the audit path.
+    const hasValue = !isBlankScalar(value);
 
     // Check required fields
     if (field.required && !hasValue && field.default === undefined) {
@@ -325,7 +330,9 @@ export function applyDefaults(
 
   for (const [fieldName, field] of Object.entries(fields)) {
     const value = result[fieldName];
-    const hasValue = value !== undefined && value !== null && value !== '';
+    // Blank optional values (incl. whitespace-only) are "unset", so defaults and
+    // static values fill them in just like a missing field (#707).
+    const hasValue = !isBlankScalar(value);
 
     if (!hasValue && field.default !== undefined) {
       result[fieldName] = field.default;
@@ -424,9 +431,10 @@ function validateFieldType(
     if (field.multiple && Array.isArray(value)) {
       for (let index = 0; index < value.length; index++) {
         const element = value[index];
-        // Skip structural gaps (null/empty); those are reported separately.
-        if (element === null || element === undefined) continue;
-        if (typeof element === 'string' && element.trim().length === 0) continue;
+        // Skip blank/structural gaps (null/empty/whitespace-only); those are
+        // reported separately. Shared `isBlankScalar` rule keeps this in step
+        // with the scalar paths (#707).
+        if (isBlankScalar(element)) continue;
         const elementError = validateDateValue(fieldName, element, granularity, index);
         if (elementError) return elementError;
       }
@@ -744,9 +752,10 @@ export async function validateContextFields(
     if (!field.source) continue;
 
     const value = frontmatter[fieldName];
-    
-    // Skip empty/null values (required field check is separate)
-    if (value === undefined || value === null || value === '') continue;
+
+    // Skip blank values, incl. whitespace-only (required field check is
+    // separate). Arrays fall through to per-element handling below (#707).
+    if (isBlankScalar(value)) continue;
 
     // Validate each value (handle both single and array values)
     const values = Array.isArray(value) ? value : [value];
