@@ -1757,9 +1757,20 @@ type MisplacedOwnedNote =
  * DIFFERENT valid owner B's subtree, in which case discovery sets
  * `file.ownership` (= owner B). We must NOT early-return on `file.ownership`:
  * when the DECLARING owner (A) differs from the PHYSICAL owner (B), the note is
- * still misplaced and must be restored under A. Only when the declaring owner
- * and the physical owner coincide (or no other owner declares it) is the current
- * location correct.
+ * still misplaced and must be restored under A.
+ *
+ * Wrong-field-subfolder under the SAME owner (#734 follow-up): correct placement
+ * is validated against the DECLARING owner AND the DECLARING field's subfolder
+ * (`<owner-dir>/<declaring-field>/`), NOT the owner path alone. An owner with
+ * MULTIPLE owned fields (e.g. `tracks` and `demos`, same child type) can hold a
+ * note declared in field A but physically sitting under field B's subfolder: the
+ * owner matches yet the note is misplaced and belongs under field A. Comparing
+ * the actual directory against the declaring field's expected subfolder (the same
+ * `getOwnedChildFolder` target used for the restore) catches this and the
+ * wrong-OWNER case uniformly: `actualDir === expectedDir` → correct; otherwise
+ * `misplaced` targeting the declaring field's subfolder. A path-qualified
+ * declaration that explicitly points at the note's CURRENT path is honored as
+ * correct placement (the owner filed it there on purpose) and is not moved.
  */
 function findMisplacedOwnedNote(
   schema: LoadedSchema,
@@ -1864,17 +1875,34 @@ function findMisplacedOwnedNote(
   }
 
   // Exactly one type-matching owner declares this note → normal owned-note logic.
+  // `matchingDeclarations[0]` is the declaration whose FIELD actually resolves
+  // this note: the per-field index + the type and path-aware `matchingDeclarations`
+  // filter above already pick the declaring field (the field whose declaration
+  // matches this note), so its `fieldName` is the DECLARING field — not merely the
+  // owner. The expected subfolder must therefore be computed from THIS field.
   const declared = matchingDeclarations[0]!;
 
-  // If the note is physically under the SAME owner that declares it, it is
-  // already correctly placed (discovery's `file.ownership` records the physical
-  // owner). Nothing to restore. A note physically under a DIFFERENT owner falls
-  // through and is treated as misplaced against its declaring owner (#734,
-  // defect B).
-  if (file.ownership && file.ownership.ownerPath === declared.ownerPath) {
-    return undefined;
-  }
-
+  // Correct placement is validated against the DECLARING owner AND the DECLARING
+  // field's subfolder — `<owner-dir>/<declaring-field>/` — not the owner alone
+  // (#734 follow-up). When an owner has MULTIPLE owned fields (e.g. `tracks` and
+  // `demos`, same child type), a note declared in field A but physically sitting
+  // under the SAME owner's field B subfolder has a matching `ownerPath` yet is
+  // still misplaced: it belongs under field A. Comparing only `ownerPath` (the
+  // earlier round) treated it as correct and never restored it.
+  //
+  // The declaring field is `declared.fieldName`: `matchingDeclarations` is
+  // already filtered by the type AND path-aware checks above, so `declared` is
+  // the declaration whose field actually resolves THIS note (e.g. a
+  // path-qualified declaration only survives when it resolves to the audited
+  // file). Computing the expected subfolder from `declared.fieldName` — the same
+  // `getOwnedChildFolder` target used for the restore — and comparing it to the
+  // actual directory catches the wrong-OWNER case (#734, defect B) and the
+  // wrong-FIELD-subfolder case under the same owner uniformly, while leaving a
+  // note ALREADY in its declaring field's subfolder correct
+  // (`actualDir === expectedDir` → no flag). A path-qualified declaration that
+  // resolves to a DIFFERENT (correctly-placed) note never reaches here — it was
+  // dropped by `declarationMatchesAuditedFile` — so this note is not moved
+  // against an explicit path-qualified declaration that points elsewhere.
   const expectedDir = getOwnedChildFolder(declared.ownerPath, declared.fieldName);
 
   const normalizedExpected = expectedDir.replace(/\/$/, '');

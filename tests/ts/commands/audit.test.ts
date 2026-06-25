@@ -3972,6 +3972,163 @@ status: raw
     });
   });
 
+  describe('same-owner wrong-field-subfolder owned note (#734 follow-up)', () => {
+    let tempVaultDir: string;
+
+    // ONE owner type `project` with TWO owned fields of the SAME child type:
+    //  - tracks -> track
+    //  - demos  -> track
+    // A `track` declared in field A (demos) but physically sitting under the
+    // SAME owner's field B (tracks) subfolder must be restored under demos/.
+    const SAME_CHILD_SCHEMA = {
+      version: 2,
+      types: {
+        project: {
+          output_dir: 'Projects',
+          fields: {
+            type: { value: 'project' },
+            tracks: { prompt: 'relation', source: 'track', owned: true, multiple: true },
+            demos: { prompt: 'relation', source: 'track', owned: true, multiple: true },
+          },
+          field_order: ['type', 'tracks', 'demos'],
+        },
+        track: {
+          output_dir: 'Tracks',
+          fields: { type: { value: 'track' } },
+          field_order: ['type'],
+        },
+      },
+    };
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-samefield-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(SAME_CHILD_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Projects/My Project/tracks'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Projects/My Project/demos'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Tracks'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('flags owned-wrong-location targeting the DECLARING field subfolder when a track sits under the same owner WRONG field subfolder', async () => {
+      // Owner declares the track ONLY in its `demos` field, but the file lives
+      // under the same owner's `tracks/` subfolder. Owner matches; the field
+      // subfolder does not. Must be flagged owned-wrong-location → demos/.
+      await writeFile(
+        join(tempVaultDir, 'Projects/My Project', 'My Project.md'),
+        `---\ntype: project\ndemos:\n  - "[[My Track]]"\n---\n`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Projects/My Project/tracks', 'My Track.md'),
+        `---\ntype: track\n---\nKEEP\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const track = output.files.find((f: { path: string }) =>
+        f.path.includes('Projects/My Project/tracks/My Track.md')
+      );
+      expect(track).toBeDefined();
+
+      const ownedIssue = track.issues.find(
+        (i: { code: string }) => i.code === 'owned-wrong-location'
+      );
+      expect(ownedIssue).toBeDefined();
+      // Targets the DECLARING field (demos), NOT the physical field (tracks),
+      // and NOT the type's top-level output_dir (Tracks).
+      expect(ownedIssue.expectedDirectory).toBe('Projects/My Project/demos');
+      expect(ownedIssue.ownerPath).toBe('Projects/My Project/My Project.md');
+      // Not ambiguous (single owner), and not a generic wrong-directory.
+      expect(
+        track.issues.find((i: { code: string }) => i.code === 'owned-ambiguous-owner')
+      ).toBeUndefined();
+      expect(
+        track.issues.find((i: { code: string }) => i.code === 'wrong-directory')
+      ).toBeUndefined();
+
+      // --fix restores it under the declaring demos/ subfolder.
+      await runCLI(['audit', '--fix', '--all', '--auto', '--execute'], tempVaultDir);
+      const restored = await readFile(
+        join(tempVaultDir, 'Projects/My Project/demos', 'My Track.md'),
+        'utf-8'
+      ).catch(() => null);
+      expect(restored).not.toBeNull();
+      expect(restored).toContain('KEEP');
+      const stillUnderTracks = await readFile(
+        join(tempVaultDir, 'Projects/My Project/tracks', 'My Track.md'),
+        'utf-8'
+      ).catch(() => null);
+      expect(stillUnderTracks).toBeNull();
+    });
+
+    it('does NOT flag a track already in its declaring field subfolder', async () => {
+      // Owner declares the track in `demos` and the file lives under demos/.
+      // Correctly placed → no ownership/location flag.
+      await writeFile(
+        join(tempVaultDir, 'Projects/My Project', 'My Project.md'),
+        `---\ntype: project\ndemos:\n  - "[[My Track]]"\n---\n`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Projects/My Project/demos', 'My Track.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      // A correctly-placed note carries no issues, so it may be absent from the
+      // JSON output entirely; if present, it must carry no location issue.
+      const track = output.files.find((f: { path: string }) =>
+        f.path.includes('Projects/My Project/demos/My Track.md')
+      );
+      expect(
+        track?.issues?.find(
+          (i: { code: string }) =>
+            i.code === 'owned-wrong-location' ||
+            i.code === 'owned-ambiguous-owner' ||
+            i.code === 'wrong-directory'
+        )
+      ).toBeUndefined();
+    });
+
+    it('honors a PATH-QUALIFIED declaration pointing at the note in ITS DECLARING field subfolder as correctly placed', async () => {
+      // Owner declares the track in `demos` with a PATH-QUALIFIED link that
+      // resolves to the track sitting under that SAME declaring field (demos/).
+      // The actual dir equals the declaring field's expected subfolder, so the
+      // note is correctly placed and must NOT be moved (the path-qualified form
+      // must not falsely trigger a move against an explicit, satisfied
+      // declaration).
+      await writeFile(
+        join(tempVaultDir, 'Projects/My Project', 'My Project.md'),
+        `---\ntype: project\ndemos:\n  - "[[Projects/My Project/demos/My Track]]"\n---\n`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Projects/My Project/demos', 'My Track.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+      const track = output.files.find((f: { path: string }) =>
+        f.path.includes('Projects/My Project/demos/My Track.md')
+      );
+      expect(
+        track?.issues?.find(
+          (i: { code: string }) =>
+            i.code === 'owned-wrong-location' ||
+            i.code === 'owned-ambiguous-owner' ||
+            i.code === 'wrong-directory'
+        )
+      ).toBeUndefined();
+    });
+  });
+
   describe('--execute flag validation', () => {
     it('should error when --execute is used without --fix', async () => {
       const result = await runCLI(['audit', '--execute'], vaultDir);
