@@ -36,8 +36,8 @@ bwrb schema diff --json
 ```
 
 Output categorizes changes as:
-- **Deterministic**: Can be auto-applied (field additions, enum additions, type additions)
-- **Non-deterministic**: Require user input (field removals, enum value removals, type removals)
+- **Deterministic**: Can be auto-applied (field additions, type additions, widening a field to allow multiple values)
+- **Non-deterministic**: Require user input (field removals, removed select options, fields becoming required, relation source changes, type removals)
 
 ### `bwrb schema migrate`
 
@@ -120,9 +120,12 @@ bwrb schema history --json
 | Add field | Deterministic | No action needed (field absent in old notes is valid) |
 | Remove field | Non-deterministic | Removes field from affected notes |
 | Rename field | Not detected by diff | A schema rename is seen as add + remove. Use `bwrb bulk --rename old=new` to rename while preserving values |
-| Add select option | Deterministic | No action needed |
-| Remove select option | Non-deterministic | Prompts for value mapping |
-| Rename select option | Non-deterministic | Updates references in notes |
+| Add select option | Deterministic | No action needed (existing values stay valid) |
+| Remove select option | Non-deterministic (`clear-invalid-options`) | Drops any note value that is no longer in the allowed set — a scalar becomes empty, an array is filtered to its still-valid members |
+| Make field required | Non-deterministic (`review-field`) | Surfaced for manual review; notes missing a value are flagged but not auto-filled |
+| Allow multiple values (`multiple` false → true) | Deterministic (`widen-field-to-multiple`) | Wraps an existing scalar value into a single-element array |
+| Disallow multiple values (`multiple` true → false) | Non-deterministic (`review-field`) | Surfaced for manual review; collapsing an array is lossy, so notes are flagged, not changed |
+| Change relation `source` | Non-deterministic (`review-field`) | Surfaced for manual review; existing links may now point at the wrong type |
 
 ### Type Operations
 

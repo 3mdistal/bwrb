@@ -128,6 +128,184 @@ describe("diffSchemas", () => {
     });
   });
 
+  describe("field-changed classification", () => {
+    function withTaskField(field: Record<string, unknown>): BwrbSchemaType {
+      return {
+        ...baseSchema,
+        schemaVersion: "1.1.0",
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              status: field,
+            },
+          },
+        },
+      };
+    }
+
+    it("emits clear-invalid-options when a select option is removed", () => {
+      // status options: active, completed, archived → remove "archived"
+      const newSchema = withTaskField({
+        prompt: "select",
+        options: ["active", "completed"],
+        required: true,
+      });
+
+      const plan = diffSchemas(baseSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(plan.hasChanges).toBe(true);
+      expect(plan.nonDeterministic).toContainEqual({
+        op: "clear-invalid-options",
+        targetType: "task",
+        field: "status",
+        allowedValues: ["active", "completed"],
+      });
+    });
+
+    it("does NOT emit an op when a select option is only added", () => {
+      const newSchema = withTaskField({
+        prompt: "select",
+        options: ["active", "completed", "archived", "blocked"],
+        required: true,
+      });
+
+      const plan = diffSchemas(baseSchema, newSchema, "1.0.0", "1.1.0");
+
+      const allOps = [...plan.deterministic, ...plan.nonDeterministic];
+      expect(allOps.some((op) => op.op === "clear-invalid-options")).toBe(false);
+      // Adding an allowed value is a no-op for existing notes.
+      expect(plan.hasChanges).toBe(false);
+    });
+
+    it("emits a deterministic widen-field-to-multiple when multiple flips false → true", () => {
+      const newSchema = withTaskField({
+        prompt: "select",
+        options: ["active", "completed", "archived"],
+        required: true,
+        multiple: true,
+      });
+
+      const plan = diffSchemas(baseSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(plan.deterministic).toContainEqual({
+        op: "widen-field-to-multiple",
+        targetType: "task",
+        field: "status",
+      });
+      expect(plan.nonDeterministic).toHaveLength(0);
+    });
+
+    it("emits review-field when multiple narrows true → false", () => {
+      const multiSchema = withTaskField({
+        prompt: "select",
+        options: ["active", "completed", "archived"],
+        required: true,
+        multiple: true,
+      });
+      // Narrow back to single.
+      const singleSchema = withTaskField({
+        prompt: "select",
+        options: ["active", "completed", "archived"],
+        required: true,
+      });
+
+      const plan = diffSchemas(multiSchema, singleSchema, "1.1.0", "1.2.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "status"
+        )
+      ).toBe(true);
+      expect(
+        plan.deterministic.some((op) => op.op === "widen-field-to-multiple")
+      ).toBe(false);
+    });
+
+    it("emits review-field when a field becomes required", () => {
+      // priority starts not-required → make it required.
+      const newSchema: BwrbSchemaType = {
+        ...baseSchema,
+        schemaVersion: "1.1.0",
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              priority: { prompt: "select", options: ["low", "medium", "high"], required: true },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(baseSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "priority"
+        )
+      ).toBe(true);
+    });
+
+    it("emits review-field when a relation source changes", () => {
+      const oldSchema: BwrbSchemaType = {
+        ...baseSchema,
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              parent: { prompt: "relation", source: "task" },
+            },
+          },
+        },
+      };
+      const newSchema: BwrbSchemaType = {
+        ...oldSchema,
+        schemaVersion: "1.1.0",
+        types: {
+          ...oldSchema.types,
+          task: {
+            ...oldSchema.types.task,
+            fields: {
+              ...oldSchema.types.task.fields,
+              parent: { prompt: "relation", source: "note" },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "parent"
+        )
+      ).toBe(true);
+    });
+
+    it("does not treat an option description-only edit as a change", () => {
+      // Same values, but document one option — cosmetic, no migration op.
+      const newSchema = withTaskField({
+        prompt: "select",
+        options: [
+          { value: "active", description: "in progress" },
+          "completed",
+          "archived",
+        ],
+        required: true,
+      });
+
+      const plan = diffSchemas(baseSchema, newSchema, "1.0.0", "1.0.0");
+
+      expect(plan.hasChanges).toBe(false);
+    });
+  });
+
   describe("type changes", () => {
     it("should detect added types as deterministic", () => {
       const newSchema: BwrbSchemaType = {
@@ -293,6 +471,39 @@ describe("suggestVersionBump", () => {
     expect(suggestion).toBe("1.1.0");
   });
 
+  it("should suggest a major bump for non-deterministic field re-validation ops", () => {
+    const plan = {
+      fromVersion: "1.2.0",
+      toVersion: "1.2.0",
+      hasChanges: true,
+      deterministic: [],
+      nonDeterministic: [
+        {
+          op: "clear-invalid-options" as const,
+          targetType: "task",
+          field: "status",
+          allowedValues: ["active"],
+        },
+      ],
+    };
+
+    expect(suggestVersionBump("1.2.0", plan)).toBe("2.0.0");
+  });
+
+  it("should suggest a minor bump for a deterministic widen-to-multiple op", () => {
+    const plan = {
+      fromVersion: "1.2.0",
+      toVersion: "1.2.0",
+      hasChanges: true,
+      deterministic: [
+        { op: "widen-field-to-multiple" as const, targetType: "task", field: "status" },
+      ],
+      nonDeterministic: [],
+    };
+
+    expect(suggestVersionBump("1.2.0", plan)).toBe("1.3.0");
+  });
+
   it("should return current version for no changes", () => {
     const plan = {
       fromVersion: "1.0.0",
@@ -336,6 +547,38 @@ describe("formatDiffForDisplay", () => {
     expect(output).toContain("-");
     expect(output).toContain("status");
     expect(output).toContain("task");
+  });
+
+  it("should format clear-invalid-options and review-field operations", () => {
+    const plan = {
+      fromVersion: "1.0.0",
+      toVersion: "2.0.0",
+      hasChanges: true,
+      deterministic: [
+        { op: "widen-field-to-multiple" as const, targetType: "task", field: "tags" },
+      ],
+      nonDeterministic: [
+        {
+          op: "clear-invalid-options" as const,
+          targetType: "task",
+          field: "status",
+          allowedValues: ["active"],
+        },
+        {
+          op: "review-field" as const,
+          targetType: "task",
+          field: "priority",
+          reason: "field is now required; notes missing a value need manual review",
+        },
+      ],
+    };
+
+    const output = formatDiffForDisplay(plan);
+    expect(output).toContain("Clear invalid values");
+    expect(output).toContain("status");
+    expect(output).toContain("Widen field");
+    expect(output).toContain("Review field");
+    expect(output).toContain("now required");
   });
 
   it("should format normalize-links operation", () => {

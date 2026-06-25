@@ -428,4 +428,279 @@ parent: "[[Task Two]]"
       expect(content).toBe(originalContent);
     });
   });
+
+  describe("clear-invalid-options operation", () => {
+    async function writeStatusSchema(): Promise<void> {
+      await writeFile(
+        join(testDir, ".bwrb/schema.json"),
+        JSON.stringify({
+          version: 2,
+          schemaVersion: "1.0.0",
+          types: {
+            task: {
+              output_dir: "Tasks",
+              fields: {
+                name: { prompt: "text", required: true },
+                status: { prompt: "select", options: ["active", "completed"] },
+              },
+            },
+          },
+        })
+      );
+    }
+
+    it("removes a scalar value that is no longer an allowed option", async () => {
+      await writeStatusSchema();
+      await writeFile(
+        join(testDir, "Tasks/Task-1.md"),
+        `---\ntype: task\nname: Task One\nstatus: archived\n---\n# Task One\n`
+      );
+
+      const schema = await loadSchema(testDir);
+      const plan: MigrationPlan = {
+        fromVersion: "1.0.0",
+        toVersion: "2.0.0",
+        hasChanges: true,
+        deterministic: [],
+        nonDeterministic: [
+          {
+            op: "clear-invalid-options",
+            targetType: "task",
+            field: "status",
+            allowedValues: ["active", "completed"],
+          },
+        ],
+      };
+
+      const result = await executeMigration({
+        vaultDir: testDir,
+        schema,
+        plan,
+        execute: true,
+        backup: false,
+      });
+
+      expect(result.affectedFiles).toBe(1);
+      const content = await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8");
+      expect(content).not.toContain("status:");
+      expect(content).not.toContain("archived");
+    });
+
+    it("leaves a still-valid scalar value untouched", async () => {
+      await writeStatusSchema();
+      await writeFile(
+        join(testDir, "Tasks/Task-1.md"),
+        `---\ntype: task\nname: Task One\nstatus: active\n---\n# Task One\n`
+      );
+
+      const schema = await loadSchema(testDir);
+      const plan: MigrationPlan = {
+        fromVersion: "1.0.0",
+        toVersion: "2.0.0",
+        hasChanges: true,
+        deterministic: [],
+        nonDeterministic: [
+          {
+            op: "clear-invalid-options",
+            targetType: "task",
+            field: "status",
+            allowedValues: ["active", "completed"],
+          },
+        ],
+      };
+
+      const result = await executeMigration({
+        vaultDir: testDir,
+        schema,
+        plan,
+        execute: true,
+        backup: false,
+      });
+
+      expect(result.affectedFiles).toBe(0);
+      const content = await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8");
+      expect(content).toContain("status: active");
+    });
+
+    it("filters orphaned values out of an array, keeping valid ones", async () => {
+      await writeStatusSchema();
+      await writeFile(
+        join(testDir, "Tasks/Task-1.md"),
+        `---\ntype: task\nname: Task One\nstatus:\n  - active\n  - archived\n  - completed\n---\n# Task One\n`
+      );
+
+      const schema = await loadSchema(testDir);
+      const plan: MigrationPlan = {
+        fromVersion: "1.0.0",
+        toVersion: "2.0.0",
+        hasChanges: true,
+        deterministic: [],
+        nonDeterministic: [
+          {
+            op: "clear-invalid-options",
+            targetType: "task",
+            field: "status",
+            allowedValues: ["active", "completed"],
+          },
+        ],
+      };
+
+      const result = await executeMigration({
+        vaultDir: testDir,
+        schema,
+        plan,
+        execute: true,
+        backup: false,
+      });
+
+      expect(result.affectedFiles).toBe(1);
+      const content = await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8");
+      expect(content).toContain("active");
+      expect(content).toContain("completed");
+      expect(content).not.toContain("archived");
+    });
+  });
+
+  describe("widen-field-to-multiple operation", () => {
+    it("wraps a scalar value into a single-element array", async () => {
+      await writeFile(
+        join(testDir, ".bwrb/schema.json"),
+        JSON.stringify({
+          version: 2,
+          schemaVersion: "1.0.0",
+          types: {
+            task: {
+              output_dir: "Tasks",
+              fields: {
+                name: { prompt: "text", required: true },
+                tags: { prompt: "list", multiple: true },
+              },
+            },
+          },
+        })
+      );
+      await writeFile(
+        join(testDir, "Tasks/Task-1.md"),
+        `---\ntype: task\nname: Task One\ntags: urgent\n---\n# Task One\n`
+      );
+
+      const schema = await loadSchema(testDir);
+      const plan: MigrationPlan = {
+        fromVersion: "1.0.0",
+        toVersion: "1.1.0",
+        hasChanges: true,
+        deterministic: [
+          { op: "widen-field-to-multiple", targetType: "task", field: "tags" },
+        ],
+        nonDeterministic: [],
+      };
+
+      const result = await executeMigration({
+        vaultDir: testDir,
+        schema,
+        plan,
+        execute: true,
+        backup: false,
+      });
+
+      expect(result.affectedFiles).toBe(1);
+      const content = await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8");
+      expect(content).toContain("- urgent");
+    });
+
+    it("leaves an existing array untouched (idempotent)", async () => {
+      await writeFile(
+        join(testDir, ".bwrb/schema.json"),
+        JSON.stringify({
+          version: 2,
+          schemaVersion: "1.0.0",
+          types: {
+            task: {
+              output_dir: "Tasks",
+              fields: {
+                name: { prompt: "text", required: true },
+                tags: { prompt: "list", multiple: true },
+              },
+            },
+          },
+        })
+      );
+      await writeFile(
+        join(testDir, "Tasks/Task-1.md"),
+        `---\ntype: task\nname: Task One\ntags:\n  - urgent\n---\n# Task One\n`
+      );
+
+      const schema = await loadSchema(testDir);
+      const plan: MigrationPlan = {
+        fromVersion: "1.0.0",
+        toVersion: "1.1.0",
+        hasChanges: true,
+        deterministic: [
+          { op: "widen-field-to-multiple", targetType: "task", field: "tags" },
+        ],
+        nonDeterministic: [],
+      };
+
+      const result = await executeMigration({
+        vaultDir: testDir,
+        schema,
+        plan,
+        execute: true,
+        backup: false,
+      });
+
+      expect(result.affectedFiles).toBe(0);
+    });
+  });
+
+  describe("review-field operation", () => {
+    it("is informational and does not modify notes", async () => {
+      await writeFile(
+        join(testDir, ".bwrb/schema.json"),
+        JSON.stringify({
+          version: 2,
+          schemaVersion: "1.0.0",
+          types: {
+            task: {
+              output_dir: "Tasks",
+              fields: {
+                name: { prompt: "text", required: true },
+                priority: { prompt: "select", options: ["low", "high"], required: true },
+              },
+            },
+          },
+        })
+      );
+      const original = `---\ntype: task\nname: Task One\n---\n# Task One\n`;
+      await writeFile(join(testDir, "Tasks/Task-1.md"), original);
+
+      const schema = await loadSchema(testDir);
+      const plan: MigrationPlan = {
+        fromVersion: "1.0.0",
+        toVersion: "2.0.0",
+        hasChanges: true,
+        deterministic: [],
+        nonDeterministic: [
+          {
+            op: "review-field",
+            targetType: "task",
+            field: "priority",
+            reason: "field is now required; notes missing a value need manual review",
+          },
+        ],
+      };
+
+      const result = await executeMigration({
+        vaultDir: testDir,
+        schema,
+        plan,
+        execute: true,
+        backup: false,
+      });
+
+      expect(result.affectedFiles).toBe(0);
+      const content = await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8");
+      expect(content).toBe(original);
+    });
+  });
 });

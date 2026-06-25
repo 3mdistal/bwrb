@@ -164,6 +164,9 @@ function getOperationTargetType(op: MigrationOp): string | null {
     case 'add-field':
     case 'remove-field':
     case 'rename-field':
+    case 'clear-invalid-options':
+    case 'widen-field-to-multiple':
+    case 'review-field':
       return op.targetType;
     case 'add-type':
     case 'remove-type':
@@ -251,6 +254,55 @@ function calculateSingleChange(
       }
       return [];
     }
+
+    case 'clear-invalid-options': {
+      // Drop any value (scalar or array element) that is no longer an allowed
+      // select option. A scalar that is now invalid is removed entirely; an
+      // array is filtered down to its still-valid members.
+      if (!(op.field in frontmatter)) return [];
+      const value = frontmatter[op.field];
+      const allowed = new Set(op.allowedValues);
+
+      if (Array.isArray(value)) {
+        const kept = value.filter((v) => allowed.has(String(v)));
+        if (kept.length === value.length) return [];
+        return [{
+          kind: 'set',
+          field: op.field,
+          oldValue: value,
+          newValue: kept,
+        }];
+      }
+
+      if (value === null || value === undefined || value === '') return [];
+      if (allowed.has(String(value))) return [];
+      // Scalar value is no longer valid → remove the field.
+      return [{
+        kind: 'delete',
+        field: op.field,
+        oldValue: value,
+        newValue: undefined,
+      }];
+    }
+
+    case 'widen-field-to-multiple': {
+      // Wrap an existing scalar value into a single-element array. Values that
+      // are already arrays (or absent) need no change.
+      if (!(op.field in frontmatter)) return [];
+      const value = frontmatter[op.field];
+      if (value === null || value === undefined || Array.isArray(value)) return [];
+      return [{
+        kind: 'set',
+        field: op.field,
+        oldValue: value,
+        newValue: [value],
+      }];
+    }
+
+    case 'review-field':
+      // Informational only: surfaced in the plan/preview so the user knows the
+      // field needs manual attention, but no automatic note mutation is safe.
+      return [];
 
     case 'normalize-links': {
       // Normalize all relation field values to the target format

@@ -25,7 +25,7 @@ export function diffSchemas(
   toVersion: string
 ): MigrationPlan {
   const changes = detectChanges(oldSchema, newSchema);
-  const { deterministic, nonDeterministic } = classifyChanges(changes, newSchema);
+  const { deterministic, nonDeterministic } = classifyChanges(changes, oldSchema, newSchema);
   
   // Check for config.linkFormat changes
   const configOps = detectConfigChanges(oldSchema, newSchema);
@@ -228,6 +228,7 @@ function detectFieldPropertyChanges(oldField: Field, newField: Field): string[] 
  */
 function classifyChanges(
   changes: DetectedChange[],
+  oldSchema: Schema | undefined,
   newSchema: Schema
 ): { deterministic: MigrationOp[]; nonDeterministic: MigrationOp[] } {
   const deterministic: MigrationOp[] = [];
@@ -259,11 +260,15 @@ function classifyChanges(
         });
         break;
         
-      case 'field-changed':
-        // Field property changes might need migration
-        // For now, treat as informational (no note changes needed)
-        // Future: handle options changes, format changes, etc.
+      case 'field-changed': {
+        // An existing field's definition changed. Different property changes
+        // imply different migration actions; classify each by whether existing
+        // note values can still satisfy the new definition.
+        const oldField = oldSchema?.types?.[change.type]?.fields?.[change.field];
+        const newField = newSchema.types[change.type]?.fields?.[change.field];
+        classifyFieldChange(change, oldField, newField, deterministic, nonDeterministic);
         break;
+      }
         
       // Type operations
       case 'type-added':
@@ -298,10 +303,92 @@ function classifyChanges(
 }
 
 /**
+ * Classify a single `field-changed` detection into migration ops.
+ *
+ * Each property change is mapped to the safest action that keeps existing notes
+ * consistent with the new field definition:
+ *
+ * - `options` narrowed (values removed): existing notes may hold a value that is
+ *   no longer allowed → `clear-invalid-options` (non-deterministic, lossy
+ *   cleanup). Options *added* keep every existing value valid → no op.
+ * - `multiple` false → true: a scalar value is still valid as a single-element
+ *   array → `widen-field-to-multiple` (deterministic, lossless wrap).
+ * - `multiple` true → false, `required` toggled on, or `source` retargeted:
+ *   existing values may now be invalid but there is no safe deterministic fix →
+ *   `review-field` (non-deterministic, no note mutation, surfaced for the user).
+ */
+function classifyFieldChange(
+  change: Extract<DetectedChange, { kind: 'field-changed' }>,
+  oldField: Field | undefined,
+  newField: Field | undefined,
+  deterministic: MigrationOp[],
+  nonDeterministic: MigrationOp[]
+): void {
+  const { type: targetType, field, changes: changedProps } = change;
+
+  if (changedProps.includes('options')) {
+    const oldValues = getOptionValues(oldField?.options);
+    const newValues = new Set(getOptionValues(newField?.options));
+    const removed = oldValues.filter((value) => !newValues.has(value));
+    // Only a *narrowing* (removed allowed values) can orphan existing data.
+    // Pure additions leave every existing value valid, so they need no op.
+    if (removed.length > 0) {
+      nonDeterministic.push({
+        op: 'clear-invalid-options',
+        targetType,
+        field,
+        allowedValues: [...newValues],
+      });
+    }
+  }
+
+  if (changedProps.includes('multiple')) {
+    if (newField?.multiple === true && oldField?.multiple !== true) {
+      // Widening to multiple: existing scalar values wrap losslessly.
+      deterministic.push({ op: 'widen-field-to-multiple', targetType, field });
+    } else {
+      // Narrowing to single: collapsing an array is lossy and ambiguous.
+      nonDeterministic.push({
+        op: 'review-field',
+        targetType,
+        field,
+        reason: 'field no longer accepts multiple values; existing arrays need manual review',
+      });
+    }
+  }
+
+  if (changedProps.includes('required') && newField?.required === true && oldField?.required !== true) {
+    // Field became required: notes missing the value now violate the schema,
+    // but we cannot fabricate a value, so surface it for review.
+    nonDeterministic.push({
+      op: 'review-field',
+      targetType,
+      field,
+      reason: 'field is now required; notes missing a value need manual review',
+    });
+  }
+
+  if (changedProps.includes('source')) {
+    // Relation source retargeted: existing links may point at the wrong type.
+    nonDeterministic.push({
+      op: 'review-field',
+      targetType,
+      field,
+      reason: 'relation source changed; existing links may need manual review',
+    });
+  }
+}
+
+/**
  * Suggest a version bump based on the migration plan.
- * - Major: breaking changes (removals, renames)
- * - Minor: additions
- * - Patch: no changes (shouldn't happen in migration context)
+ *
+ * This is the single source of truth for migration version-bump suggestions
+ * (the `schema migrate` command reuses it rather than reimplementing the rule).
+ *
+ * - Major: any non-deterministic op is present (removals, value re-validation,
+ *   invalid-option cleanup) — these are potentially breaking for existing notes.
+ * - Minor: only deterministic ops (additions, lossless widenings).
+ * - No bump: no changes (kept current; `schema migrate` guards this path).
  */
 export function suggestVersionBump(
   currentVersion: string,
@@ -375,6 +462,12 @@ function formatOpForDisplay(op: MigrationOp): string {
       return `- Remove field "${op.field}" from type "${op.targetType}"`;
     case 'rename-field':
       return `~ Rename field "${op.from}" to "${op.to}" on type "${op.targetType}"`;
+    case 'clear-invalid-options':
+      return `! Clear invalid values of field "${op.field}" on type "${op.targetType}" (allowed: ${op.allowedValues.map((v) => JSON.stringify(v)).join(', ')})`;
+    case 'widen-field-to-multiple':
+      return `~ Widen field "${op.field}" on type "${op.targetType}" to allow multiple values`;
+    case 'review-field':
+      return `! Review field "${op.field}" on type "${op.targetType}": ${op.reason}`;
     case 'add-type':
       return `+ Add type "${op.typeName}"`;
     case 'remove-type':

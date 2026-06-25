@@ -22,7 +22,7 @@ import {
 } from '../../lib/output.js';
 import { UserCancelledError } from '../../lib/errors.js';
 import { loadRawSchemaJson, writeSchema } from '../../lib/schema-writer.js';
-import { diffSchemas, formatDiffForDisplay, formatDiffForJson } from '../../lib/migration/diff.js';
+import { diffSchemas, formatDiffForDisplay, formatDiffForJson, suggestVersionBump } from '../../lib/migration/diff.js';
 import { loadSchemaSnapshot, saveSchemaSnapshot, hasSchemaSnapshot } from '../../lib/migration/snapshot.js';
 import { loadMigrationHistory, recordMigration } from '../../lib/migration/history.js';
 import {
@@ -59,42 +59,6 @@ function toFileChangesJson(fileResults: FileMigrationResult[]): Array<{
 interface HistoryOptions {
   output?: string;
   limit?: string;
-}
-
-/**
- * Suggest a version bump based on the type of changes.
- * - Major: type removals, field removals, breaking changes
- * - Minor: type additions, field additions
- * - Patch: renames, non-breaking changes
- */
-function suggestVersionBump(currentVersion: string, diff: MigrationPlan): string {
-  const parts = currentVersion.split('.').map(Number);
-  const major = parts[0] ?? 1;
-  const minor = parts[1] ?? 0;
-  const patch = parts[2] ?? 0;
-  
-  // Check for breaking changes (non-deterministic usually means breaking)
-  const hasBreakingChanges = diff.nonDeterministic.some(op => 
-    op.op === 'remove-field' || 
-    op.op === 'remove-type'
-  );
-  
-  if (hasBreakingChanges) {
-    return `${major + 1}.0.0`;
-  }
-  
-  // Check for additions (minor bump)
-  const hasAdditions = diff.deterministic.some(op =>
-    op.op === 'add-field' ||
-    op.op === 'add-type'
-  );
-  
-  if (hasAdditions) {
-    return `${major}.${minor + 1}.0`;
-  }
-  
-  // Default to patch for renames and other changes
-  return `${major}.${minor}.${patch + 1}`;
 }
 
 /**

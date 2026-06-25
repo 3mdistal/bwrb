@@ -28,6 +28,36 @@ export const FieldMigrationOpSchema = z.discriminatedUnion('op', [
     from: z.string(),
     to: z.string(),
   }),
+  // Clear values that are no longer valid select options.
+  // Emitted when a select field's allowed `options` are narrowed (values
+  // removed). On apply, any frontmatter value (scalar or array element) that is
+  // no longer in `allowedValues` is dropped, leaving the field empty/filtered.
+  // Lossy, so non-deterministic.
+  z.object({
+    op: z.literal('clear-invalid-options'),
+    targetType: z.string(),
+    field: z.string(),
+    allowedValues: z.array(z.string()),
+  }),
+  // Wrap a scalar value into a single-element array.
+  // Emitted when a field's `multiple` flips false → true. Safe and
+  // deterministic: an existing scalar value is preserved as `[value]`.
+  z.object({
+    op: z.literal('widen-field-to-multiple'),
+    targetType: z.string(),
+    field: z.string(),
+  }),
+  // Surface a tightened field for manual review (no automatic note mutation).
+  // Emitted for field changes that may invalidate existing values but have no
+  // safe deterministic fix — e.g. `required` toggled on, `multiple` narrowed
+  // true → false, or a relation `source` retargeted. Non-deterministic; applying
+  // a migration does not alter notes for this op, it only reports the field.
+  z.object({
+    op: z.literal('review-field'),
+    targetType: z.string(),
+    field: z.string(),
+    reason: z.string(),
+  }),
 ]);
 
 /**

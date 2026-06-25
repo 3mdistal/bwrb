@@ -134,6 +134,7 @@ These can be applied automatically without user input:
 |--------|-------------------------------------|
 | Add field | Missing fields are valid (fields aren't required by default) |
 | Add select option | Existing values remain valid |
+| Allow multiple values (`multiple` false → true) | An existing scalar is wrapped into a single-element array — no data is lost |
 | Add type | No existing notes to update |
 
 ### Non-Deterministic Changes
@@ -143,7 +144,10 @@ These require confirmation because they affect existing data:
 | Change | What Happens |
 |--------|--------------|
 | Remove field | Field is removed from affected notes |
-| Remove select option | Affected notes flagged for review |
+| Remove select option | Note values no longer in the allowed set are dropped — a scalar becomes empty, an array is filtered to its still-valid members (`clear-invalid-options`) |
+| Make field required | Notes missing a value are flagged for review; bwrb cannot fabricate a value (`review-field`) |
+| Disallow multiple values (`multiple` true → false) | Notes holding arrays are flagged for review; collapsing an array is lossy, so bwrb does not auto-change them (`review-field`) |
+| Change relation `source` | Existing links may now point at the wrong type and are flagged for review (`review-field`) |
 | Rename type | Notes are moved to the new directory |
 | Remove type | Existing notes become orphaned (warning) |
 
