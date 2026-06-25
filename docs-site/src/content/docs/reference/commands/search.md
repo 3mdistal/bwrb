@@ -253,6 +253,11 @@ Uses shortest unambiguous form:
 - Unique basename: `[[My Note]]`
 - Ambiguous (multiple notes with same name): `[[Ideas/My Note]]`
 
+Disambiguation is always evaluated against the **whole vault**, even when
+`--path` scopes the search. A basename that is duplicated elsewhere in the vault
+stays path-qualified (`[[Ideas/My Note]]`) so the emitted link is unambiguous in
+Obsidian — even if only one copy falls inside the `--path` glob.
+
 ## App Mode Precedence
 
 1. `--app` flag (explicit)

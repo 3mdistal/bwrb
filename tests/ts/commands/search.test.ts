@@ -252,6 +252,51 @@ status: backlog
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('Ambiguous');
     });
+
+    // Regression (#705/#740): when --path scopes the name-search index, a
+    // basename that is globally duplicated but unique WITHIN the path glob must
+    // still be path-qualified in generated wikilinks. Disambiguation has to
+    // consult the FULL vault, not the path-filtered result set; otherwise the
+    // emitted link is ambiguous in Obsidian and can resolve to the wrong note.
+    describe('path-scoped search still disambiguates wikilinks against the full vault (#705)', () => {
+      it('emits the globally-qualified link for --output link when --path scopes one duplicate', async () => {
+        // Only Ideas/Duplicate.md is in scope, but Objectives/Tasks/Duplicate.md
+        // also exists globally, so the basename "Duplicate" is NOT globally unique.
+        const result = await runCLI(
+          ['search', 'Duplicate', '--path', 'Ideas/**', '--picker', 'none', '--output', 'link'],
+          tempVaultDir,
+        );
+
+        expect(result.exitCode).toBe(0);
+        // Must be path-qualified, NOT the bare [[Duplicate]].
+        expect(result.stdout.trim()).toBe('[[Ideas/Duplicate]]');
+      });
+
+      it('emits the globally-qualified link in the JSON link field under --path', async () => {
+        const result = await runCLI(
+          ['search', 'Duplicate', '--path', 'Ideas/**', '--picker', 'none', '--output', 'json'],
+          tempVaultDir,
+        );
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        expect(json.data).toHaveLength(1);
+        expect(json.data[0].wikilink).toBe('[[Ideas/Duplicate]]');
+        // Result-set filtering (#705) is unchanged: only the in-path note matches.
+        expect(json.data[0].path).toBe('Ideas/Duplicate.md');
+      });
+
+      it('control: a genuinely unique basename still uses the short link form under --path', async () => {
+        const result = await runCLI(
+          ['search', 'Sample Idea', '--path', 'Ideas/**', '--picker', 'none', '--output', 'link'],
+          tempVaultDir,
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('[[Sample Idea]]');
+      });
+    });
   });
 
   describe('discovery consistency with list command (issue #149)', () => {

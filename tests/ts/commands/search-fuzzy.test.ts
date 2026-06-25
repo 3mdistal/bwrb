@@ -92,6 +92,24 @@ aliases:
 `
   );
 
+  // Duplicate basename across two directories. Only Ideas/Duplicate Note.md is
+  // inside the `--path Ideas/**` glob used below, but the basename is NOT
+  // globally unique, so generated wikilinks must stay path-qualified (#705).
+  await writeFile(
+    join(vaultDir, 'Ideas', 'Duplicate Note.md'),
+    `---
+type: idea
+---
+`
+  );
+  await writeFile(
+    join(vaultDir, 'People', 'Duplicate Note.md'),
+    `---
+type: person
+---
+`
+  );
+
   return vaultDir;
 }
 
@@ -220,6 +238,44 @@ describe('search --fuzzy', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout.split('\n')[0]).toBe('[[Steve Yegge]]');
+  });
+
+  // Regression (#705/#740): fuzzy --path scopes the index, but wikilink
+  // disambiguation must still consult the FULL vault so a globally-duplicated
+  // basename (unique only within the glob) is path-qualified, not bare.
+  it('--output link path-qualifies a globally-duplicated basename even when --path scopes one copy', async () => {
+    const result = await runCLI(
+      ['search', 'Duplicate Note', '--fuzzy', '--path', 'Ideas/**', '--output', 'link'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.split('\n')[0]).toBe('[[Ideas/Duplicate Note]]');
+  });
+
+  it('--output json path-qualifies the duplicate basename in the link field under --path', async () => {
+    const result = await runCLI(
+      ['search', 'Duplicate Note', '--fuzzy', '--path', 'Ideas/**', '--output', 'json'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.success).toBe(true);
+    const top = json.data[0];
+    expect(top.wikilink).toBe('[[Ideas/Duplicate Note]]');
+    // Result-set filtering (#705) is unchanged: only the in-path copy matches.
+    expect(top.path).toBe('Ideas/Duplicate Note.md');
+  });
+
+  it('control: fuzzy --path still emits the short link for a genuinely unique basename', async () => {
+    const result = await runCLI(
+      ['search', 'Deterministic Safety Net', '--fuzzy', '--path', 'Ideas/**', '--output', 'link'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.split('\n')[0]).toBe('[[Deterministic Safety Net]]');
   });
 
   it('--output content prints the full file (frontmatter + body)', async () => {
