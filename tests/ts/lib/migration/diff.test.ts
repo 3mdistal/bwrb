@@ -549,8 +549,14 @@ describe("diffSchemas", () => {
       expect(targetedTypes).not.toContain("subtask");
     });
 
-    it("propagates a multiple-widen to inheriting descendants too", () => {
-      // objective.phase false → true. task inherits → both get widen ops.
+    it("propagates a multiple-widen per-aspect (options override does NOT shield a multiple change)", () => {
+      // objective.phase multiple false → true. The affectedness decision is
+      // PER-ASPECT: a descendant is shielded from a `multiple` change only if it
+      // overrode `multiple`. subtask in `inheritanceBase` overrides only
+      // `options` (and resolution's restricted merge even DROPS that for an
+      // inherited field), so its notes still inherit objective's `multiple` and
+      // it IS widened too. (Codex defect A: the prior fix shielded subtask for
+      // any aspect because it had a raw entry — over-conservative.)
       const newSchema: BwrbSchemaType = {
         ...inheritanceBase,
         schemaVersion: "1.1.0",
@@ -577,7 +583,174 @@ describe("diffSchemas", () => {
 
       expect(widenTargets).toContain("objective");
       expect(widenTargets).toContain("task");
+      // subtask did NOT override `multiple`, so it is affected by the multiple
+      // change too.
+      expect(widenTargets).toContain("subtask");
+    });
+
+    it("does NOT widen a descendant that overrides the `multiple` aspect", () => {
+      // subtask here overrides `multiple` explicitly → it owns that aspect and is
+      // shielded from objective's multiple change.
+      const base: BwrbSchemaType = {
+        ...inheritanceBase,
+        types: {
+          ...inheritanceBase.types,
+          subtask: {
+            extends: "task",
+            fields: {
+              phase: { prompt: "select", multiple: false },
+            },
+          },
+        },
+      };
+      const newSchema: BwrbSchemaType = {
+        ...base,
+        schemaVersion: "1.1.0",
+        types: {
+          ...base.types,
+          objective: {
+            ...base.types.objective,
+            fields: {
+              phase: {
+                prompt: "select",
+                options: ["planned", "active", "done", "abandoned"],
+                multiple: true,
+              },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(base, newSchema, "1.0.0", "1.1.0");
+
+      const widenTargets = plan.deterministic
+        .filter((op) => op.op === "widen-field-to-multiple" && op.field === "phase")
+        .map((op) => (op.op === "widen-field-to-multiple" ? op.targetType : ""));
+
+      expect(widenTargets).toContain("objective");
+      expect(widenTargets).toContain("task");
       expect(widenTargets).not.toContain("subtask");
+    });
+
+    // Defect A (Codex, third review): a child that re-declares the inherited
+    // field ONLY to override allowed METADATA (description/default/value/
+    // granularity) is NOT a structural override — schema resolution keeps the
+    // parent's options/multiple via the restricted merge — so its notes still
+    // inherit the parent's value set and MUST be cleaned. The prior fix wrongly
+    // treated any raw child field entry as a full redefinition and excluded it.
+    describe("metadata-only child override is still affected", () => {
+      // task extends objective and re-declares `phase` but only sets a
+      // `description` (metadata) — structurally it still inherits objective's
+      // options. subtask is a real structural override (own options).
+      const metadataOverrideBase: BwrbSchemaType = {
+        version: 2,
+        schemaVersion: "1.0.0",
+        types: {
+          objective: {
+            fields: {
+              phase: {
+                prompt: "select",
+                options: ["planned", "active", "done", "abandoned"],
+              },
+            },
+          },
+          task: {
+            extends: "objective",
+            fields: {
+              // Metadata-only override: keeps parent's options via restricted
+              // merge. Should STILL be affected by a parent option removal.
+              phase: {
+                prompt: "select",
+                description: "task-specific phase wording",
+              },
+            },
+          },
+          subtask: {
+            extends: "task",
+            fields: {
+              // Real structural override: its own options.
+              phase: { prompt: "select", options: ["todo", "doing", "done"] },
+            },
+          },
+        },
+      };
+
+      function withObjectiveOptions(options: string[]): BwrbSchemaType {
+        return {
+          ...metadataOverrideBase,
+          schemaVersion: "1.1.0",
+          types: {
+            ...metadataOverrideBase.types,
+            objective: {
+              ...metadataOverrideBase.types.objective,
+              fields: {
+                phase: { prompt: "select", options },
+              },
+            },
+          },
+        };
+      }
+
+      it("cleans a child that overrides ONLY metadata (description)", () => {
+        const newSchema = withObjectiveOptions(["planned", "active", "done"]);
+        const plan = diffSchemas(
+          metadataOverrideBase,
+          newSchema,
+          "1.0.0",
+          "1.1.0"
+        );
+
+        const targeted = plan.nonDeterministic
+          .filter((op) => op.op === "clear-invalid-options" && op.field === "phase")
+          .map((op) => (op.op === "clear-invalid-options" ? op.targetType : ""));
+
+        // Declaring type AND the metadata-only-override child are cleaned.
+        expect(targeted).toContain("objective");
+        expect(targeted).toContain("task");
+        // The real structural override is NOT cleaned.
+        expect(targeted).not.toContain("subtask");
+      });
+
+      it("cleans a child that overrides ONLY a default", () => {
+        const base: BwrbSchemaType = {
+          ...metadataOverrideBase,
+          types: {
+            ...metadataOverrideBase.types,
+            task: {
+              extends: "objective",
+              fields: {
+                // default-only override (not structural).
+                phase: { prompt: "select", default: "planned" },
+              },
+            },
+          },
+        };
+        const newSchema: BwrbSchemaType = {
+          ...base,
+          schemaVersion: "1.1.0",
+          types: {
+            ...base.types,
+            objective: {
+              ...base.types.objective,
+              fields: {
+                phase: {
+                  prompt: "select",
+                  options: ["planned", "active", "done"],
+                },
+              },
+            },
+          },
+        };
+        const plan = diffSchemas(base, newSchema, "1.0.0", "1.1.0");
+
+        const targeted = plan.nonDeterministic
+          .filter((op) => op.op === "clear-invalid-options" && op.field === "phase")
+          .map((op) => (op.op === "clear-invalid-options" ? op.targetType : ""));
+
+        expect(targeted).toContain("objective");
+        expect(targeted).toContain("task");
+        expect(targeted).not.toContain("subtask");
+      });
     });
   });
 

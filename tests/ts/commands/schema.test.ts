@@ -488,6 +488,89 @@ describe('schema command', () => {
         await rm(tempVaultDir, { recursive: true, force: true });
       }
     });
+
+    // Defect B (Codex, third review): a schema-only change that emits no note op
+    // (e.g. adding a select option) sets schemaChanged=true / hasChanges=false.
+    // `migrate --execute` WILL refresh the snapshot for this case, so `schema
+    // diff` must surface it instead of claiming "No schema changes".
+    async function setupAddedOptionVault(): Promise<string> {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-schema-diff-added-option-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+
+      const snapshotSchema = {
+        version: 2,
+        types: {
+          meta: {},
+          task: {
+            extends: 'meta',
+            fields: {
+              status: { prompt: 'select', options: ['active', 'done'] },
+            },
+          },
+        },
+      };
+      // Current schema only ADDS an option — no note op, but the shape changed.
+      const currentSchema = {
+        version: 2,
+        types: {
+          meta: {},
+          task: {
+            extends: 'meta',
+            fields: {
+              status: { prompt: 'select', options: ['active', 'done', 'blocked'] },
+            },
+          },
+        },
+      };
+
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(currentSchema, null, 2)
+      );
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.applied.json'),
+        JSON.stringify({
+          schemaVersion: '1.0.0',
+          snapshotAt: new Date().toISOString(),
+          schema: snapshotSchema,
+        }, null, 2)
+      );
+
+      return tempVaultDir;
+    }
+
+    it('reports a schema-only change (added option) in JSON, with zero note migrations', async () => {
+      const tempVaultDir = await setupAddedOptionVault();
+      try {
+        const result = await runCLI(['schema', 'diff', '--output', 'json'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const data = JSON.parse(result.stdout);
+        expect(data.success).toBe(true);
+        // No note migrations...
+        expect(data.data.hasChanges).toBe(false);
+        expect(data.data.deterministic).toHaveLength(0);
+        expect(data.data.nonDeterministic).toHaveLength(0);
+        // ...but the schema shape changed and that must be visible.
+        expect(data.data.schemaChanged).toBe(true);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('reports a schema-only change (added option) in human output, not "No schema changes"', async () => {
+      const tempVaultDir = await setupAddedOptionVault();
+      try {
+        const result = await runCLI(['schema', 'diff'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).not.toContain('No schema changes');
+        expect(result.stdout.toLowerCase()).toContain('schema shape changed');
+        expect(result.stdout).toContain('migrate --execute');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe('schema migrate', () => {

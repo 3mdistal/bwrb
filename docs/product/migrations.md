@@ -39,6 +39,13 @@ Output categorizes changes as:
 - **Deterministic**: Can be auto-applied (field additions, type additions, widening a field to allow multiple values)
 - **Non-deterministic**: Require user input (field removals, removed select options, fields becoming required, relation source changes, type removals)
 
+Some schema edits change the schema *shape* without producing any note operation
+— adding a select option is the canonical example. `schema diff` still reports
+these as a **schema-only change** (rather than "No schema changes since last
+migration") and notes that the snapshot will refresh on `migrate --execute`. The
+JSON output carries this as `schemaChanged: true` alongside `hasChanges: false`
+and empty `deterministic`/`nonDeterministic` arrays (zero note migrations).
+
 ### `bwrb schema migrate`
 
 Applies schema changes to existing notes.

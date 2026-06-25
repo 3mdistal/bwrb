@@ -242,15 +242,26 @@ function classifyChanges(
   const deterministic: MigrationOp[] = [];
   const nonDeterministic: MigrationOp[] = [];
 
-  // Resolve the new schema once so field-changed ops can enumerate the
-  // descendant types that *inherit* the changed field (and therefore hold notes
-  // affected by the change). Resolution is pure and synchronous; it computes the
-  // same `extends`-based inheritance the rest of the app uses. Lazily computed so
+  // Resolve both schemas once so field-changed ops can enumerate the descendant
+  // types that *inherit* the changed field (and therefore hold notes affected by
+  // the change). We resolve the OLD schema to decide affectedness: a descendant
+  // is affected iff, in the pre-change schema, its EFFECTIVE field still inherited
+  // the declaring type's structural aspect being changed (it did not override
+  // `options`/`multiple`). That is exactly the structure its existing notes were
+  // written against. Resolution is pure and synchronous and reuses the same
+  // `extends`-based inheritance the rest of the app uses. Lazily computed so
   // schemas with no field-changed ops pay nothing.
   let resolvedNew: ReturnType<typeof resolveSchema> | undefined;
   const getResolvedNew = (): ReturnType<typeof resolveSchema> => {
     if (!resolvedNew) resolvedNew = resolveSchema(newSchema);
     return resolvedNew;
+  };
+  let resolvedOld: ReturnType<typeof resolveSchema> | undefined | null;
+  const getResolvedOld = (): ReturnType<typeof resolveSchema> | undefined => {
+    if (resolvedOld === undefined) {
+      resolvedOld = oldSchema ? resolveSchema(oldSchema) : null;
+    }
+    return resolvedOld ?? undefined;
   };
 
   for (const change of changes) {
@@ -287,8 +298,10 @@ function classifyChanges(
         const newField = newSchema.types[change.type]?.fields?.[change.field];
         const affectedTypes = affectedTypesForField(
           getResolvedNew(),
+          getResolvedOld(),
           change.type,
-          change.field
+          change.field,
+          change.changes
         );
         classifyFieldChange(
           change,
@@ -338,52 +351,92 @@ function classifyChanges(
  *
  * A field-changed op is recorded against the type that *declares* the field, but
  * `executeMigration` matches ops to notes by the note's exact type. Descendant
- * types that INHERIT the field (via `extends`, without redefining it) hold notes
- * that carry the same field and are therefore equally affected — yet they would
- * never receive the op if it only targeted the declaring type (#728 / Codex
- * defect A: removing a parent-type select option leaves invalid values in
- * child-type notes untouched while the snapshot still advances).
+ * types that INHERIT the field (via `extends`, without overriding the changed
+ * structural aspect) hold notes that carry the same value set and are therefore
+ * equally affected — yet they would never receive the op if it only targeted the
+ * declaring type (#728 / Codex defect A: removing a parent-type select option
+ * leaves invalid values in child-type notes untouched while the snapshot
+ * advances).
  *
- * Returns the declaring type plus every descendant whose *effective* definition
- * of the field still resolves to the declaring type's definition. A descendant
- * that overrides the field with its own definition (own field, or via an
- * intermediate ancestor) is NOT affected by the parent's change and is excluded.
+ * A descendant is excluded only when it *structurally* overrides the specific
+ * aspect being changed. The decision must distinguish two kinds of raw child
+ * field entry, which differ in how schema resolution treats them:
  *
- * Resolution reuses the schema layer's existing `extends` inheritance: the
- * resolved type's `fields` already reflect the full inheritance/override merge,
- * and `getDescendants` walks the children tree.
+ *   - **Metadata-only override** (child re-declares the field but sets ONLY
+ *     `description`/`default`/`value`/`granularity`): resolution's restricted
+ *     merge for inherited fields KEEPS the parent's structural `options`/
+ *     `multiple`, so the child's notes still inherit the parent's value set and
+ *     ARE affected. The prior fix wrongly excluded these (treated any raw entry
+ *     as a full redefinition) — the data-loss defect.
+ *   - **Structural override** (child's raw entry declares the very aspect being
+ *     changed — `options` for an options change, `multiple` for a multiple
+ *     change): the child owns that aspect independently of the parent, so the
+ *     parent's change does not reach it → excluded.
+ *
+ * The structural aspect being changed comes from `changedProps`. We therefore ask
+ * a per-aspect question of each type on the chain between the descendant and the
+ * declaring type: does its RAW field entry declare that aspect? If so, the
+ * descendant is excluded. We read raw entries (not the resolved field) precisely
+ * because resolution's restricted merge would otherwise hide a child's own
+ * `options` and make metadata-only and structural overrides indistinguishable.
+ *
+ * `resolvedNew`/`resolvedOld` provide the descendant tree and ancestor chains
+ * (identical topology in both for a pure field-changed edit). Raw entries are
+ * read from the relevant schema; the old schema is preferred so the decision
+ * reflects the structure existing notes were written against.
  */
 function affectedTypesForField(
-  resolved: ReturnType<typeof resolveSchema>,
+  resolvedNew: ReturnType<typeof resolveSchema>,
+  resolvedOld: ReturnType<typeof resolveSchema> | undefined,
   declaringType: string,
-  field: string
+  field: string,
+  changedProps: string[]
 ): string[] {
   const affected = [declaringType];
-  const traits = resolved.raw.traits ?? {};
+  const structural = resolvedOld ?? resolvedNew;
+  const traits = structural.raw.traits ?? {};
 
-  // A type "redefines" the field when its own raw definition declares it, or one
-  // of its composed traits provides it. Such a type breaks inheritance from the
-  // declaring type — its field (and options) are independent of the parent's.
-  const redefinesField = (typeName: string): boolean => {
-    if (resolved.raw.types[typeName]?.fields?.[field] !== undefined) return true;
-    const composed = resolved.types.get(typeName)?.traits ?? [];
+  // The structural aspects this op touches. A descendant (or an intermediate
+  // ancestor) that raw-declares ANY of these for the field breaks inheritance of
+  // the parent's structure and is excluded. Metadata-only keys are intentionally
+  // NOT listed: re-declaring just a description/default/value/granularity leaves
+  // the parent's structure intact (restricted merge), so the child stays affected.
+  const structuralAspects: (keyof Field)[] = [];
+  if (changedProps.includes('options')) structuralAspects.push('options');
+  if (changedProps.includes('multiple')) structuralAspects.push('multiple');
+  if (changedProps.includes('required')) structuralAspects.push('required');
+  if (changedProps.includes('source')) structuralAspects.push('source');
+
+  // A type structurally overrides the field when its OWN raw definition declares
+  // one of the changed aspects, or a composed trait provides the field (a trait
+  // fully replaces the field, so it owns every aspect). A raw entry that touches
+  // only metadata keys does NOT count.
+  const overridesStructure = (typeName: string): boolean => {
+    const rawField = structural.raw.types[typeName]?.fields?.[field];
+    if (rawField !== undefined) {
+      const ownsAspect = structuralAspects.some(
+        (aspect) => (rawField as Field)[aspect] !== undefined
+      );
+      if (ownsAspect) return true;
+    }
+    const composed = structural.types.get(typeName)?.traits ?? [];
     return composed.some((t) => traits[t]?.fields?.[field] !== undefined);
   };
 
-  for (const descendantName of getDescendants(resolved, declaringType)) {
-    const descendant = resolved.types.get(descendantName);
+  for (const descendantName of getDescendants(resolvedNew, declaringType)) {
+    const descendant = structural.types.get(descendantName);
     if (!descendant) continue;
     if (!(field in descendant.fields)) continue; // field not present at all
 
-    // The descendant inherits the declaring type's field iff neither it nor any
-    // type strictly between it and the declaring type redefines the field. A
-    // redefinition anywhere on that path means the descendant's options/multiple
-    // are its own, so the parent's change does not reach it.
+    // Walk from the descendant up to (but not including) the declaring type. A
+    // structural override anywhere on that path means the descendant's notes are
+    // governed by an independent definition, so the parent's change does not
+    // reach them.
     const chainToParent = [descendantName, ...descendant.ancestors];
     let overridden = false;
     for (const typeName of chainToParent) {
-      if (typeName === declaringType) break; // reached the declaring type
-      if (redefinesField(typeName)) {
+      if (typeName === declaringType) break;
+      if (overridesStructure(typeName)) {
         overridden = true;
         break;
       }
@@ -628,6 +681,10 @@ function formatOpForDisplay(op: MigrationOp): string {
 export function formatDiffForJson(plan: MigrationPlan): Record<string, unknown> {
   return {
     hasChanges: plan.hasChanges,
+    // A schema-shape change can occur with no note ops (e.g. a select option was
+    // added). Surface it so `schema diff` consumers can tell the snapshot will
+    // refresh on migrate even when no note migrations are needed (#728 defect B).
+    schemaChanged: plan.schemaChanged,
     fromVersion: plan.fromVersion,
     toVersion: plan.toVersion,
     deterministic: plan.deterministic,

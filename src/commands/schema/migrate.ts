@@ -111,13 +111,32 @@ Examples:
         const snapshotVersion = snapshot.schemaVersion ?? '1.0.0';
         const diff = diffSchemas(snapshot.schema, currentSchema.raw, snapshotVersion, currentVersion);
         
+        // A schema-shape change can produce no note ops (e.g. a select option
+        // was *added*). `migrate --execute` still refreshes the snapshot in that
+        // case, so `schema diff` must report the schema-only change instead of
+        // claiming "No schema changes" (#728 defect B). "Anything to report?" is
+        // therefore keyed off both `hasChanges` and `schemaChanged`.
+        const schemaOnlyChange = !diff.hasChanges && diff.schemaChanged;
+
         if (jsonMode) {
+          const message = diff.hasChanges
+            ? 'Schema changes detected'
+            : diff.schemaChanged
+              ? 'Schema shape changed; snapshot will refresh on migrate (no note changes)'
+              : 'No changes';
           printJson(jsonSuccess({
-            message: diff.hasChanges ? 'Schema changes detected' : 'No changes',
+            message,
             data: formatDiffForJson(diff),
           }));
         } else {
-          if (!diff.hasChanges) {
+          if (schemaOnlyChange) {
+            console.log(chalk.bold('\nPending Schema Changes\n'));
+            console.log(chalk.green('Schema shape changed, but no note changes are required.'));
+            console.log(chalk.gray('Examples: a select option was added, or a no-op shape edit.'));
+            console.log('');
+            console.log(chalk.gray('The snapshot will be refreshed so future changes diff correctly.'));
+            console.log('Run `bwrb schema migrate --execute` to refresh the snapshot.');
+          } else if (!diff.hasChanges) {
             console.log(chalk.green('No schema changes since last migration.'));
           } else {
             console.log(chalk.bold('\nPending Schema Changes\n'));
