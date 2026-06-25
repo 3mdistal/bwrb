@@ -79,6 +79,7 @@ import {
 import {
   buildOwnershipIndex,
   findDeclaredOwner,
+  isDeclaredOwnershipAmbiguous,
   canReference,
   extractWikilinkReferences,
   type OwnershipIndex,
@@ -424,8 +425,10 @@ export async function auditFile(
   // but which has been moved out of its `<owner-dir>/<field>/` subtree) is
   // reported by the dedicated, richer `owned-wrong-location` check in
   // checkOwnershipViolations — whose --fix target restores it under its owner
-  // (#702), not its type's top-level output_dir. Suppress the generic
-  // `wrong-directory` here so such a note is reported exactly once (#703).
+  // (#702), not its type's top-level output_dir. The same holds for an
+  // ambiguous-owner conflict (`owned-ambiguous-owner`, #734). Suppress the
+  // generic `wrong-directory` here so such a note is reported exactly once
+  // (#703) by the ownership check, not duplicated.
   const isMisplacedOwnedNote =
     ownershipIndex !== undefined &&
     findMisplacedOwnedNote(schema, ownershipIndex, file, resolvedTypePath) !== undefined;
@@ -1683,43 +1686,93 @@ function checkSingleContextValue(
 // ============================================================================
 
 /**
- * Resolve a note that an owner DECLARES as owned (via an `owned` frontmatter
- * field) but which does not currently live under its owner's
- * `<owner-dir>/<field>/` subtree.
+ * Outcome of classifying a declared-owned note's location.
  *
- * Returns the owner path, the expected (restore) directory, and the actual
- * directory when the note is a genuinely-misplaced owned note; otherwise
- * `undefined` (the note is either not owned, or already correctly placed).
+ * - `misplaced`: a single owner declares this note but it does not live under
+ *   that owner's `<owner-dir>/<field>/` subtree → restore it under the owner
+ *   (`owned-wrong-location`, auto-fixable).
+ * - `ambiguous`: TWO OR MORE distinct owners declare this basename → we cannot
+ *   know the true owner, so this is a conflict for MANUAL resolution
+ *   (`owned-ambiguous-owner`, NEVER auto-fixed) (#734).
+ */
+type MisplacedOwnedNote =
+  | {
+      kind: 'misplaced';
+      ownerPath: string;
+      expectedDir: string;
+      actualDir: string;
+    }
+  | { kind: 'ambiguous'; actualDir: string };
+
+/**
+ * Resolve a note that an owner DECLARES as owned (via an `owned` frontmatter
+ * field) but which is NOT under the DECLARING owner's `<owner-dir>/<field>/`
+ * subtree — including the case where the note physically sits under a DIFFERENT
+ * valid owner's subtree (#734, defect B).
+ *
+ * Returns a discriminated result (`misplaced` vs `ambiguous`) when the note is a
+ * genuinely-misplaced / conflicted owned note; otherwise `undefined` (the note
+ * is either not owned, or already correctly placed under its declaring owner).
  *
  * Shared by the upstream `wrong-directory` check (to suppress a duplicate,
  * lower-fidelity report) and `checkOwnershipViolations` (to emit the richer
- * `owned-wrong-location`). Keeping the rule in one place guarantees the two
- * stay in agreement (#702/#703).
+ * `owned-wrong-location` / `owned-ambiguous-owner`). Keeping the rule in one
+ * place guarantees the two stay in agreement (#702/#703/#734).
  *
  * Declared ownership is matched by BASENAME (a misplaced note can live
- * anywhere, so location can't be used). Basename alone is ambiguous: a
- * correctly-placed note of a DIFFERENT type may share a basename with the
- * owner's declared owned reference (e.g. the owner's `songs: [[Foo]]` happens to
- * collide with an unrelated `type: album` note named `Foo`). Such a note is not
- * the owned note — relocating it under the owner subtree would be wrong. So we
- * only treat the candidate as the owned note when its resolved `type` matches
- * the owned field's source/child type (or is a descendant of it). The owner's
- * dangling reference is surfaced separately as `invalid-source-type`/stale
- * reference and is intentionally left to that check.
+ * anywhere, so location can't be used). Basename alone is ambiguous in two ways:
+ *
+ *  1. A correctly-placed note of a DIFFERENT type may share a basename with the
+ *     owner's declared owned reference (e.g. the owner's `songs: [[Foo]]` happens
+ *     to collide with an unrelated `type: album` note named `Foo`). Such a note
+ *     is not the owned note — relocating it under the owner subtree would be
+ *     wrong. So we only treat the candidate as the owned note when its resolved
+ *     `type` matches the owned field's source/child type (or is a descendant of
+ *     it). The owner's dangling reference is surfaced separately as
+ *     `invalid-source-type`/stale reference and is left to that check.
+ *
+ *  2. TWO OR MORE distinct owners may declare the SAME basename. Then there is no
+ *     single correct owner to restore under: we return `kind: 'ambiguous'` so the
+ *     caller reports a conflict for manual resolution instead of auto-moving the
+ *     note under whichever owner happened to be scanned first (#734, defect A).
+ *
+ * Defect B: a note declared by owner A may be physically placed under a
+ * DIFFERENT valid owner B's subtree, in which case discovery sets
+ * `file.ownership` (= owner B). We must NOT early-return on `file.ownership`:
+ * when the DECLARING owner (A) differs from the PHYSICAL owner (B), the note is
+ * still misplaced and must be restored under A. Only when the declaring owner
+ * and the physical owner coincide (or no other owner declares it) is the current
+ * location correct.
  */
 function findMisplacedOwnedNote(
   schema: LoadedSchema,
   ownershipIndex: OwnershipIndex,
   file: ManagedFile,
   resolvedTypePath: string
-): { ownerPath: string; expectedDir: string; actualDir: string } | undefined {
-  // Note already discovered as owned (sitting in a valid owner subtree) is, by
-  // construction, correctly placed — nothing to restore.
-  if (file.ownership) return undefined;
-
+): MisplacedOwnedNote | undefined {
   const noteName = basename(file.relativePath, '.md');
+  const actualDir = dirname(file.relativePath);
+
+  // Multi-owner conflict (#734, defect A): two or more distinct owners declare
+  // this basename. We cannot choose one without guessing, so surface it as an
+  // ambiguous conflict — regardless of where the note physically sits — so the
+  // caller never auto-restores it under an arbitrary owner. This is checked
+  // first so it also wins over an arbitrary single-owner restore.
+  if (isDeclaredOwnershipAmbiguous(ownershipIndex, noteName)) {
+    return { kind: 'ambiguous', actualDir };
+  }
+
   const declared = findDeclaredOwner(ownershipIndex, noteName);
   if (!declared) return undefined;
+
+  // If the note is physically under the SAME owner that declares it, it is
+  // already correctly placed (discovery's `file.ownership` records the physical
+  // owner). Nothing to restore. A note physically under a DIFFERENT owner falls
+  // through and is treated as misplaced against its declaring owner (#734,
+  // defect B).
+  if (file.ownership && file.ownership.ownerPath === declared.ownerPath) {
+    return undefined;
+  }
 
   // Verify the candidate's ACTUAL type matches the owned field's source type.
   // A same-named note of a different type is not this owned note.
@@ -1733,13 +1786,12 @@ function findMisplacedOwnedNote(
   if (!typeMatches) return undefined;
 
   const expectedDir = getOwnedChildFolder(declared.ownerPath, declared.fieldName);
-  const actualDir = dirname(file.relativePath);
 
   const normalizedExpected = expectedDir.replace(/\/$/, '');
   const normalizedActual = actualDir.replace(/\/$/, '');
   if (normalizedActual === normalizedExpected) return undefined;
 
-  return { ownerPath: declared.ownerPath, expectedDir, actualDir };
+  return { kind: 'misplaced', ownerPath: declared.ownerPath, expectedDir, actualDir };
 }
 
 /**
@@ -1774,7 +1826,26 @@ async function checkOwnershipViolations(
   // `wrong-directory` check upstream is suppressed for the same note so it is
   // reported exactly once.
   const misplaced = findMisplacedOwnedNote(schema, ownershipIndex, file, resolvedTypePath);
-  if (misplaced) {
+  if (misplaced?.kind === 'ambiguous') {
+    // Two or more distinct owners declare this basename (#734). We cannot pick
+    // one without guessing, so report a conflict for MANUAL resolution and mark
+    // it NON-auto-fixable — mirroring how ambiguous unlinked-mentions and
+    // config errors stay flag-only (`autoFixable: false`). With autoFixable
+    // false, `--fix --auto` (which only applies `autoFixable` issues) will never
+    // move the note under an arbitrarily-chosen owner; the user resolves it by
+    // removing the duplicate declaration (or renaming the note).
+    issues.push({
+      severity: 'error',
+      code: 'owned-ambiguous-owner',
+      message:
+        `Ambiguous owner: this note's name is declared as owned by more than ` +
+        `one owner. Resolve manually (remove the duplicate declaration or rename ` +
+        `the note); it will not be auto-restored under a guessed owner.`,
+      currentDirectory: misplaced.actualDir,
+      autoFixable: false,
+      ownedNotePath: file.relativePath,
+    });
+  } else if (misplaced) {
     issues.push({
       severity: 'error',
       code: 'owned-wrong-location',

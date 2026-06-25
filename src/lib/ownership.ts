@@ -58,8 +58,21 @@ export interface OwnershipIndex {
    * been moved OUT of its owner's `<owner-dir>/<field>/` folder. It is what lets
    * audit recognise a genuinely-misplaced owned note as owned and restore it
    * under its owner (#702/#703).
+   *
+   * When the SAME basename is declared by two or more DISTINCT owners, only the
+   * first-scanned owner is kept here (a map can hold one value per key); the
+   * collision is recorded separately in `ambiguousDeclaredOwners` so callers can
+   * detect the conflict instead of silently trusting the arbitrary winner.
    */
   declaredOwned: Map<string, OwnedNoteInfo>;
+  /**
+   * Set of `declaredOwned` keys that are declared by MORE THAN ONE distinct
+   * owner. A basename in this set is AMBIGUOUS: we cannot know which owner a
+   * misplaced note of that name truly belongs to, so audit must surface it as a
+   * conflict requiring MANUAL resolution rather than auto-restoring it under an
+   * arbitrarily-chosen owner (#734 / multi-owner data-safety gap).
+   */
+  ambiguousDeclaredOwners: Set<string>;
 }
 
 /**
@@ -105,6 +118,7 @@ export async function buildOwnershipIndex(
   const ownedNotes = new Map<string, OwnedNoteInfo>();
   const ownerToOwned = new Map<string, Set<string>>();
   const declaredOwned = new Map<string, OwnedNoteInfo>();
+  const ambiguousDeclaredOwners = new Set<string>();
 
   // Find all types that can own things
   const ownerTypes = new Set<string>();
@@ -135,7 +149,8 @@ export async function buildOwnershipIndex(
             ownerTypeName,
             ownedNotes,
             ownerToOwned,
-            declaredOwned
+            declaredOwned,
+            ambiguousDeclaredOwners
           );
         }
       } else if (entry.isFile() && entry.name.endsWith('.md')) {
@@ -148,13 +163,14 @@ export async function buildOwnershipIndex(
           ownerTypeName,
           ownedNotes,
           ownerToOwned,
-          declaredOwned
+          declaredOwned,
+          ambiguousDeclaredOwners
         );
       }
     }
   }
 
-  return { ownedNotes, ownerToOwned, declaredOwned };
+  return { ownedNotes, ownerToOwned, declaredOwned, ambiguousDeclaredOwners };
 }
 
 /**
@@ -167,7 +183,8 @@ async function indexOwnerNote(
   ownerTypeName: string,
   ownedNotes: Map<string, OwnedNoteInfo>,
   ownerToOwned: Map<string, Set<string>>,
-  declaredOwned: Map<string, OwnedNoteInfo>
+  declaredOwned: Map<string, OwnedNoteInfo>,
+  ambiguousDeclaredOwners: Set<string>
 ): Promise<void> {
   const relativeOwnerPath = relative(vaultDir, ownerNotePath);
   const ownedFields = getOwnedFields(schema, ownerTypeName);
@@ -222,13 +239,23 @@ async function indexOwnerNote(
       : []) {
       const normalizedName = wikilinkTargetBasename(refName);
       const key = declaredOwnerKey(normalizedName);
-      if (!declaredOwned.has(key)) {
+      const existing = declaredOwned.get(key);
+      if (existing === undefined) {
         declaredOwned.set(key, {
           notePath: normalizedName,
           ownerPath: relativeOwnerPath,
           ownerType: ownerTypeName,
           fieldName: ownedField.fieldName,
         });
+      } else if (existing.ownerPath !== relativeOwnerPath) {
+        // A DIFFERENT owner already declares this basename. We cannot pick one
+        // owner without guessing, so flag the key as ambiguous. The first-seen
+        // entry is retained in `declaredOwned` (callers that only need *some*
+        // owner still work) but audit consults `ambiguousDeclaredOwners` first
+        // and refuses to auto-restore an ambiguous note under a guessed owner
+        // (#734). A repeat declaration from the SAME owner (e.g. the basename
+        // listed twice, or under two of its own fields) is not a conflict.
+        ambiguousDeclaredOwners.add(key);
       }
     }
 
@@ -306,6 +333,24 @@ export function findDeclaredOwner(
   noteName: string
 ): OwnedNoteInfo | undefined {
   return index.declaredOwned.get(declaredOwnerKey(noteName));
+}
+
+/**
+ * Whether this note's basename is declared as owned by MORE THAN ONE distinct
+ * owner — an AMBIGUOUS ownership claim (#734).
+ *
+ * `findDeclaredOwner` returns only the first-scanned owner for such a basename,
+ * which is arbitrary. Audit must therefore consult this BEFORE acting on a
+ * declared owner: an ambiguous note cannot be auto-restored under a guessed
+ * owner and is instead surfaced as a conflict for manual resolution. Keyed via
+ * the same `declaredOwnerKey` normalization as the index, so all wikilink forms
+ * agree with the lookup.
+ */
+export function isDeclaredOwnershipAmbiguous(
+  index: OwnershipIndex,
+  noteName: string
+): boolean {
+  return index.ambiguousDeclaredOwners.has(declaredOwnerKey(noteName));
 }
 
 /**

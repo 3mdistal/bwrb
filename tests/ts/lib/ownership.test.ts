@@ -7,6 +7,7 @@ import {
   buildOwnershipIndex,
   isNoteOwned,
   findDeclaredOwner,
+  isDeclaredOwnershipAmbiguous,
   canReference,
   validateNewOwned,
   extractWikilinkReferences,
@@ -294,6 +295,50 @@ describe('Ownership Index Building', () => {
     expect(declared?.notePath).toBe('Stray Notes');
     // Case-insensitive lookup still works.
     expect(findDeclaredOwner(index, 'stray notes')).toBeDefined();
+  });
+
+  // #734 (defect A): when TWO distinct owners declare the same basename, the
+  // declaredOwned map can only keep one (arbitrary) owner. The ambiguity must be
+  // recorded separately so audit refuses to auto-restore the note under a
+  // guessed owner.
+  it('flags a basename declared by two distinct owners as ambiguous', async () => {
+    // Both a draft (via `research`) and a project (via `notes`) declare ownership
+    // of the same note name "Shared Notes".
+    createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+      type: 'draft',
+      status: 'active',
+      research: ['[[Shared Notes]]'],
+    });
+    createNote(vaultDir, 'projects/Big Project/Big Project.md', {
+      type: 'project',
+      status: 'active',
+      notes: ['[[Shared Notes]]'],
+    });
+
+    const schema = await loadSchema(vaultDir);
+    const index = await buildOwnershipIndex(schema, vaultDir);
+
+    // Ambiguity is recorded (case-insensitive, all wikilink forms).
+    expect(isDeclaredOwnershipAmbiguous(index, 'Shared Notes')).toBe(true);
+    expect(isDeclaredOwnershipAmbiguous(index, 'shared notes')).toBe(true);
+    // A name declared by only one owner is NOT ambiguous.
+    expect(isDeclaredOwnershipAmbiguous(index, 'Unknown')).toBe(false);
+  });
+
+  // The same owner listing a basename more than once (or under two of its own
+  // fields) is NOT a conflict — only DISTINCT owners create ambiguity.
+  it('does not flag a basename declared twice by the SAME owner as ambiguous', async () => {
+    createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+      type: 'draft',
+      status: 'active',
+      research: ['[[Stray Notes]]', '[[Stray Notes]]'],
+    });
+
+    const schema = await loadSchema(vaultDir);
+    const index = await buildOwnershipIndex(schema, vaultDir);
+
+    expect(isDeclaredOwnershipAmbiguous(index, 'Stray Notes')).toBe(false);
+    expect(findDeclaredOwner(index, 'Stray Notes')).toBeDefined();
   });
 });
 

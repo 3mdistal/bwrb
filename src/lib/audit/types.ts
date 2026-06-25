@@ -32,6 +32,11 @@ export type IssueCode =
   | 'invalid-source-type'
   | 'owned-note-referenced'
   | 'owned-wrong-location'
+  // Multi-owner safety net (#734): a misplaced note whose basename is declared
+  // as owned by TWO OR MORE distinct owners. We cannot know which owner it
+  // belongs to, so this is reported as a conflict for MANUAL resolution and is
+  // NEVER auto-fixable (so `--fix --auto` never moves it under a guessed owner).
+  | 'owned-ambiguous-owner'
   | 'parent-cycle'
   | 'self-reference'
   | 'ambiguous-link-target'
