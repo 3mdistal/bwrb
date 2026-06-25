@@ -2769,6 +2769,193 @@ status: raw
     });
   });
 
+  // A genuinely-misplaced OWNED note — one an owner declares in its `owned`
+  // field but which has been moved out of its `<owner-dir>/<field>/` subtree —
+  // must be recognised as owned (via the owner's declaration, not its current
+  // folder) and reported with the richer `owned-wrong-location` code whose
+  // --fix target RESTORES it under its owner, not its type's own output_dir
+  // (#702/#703).
+  describe('owned-wrong-location detection + fix (#702/#703)', () => {
+    let tempVaultDir: string;
+
+    // album (output_dir: Albums) owns `track` (output_dir: Tracks) via `songs`.
+    const OWNERSHIP_SCHEMA = {
+      version: 2,
+      types: {
+        album: {
+          output_dir: 'Albums',
+          fields: {
+            type: { value: 'album' },
+            songs: { prompt: 'relation', source: 'track', owned: true, multiple: true },
+          },
+          field_order: ['type', 'songs'],
+        },
+        track: {
+          output_dir: 'Tracks',
+          fields: { type: { value: 'track' } },
+          field_order: ['type'],
+        },
+      },
+    };
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-owned-loc-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(OWNERSHIP_SCHEMA, null, 2)
+      );
+      // Owner note declares ownership of "Opening Track" via its `songs` field.
+      await mkdir(join(tempVaultDir, 'Albums/Best Album/songs'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Albums/Best Album', 'Best Album.md'),
+        `---\ntype: album\nsongs:\n  - "[[Opening Track]]"\n---\n`
+      );
+      await mkdir(join(tempVaultDir, 'Tracks'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('reports a misplaced owned note as owned-wrong-location (not wrong-directory)', async () => {
+      // "Opening Track" is declared owned by Best Album but sits in Tracks/.
+      await writeFile(
+        join(tempVaultDir, 'Tracks', 'Opening Track.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const strayFile = output.files.find((f: { path: string }) =>
+        f.path.includes('Opening Track.md')
+      );
+      expect(strayFile).toBeDefined();
+
+      // Richer owned-wrong-location issue, carrying the owner path, with the
+      // RESTORE target under the owner subtree — not Tracks.
+      const ownedIssue = strayFile.issues.find(
+        (i: { code: string }) => i.code === 'owned-wrong-location'
+      );
+      expect(ownedIssue).toBeDefined();
+      expect(ownedIssue.expectedDirectory).toBe('Albums/Best Album/songs');
+      expect(ownedIssue.ownerPath).toBe('Albums/Best Album/Best Album.md');
+
+      // Exactly one location issue — no duplicate generic wrong-directory.
+      const wrongDirIssue = strayFile.issues.find(
+        (i: { code: string }) => i.code === 'wrong-directory'
+      );
+      expect(wrongDirIssue).toBeUndefined();
+    });
+
+    it('--fix restores a misplaced owned note under its owner subtree (#702)', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Tracks', 'Opening Track.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(
+        ['audit', '--fix', '--all', '--auto', '--execute'],
+        tempVaultDir
+      );
+      expect(result.exitCode).toBe(0);
+
+      // Restored under the owner, NOT stranded in Tracks/.
+      const restored = await readFile(
+        join(tempVaultDir, 'Albums/Best Album/songs', 'Opening Track.md'),
+        'utf-8'
+      ).catch(() => null);
+      expect(restored).not.toBeNull();
+
+      const stranded = await readFile(
+        join(tempVaultDir, 'Tracks', 'Opening Track.md'),
+        'utf-8'
+      ).catch(() => null);
+      expect(stranded).toBeNull();
+
+      // Re-audit is clean.
+      const after = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+      expect(after.exitCode).toBe(0);
+    });
+
+    it('does not flag a correctly-placed declared owned note', async () => {
+      // Same declared note, but correctly located under the owner subtree.
+      await writeFile(
+        join(tempVaultDir, 'Albums/Best Album/songs', 'Opening Track.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      const ownedFile = output.files.find((f: { path: string }) =>
+        f.path.includes('Opening Track.md')
+      );
+      expect(ownedFile).toBeUndefined();
+    });
+
+    it('still flags a non-owned misplaced track against its own output_dir (unchanged)', async () => {
+      // "Random Track" is NOT declared by any owner, so it is a plain misplaced
+      // note: the generic wrong-directory check must still target Tracks.
+      await mkdir(join(tempVaultDir, 'Misc'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Misc', 'Random Track.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const strayFile = output.files.find((f: { path: string }) =>
+        f.path.includes('Random Track.md')
+      );
+      expect(strayFile).toBeDefined();
+      const wrongDirIssue = strayFile.issues.find(
+        (i: { code: string }) => i.code === 'wrong-directory'
+      );
+      expect(wrongDirIssue).toBeDefined();
+      expect(wrongDirIssue.expected).toBe('Tracks');
+      const ownedIssue = strayFile.issues.find(
+        (i: { code: string }) => i.code === 'owned-wrong-location'
+      );
+      expect(ownedIssue).toBeUndefined();
+    });
+
+    it('restores a note stranded in a deep wrong subfolder under its owner subtree', async () => {
+      // The owner subtree (Albums/Best Album/songs) is itself nested under the
+      // vault root, and the stray note sits in a deep, unrelated subfolder. The
+      // restore target must still be the owner subtree (getOwnedChildFolder on a
+      // nested owner path), not the type's top-level Tracks output_dir.
+      await mkdir(join(tempVaultDir, 'Tracks/2026/B-sides'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Tracks/2026/B-sides', 'Opening Track.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const strayFile = output.files.find((f: { path: string }) =>
+        f.path.includes('Opening Track.md')
+      );
+      expect(strayFile).toBeDefined();
+      const ownedIssue = strayFile.issues.find(
+        (i: { code: string }) => i.code === 'owned-wrong-location'
+      );
+      expect(ownedIssue).toBeDefined();
+      expect(ownedIssue.expectedDirectory).toBe('Albums/Best Album/songs');
+      // No duplicate generic wrong-directory.
+      const wrongDirIssue = strayFile.issues.find(
+        (i: { code: string }) => i.code === 'wrong-directory'
+      );
+      expect(wrongDirIssue).toBeUndefined();
+    });
+  });
+
   describe('--execute flag validation', () => {
     it('should error when --execute is used without --fix', async () => {
       const result = await runCLI(['audit', '--execute'], vaultDir);

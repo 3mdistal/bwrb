@@ -6,6 +6,7 @@ import { loadSchema, canTypeBeOwned, getOwnerTypes, getOwnedFields } from '../..
 import {
   buildOwnershipIndex,
   isNoteOwned,
+  findDeclaredOwner,
   canReference,
   validateNewOwned,
   extractWikilinkReferences,
@@ -235,6 +236,35 @@ describe('Ownership Index Building', () => {
     
     const owned = index.ownerToOwned.get('drafts/My Novel/My Novel.md');
     expect(owned?.size).toBe(2);
+  });
+
+  // declaredOwned is built from the owner's frontmatter `owned` field, so it
+  // resolves the owner of an owned note even when the note has been moved out of
+  // its `<owner-dir>/<field>/` folder — the case audit needs to restore a
+  // genuinely-misplaced owned note (#702/#703).
+  it('records declared ownership from the owner frontmatter, keyed by note name', async () => {
+    mkdirSync(join(vaultDir, 'drafts', 'My Novel', 'research'), { recursive: true });
+    // Owner declares ownership of a note that does NOT live under research/.
+    createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+      type: 'draft',
+      status: 'active',
+      research: ['[[Stray Notes]]'],
+    });
+
+    const schema = await loadSchema(vaultDir);
+    const index = await buildOwnershipIndex(schema, vaultDir);
+
+    // Not physically present anywhere, so the location index is empty...
+    expect(index.ownedNotes.size).toBe(0);
+
+    // ...but the declared-owner lookup resolves it (case-insensitive).
+    const declared = findDeclaredOwner(index, 'Stray Notes');
+    expect(declared).toBeDefined();
+    expect(declared?.ownerPath).toBe('drafts/My Novel/My Novel.md');
+    expect(declared?.ownerType).toBe('draft');
+    expect(declared?.fieldName).toBe('research');
+    expect(findDeclaredOwner(index, 'stray notes')).toBeDefined();
+    expect(findDeclaredOwner(index, 'Unknown')).toBeUndefined();
   });
 });
 

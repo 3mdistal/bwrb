@@ -506,6 +506,11 @@ Owned notes:
 - Live in the owner's subfolder (e.g., `drafts/My Novel/chapters/`)
 - Cannot be referenced by other notes' frontmatter fields
 - Are still discoverable via `bwrb list` and `bwrb search`
+- If moved out of that subfolder, `bwrb audit` flags them as
+  [`owned-wrong-location`](/reference/commands/audit/#issue-codes) (resolved via the
+  owner's `owned` declaration, not the note's current folder) and `--fix` **restores
+  them under the owner** — `<owner-dir>/<field>/` — rather than filing them in the
+  owned type's own `output_dir`
 
 ### list
 

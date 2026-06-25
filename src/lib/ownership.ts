@@ -17,6 +17,7 @@ import {
 import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
 import type { LoadedSchema } from '../types/schema.js';
 import { extractLinkTargets, isWikilink } from './links.js';
+import { parseNote } from './frontmatter.js';
 
 // ============================================================================
 // Types
@@ -45,6 +46,18 @@ export interface OwnershipIndex {
   ownedNotes: Map<string, OwnedNoteInfo>;
   /** Map from owner note path → set of owned note paths */
   ownerToOwned: Map<string, Set<string>>;
+  /**
+   * Map from a *declared* owned-note name (the wikilink target an owner lists in
+   * one of its `owned` fields, lowercased) → ownership info.
+   *
+   * Unlike `ownedNotes` (which is keyed by physical path and only ever contains
+   * notes already sitting in a valid owner subtree), this map is built from the
+   * owner's frontmatter declaration, so it ALSO covers an owned note that has
+   * been moved OUT of its owner's `<owner-dir>/<field>/` folder. It is what lets
+   * audit recognise a genuinely-misplaced owned note as owned and restore it
+   * under its owner (#702/#703).
+   */
+  declaredOwned: Map<string, OwnedNoteInfo>;
 }
 
 /**
@@ -89,7 +102,8 @@ export async function buildOwnershipIndex(
 ): Promise<OwnershipIndex> {
   const ownedNotes = new Map<string, OwnedNoteInfo>();
   const ownerToOwned = new Map<string, Set<string>>();
-  
+  const declaredOwned = new Map<string, OwnedNoteInfo>();
+
   // Find all types that can own things
   const ownerTypes = new Set<string>();
   for (const [typeName] of schema.ownership.owns) {
@@ -118,7 +132,8 @@ export async function buildOwnershipIndex(
             ownerNotePath,
             ownerTypeName,
             ownedNotes,
-            ownerToOwned
+            ownerToOwned,
+            declaredOwned
           );
         }
       } else if (entry.isFile() && entry.name.endsWith('.md')) {
@@ -130,13 +145,14 @@ export async function buildOwnershipIndex(
           ownerNotePath,
           ownerTypeName,
           ownedNotes,
-          ownerToOwned
+          ownerToOwned,
+          declaredOwned
         );
       }
     }
   }
-  
-  return { ownedNotes, ownerToOwned };
+
+  return { ownedNotes, ownerToOwned, declaredOwned };
 }
 
 /**
@@ -148,29 +164,57 @@ async function indexOwnerNote(
   ownerNotePath: string,
   ownerTypeName: string,
   ownedNotes: Map<string, OwnedNoteInfo>,
-  ownerToOwned: Map<string, Set<string>>
+  ownerToOwned: Map<string, Set<string>>,
+  declaredOwned: Map<string, OwnedNoteInfo>
 ): Promise<void> {
   const relativeOwnerPath = relative(vaultDir, ownerNotePath);
   const ownedFields = getOwnedFields(schema, ownerTypeName);
-  
+
   if (ownedFields.length === 0) return;
-  
+
   // Check if there's a folder structure for this owner
   const ownerFolder = dirname(ownerNotePath);
-  
+
+  // Read the owner's frontmatter once so its `owned`-field references can be
+  // recorded as DECLARED ownership. This is what lets audit recognise an owned
+  // note that has been moved out of its owner subtree (the physical-folder scan
+  // below can only see notes still in the right place). Best-effort: a parse
+  // failure simply means no declared ownership for this owner.
+  let ownerFrontmatter: Record<string, unknown> = {};
+  try {
+    ownerFrontmatter = (await parseNote(ownerNotePath)).frontmatter;
+  } catch {
+    ownerFrontmatter = {};
+  }
+
   // For each owned field, look for the owned field subfolder
   for (const ownedField of ownedFields) {
+    // Record declared ownership from the owner's frontmatter (`owned` field).
+    // Keyed by the lowercased wikilink target name so a misplaced owned note can
+    // be matched by basename regardless of where it currently lives.
+    for (const refName of extractWikilinkReferences(ownerFrontmatter[ownedField.fieldName])) {
+      const key = refName.toLowerCase();
+      if (!declaredOwned.has(key)) {
+        declaredOwned.set(key, {
+          notePath: refName,
+          ownerPath: relativeOwnerPath,
+          ownerType: ownerTypeName,
+          fieldName: ownedField.fieldName,
+        });
+      }
+    }
+
     const ownedFieldFolder = getOwnedChildFolderFromOwnerDir(ownerFolder, ownedField.fieldName);
-    
+
     if (!existsSync(ownedFieldFolder)) continue;
-    
+
     const childEntries = await readdir(ownedFieldFolder, { withFileTypes: true });
-    
+
     for (const childEntry of childEntries) {
       if (childEntry.isFile() && childEntry.name.endsWith('.md')) {
         const ownedNotePath = join(ownedFieldFolder, childEntry.name);
         const relativeOwnedPath = relative(vaultDir, ownedNotePath);
-        
+
         // Add to index
         ownedNotes.set(relativeOwnedPath, {
           notePath: relativeOwnedPath,
@@ -178,7 +222,7 @@ async function indexOwnerNote(
           ownerType: ownerTypeName,
           fieldName: ownedField.fieldName,
         });
-        
+
         // Add to owner's owned set
         const owned = ownerToOwned.get(relativeOwnerPath) ?? new Set();
         owned.add(relativeOwnedPath);
@@ -200,6 +244,22 @@ export function isNoteOwned(
   notePath: string
 ): OwnedNoteInfo | undefined {
   return index.ownedNotes.get(notePath);
+}
+
+/**
+ * Look up the owner that DECLARES this note as owned (via one of its `owned`
+ * frontmatter fields), keyed by the note's basename (without extension).
+ *
+ * Unlike `isNoteOwned` (physical-location index), this resolves ownership from
+ * the owner's declaration, so it still finds the owner of a note that has been
+ * moved out of its `<owner-dir>/<field>/` folder — the case audit needs to
+ * restore a genuinely-misplaced owned note (#702/#703).
+ */
+export function findDeclaredOwner(
+  index: OwnershipIndex,
+  noteName: string
+): OwnedNoteInfo | undefined {
+  return index.declaredOwned.get(noteName.toLowerCase());
 }
 
 /**

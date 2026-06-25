@@ -78,7 +78,7 @@ import {
 // Import ownership tracking
 import {
   buildOwnershipIndex,
-  isNoteOwned,
+  findDeclaredOwner,
   canReference,
   extractWikilinkReferences,
   type OwnershipIndex,
@@ -420,7 +420,17 @@ export async function auditFile(
     file.ownership && resolvedTypeMatchesOwnedChild && ownerNoteIsValid
       ? getOwnedChildFolder(file.ownership.ownerPath, file.ownership.fieldName)
       : getOutputDir(schema, resolvedTypePath);
-  if (expectedOutputDir) {
+  // A genuinely-misplaced OWNED note (one an owner declares in its `owned` field
+  // but which has been moved out of its `<owner-dir>/<field>/` subtree) is
+  // reported by the dedicated, richer `owned-wrong-location` check in
+  // checkOwnershipViolations — whose --fix target restores it under its owner
+  // (#702), not its type's top-level output_dir. Suppress the generic
+  // `wrong-directory` here so such a note is reported exactly once (#703).
+  const isMisplacedOwnedNote =
+    ownershipIndex !== undefined &&
+    findMisplacedOwnedNote(ownershipIndex, file) !== undefined;
+
+  if (expectedOutputDir && !isMisplacedOwnedNote) {
     const expectedPath = expectedOutputDir;
     const actualDir = dirname(file.relativePath);
     // Normalize for comparison
@@ -1671,8 +1681,44 @@ function checkSingleContextValue(
 // ============================================================================
 
 /**
+ * Resolve a note that an owner DECLARES as owned (via an `owned` frontmatter
+ * field) but which does not currently live under its owner's
+ * `<owner-dir>/<field>/` subtree.
+ *
+ * Returns the owner path, the expected (restore) directory, and the actual
+ * directory when the note is a genuinely-misplaced owned note; otherwise
+ * `undefined` (the note is either not owned, or already correctly placed).
+ *
+ * Shared by the upstream `wrong-directory` check (to suppress a duplicate,
+ * lower-fidelity report) and `checkOwnershipViolations` (to emit the richer
+ * `owned-wrong-location`). Keeping the rule in one place guarantees the two
+ * stay in agreement (#702/#703).
+ */
+function findMisplacedOwnedNote(
+  ownershipIndex: OwnershipIndex,
+  file: ManagedFile
+): { ownerPath: string; expectedDir: string; actualDir: string } | undefined {
+  // Note already discovered as owned (sitting in a valid owner subtree) is, by
+  // construction, correctly placed — nothing to restore.
+  if (file.ownership) return undefined;
+
+  const noteName = basename(file.relativePath, '.md');
+  const declared = findDeclaredOwner(ownershipIndex, noteName);
+  if (!declared) return undefined;
+
+  const expectedDir = getOwnedChildFolder(declared.ownerPath, declared.fieldName);
+  const actualDir = dirname(file.relativePath);
+
+  const normalizedExpected = expectedDir.replace(/\/$/, '');
+  const normalizedActual = actualDir.replace(/\/$/, '');
+  if (normalizedActual === normalizedExpected) return undefined;
+
+  return { ownerPath: declared.ownerPath, expectedDir, actualDir };
+}
+
+/**
  * Check for ownership violations in frontmatter references.
- * 
+ *
  * Detects:
  * - owned-note-referenced: A note references an owned note via a schema field
  * - owned-wrong-location: An owned note is not in the expected location
@@ -1685,35 +1731,35 @@ async function checkOwnershipViolations(
   notePathMap: Map<string, string>
 ): Promise<AuditIssue[]> {
   const issues: AuditIssue[] = [];
-  
-  // Check if this file is owned and in the wrong location
-  const ownedInfo = isNoteOwned(ownershipIndex, file.relativePath);
-  if (ownedInfo && file.ownership) {
-    // Note is owned - verify it's in the correct location
-    // The expected location is based on ownership relationship
-    const ownerDir = dirname(ownedInfo.ownerPath);
-    const expectedDir = `${ownerDir}/${ownedInfo.fieldName}`;
-    const actualDir = dirname(file.relativePath);
-    
-    // Normalize paths for comparison
-    const normalizedExpected = expectedDir.replace(/\/$/, '');
-    const normalizedActual = actualDir.replace(/\/$/, '');
-    
-    if (normalizedActual !== normalizedExpected) {
-      issues.push({
-        severity: 'error',
-        code: 'owned-wrong-location',
-        message: `Owned note in wrong location: expected in ${expectedDir}`,
-        expected: expectedDir,
-        currentDirectory: actualDir,
-        expectedDirectory: expectedDir,
-        autoFixable: true, // Can be auto-fixed with --fix
-        ownerPath: ownedInfo.ownerPath,
-        ownedNotePath: file.relativePath,
-      });
-    }
+
+  // Check if this file is a DECLARED owned note that is in the wrong location.
+  //
+  // Ownership is established by folder location, so the physical-location index
+  // (`isNoteOwned`) only ever contains notes already sitting in a valid owner
+  // subtree — it can never be both "owned" and "misplaced" at once, which made
+  // the previous `isNoteOwned`-based check here unreachable (#703). Instead we
+  // consult the owner's frontmatter declaration (`findDeclaredOwner`, keyed by
+  // basename), which still resolves the owner of a note that has been moved OUT
+  // of its `<owner-dir>/<field>/` folder. Such a note is reported with the
+  // richer `owned-wrong-location` code (carrying `ownerPath`) and its move
+  // target restores it under the owner subtree (#702). The generic
+  // `wrong-directory` check upstream is suppressed for the same note so it is
+  // reported exactly once.
+  const misplaced = findMisplacedOwnedNote(ownershipIndex, file);
+  if (misplaced) {
+    issues.push({
+      severity: 'error',
+      code: 'owned-wrong-location',
+      message: `Owned note in wrong location: expected in ${misplaced.expectedDir}`,
+      expected: misplaced.expectedDir,
+      currentDirectory: misplaced.actualDir,
+      expectedDirectory: misplaced.expectedDir,
+      autoFixable: true, // Can be auto-fixed with --fix (restores under owner)
+      ownerPath: misplaced.ownerPath,
+      ownedNotePath: file.relativePath,
+    });
   }
-  
+
   // Check each relation field to see if it references an owned note
   for (const [fieldName, field] of Object.entries(fields)) {
     // Skip non-relation fields and owned fields (owner is allowed to reference its owned notes)
