@@ -381,7 +381,16 @@ function detectFieldPropertyChanges(oldField: Field, newField: Field): string[] 
 
   // Other properties that matter for migration. Note: `description` and `label`
   // are intentionally excluded — they are documentation, never data shape.
-  const props: (keyof Field)[] = ['source', 'required', 'multiple'];
+  //
+  // `default` is tracked because it participates in the required-exposure rule:
+  // bwrb validation exempts a missing required value only while `default !==
+  // undefined`, so REMOVING a default from an already-required field newly
+  // invalidates notes that omit it. The required-aspect classifier consults the
+  // effective default to decide whether to emit a review op; without tracking
+  // `default` here a default-only change would never surface as a `field-changed`
+  // detection at all (#728). A default change that does NOT cross the
+  // exposure boundary is harmless and produces no op.
+  const props: (keyof Field)[] = ['source', 'required', 'multiple', 'default'];
 
   for (const prop of props) {
     if (JSON.stringify(oldField[prop]) !== JSON.stringify(newField[prop])) {
@@ -604,25 +613,39 @@ function classifyFieldChange(
     // Otherwise effective `multiple` is unchanged (e.g. false↔absent): no op.
   }
 
-  if (changedProps.includes('required') && newField?.required === true && oldField?.required !== true) {
-    // Field became required. Notes missing the value would normally violate the
-    // schema, BUT bwrb's validation (validateFrontmatter, validation.ts) exempts a
-    // required field whose definition supplies a `default`:
-    //   `if (field.required && !hasValue && field.default === undefined)`
-    // i.e. a missing value is only an error when there is no `default`. A static
-    // `value` does NOT satisfy that check (validation consults `default` only), so
-    // it does not exempt the field here either.
+  if (changedProps.includes('required') || changedProps.includes('default')) {
+    // Required-exposure rule. bwrb's validation (validateFrontmatter,
+    // validation.ts) flags a note that OMITS a field only when:
+    //   `field.required && !hasValue && field.default === undefined`
+    // i.e. a missing value is an error exactly when the field is required AND has
+    // NO `default`. A static `value` does NOT satisfy that check (validation
+    // consults `default` only), so it never exempts the field here either.
     //
-    // Only surface a review op when the new required field lacks a `default`. If it
-    // has one, notes missing the field stay valid (the default satisfies them), so a
-    // non-deterministic `review-field` would be a false positive that needlessly
-    // forces a major bump and records empty history.
-    if (newField?.default === undefined) {
+    // We define a field as "exposes required-ness" when omitting it would be
+    // invalid: required === true AND default === undefined. A transition INTO that
+    // state newly invalidates existing notes that omit the field, and there is no
+    // safe deterministic fix (we can't fabricate a value), so it warrants a
+    // non-deterministic `review-field`.
+    //
+    // This fires for BOTH symmetric cases that cross the boundary:
+    //   - required false → true with no default (the classic required-toggle), and
+    //   - a `default` REMOVED from an already-required field (#728 defect B): the
+    //     default previously satisfied missing values; without it, notes that omit
+    //     the field are now invalid.
+    // It does NOT fire when the field was ALREADY exposed (already required, no
+    // default — no change in exposure), when the new field still has a `default`
+    // (still exempt), or when the new field is not required. A single boundary
+    // crossing emits exactly ONE review-field even if both `required` and `default`
+    // changed at once.
+    const oldExposed = oldField?.required === true && oldField?.default === undefined;
+    const newExposed = newField?.required === true && newField?.default === undefined;
+
+    if (newExposed && !oldExposed) {
       nonDeterministic.push({
         op: 'review-field',
         targetType,
         field,
-        reason: 'field is now required; notes missing a value need manual review',
+        reason: 'field is now required without a default; notes missing a value need manual review',
       });
     }
   }

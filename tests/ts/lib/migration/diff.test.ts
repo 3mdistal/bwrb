@@ -516,6 +516,256 @@ describe("diffSchemas", () => {
       ).toBe(true);
     });
 
+    it("emits review-field when a default is REMOVED from an already-required field", () => {
+      // #728 defect B (symmetric gap): a field is ALREADY required: true WITH a
+      // default. Removing that default (default: defined → undefined, required
+      // stays true) newly invalidates notes that omit the field — validation only
+      // exempts a missing required value while `default !== undefined`. The change
+      // must surface as a review-field even though the `required` FLAG itself did
+      // not toggle.
+      const oldSchema: BwrbSchemaType = {
+        ...baseSchema,
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              priority: {
+                prompt: "select",
+                options: ["low", "medium", "high"],
+                required: true,
+                default: "low",
+              },
+            },
+          },
+        },
+      };
+      const newSchema: BwrbSchemaType = {
+        ...oldSchema,
+        schemaVersion: "2.0.0",
+        types: {
+          ...oldSchema.types,
+          task: {
+            ...oldSchema.types.task,
+            fields: {
+              ...oldSchema.types.task.fields,
+              // Same field, required stays true, default removed.
+              priority: {
+                prompt: "select",
+                options: ["low", "medium", "high"],
+                required: true,
+              },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "2.0.0");
+
+      expect(plan.hasChanges).toBe(true);
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "priority"
+        )
+      ).toBe(true);
+    });
+
+    it("does NOT emit review-field when a default is removed from a NON-required field", () => {
+      // A non-required field losing its default does not invalidate notes that
+      // omit it (validation never requires a value), so no review op.
+      const oldSchema: BwrbSchemaType = {
+        ...baseSchema,
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              priority: {
+                prompt: "select",
+                options: ["low", "medium", "high"],
+                default: "low",
+              },
+            },
+          },
+        },
+      };
+      const newSchema: BwrbSchemaType = {
+        ...oldSchema,
+        schemaVersion: "2.0.0",
+        types: {
+          ...oldSchema.types,
+          task: {
+            ...oldSchema.types.task,
+            fields: {
+              ...oldSchema.types.task.fields,
+              priority: {
+                prompt: "select",
+                options: ["low", "medium", "high"],
+              },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "2.0.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "priority"
+        )
+      ).toBe(false);
+    });
+
+    it("does NOT emit a NEW required-review when an already-required no-default field gets an unrelated edit", () => {
+      // The field was ALREADY exposed (required: true, no default). An unrelated
+      // edit (here: adding an option) must not produce a NEW required-exposure
+      // review — the exposure state did not change.
+      const oldSchema: BwrbSchemaType = {
+        ...baseSchema,
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              priority: {
+                prompt: "select",
+                options: ["low", "medium", "high"],
+                required: true,
+              },
+            },
+          },
+        },
+      };
+      const newSchema: BwrbSchemaType = {
+        ...oldSchema,
+        schemaVersion: "1.1.0",
+        types: {
+          ...oldSchema.types,
+          task: {
+            ...oldSchema.types.task,
+            fields: {
+              ...oldSchema.types.task.fields,
+              priority: {
+                prompt: "select",
+                // option ADDED — does not narrow, keeps existing values valid.
+                options: ["low", "medium", "high", "urgent"],
+                required: true,
+              },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      // Required-exposure did not change → no review-field for priority.
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "priority"
+        )
+      ).toBe(false);
+    });
+
+    it("does NOT emit review-field when ADDING a default to an already-required field", () => {
+      // Going from required-no-default (exposed) to required-with-default (exempt)
+      // only LOOSENS validation — notes missing the field become valid. No review.
+      const oldSchema: BwrbSchemaType = {
+        ...baseSchema,
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              priority: {
+                prompt: "select",
+                options: ["low", "medium", "high"],
+                required: true,
+              },
+            },
+          },
+        },
+      };
+      const newSchema: BwrbSchemaType = {
+        ...oldSchema,
+        schemaVersion: "1.1.0",
+        types: {
+          ...oldSchema.types,
+          task: {
+            ...oldSchema.types.task,
+            fields: {
+              ...oldSchema.types.task.fields,
+              priority: {
+                prompt: "select",
+                options: ["low", "medium", "high"],
+                required: true,
+                default: "low",
+              },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "priority"
+        )
+      ).toBe(false);
+    });
+
+    it("emits exactly ONE review-field when required false→true and default removed in the same change", () => {
+      // Both `required` and `default` change at once but describe a single
+      // boundary crossing (not-exposed → exposed). Must emit ONE review-field.
+      const oldSchema: BwrbSchemaType = {
+        ...baseSchema,
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              priority: {
+                prompt: "select",
+                options: ["low", "medium", "high"],
+                required: false,
+                default: "low",
+              },
+            },
+          },
+        },
+      };
+      const newSchema: BwrbSchemaType = {
+        ...oldSchema,
+        schemaVersion: "2.0.0",
+        types: {
+          ...oldSchema.types,
+          task: {
+            ...oldSchema.types.task,
+            fields: {
+              ...oldSchema.types.task.fields,
+              priority: {
+                prompt: "select",
+                options: ["low", "medium", "high"],
+                required: true,
+              },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "2.0.0");
+
+      const reviews = plan.nonDeterministic.filter(
+        (op) => op.op === "review-field" && op.field === "priority"
+      );
+      expect(reviews).toHaveLength(1);
+    });
+
     it("emits review-field when a relation source changes", () => {
       const oldSchema: BwrbSchemaType = {
         ...baseSchema,
