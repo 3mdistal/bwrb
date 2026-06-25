@@ -2954,6 +2954,109 @@ status: raw
       );
       expect(wrongDirIssue).toBeUndefined();
     });
+
+    // Defect 2 (wrong-TYPE note relocated by basename): declared ownership is
+    // matched by basename, but the candidate must also have the owned field's
+    // SOURCE type. A correctly-placed, differently-typed note that merely shares
+    // a basename with the owner's declared owned reference must NOT be flagged
+    // owned-wrong-location nor moved.
+    it('does not flag a same-named note of a DIFFERENT type as owned-wrong-location', async () => {
+      // Owner declares `songs: [[Opening Track]]` (expects a `track`). But the
+      // note named "Opening Track" sitting correctly under Albums/ is itself an
+      // `album` — a genuinely different type that just shares the basename.
+      await writeFile(
+        join(tempVaultDir, 'Albums', 'Opening Track.md'),
+        `---\ntype: album\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+
+      const sameNamed = output.files.find((f: { path: string }) =>
+        f.path.includes('Albums/Opening Track.md')
+      );
+      // The album-typed note must NOT be flagged owned-wrong-location and must
+      // therefore NOT be a move target. (Its own location under Albums/ is
+      // correct for an album, so it has no location issue at all.)
+      const ownedIssue = sameNamed?.issues?.find(
+        (i: { code: string }) => i.code === 'owned-wrong-location'
+      );
+      expect(ownedIssue).toBeUndefined();
+    });
+
+    it('still flags the genuine owned note (correct type) when a wrong-typed same-named note also exists', async () => {
+      // A decoy album named "Opening Track" sits (correctly) in Albums/.
+      await writeFile(
+        join(tempVaultDir, 'Albums', 'Opening Track.md'),
+        `---\ntype: album\n---\n`
+      );
+      // The REAL owned track (correct type) is misplaced in Tracks/.
+      await writeFile(
+        join(tempVaultDir, 'Tracks', 'Opening Track.md'),
+        `---\ntype: track\n---\n`
+      );
+
+      const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+
+      // The track is flagged owned-wrong-location...
+      const track = output.files.find((f: { path: string }) =>
+        f.path.includes('Tracks/Opening Track.md')
+      );
+      expect(track).toBeDefined();
+      const trackOwnedIssue = track.issues.find(
+        (i: { code: string }) => i.code === 'owned-wrong-location'
+      );
+      expect(trackOwnedIssue).toBeDefined();
+      expect(trackOwnedIssue.expectedDirectory).toBe('Albums/Best Album/songs');
+
+      // ...but the album decoy is NOT.
+      const album = output.files.find((f: { path: string }) =>
+        f.path.includes('Albums/Opening Track.md')
+      );
+      const albumOwnedIssue = album?.issues?.find(
+        (i: { code: string }) => i.code === 'owned-wrong-location'
+      );
+      expect(albumOwnedIssue).toBeUndefined();
+    });
+
+    // Defect 1 (DATA LOSS): when the owned-note restore destination is already
+    // occupied by a DIFFERENT file, --fix must SKIP the move, report it as a
+    // conflict (not "fixed"), and leave BOTH files intact on disk.
+    it('--fix skips the owned-note restore when the destination is already occupied (no data loss)', async () => {
+      // The misplaced owned track lives in Tracks/...
+      await writeFile(
+        join(tempVaultDir, 'Tracks', 'Opening Track.md'),
+        `---\ntype: track\nbody_marker: STRAY\n---\n`
+      );
+      // ...but a DIFFERENT file already occupies the restore destination under
+      // the owner subtree.
+      await writeFile(
+        join(tempVaultDir, 'Albums/Best Album/songs', 'Opening Track.md'),
+        `---\ntype: track\nbody_marker: OCCUPANT\n---\n`
+      );
+
+      const result = await runCLI(
+        ['audit', '--fix', '--all', '--auto', '--execute'],
+        tempVaultDir
+      );
+
+      // Reported as a conflict, not a success.
+      expect(result.stdout).toMatch(/Failed to move/i);
+      expect(result.stdout).not.toMatch(/✓ Moved/);
+
+      // BOTH files intact with their ORIGINAL contents — nothing overwritten.
+      const stray = await readFile(
+        join(tempVaultDir, 'Tracks', 'Opening Track.md'),
+        'utf-8'
+      );
+      expect(stray).toContain('STRAY');
+      const occupant = await readFile(
+        join(tempVaultDir, 'Albums/Best Album/songs', 'Opening Track.md'),
+        'utf-8'
+      );
+      expect(occupant).toContain('OCCUPANT');
+    });
   });
 
   describe('--execute flag validation', () => {
@@ -3118,6 +3221,47 @@ Content here
       const content = await rf(join(tempVaultDir, 'Ideas', 'Misplaced Idea.md'), 'utf-8');
       expect(content).toContain('type: idea');
       expect(content).toContain('Content here');
+    });
+
+    // Defect 1 (DATA LOSS) on the GENERIC wrong-directory path: the same move
+    // primitive guard must protect a plain misplaced note whose destination is
+    // already occupied. --fix must SKIP it, report a conflict, and overwrite
+    // nothing.
+    it('should NOT overwrite an occupied destination on the generic wrong-directory fix', async () => {
+      // Misplaced idea in Objectives/...
+      await writeFile(
+        join(tempVaultDir, 'Objectives', 'Clashing Idea.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+STRAY CONTENT
+`
+      );
+      // ...but a DIFFERENT file already sits at the correct Ideas/ destination.
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Clashing Idea.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+OCCUPANT CONTENT
+`
+      );
+
+      const result = await runCLI(['audit', '--fix', '--auto', '--execute', '--all'], tempVaultDir);
+
+      // Reported as a conflict, not a success.
+      expect(result.stdout).toMatch(/Failed to move/i);
+
+      const { readFile: rf } = await import('fs/promises');
+      // BOTH files intact with original contents.
+      const stray = await rf(join(tempVaultDir, 'Objectives', 'Clashing Idea.md'), 'utf-8');
+      expect(stray).toContain('STRAY CONTENT');
+      const occupant = await rf(join(tempVaultDir, 'Ideas', 'Clashing Idea.md'), 'utf-8');
+      expect(occupant).toContain('OCCUPANT CONTENT');
     });
 
 

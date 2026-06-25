@@ -428,7 +428,7 @@ export async function auditFile(
   // `wrong-directory` here so such a note is reported exactly once (#703).
   const isMisplacedOwnedNote =
     ownershipIndex !== undefined &&
-    findMisplacedOwnedNote(ownershipIndex, file) !== undefined;
+    findMisplacedOwnedNote(schema, ownershipIndex, file, resolvedTypePath) !== undefined;
 
   if (expectedOutputDir && !isMisplacedOwnedNote) {
     const expectedPath = expectedOutputDir;
@@ -908,11 +908,13 @@ export async function auditFile(
   // Check for ownership violations
   if (ownershipIndex && noteIndex?.notePathMap) {
     const ownershipIssues = await checkOwnershipViolations(
+      schema,
       file,
       frontmatter,
       fields,
       ownershipIndex,
-      noteIndex.notePathMap
+      noteIndex.notePathMap,
+      resolvedTypePath
     );
     issues.push(...ownershipIssues);
   }
@@ -1693,10 +1695,23 @@ function checkSingleContextValue(
  * lower-fidelity report) and `checkOwnershipViolations` (to emit the richer
  * `owned-wrong-location`). Keeping the rule in one place guarantees the two
  * stay in agreement (#702/#703).
+ *
+ * Declared ownership is matched by BASENAME (a misplaced note can live
+ * anywhere, so location can't be used). Basename alone is ambiguous: a
+ * correctly-placed note of a DIFFERENT type may share a basename with the
+ * owner's declared owned reference (e.g. the owner's `songs: [[Foo]]` happens to
+ * collide with an unrelated `type: album` note named `Foo`). Such a note is not
+ * the owned note — relocating it under the owner subtree would be wrong. So we
+ * only treat the candidate as the owned note when its resolved `type` matches
+ * the owned field's source/child type (or is a descendant of it). The owner's
+ * dangling reference is surfaced separately as `invalid-source-type`/stale
+ * reference and is intentionally left to that check.
  */
 function findMisplacedOwnedNote(
+  schema: LoadedSchema,
   ownershipIndex: OwnershipIndex,
-  file: ManagedFile
+  file: ManagedFile,
+  resolvedTypePath: string
 ): { ownerPath: string; expectedDir: string; actualDir: string } | undefined {
   // Note already discovered as owned (sitting in a valid owner subtree) is, by
   // construction, correctly placed — nothing to restore.
@@ -1705,6 +1720,17 @@ function findMisplacedOwnedNote(
   const noteName = basename(file.relativePath, '.md');
   const declared = findDeclaredOwner(ownershipIndex, noteName);
   if (!declared) return undefined;
+
+  // Verify the candidate's ACTUAL type matches the owned field's source type.
+  // A same-named note of a different type is not this owned note.
+  const ownedChildType = getOwnedFields(schema, declared.ownerType).find(
+    f => f.fieldName === declared.fieldName
+  )?.childType;
+  if (ownedChildType === undefined) return undefined;
+  const typeMatches =
+    resolvedTypePath === ownedChildType ||
+    getDescendants(schema, ownedChildType).includes(resolvedTypePath);
+  if (!typeMatches) return undefined;
 
   const expectedDir = getOwnedChildFolder(declared.ownerPath, declared.fieldName);
   const actualDir = dirname(file.relativePath);
@@ -1724,11 +1750,13 @@ function findMisplacedOwnedNote(
  * - owned-wrong-location: An owned note is not in the expected location
  */
 async function checkOwnershipViolations(
+  schema: LoadedSchema,
   file: ManagedFile,
   frontmatter: Record<string, unknown>,
   fields: Record<string, Field>,
   ownershipIndex: OwnershipIndex,
-  notePathMap: Map<string, string>
+  notePathMap: Map<string, string>,
+  resolvedTypePath: string
 ): Promise<AuditIssue[]> {
   const issues: AuditIssue[] = [];
 
@@ -1745,7 +1773,7 @@ async function checkOwnershipViolations(
   // target restores it under the owner subtree (#702). The generic
   // `wrong-directory` check upstream is suppressed for the same note so it is
   // reported exactly once.
-  const misplaced = findMisplacedOwnedNote(ownershipIndex, file);
+  const misplaced = findMisplacedOwnedNote(schema, ownershipIndex, file, resolvedTypePath);
   if (misplaced) {
     issues.push({
       severity: 'error',

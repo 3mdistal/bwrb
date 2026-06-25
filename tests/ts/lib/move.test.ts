@@ -465,5 +465,94 @@ Related to [[MyIdea]].
       expect(result.moveResults).toHaveLength(0);
       expect(result.wikilinkUpdates).toHaveLength(0);
     });
+
+    // Defect 1 (DATA LOSS): `rename` clobbers its destination. The move
+    // primitive must SKIP a move whose destination is already occupied by a
+    // DIFFERENT file, report it as a conflict (error, not applied), and leave
+    // BOTH files intact on disk.
+    it('should skip the move and report a conflict when the destination already exists', async () => {
+      const sourceFile = join(tempDir, 'Ideas', 'Clash.md');
+      await writeFile(sourceFile, 'SOURCE CONTENT');
+
+      // A DIFFERENT, unrelated file already occupies the destination.
+      const destFile = join(tempDir, 'Archive', 'Clash.md');
+      await writeFile(destFile, 'DESTINATION CONTENT');
+
+      const result = await executeBulkMove({
+        vaultDir: tempDir,
+        targetDir: join(tempDir, 'Archive'),
+        filesToMove: [sourceFile],
+        execute: true,
+      });
+
+      // Reported as a conflict, NOT applied.
+      expect(result.moveResults).toHaveLength(1);
+      expect(result.moveResults[0]!.applied).toBe(false);
+      expect(result.moveResults[0]!.error).toMatch(/already exists/i);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatch(/already exists/i);
+
+      // BOTH files are intact on disk with their original contents.
+      expect(await readFile(sourceFile, 'utf-8')).toBe('SOURCE CONTENT');
+      expect(await readFile(destFile, 'utf-8')).toBe('DESTINATION CONTENT');
+    });
+
+    // The same guard must protect a multi-file move: a collision on one file
+    // must not abort the others, and a skipped file must NOT have its inbound
+    // wikilinks rewritten to a phantom new path.
+    it('should skip only the colliding file and not rewrite its wikilinks', async () => {
+      const clash = join(tempDir, 'Ideas', 'Clash.md');
+      const ok = join(tempDir, 'Ideas', 'Ok.md');
+      await writeFile(clash, 'SOURCE CLASH');
+      await writeFile(ok, '# Ok');
+
+      // Occupy the destination of `Clash.md` only.
+      await writeFile(join(tempDir, 'Archive', 'Clash.md'), 'DEST CLASH');
+
+      // A note links to the file that will be skipped.
+      const linker = join(tempDir, 'Linker.md');
+      await writeFile(linker, '---\ntype: task\n---\nSee [[Clash]] and [[Ok]].\n');
+
+      const result = await executeBulkMove({
+        vaultDir: tempDir,
+        targetDir: join(tempDir, 'Archive'),
+        filesToMove: [clash, ok],
+        execute: true,
+      });
+
+      const clashResult = result.moveResults.find(r => r.oldPath === clash)!;
+      const okResult = result.moveResults.find(r => r.oldPath === ok)!;
+      expect(clashResult.applied).toBe(false);
+      expect(clashResult.error).toMatch(/already exists/i);
+      expect(okResult.applied).toBe(true);
+
+      // The skipped file stays put; both copies intact. The moved file relocated.
+      expect(await readFile(clash, 'utf-8')).toBe('SOURCE CLASH');
+      expect(await readFile(join(tempDir, 'Archive', 'Clash.md'), 'utf-8')).toBe('DEST CLASH');
+      await expect(access(join(tempDir, 'Archive', 'Ok.md'))).resolves.toBeUndefined();
+
+      // The wikilink to the SKIPPED file must NOT be rewritten to a phantom new
+      // path — it still resolves to the note at its original, unchanged location.
+      const linkerContent = await readFile(linker, 'utf-8');
+      expect(linkerContent).toContain('[[Clash]]');
+      expect(linkerContent).not.toContain('Archive/Clash');
+    });
+
+    it('treats a move of a file onto itself as a harmless no-op (not a conflict)', async () => {
+      // Source already lives in the target dir; rename(a, a) must succeed.
+      const file = join(tempDir, 'Archive', 'Self.md');
+      await writeFile(file, 'CONTENT');
+
+      const result = await executeBulkMove({
+        vaultDir: tempDir,
+        targetDir: join(tempDir, 'Archive'),
+        filesToMove: [file],
+        execute: true,
+      });
+
+      expect(result.moveResults[0]!.applied).toBe(true);
+      expect(result.errors).toHaveLength(0);
+      expect(await readFile(file, 'utf-8')).toBe('CONTENT');
+    });
   });
 });

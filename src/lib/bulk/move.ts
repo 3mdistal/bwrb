@@ -7,7 +7,7 @@
  * - Updating wikilinks to point to new locations
  */
 
-import { readFile, writeFile, rename, mkdir, readdir } from 'fs/promises';
+import { readFile, writeFile, rename, mkdir, readdir, stat } from 'fs/promises';
 import { join, relative, basename, extname } from 'path';
 
 // ============================================================================
@@ -351,6 +351,46 @@ export function updateWikilinksInContent(
 }
 
 /**
+ * Determine whether a destination path is already occupied by a *different*
+ * file than the source.
+ *
+ * `rename` clobbers its destination silently, so before any move we must reject
+ * the case where a different note already lives at `newPath` — otherwise an
+ * `audit --fix` move would overwrite an unrelated file and lose its contents
+ * permanently. We compare inodes (via `stat`) rather than path strings so the
+ * check is correct on case-insensitive filesystems and across hardlinks: a move
+ * whose source and destination resolve to the SAME on-disk file is a harmless
+ * no-op (e.g. the note is already in `targetDir`) and is NOT treated as a
+ * collision. A genuinely distinct file at the destination is a collision.
+ */
+async function destinationIsOccupiedByDifferentFile(
+  filePath: string,
+  newPath: string
+): Promise<boolean> {
+  let destStat;
+  try {
+    destStat = await stat(newPath);
+  } catch {
+    // Destination does not exist (ENOENT) — no collision.
+    return false;
+  }
+
+  try {
+    const srcStat = await stat(filePath);
+    // Same inode + device => source and destination are the same file; a
+    // rename of a file onto itself is a no-op, not a collision.
+    if (srcStat.ino === destStat.ino && srcStat.dev === destStat.dev) {
+      return false;
+    }
+  } catch {
+    // Source missing is a separate failure surfaced by the rename below; treat
+    // an existing, distinct destination as a collision to stay safe.
+  }
+
+  return true;
+}
+
+/**
  * Move a file to a new directory.
  */
 async function moveFile(
@@ -363,7 +403,7 @@ async function moveFile(
   const newPath = join(targetDir, fileName);
   const oldRelativePath = relative(vaultDir, filePath);
   const newRelativePath = relative(vaultDir, newPath);
-  
+
   const result: MoveResult = {
     oldPath: filePath,
     newPath,
@@ -371,22 +411,30 @@ async function moveFile(
     newRelativePath,
     applied: false,
   };
-  
+
   if (!execute) {
     return result;
   }
-  
+
   try {
     // Ensure target directory exists
     await mkdir(targetDir, { recursive: true });
-    
+
+    // Guard against clobbering an existing, DIFFERENT file at the destination.
+    // `rename` would silently overwrite it (permanent data loss), so skip the
+    // move and report a clear conflict instead of falsely claiming success.
+    if (await destinationIsOccupiedByDifferentFile(filePath, newPath)) {
+      result.error = `destination already exists, skipped: ${newRelativePath}`;
+      return result;
+    }
+
     // Move the file
     await rename(filePath, newPath);
     result.applied = true;
   } catch (err) {
     result.error = err instanceof Error ? err.message : String(err);
   }
-  
+
   return result;
 }
 
@@ -446,39 +494,53 @@ export async function executeBulkMove(options: {
     }
   }
   
-  // Calculate what the new file paths will be (for generating correct links)
+  // Move the files first so wikilink rewriting only happens for files that
+  // were ACTUALLY relocated. A move skipped due to a destination collision (or
+  // any other error) must NOT rewrite the vault's links to a phantom new path —
+  // the note is still at its original location.
+  //
+  // In a dry run (`execute === false`) no move is applied, so treat every file
+  // as "moved" to preserve the existing preview behaviour (link-update counts).
+  const movedFiles = new Set<string>();
+  for (const filePath of filesToMove) {
+    const moveResult = await moveFile(filePath, absoluteTargetDir, vaultDir, execute);
+    result.moveResults.push(moveResult);
+
+    if (moveResult.error) {
+      result.errors.push(`Failed to move ${moveResult.oldRelativePath}: ${moveResult.error}`);
+    } else if (!execute || moveResult.applied) {
+      movedFiles.add(filePath);
+    }
+  }
+
+  // Calculate what the new file paths will be (for generating correct links).
+  // Only files that actually moved get a relocated path; a skipped file keeps
+  // its original path so links to it stay valid.
   const newFilePaths = allVaultFiles.map(f => {
-    if (filesToMove.includes(f)) {
+    if (movedFiles.has(f)) {
       return join(absoluteTargetDir, basename(f));
     }
     return f;
   });
-  
-  // Move the files
-  for (const filePath of filesToMove) {
-    const moveResult = await moveFile(filePath, absoluteTargetDir, vaultDir, execute);
-    result.moveResults.push(moveResult);
-    
-    if (moveResult.error) {
-      result.errors.push(`Failed to move ${moveResult.oldRelativePath}: ${moveResult.error}`);
-    }
-  }
-  
+
   // Update wikilinks in other files
   for (const [sourceFile, refGroups] of referencesBySourceFile) {
     const sourceRelativePath = relative(vaultDir, sourceFile);
-    
+
     // Combine all references for this source file
     const allRefs: WikilinkReference[] = [];
     const refToNewPath: Map<WikilinkReference, string> = new Map();
-    
+
     for (const group of refGroups) {
+      // Skip references to files that were not actually moved (e.g. a
+      // collision-skipped move) — rewriting them would corrupt links.
+      if (!movedFiles.has(group.movedFile)) continue;
       for (const ref of group.refs) {
         allRefs.push(ref);
         refToNewPath.set(ref, group.newPath);
       }
     }
-    
+
     if (allRefs.length === 0) continue;
     
     const updateResult: WikilinkUpdateResult = {
