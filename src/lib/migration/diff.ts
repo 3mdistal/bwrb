@@ -632,37 +632,82 @@ function classifyFieldChange(
     // the comparison is order-insensitive and treats a bare string identically to
     // a one-element array. `source: "task"` and `source: ["task"]` are the same
     // allowed set; reordering an array changes nothing.
+    //
+    // CRUCIAL distinction (validation.ts semantics): an ABSENT source — and an
+    // explicit `source: "any"` — both mean "any note type is allowed", i.e. the
+    // relation is UNCONSTRAINED. That is NOT the same as an empty allowed set that
+    // every other set is a superset of; it is the opposite (the universal set).
+    // `normalizeSourceSet` collapses both forms to `null` to mark "unconstrained".
     const oldSources = normalizeSourceSet(oldField?.source);
     const newSources = normalizeSourceSet(newField?.source);
 
-    // A change is only risky for existing links when an allowed source is REMOVED
-    // (the field is narrowed or retargeted so previously-valid links may now point
-    // at a type that is no longer accepted). A pure WIDENING (new ⊇ old) or a
-    // reorder (sets equal) keeps every existing link valid → no op for this aspect.
-    const removedSource = [...oldSources].some((s) => !newSources.has(s));
-    if (removedSource) {
+    const oldUnconstrained = oldSources === null;
+    const newUnconstrained = newSources === null;
+
+    if (newUnconstrained) {
+      // New definition allows any type (source removed or `any`). Every existing
+      // link — whether it was previously unconstrained or pointed at a now-still-
+      // allowed type — remains valid. This covers both "unchanged unconstrained"
+      // and the LOOSENING case (constrained → unconstrained). No op.
+    } else if (oldUnconstrained) {
+      // Unconstrained → constrained: the field gains a non-empty allowed set for
+      // the first time. Existing links were free to point anywhere and may now
+      // target a DISALLOWED type. Unlike select scalars (whose invalid values can
+      // be auto-cleaned), relation links can't be safely auto-mutated, so flag for
+      // manual review rather than silently advancing the snapshot.
       nonDeterministic.push({
         op: 'review-field',
         targetType,
         field,
-        reason: 'relation source changed; existing links may need manual review',
+        reason:
+          'relation source is now constrained (was unconstrained); existing links may point at a disallowed type and need manual review',
       });
+    } else {
+      // Both old and new are constrained (non-empty sets). A change is only risky
+      // for existing links when an allowed source is REMOVED (the field is narrowed
+      // or retargeted so previously-valid links may now point at a type that is no
+      // longer accepted). A pure WIDENING (new ⊇ old) or a reorder (sets equal)
+      // keeps every existing link valid → no op for this aspect.
+      const removedSource = [...oldSources].some((s) => !newSources.has(s));
+      if (removedSource) {
+        nonDeterministic.push({
+          op: 'review-field',
+          targetType,
+          field,
+          reason: 'relation source changed; existing links may need manual review',
+        });
+      }
     }
   }
 }
 
 /**
  * Normalize a relation `source` (a bare type name, an array of type names, or
- * `undefined`) into an order-insensitive SET of allowed source types. A bare
- * string becomes a one-element set; an array becomes a set; `undefined` becomes
- * the empty set. This lets the migration diff treat `"task"`, `["task"]`, and a
- * reordered `["task", "project"]` consistently.
+ * `undefined`) into a representation the migration diff can compare:
+ *
+ * - `null` means UNCONSTRAINED — any note type is allowed. Per validation.ts an
+ *   ABSENT source and an explicit `source: "any"` are equivalent ("any type is
+ *   valid"), so both collapse to `null`. This is the universal set, NOT an empty
+ *   set; callers must treat it as "everything allowed".
+ * - Otherwise a non-empty, order-insensitive SET of the specific allowed types.
+ *   A bare string becomes a one-element set; an array becomes a set. This lets the
+ *   diff treat `"task"`, `["task"]`, and a reordered `["task", "project"]`
+ *   consistently.
+ *
+ * An empty array (`source: []`) is treated as unconstrained too: it pins no
+ * specific type, so it cannot meaningfully narrow existing links.
  */
-function normalizeSourceSet(source: string | string[] | undefined): Set<string> {
+function normalizeSourceSet(
+  source: string | string[] | undefined
+): Set<string> | null {
   if (source === undefined) {
-    return new Set();
+    return null;
   }
-  return new Set(Array.isArray(source) ? source : [source]);
+  const list = Array.isArray(source) ? source : [source];
+  if (list.length === 0 || list.includes('any')) {
+    return null;
+  }
+  return new Set(list);
 }
 
 /**

@@ -555,10 +555,15 @@ describe("diffSchemas", () => {
     });
 
     // Build a schema whose task.parent relation field has the given `source`.
+    // Passing `undefined` omits `source` entirely (unconstrained relation).
     function withParentSource(
-      source: string | string[],
+      source: string | string[] | undefined,
       schemaVersion = "1.0.0"
     ): BwrbSchemaType {
+      const parent =
+        source === undefined
+          ? { prompt: "relation" as const }
+          : { prompt: "relation" as const, source };
       return {
         ...baseSchema,
         schemaVersion,
@@ -568,7 +573,7 @@ describe("diffSchemas", () => {
             ...baseSchema.types.task,
             fields: {
               ...baseSchema.types.task.fields,
-              parent: { prompt: "relation", source },
+              parent,
             },
           },
         },
@@ -617,6 +622,66 @@ describe("diffSchemas", () => {
           (op) => op.op === "review-field" && op.field === "parent"
         )
       ).toBe(true);
+    });
+
+    it("emits review-field when an unconstrained relation source becomes constrained (none → set)", () => {
+      // No source (any type allowed) → source: "task". Existing links may have
+      // pointed at non-task notes that are now disallowed → must surface a review.
+      const oldSchema = withParentSource(undefined, "1.0.0");
+      const newSchema = withParentSource("task", "1.1.0");
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "parent"
+        )
+      ).toBe(true);
+    });
+
+    it("emits review-field when source changes from explicit `any` to a constrained set", () => {
+      // `source: "any"` is unconstrained (validation treats it like absent), so
+      // any → "task" is the same unconstrained → constrained narrowing.
+      const oldSchema = withParentSource("any", "1.0.0");
+      const newSchema = withParentSource("task", "1.1.0");
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "parent"
+        )
+      ).toBe(true);
+    });
+
+    it("does NOT emit review-field when a constrained relation source is removed (set → none)", () => {
+      // source: "task" → absent. The field loosens to allow any type; every
+      // existing link stays valid → safe loosening, no op.
+      const oldSchema = withParentSource("task", "1.0.0");
+      const newSchema = withParentSource(undefined, "1.1.0");
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "parent"
+        )
+      ).toBe(false);
+    });
+
+    it("does NOT emit review-field when a constrained relation source loosens to `any`", () => {
+      // source: ["task", "project"] → "any". Loosening to unconstrained keeps
+      // every existing link valid → no op.
+      const oldSchema = withParentSource(["task", "project"], "1.0.0");
+      const newSchema = withParentSource("any", "1.1.0");
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "parent"
+        )
+      ).toBe(false);
     });
 
     it("does not treat an option description-only edit as a change", () => {

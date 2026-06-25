@@ -141,7 +141,10 @@ bwrb schema history --json
 | Make field required **with** a `default` | No note op (from the required toggle) | Validation exempts a required field that has a `default` (a missing value is satisfied by the default), so notes missing the field stay valid. The required toggle alone emits **no** `review-field` and forces no major bump. Any *other* concurrent aspect of the same change (e.g. widening to `multiple`) is still classified independently. A static `value` does **not** exempt the required check — only `default` does |
 | Allow multiple values (`multiple` false → true) | Deterministic (`widen-field-to-multiple`) | Wraps an existing scalar value into a single-element array |
 | Disallow multiple values (`multiple` true → false) | Non-deterministic (`review-field`) | Surfaced for manual review; collapsing an array is lossy, so notes are flagged, not changed |
-| Change relation `source` | Non-deterministic (`review-field`) | Surfaced for manual review; existing links may now point at the wrong type |
+| Narrow / retarget relation `source` (a previously-allowed type is removed) | Non-deterministic (`review-field`) | Surfaced for manual review; links targeting the dropped type may now be invalid |
+| Constrain a relation `source` that was unconstrained (absent or `any` → a specific set) | Non-deterministic (`review-field`) | An absent source and `source: "any"` both mean "any type allowed"; adding a constraining set means existing links may now point at a disallowed type, so they are surfaced for manual review |
+| Widen / reorder relation `source` (new set ⊇ old, both constrained) | No note op | Every existing link stays valid; allowing a *wider* set (or merely reordering one) cannot invalidate any link |
+| Loosen a relation `source` to unconstrained (a specific set → absent or `any`) | No note op | Removing the constraint allows any type, so all existing links remain valid |
 
 Field-changed **and field-removal** migrations are derived from the **effective
 (resolved) schema** — the field definition each concrete type actually resolves to
