@@ -313,22 +313,32 @@ export function validateFrontmatter(
 /**
  * Apply defaults to frontmatter for missing fields.
  * Also injects the 'type' field with the type name.
+ *
+ * When `keyScope` is provided, ONLY those field names are considered for default
+ * materialization (and the `type` field is left untouched). The `edit` write path
+ * uses this to restore the #707 write↔audit parity case SURGICALLY: it scopes
+ * defaults to just the keys the user blanked in their patch, so an explicit
+ * `null` removal is not re-defaulted and untouched fields are never materialized.
+ * Without a scope, every declared field is considered (the `new` behavior).
  */
 export function applyDefaults(
   schema: LoadedSchema,
   typeName: string,
-  frontmatter: Record<string, unknown>
+  frontmatter: Record<string, unknown>,
+  keyScope?: ReadonlySet<string>
 ): Record<string, unknown> {
   const result = { ...frontmatter };
   const fields = getFieldsForType(schema, typeName);
 
-  // Always inject the type field with the type name
+  // Always inject the type field with the type name (unscoped path only).
   // In the new inheritance model, type is auto-injected, not a field definition
-  if (!result['type']) {
+  if (keyScope === undefined && !result['type']) {
     result['type'] = typeName;
   }
 
   for (const [fieldName, field] of Object.entries(fields)) {
+    if (keyScope !== undefined && !keyScope.has(fieldName)) continue;
+
     const value = result[fieldName];
     // Blank optional values (incl. whitespace-only) are "unset", so defaults and
     // static values fill them in just like a missing field (#707).

@@ -34,6 +34,7 @@ import {
   normalizeDateFields,
   applyDefaults,
 } from './validation.js';
+import { isBlankScalar } from './emptiness.js';
 import { validateParentNoCycle } from './hierarchy.js';
 import {
   printJson,
@@ -162,16 +163,38 @@ export async function editNoteFromJson(
   // Normalize date-like fields to canonical YYYY-MM-DD strings
   const normalizedFrontmatter = normalizeDateFields(schema, typePath, mergedFrontmatter);
 
-  // Materialize defaults BEFORE validating/writing, mirroring the `new` path
-  // (json-mode.ts). Without this, a blank (incl. whitespace-only) REQUIRED field
-  // that HAS a default would pass validation — `validateFrontmatter` treats it as
-  // "unset → satisfied by the default" (#707) — but the blank value would be
-  // PERSISTED, so a subsequent `audit` flags it `empty-string-required`: write
-  // says OK, audit says broken. `applyDefaults` only fills blanks (it never
-  // overwrites a real user value) and only where a `default`/`value` is declared,
-  // so optional fields with no default stay unset (trim-everywhere preserved) and
-  // required fields with no default remain blank → still rejected below.
-  const resolvedFrontmatter = applyDefaults(schema, typePath, normalizedFrontmatter);
+  // Materialize defaults BEFORE validating/writing — but ONLY for the parity
+  // case, SURGICALLY scoped to the keys the user blanked in THIS patch.
+  //
+  // The write↔audit parity bug (#707): a blank (incl. whitespace-only) value for
+  // a key whose field HAS a `default`/`value` passes validation —
+  // `validateFrontmatter` treats it as "unset → satisfied by the default" — but
+  // the blank would be PERSISTED, so `audit` then flags `empty-string-required`:
+  // write says OK, audit says broken. Materializing the default for that key makes
+  // write and audit agree.
+  //
+  // A BLANKET `applyDefaults` over the whole merged frontmatter over-corrects in
+  // two ways, so we scope instead:
+  //   1. Explicit removal (`{"field": null}`) is the documented way to delete a
+  //      field. `mergeFrontmatter` deletes it; a blanket default would write it
+  //      straight back. We EXCLUDE null (isBlankScalar is true for null, so we
+  //      filter on a blank STRING specifically) → removal is preserved.
+  //   2. An edit must not materialize defaults for fields the user never touched.
+  //      Scoping to user-patch keys leaves untouched fields alone.
+  //
+  // Keys the user blanked but whose field has NO default stay blank: optional →
+  // unset (trim-everywhere preserved), required → still rejected at validation.
+  const blankPatchKeys = new Set(
+    Object.keys(patchData).filter(
+      (key) => typeof patchData[key] === 'string' && isBlankScalar(patchData[key])
+    )
+  );
+  const resolvedFrontmatter = applyDefaults(
+    schema,
+    typePath,
+    normalizedFrontmatter,
+    blankPatchKeys
+  );
 
   // Validate merged result
   const validation = validateFrontmatter(schema, typePath, resolvedFrontmatter);

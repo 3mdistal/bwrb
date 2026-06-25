@@ -133,6 +133,67 @@ owner: Alice
     expect(fm['owner']).toBe('Alice');
   });
 
+  it('explicit null removal of a defaulted field stays removed (default NOT re-applied)', async () => {
+    // Regression: a blanket applyDefaults over the merged frontmatter would write
+    // `status`'s default back in immediately after `mergeFrontmatter` deleted it,
+    // silently undoing the documented `{"field": null}` removal. The surgical fix
+    // scopes defaults to blank-STRING patch keys only, so null is left removed.
+    const taskPath = join(vaultDir, 'tasks', 'Drop.md');
+    await writeFile(
+      taskPath,
+      `---
+type: task
+name: Drop
+status: doing
+priority: high
+---
+
+# Drop
+`
+    );
+
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(schema, vaultDir, taskPath, JSON.stringify({ status: null }), {
+      jsonMode: false,
+    });
+
+    // The field is GONE, not re-defaulted to 'todo'.
+    const fm = await readFrontmatter(taskPath);
+    expect('status' in fm).toBe(false);
+    // Untouched field is preserved.
+    expect(fm['priority']).toBe('high');
+  });
+
+  it('editing one field does NOT materialize an unrelated untouched defaulted field', async () => {
+    // `priority` is OPTIONAL with a default but is absent from the note and is NOT
+    // referenced by the patch. A blanket applyDefaults would fill it in; the
+    // surgical, patch-scoped fix must leave it absent.
+    const taskPath = join(vaultDir, 'tasks', 'Touch.md');
+    await writeFile(
+      taskPath,
+      `---
+type: task
+name: Touch
+status: doing
+---
+
+# Touch
+`
+    );
+
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(schema, vaultDir, taskPath, JSON.stringify({ name: 'Touched' }), {
+      jsonMode: false,
+    });
+
+    const fm = await readFrontmatter(taskPath);
+    expect(fm['name']).toBe('Touched');
+    // The user never referenced `priority`; its default must NOT be materialized.
+    expect('priority' in fm).toBe(false);
+    // The edited field's own value is intact.
+    expect(fm['status']).toBe('doing');
+  });
+
   it('control: blanking an OPTIONAL field with no default clears it to unset on both write and audit', async () => {
     // `priority` HAS a default, so blanking it would be filled. Use an optional
     // field WITHOUT a default to confirm trim-everywhere "unset" is preserved.
