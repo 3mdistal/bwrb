@@ -18,7 +18,7 @@ import {
 } from './schema.js';
 import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
 import type { LoadedSchema } from '../types/schema.js';
-import { extractLinkTargets, isWikilink } from './links.js';
+import { extractLinkTargets, isWikilink, wikilinkTargetBasename } from './links.js';
 import { parseNote } from './frontmatter.js';
 
 // ============================================================================
@@ -210,16 +210,21 @@ async function indexOwnerNote(
   // For each owned field, look for the owned field subfolder
   for (const ownedField of ownedFields) {
     // Record declared ownership from the owner's frontmatter (`owned` field).
-    // Keyed by the lowercased wikilink target name so a misplaced owned note can
-    // be matched by basename regardless of where it currently lives.
+    // Keyed by the NORMALIZED wikilink target (basename, alias/heading/path
+    // stripped, lowercased) via `declaredOwnerKey` so a misplaced owned note can
+    // be matched by basename regardless of how the owner wrote the link
+    // (`[[Opening Track]]`, `[[Tracks/Opening Track]]`, `[[Opening Track|Intro]]`,
+    // `[[Tracks/Opening Track|Intro]]`). The lookup (`findDeclaredOwner`) derives
+    // its key the same way, so all wikilink forms agree.
     // Skipped entirely for a fake/wrong-type owner (see `ownerNoteIsGenuine`).
     for (const refName of ownerNoteIsGenuine
       ? extractWikilinkReferences(ownerFrontmatter[ownedField.fieldName])
       : []) {
-      const key = refName.toLowerCase();
+      const normalizedName = wikilinkTargetBasename(refName);
+      const key = declaredOwnerKey(normalizedName);
       if (!declaredOwned.has(key)) {
         declaredOwned.set(key, {
-          notePath: refName,
+          notePath: normalizedName,
           ownerPath: relativeOwnerPath,
           ownerType: ownerTypeName,
           fieldName: ownedField.fieldName,
@@ -270,6 +275,19 @@ export function isNoteOwned(
 }
 
 /**
+ * Compute the `declaredOwned` map key for a note name.
+ *
+ * Both the index (built from owner wikilink declarations) and the lookup
+ * (`findDeclaredOwner`, called with a note's basename) route through this single
+ * helper so their keys always agree. `wikilinkTargetBasename` makes the key
+ * tolerant of path-qualified/aliased declared links; lowercasing keeps it
+ * case-insensitive, consistent with the rest of relation resolution.
+ */
+function declaredOwnerKey(noteName: string): string {
+  return wikilinkTargetBasename(noteName).toLowerCase();
+}
+
+/**
  * Look up the owner that DECLARES this note as owned (via one of its `owned`
  * frontmatter fields), keyed by the note's basename (without extension).
  *
@@ -277,12 +295,17 @@ export function isNoteOwned(
  * the owner's declaration, so it still finds the owner of a note that has been
  * moved out of its `<owner-dir>/<field>/` folder — the case audit needs to
  * restore a genuinely-misplaced owned note (#702/#703).
+ *
+ * The key is derived via the same `declaredOwnerKey` normalization used when the
+ * index is built, so a declaration written with a path qualifier or display
+ * alias (`[[Tracks/Opening Track|Intro]]`) still matches a lookup by the note's
+ * plain basename (`Opening Track`).
  */
 export function findDeclaredOwner(
   index: OwnershipIndex,
   noteName: string
 ): OwnedNoteInfo | undefined {
-  return index.declaredOwned.get(noteName.toLowerCase());
+  return index.declaredOwned.get(declaredOwnerKey(noteName));
 }
 
 /**

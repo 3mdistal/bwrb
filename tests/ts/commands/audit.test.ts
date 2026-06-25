@@ -2955,6 +2955,72 @@ status: raw
       expect(wrongDirIssue).toBeUndefined();
     });
 
+    // #734: a declared `owned` wikilink written PATH-QUALIFIED, ALIASED, or both
+    // must still recognise and restore the misplaced owned note. Previously the
+    // declaredOwned key stored the raw target (`tracks/opening track`,
+    // `opening track|intro`), so the basename lookup (`opening track`) never
+    // matched and the note was missed (or, from another folder, --fix targeted
+    // the type dir instead of restoring under the owner).
+    it.each([
+      ['path-qualified', '[[Tracks/Opening Track]]'],
+      ['aliased', '[[Opening Track|Intro]]'],
+      ['path + alias', '[[Tracks/Opening Track|Intro]]'],
+    ])(
+      'recognises + restores a misplaced owned note declared with a %s wikilink',
+      async (_label, declaredLink) => {
+        // Owner declares ownership using a non-bare wikilink form.
+        await writeFile(
+          join(tempVaultDir, 'Albums/Best Album', 'Best Album.md'),
+          `---\ntype: album\nsongs:\n  - "${declaredLink}"\n---\n`
+        );
+        // The owned note is misplaced in Tracks/.
+        await writeFile(
+          join(tempVaultDir, 'Tracks', 'Opening Track.md'),
+          `---\ntype: track\n---\n`
+        );
+
+        // Detected as owned-wrong-location, restore target under the owner.
+        const detect = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+        expect(detect.exitCode).toBe(1);
+        const output = JSON.parse(detect.stdout);
+        const strayFile = output.files.find((f: { path: string }) =>
+          f.path.includes('Opening Track.md')
+        );
+        expect(strayFile).toBeDefined();
+        const ownedIssue = strayFile.issues.find(
+          (i: { code: string }) => i.code === 'owned-wrong-location'
+        );
+        expect(ownedIssue).toBeDefined();
+        expect(ownedIssue.expectedDirectory).toBe('Albums/Best Album/songs');
+        expect(ownedIssue.ownerPath).toBe('Albums/Best Album/Best Album.md');
+        // Exactly one location issue — no duplicate generic wrong-directory.
+        expect(
+          strayFile.issues.find((i: { code: string }) => i.code === 'wrong-directory')
+        ).toBeUndefined();
+
+        // --fix restores it under the owner subtree, not the type's Tracks dir.
+        const fix = await runCLI(
+          ['audit', '--fix', '--all', '--auto', '--execute'],
+          tempVaultDir
+        );
+        expect(fix.exitCode).toBe(0);
+        const restored = await readFile(
+          join(tempVaultDir, 'Albums/Best Album/songs', 'Opening Track.md'),
+          'utf-8'
+        ).catch(() => null);
+        expect(restored).not.toBeNull();
+        const stranded = await readFile(
+          join(tempVaultDir, 'Tracks', 'Opening Track.md'),
+          'utf-8'
+        ).catch(() => null);
+        expect(stranded).toBeNull();
+
+        // Re-audit is clean.
+        const after = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+        expect(after.exitCode).toBe(0);
+      }
+    );
+
     // Defect 2 (wrong-TYPE note relocated by basename): declared ownership is
     // matched by basename, but the candidate must also have the owned field's
     // SOURCE type. A correctly-placed, differently-typed note that merely shares

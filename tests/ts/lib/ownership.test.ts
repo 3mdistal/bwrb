@@ -266,6 +266,35 @@ describe('Ownership Index Building', () => {
     expect(findDeclaredOwner(index, 'stray notes')).toBeDefined();
     expect(findDeclaredOwner(index, 'Unknown')).toBeUndefined();
   });
+
+  // A declared `owned` wikilink may be written path-qualified, aliased, or both.
+  // The declaredOwned key must normalize to the bare basename so a lookup by the
+  // misplaced note's basename still resolves the owner (the #734 defect).
+  it.each([
+    ['path-qualified', '[[research/Stray Notes]]'],
+    ['aliased', '[[Stray Notes|My Alias]]'],
+    ['path + alias', '[[research/Stray Notes|My Alias]]'],
+  ])('resolves a declared owned note linked with a %s wikilink', async (_label, link) => {
+    createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+      type: 'draft',
+      status: 'active',
+      research: [link],
+    });
+
+    const schema = await loadSchema(vaultDir);
+    const index = await buildOwnershipIndex(schema, vaultDir);
+
+    // Lookup is by the note's plain basename — it must resolve regardless of how
+    // the owner wrote the link.
+    const declared = findDeclaredOwner(index, 'Stray Notes');
+    expect(declared).toBeDefined();
+    expect(declared?.ownerPath).toBe('drafts/My Novel/My Novel.md');
+    expect(declared?.fieldName).toBe('research');
+    // Stored note name is the normalized basename, not the raw path/alias.
+    expect(declared?.notePath).toBe('Stray Notes');
+    // Case-insensitive lookup still works.
+    expect(findDeclaredOwner(index, 'stray notes')).toBeDefined();
+  });
 });
 
 describe('Ownership Validation', () => {

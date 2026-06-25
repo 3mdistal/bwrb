@@ -6,6 +6,7 @@ import {
   extractMarkdownLinkTarget,
   toWikilink,
   toMarkdownLink,
+  wikilinkTargetBasename,
 } from "../../../src/lib/links.js";
 
 describe("link utilities", () => {
@@ -151,6 +152,42 @@ describe("link utilities", () => {
       const wikilink = toWikilink(original);
       const backToMarkdown = toMarkdownLink(wikilink);
       expect(backToMarkdown).toBe(original);
+    });
+  });
+
+  describe("wikilinkTargetBasename", () => {
+    it("returns a bare target unchanged", () => {
+      expect(wikilinkTargetBasename("Opening Track")).toBe("Opening Track");
+    });
+
+    it("strips a path qualifier to the last segment", () => {
+      expect(wikilinkTargetBasename("Tracks/Opening Track")).toBe("Opening Track");
+      expect(wikilinkTargetBasename("a/b/c/Opening Track")).toBe("Opening Track");
+    });
+
+    it("strips a display alias", () => {
+      expect(wikilinkTargetBasename("Opening Track|Intro")).toBe("Opening Track");
+    });
+
+    it("strips a heading", () => {
+      expect(wikilinkTargetBasename("Opening Track#Verse")).toBe("Opening Track");
+    });
+
+    it("strips combined path + alias", () => {
+      expect(wikilinkTargetBasename("Tracks/Opening Track|Intro")).toBe("Opening Track");
+    });
+
+    it("strips combined path + heading + alias", () => {
+      expect(wikilinkTargetBasename("Tracks/Opening Track#Verse|Intro")).toBe(
+        "Opening Track"
+      );
+    });
+
+    it("unwraps a fully bracketed wikilink", () => {
+      expect(wikilinkTargetBasename("[[Tracks/Opening Track|Intro]]")).toBe(
+        "Opening Track"
+      );
+      expect(wikilinkTargetBasename('"[[Tracks/Opening Track]]"')).toBe("Opening Track");
     });
   });
 });
