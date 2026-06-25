@@ -287,10 +287,13 @@ function calculateSingleChange(
 
     case 'widen-field-to-multiple': {
       // Wrap an existing scalar value into a single-element array. Values that
-      // are already arrays (or absent) need no change.
+      // are already arrays (or absent) need no change. A blank scalar (`''`) is
+      // treated as absent here — matching validation's `hasValue` semantics and
+      // `clear-invalid-options` above — so it is left as-is rather than being
+      // wrapped into an invalid single-element array like `['']`.
       if (!(op.field in frontmatter)) return [];
       const value = frontmatter[op.field];
-      if (value === null || value === undefined || Array.isArray(value)) return [];
+      if (value === null || value === undefined || value === '' || Array.isArray(value)) return [];
       return [{
         kind: 'set',
         field: op.field,

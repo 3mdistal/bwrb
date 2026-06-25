@@ -1014,6 +1014,58 @@ parent: "[[Task Two]]"
 
       expect(result.affectedFiles).toBe(0);
     });
+
+    // Defect A (#728): a BLANK scalar (`tags: ""`) is treated as ABSENT by
+    // validation (`hasValue` is false) and by `clear-invalid-options`. Widening
+    // must NOT wrap it into `['']`, which would be a real (invalid) array element
+    // for a multi-select with options. A blank/absent scalar is left as-is.
+    it("leaves a blank scalar ('') unwrapped (does not produce [''])", async () => {
+      await writeFile(
+        join(testDir, ".bwrb/schema.json"),
+        JSON.stringify({
+          version: 2,
+          schemaVersion: "1.0.0",
+          types: {
+            task: {
+              output_dir: "Tasks",
+              fields: {
+                name: { prompt: "text", required: true },
+                tags: { prompt: "list", multiple: true },
+              },
+            },
+          },
+        })
+      );
+      await writeFile(
+        join(testDir, "Tasks/Task-1.md"),
+        `---\ntype: task\nname: Task One\ntags: ""\n---\n# Task One\n`
+      );
+
+      const schema = await loadSchema(testDir);
+      const plan: MigrationPlan = {
+        fromVersion: "1.0.0",
+        toVersion: "1.1.0",
+        hasChanges: true,
+        deterministic: [
+          { op: "widen-field-to-multiple", targetType: "task", field: "tags" },
+        ],
+        nonDeterministic: [],
+      };
+
+      const result = await executeMigration({
+        vaultDir: testDir,
+        schema,
+        plan,
+        execute: true,
+        backup: false,
+      });
+
+      // No change: the blank scalar is left as-is rather than wrapped.
+      expect(result.affectedFiles).toBe(0);
+      const content = await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8");
+      expect(content).not.toContain("- ''");
+      expect(content).not.toContain('- ""');
+    });
   });
 
   describe("review-field operation", () => {

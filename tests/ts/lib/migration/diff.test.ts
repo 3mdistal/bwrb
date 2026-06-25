@@ -128,6 +128,92 @@ describe("diffSchemas", () => {
     });
   });
 
+  // Defect B (#728): the raw add-field loop must be derived against the OLD
+  // EFFECTIVE (resolved) schema, like the changed/removed paths. A child type that
+  // STARTS raw-declaring a field name it already INHERITS — where the declaration
+  // only changes structural keys the resolver IGNORES — does NOT change the
+  // effective schema, so it must emit NO add-field op and NOT flip hasChanges. A
+  // genuinely new own field must still emit add-field.
+  describe("raw add-field of an already-inherited field (resolver-ignored redeclaration)", () => {
+    const inheritanceBase: BwrbSchemaType = {
+      version: 2,
+      schemaVersion: "1.0.0",
+      types: {
+        objective: {
+          fields: {
+            phase: {
+              prompt: "select",
+              options: ["planned", "active", "done"],
+            },
+          },
+        },
+        // task inherits `phase` from objective but does NOT raw-declare it yet.
+        task: {
+          extends: "objective",
+          fields: {
+            title: { prompt: "text" },
+          },
+        },
+      },
+    };
+
+    it("emits NO add-field and does not flip hasChanges when a child raw-redeclares an inherited field with only resolver-ignored keys", () => {
+      // task STARTS raw-declaring `phase` (which it already inherits), adding only
+      // structural keys (`options`) the resolver drops for an inherited field.
+      // objective.phase is unchanged → effective schema is identical → no migration.
+      const newSchema: BwrbSchemaType = {
+        ...inheritanceBase,
+        schemaVersion: "1.1.0",
+        types: {
+          ...inheritanceBase.types,
+          task: {
+            extends: "objective",
+            fields: {
+              title: { prompt: "text" },
+              // Redeclaration of an inherited field; resolver ignores this override.
+              phase: { prompt: "select", options: ["todo", "doing", "done"] },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(inheritanceBase, newSchema, "1.0.0", "1.1.0");
+
+      const allOps = [...plan.deterministic, ...plan.nonDeterministic];
+      expect(allOps.some((op) => op.op === "add-field" && op.field === "phase")).toBe(
+        false
+      );
+      expect(plan.hasChanges).toBe(false);
+    });
+
+    it("still emits add-field for a genuinely new own field (not previously inherited or present)", () => {
+      const newSchema: BwrbSchemaType = {
+        ...inheritanceBase,
+        schemaVersion: "1.1.0",
+        types: {
+          ...inheritanceBase.types,
+          task: {
+            extends: "objective",
+            fields: {
+              title: { prompt: "text" },
+              // `assignee` is genuinely new — not inherited, not previously present.
+              assignee: { prompt: "text" },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(inheritanceBase, newSchema, "1.0.0", "1.1.0");
+
+      expect(plan.hasChanges).toBe(true);
+      expect(
+        plan.deterministic.some(
+          (op) => op.op === "add-field" && op.targetType === "task" && op.field === "assignee"
+        )
+      ).toBe(true);
+    });
+  });
+
   describe("field-changed classification", () => {
     function withTaskField(field: Record<string, unknown>): BwrbSchemaType {
       return {

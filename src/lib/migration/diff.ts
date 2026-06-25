@@ -108,7 +108,7 @@ function detectChanges(
   // Options changes are detected as part of field changes.
 
   // Compare types (added/removed/reparented + raw field add/remove).
-  changes.push(...detectTypeChanges(oldSchema.types ?? {}, newSchema.types ?? {}));
+  changes.push(...detectTypeChanges(oldSchema.types ?? {}, newSchema.types ?? {}, resolvedOld));
 
   // Field-*changed* detection is computed from the EFFECTIVE resolved schemas,
   // not raw per-type entries (see detectEffectiveFieldChanges for why).
@@ -130,7 +130,8 @@ function detectChanges(
  */
 function detectTypeChanges(
   oldTypes: Record<string, unknown>,
-  newTypes: Record<string, unknown>
+  newTypes: Record<string, unknown>,
+  resolvedOld: LoadedSchema
 ): DetectedChange[] {
   const changes: DetectedChange[] = [];
   const oldNames = new Set(Object.keys(oldTypes));
@@ -171,11 +172,15 @@ function detectTypeChanges(
         changes.push(reparentChange);
       }
       
-      // Check field changes
+      // Check field changes. The OLD effective (resolved) field set is passed so
+      // a raw add of a field name the type already INHERITS (a redeclaration the
+      // resolver ignores) is not mistaken for a genuinely new field.
+      const oldEffectiveFields = resolvedOld.types.get(name)?.fields ?? {};
       changes.push(...detectFieldChanges(
         name,
         oldType.fields ?? {},
-        newType.fields ?? {}
+        newType.fields ?? {},
+        oldEffectiveFields
       ));
     }
   }
@@ -208,7 +213,8 @@ function detectTypeChanges(
 function detectFieldChanges(
   typeName: string,
   oldFields: Record<string, Field>,
-  newFields: Record<string, Field>
+  newFields: Record<string, Field>,
+  oldEffectiveFields: Record<string, Field>
 ): DetectedChange[] {
   const changes: DetectedChange[] = [];
   const oldNames = new Set(Object.keys(oldFields));
@@ -217,6 +223,13 @@ function detectFieldChanges(
   // Added fields
   for (const name of newNames) {
     if (!oldNames.has(name)) {
+      // Only emit `add-field` for fields that are genuinely NEW in the type's
+      // effective schema. If the field name already exists in the OLD effective
+      // (resolved) schema, this raw addition is a REDECLARATION of an already-
+      // inherited field whose structural override the resolver IGNORES — the
+      // effective schema is unchanged, so no migration is warranted. This mirrors
+      // the effective-schema basis used for field changes/removals.
+      if (name in oldEffectiveFields) continue;
       const field = newFields[name];
       const hasDefault = field !== undefined && (field.default !== undefined || field.value !== undefined);
       changes.push({ kind: 'field-added', type: typeName, field: name, hasDefault });
