@@ -299,6 +299,10 @@ bwrb audit --path "Ideas/**" --fix --auto --execute
 # Preview auto-fixes
 bwrb audit --path "Ideas/**" --fix --auto
 # Note: auto mode never deletes files
+# Note: directory-move fixes (wrong-directory, owned-wrong-location) never
+#       overwrite an existing file. If a different file already occupies the
+#       destination, the move is SKIPPED and reported as a conflict (counted as
+#       Failed, not Fixed) so no data is lost; resolve the collision manually.
 
 # Fix a specific issue code (auto-fix; safe to script)
 bwrb audit --path "Ideas/**" --only trailing-whitespace --fix --auto --execute

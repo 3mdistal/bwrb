@@ -54,6 +54,75 @@ export function extractWikilinkTarget(value: string): string | null {
 }
 
 /**
+ * Reduce a wikilink/relation target to the bare note basename it points at.
+ *
+ * A wikilink target can carry a path qualifier, a display alias, and/or a
+ * heading (`[[path/to/Target|Alias#Heading]]`). For matching a target against a
+ * note's filename, only the final path segment of the link's TARGET portion
+ * matters. This strips, in order: any display alias (`|...`), any heading
+ * (`#...`), then the path qualifier (everything up to the last `/`).
+ *
+ * Accepts either a raw target (`Tracks/Opening Track|Intro`) or a fully
+ * bracketed wikilink (`[[Tracks/Opening Track|Intro]]`); the brackets are
+ * removed first if present.
+ *
+ * Examples:
+ * - `Opening Track`                  -> `Opening Track`
+ * - `Tracks/Opening Track`           -> `Opening Track`
+ * - `Opening Track|Intro`            -> `Opening Track`
+ * - `Tracks/Opening Track|Intro`     -> `Opening Track`
+ * - `[[Tracks/Opening Track#Verse]]` -> `Opening Track`
+ */
+export function wikilinkTargetBasename(value: string): string {
+  // Unwrap surrounding [[ ]] / quotes if the caller passed a full wikilink.
+  let target = isWikilink(value) || isQuotedWikilink(value)
+    ? extractWikilinkTarget(value) ?? value
+    : value;
+
+  // Drop display alias and heading: the target is everything before `|`/`#`.
+  target = target.split('|')[0]!.split('#')[0]!;
+
+  // Take the last path segment so a path-qualified target matches a basename.
+  const lastSlash = target.lastIndexOf('/');
+  if (lastSlash >= 0) {
+    target = target.slice(lastSlash + 1);
+  }
+
+  return target.trim();
+}
+
+/**
+ * Reduce a wikilink/relation target to its PATH-QUALIFIED target portion,
+ * preserving any path qualifier but dropping a display alias and/or heading.
+ *
+ * Unlike `wikilinkTargetBasename` (which also strips the path down to the final
+ * segment), this keeps the path so callers can distinguish a PATH-QUALIFIED
+ * declaration (`Albums/Best Album/songs/Owned`) from a BARE one (`Owned`) and,
+ * when path-qualified, resolve it to the file at that exact relative path. The
+ * `.md` extension is never part of a wikilink target, so none is added/removed.
+ *
+ * Accepts either a raw target (`Tracks/Opening Track|Intro`) or a fully
+ * bracketed wikilink (`[[Tracks/Opening Track|Intro]]`).
+ *
+ * Examples:
+ * - `Opening Track`                  -> `Opening Track`
+ * - `Tracks/Opening Track`           -> `Tracks/Opening Track`
+ * - `Tracks/Opening Track|Intro`     -> `Tracks/Opening Track`
+ * - `[[Tracks/Opening Track#Verse]]` -> `Tracks/Opening Track`
+ */
+export function wikilinkTargetPath(value: string): string {
+  // Unwrap surrounding [[ ]] / quotes if the caller passed a full wikilink.
+  let target = isWikilink(value) || isQuotedWikilink(value)
+    ? extractWikilinkTarget(value) ?? value
+    : value;
+
+  // Drop display alias and heading: the target is everything before `|`/`#`.
+  target = target.split('|')[0]!.split('#')[0]!;
+
+  return target.trim();
+}
+
+/**
  * Convert a value to wikilink format.
  * Extracts the note name from markdown links if needed.
  */

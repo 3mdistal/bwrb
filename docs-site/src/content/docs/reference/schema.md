@@ -506,6 +506,19 @@ Owned notes:
 - Live in the owner's subfolder (e.g., `drafts/My Novel/chapters/`)
 - Cannot be referenced by other notes' frontmatter fields
 - Are still discoverable via `bwrb list` and `bwrb search`
+- If moved out of that subfolder — **or** placed under a *different* owner's owned
+  subfolder — `bwrb audit` flags them as
+  [`owned-wrong-location`](/reference/commands/audit/#issue-codes) (resolved via the
+  **declaring** owner's `owned` declaration, not the note's current folder) and
+  `--fix` **restores them under the declaring owner** — `<owner-dir>/<field>/` —
+  rather than filing them in the owned type's own `output_dir` or leaving them under
+  the wrong owner
+- If the **same note name is declared by two or more owners**, ownership is
+  ambiguous: audit reports
+  [`owned-ambiguous-owner`](/reference/commands/audit/#issue-codes) and **never**
+  auto-restores the note under a guessed owner. Resolve it manually — remove the
+  duplicate `owned` declaration, or rename the note so each owner's declaration is
+  unique
 
 ### list
 

@@ -6,6 +6,8 @@ import {
   extractMarkdownLinkTarget,
   toWikilink,
   toMarkdownLink,
+  wikilinkTargetBasename,
+  wikilinkTargetPath,
 } from "../../../src/lib/links.js";
 
 describe("link utilities", () => {
@@ -151,6 +153,82 @@ describe("link utilities", () => {
       const wikilink = toWikilink(original);
       const backToMarkdown = toMarkdownLink(wikilink);
       expect(backToMarkdown).toBe(original);
+    });
+  });
+
+  describe("wikilinkTargetBasename", () => {
+    it("returns a bare target unchanged", () => {
+      expect(wikilinkTargetBasename("Opening Track")).toBe("Opening Track");
+    });
+
+    it("strips a path qualifier to the last segment", () => {
+      expect(wikilinkTargetBasename("Tracks/Opening Track")).toBe("Opening Track");
+      expect(wikilinkTargetBasename("a/b/c/Opening Track")).toBe("Opening Track");
+    });
+
+    it("strips a display alias", () => {
+      expect(wikilinkTargetBasename("Opening Track|Intro")).toBe("Opening Track");
+    });
+
+    it("strips a heading", () => {
+      expect(wikilinkTargetBasename("Opening Track#Verse")).toBe("Opening Track");
+    });
+
+    it("strips combined path + alias", () => {
+      expect(wikilinkTargetBasename("Tracks/Opening Track|Intro")).toBe("Opening Track");
+    });
+
+    it("strips combined path + heading + alias", () => {
+      expect(wikilinkTargetBasename("Tracks/Opening Track#Verse|Intro")).toBe(
+        "Opening Track"
+      );
+    });
+
+    it("unwraps a fully bracketed wikilink", () => {
+      expect(wikilinkTargetBasename("[[Tracks/Opening Track|Intro]]")).toBe(
+        "Opening Track"
+      );
+      expect(wikilinkTargetBasename('"[[Tracks/Opening Track]]"')).toBe("Opening Track");
+    });
+  });
+
+  describe("wikilinkTargetPath", () => {
+    it("returns a bare target unchanged", () => {
+      expect(wikilinkTargetPath("Opening Track")).toBe("Opening Track");
+    });
+
+    it("PRESERVES the path qualifier (unlike wikilinkTargetBasename)", () => {
+      expect(wikilinkTargetPath("Tracks/Opening Track")).toBe("Tracks/Opening Track");
+      expect(wikilinkTargetPath("Albums/Best Album/songs/Owned")).toBe(
+        "Albums/Best Album/songs/Owned"
+      );
+    });
+
+    it("strips a display alias but keeps the path", () => {
+      expect(wikilinkTargetPath("Tracks/Opening Track|Intro")).toBe(
+        "Tracks/Opening Track"
+      );
+    });
+
+    it("strips a heading but keeps the path", () => {
+      expect(wikilinkTargetPath("Tracks/Opening Track#Verse")).toBe(
+        "Tracks/Opening Track"
+      );
+    });
+
+    it("strips combined heading + alias but keeps the path", () => {
+      expect(wikilinkTargetPath("Tracks/Opening Track#Verse|Intro")).toBe(
+        "Tracks/Opening Track"
+      );
+    });
+
+    it("unwraps a fully bracketed wikilink, preserving the path", () => {
+      expect(wikilinkTargetPath("[[Tracks/Opening Track|Intro]]")).toBe(
+        "Tracks/Opening Track"
+      );
+      expect(wikilinkTargetPath('"[[Albums/Best Album/songs/Owned]]"')).toBe(
+        "Albums/Best Album/songs/Owned"
+      );
     });
   });
 });

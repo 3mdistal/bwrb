@@ -6,6 +6,9 @@ import { loadSchema, canTypeBeOwned, getOwnerTypes, getOwnedFields } from '../..
 import {
   buildOwnershipIndex,
   isNoteOwned,
+  findDeclaredOwner,
+  getDeclaredOwners,
+  isDeclaredOwnershipAmbiguous,
   canReference,
   validateNewOwned,
   extractWikilinkReferences,
@@ -235,6 +238,151 @@ describe('Ownership Index Building', () => {
     
     const owned = index.ownerToOwned.get('drafts/My Novel/My Novel.md');
     expect(owned?.size).toBe(2);
+  });
+
+  // declaredOwned is built from the owner's frontmatter `owned` field, so it
+  // resolves the owner of an owned note even when the note has been moved out of
+  // its `<owner-dir>/<field>/` folder — the case audit needs to restore a
+  // genuinely-misplaced owned note (#702/#703).
+  it('records declared ownership from the owner frontmatter, keyed by note name', async () => {
+    mkdirSync(join(vaultDir, 'drafts', 'My Novel', 'research'), { recursive: true });
+    // Owner declares ownership of a note that does NOT live under research/.
+    createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+      type: 'draft',
+      status: 'active',
+      research: ['[[Stray Notes]]'],
+    });
+
+    const schema = await loadSchema(vaultDir);
+    const index = await buildOwnershipIndex(schema, vaultDir);
+
+    // Not physically present anywhere, so the location index is empty...
+    expect(index.ownedNotes.size).toBe(0);
+
+    // ...but the declared-owner lookup resolves it (case-insensitive).
+    const declared = findDeclaredOwner(index, 'Stray Notes');
+    expect(declared).toBeDefined();
+    expect(declared?.ownerPath).toBe('drafts/My Novel/My Novel.md');
+    expect(declared?.ownerType).toBe('draft');
+    expect(declared?.fieldName).toBe('research');
+    expect(findDeclaredOwner(index, 'stray notes')).toBeDefined();
+    expect(findDeclaredOwner(index, 'Unknown')).toBeUndefined();
+  });
+
+  // A declared `owned` wikilink may be written path-qualified, aliased, or both.
+  // The declaredOwned key must normalize to the bare basename so a lookup by the
+  // misplaced note's basename still resolves the owner (the #734 defect).
+  it.each([
+    ['path-qualified', '[[research/Stray Notes]]'],
+    ['aliased', '[[Stray Notes|My Alias]]'],
+    ['path + alias', '[[research/Stray Notes|My Alias]]'],
+  ])('resolves a declared owned note linked with a %s wikilink', async (_label, link) => {
+    createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+      type: 'draft',
+      status: 'active',
+      research: [link],
+    });
+
+    const schema = await loadSchema(vaultDir);
+    const index = await buildOwnershipIndex(schema, vaultDir);
+
+    // Lookup is by the note's plain basename — it must resolve regardless of how
+    // the owner wrote the link.
+    const declared = findDeclaredOwner(index, 'Stray Notes');
+    expect(declared).toBeDefined();
+    expect(declared?.ownerPath).toBe('drafts/My Novel/My Novel.md');
+    expect(declared?.fieldName).toBe('research');
+    // Stored note name is the normalized basename, not the raw path/alias.
+    expect(declared?.notePath).toBe('Stray Notes');
+    // Case-insensitive lookup still works.
+    expect(findDeclaredOwner(index, 'stray notes')).toBeDefined();
+  });
+
+  // #734 (defect A): when TWO distinct owners declare the same basename, the
+  // declaredOwned map can only keep one (arbitrary) owner. The ambiguity must be
+  // recorded separately so audit refuses to auto-restore the note under a
+  // guessed owner.
+  it('flags a basename declared by two distinct owners as ambiguous', async () => {
+    // Both a draft (via `research`) and a project (via `notes`) declare ownership
+    // of the same note name "Shared Notes".
+    createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+      type: 'draft',
+      status: 'active',
+      research: ['[[Shared Notes]]'],
+    });
+    createNote(vaultDir, 'projects/Big Project/Big Project.md', {
+      type: 'project',
+      status: 'active',
+      notes: ['[[Shared Notes]]'],
+    });
+
+    const schema = await loadSchema(vaultDir);
+    const index = await buildOwnershipIndex(schema, vaultDir);
+
+    // Ambiguity is recorded (case-insensitive, all wikilink forms).
+    expect(isDeclaredOwnershipAmbiguous(index, 'Shared Notes')).toBe(true);
+    expect(isDeclaredOwnershipAmbiguous(index, 'shared notes')).toBe(true);
+    // A name declared by only one owner is NOT ambiguous.
+    expect(isDeclaredOwnershipAmbiguous(index, 'Unknown')).toBe(false);
+  });
+
+  // The same owner listing a basename more than once (or under two of its own
+  // fields) is NOT a conflict — only DISTINCT owners create ambiguity.
+  it('does not flag a basename declared twice by the SAME owner as ambiguous', async () => {
+    createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+      type: 'draft',
+      status: 'active',
+      research: ['[[Stray Notes]]', '[[Stray Notes]]'],
+    });
+
+    const schema = await loadSchema(vaultDir);
+    const index = await buildOwnershipIndex(schema, vaultDir);
+
+    expect(isDeclaredOwnershipAmbiguous(index, 'Stray Notes')).toBe(false);
+    expect(findDeclaredOwner(index, 'Stray Notes')).toBeDefined();
+  });
+
+  // `getDeclaredOwners` exposes EVERY distinct declaring owner (with the field
+  // that declared it) so callers can re-evaluate ambiguity AFTER filtering by
+  // the audited note's resolved child type (#734 follow-up).
+  it('returns all distinct declaring owners (each with its declaring field) for a basename', async () => {
+    // Both draft (via `research`) and project (via `notes`) declare "Shared Notes".
+    createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+      type: 'draft',
+      status: 'active',
+      research: ['[[Shared Notes]]'],
+    });
+    createNote(vaultDir, 'projects/Big Project/Big Project.md', {
+      type: 'project',
+      status: 'active',
+      notes: ['[[Shared Notes]]'],
+    });
+
+    const schema = await loadSchema(vaultDir);
+    const index = await buildOwnershipIndex(schema, vaultDir);
+
+    const owners = getDeclaredOwners(index, 'Shared Notes');
+    expect(owners).toHaveLength(2);
+    // Both declaring fields are preserved (the data the type filter relies on).
+    expect(owners.map(o => o.fieldName).sort()).toEqual(['notes', 'research']);
+    expect(owners.map(o => o.ownerType).sort()).toEqual(['draft', 'project']);
+    // Case-insensitive, all wikilink forms.
+    expect(getDeclaredOwners(index, 'shared notes')).toHaveLength(2);
+    // Unknown basenames resolve to an empty list.
+    expect(getDeclaredOwners(index, 'Unknown')).toEqual([]);
+  });
+
+  it('deduplicates the SAME owner declaring a basename more than once', async () => {
+    createNote(vaultDir, 'drafts/My Novel/My Novel.md', {
+      type: 'draft',
+      status: 'active',
+      research: ['[[Stray Notes]]', '[[Stray Notes]]'],
+    });
+
+    const schema = await loadSchema(vaultDir);
+    const index = await buildOwnershipIndex(schema, vaultDir);
+
+    expect(getDeclaredOwners(index, 'Stray Notes')).toHaveLength(1);
   });
 });
 

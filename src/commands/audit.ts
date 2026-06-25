@@ -109,7 +109,10 @@ Issue Types:
   invalid-option        Field value not in allowed option values
   unknown-field         Field not defined in schema (warning by default)
   wrong-directory       File location doesn't match its type
-  owned-wrong-location  Owned note not in expected location
+  owned-wrong-location  Owned note not in expected location (auto-fix restores it
+                        under its DECLARING owner, even if it sits under another owner)
+  owned-ambiguous-owner Note's name is declared as owned by 2+ owners; reported as a
+                        conflict for manual resolution (never auto-restored)
   parent-cycle          Cycle detected in parent references
   self-reference        Relation field references the same note
   ambiguous-link-target Relation target matches multiple files

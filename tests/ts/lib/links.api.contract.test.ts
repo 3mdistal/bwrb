@@ -10,6 +10,8 @@ const SHARED_LINK_HELPER_EXPORTS = [
   "isWikilink",
   "toMarkdownLink",
   "toWikilink",
+  "wikilinkTargetBasename",
+  "wikilinkTargetPath",
 ] as const;
 
 describe("link helper API contract", () => {
