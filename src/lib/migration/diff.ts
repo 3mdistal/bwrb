@@ -4,6 +4,7 @@
  */
 
 import { Schema, Field, getOptionValues } from '../../types/schema.js';
+import { resolveSchema, getDescendants } from '../schema.js';
 import {
   MigrationPlan,
   MigrationOp,
@@ -240,7 +241,18 @@ function classifyChanges(
 ): { deterministic: MigrationOp[]; nonDeterministic: MigrationOp[] } {
   const deterministic: MigrationOp[] = [];
   const nonDeterministic: MigrationOp[] = [];
-  
+
+  // Resolve the new schema once so field-changed ops can enumerate the
+  // descendant types that *inherit* the changed field (and therefore hold notes
+  // affected by the change). Resolution is pure and synchronous; it computes the
+  // same `extends`-based inheritance the rest of the app uses. Lazily computed so
+  // schemas with no field-changed ops pay nothing.
+  let resolvedNew: ReturnType<typeof resolveSchema> | undefined;
+  const getResolvedNew = (): ReturnType<typeof resolveSchema> => {
+    if (!resolvedNew) resolvedNew = resolveSchema(newSchema);
+    return resolvedNew;
+  };
+
   for (const change of changes) {
     switch (change.kind) {
       // Field operations
@@ -273,7 +285,19 @@ function classifyChanges(
         // note values can still satisfy the new definition.
         const oldField = oldSchema?.types?.[change.type]?.fields?.[change.field];
         const newField = newSchema.types[change.type]?.fields?.[change.field];
-        classifyFieldChange(change, oldField, newField, deterministic, nonDeterministic);
+        const affectedTypes = affectedTypesForField(
+          getResolvedNew(),
+          change.type,
+          change.field
+        );
+        classifyFieldChange(
+          change,
+          oldField,
+          newField,
+          affectedTypes,
+          deterministic,
+          nonDeterministic
+        );
         break;
       }
         
@@ -310,6 +334,68 @@ function classifyChanges(
 }
 
 /**
+ * Enumerate the types whose notes are affected by a field-changed op.
+ *
+ * A field-changed op is recorded against the type that *declares* the field, but
+ * `executeMigration` matches ops to notes by the note's exact type. Descendant
+ * types that INHERIT the field (via `extends`, without redefining it) hold notes
+ * that carry the same field and are therefore equally affected — yet they would
+ * never receive the op if it only targeted the declaring type (#728 / Codex
+ * defect A: removing a parent-type select option leaves invalid values in
+ * child-type notes untouched while the snapshot still advances).
+ *
+ * Returns the declaring type plus every descendant whose *effective* definition
+ * of the field still resolves to the declaring type's definition. A descendant
+ * that overrides the field with its own definition (own field, or via an
+ * intermediate ancestor) is NOT affected by the parent's change and is excluded.
+ *
+ * Resolution reuses the schema layer's existing `extends` inheritance: the
+ * resolved type's `fields` already reflect the full inheritance/override merge,
+ * and `getDescendants` walks the children tree.
+ */
+function affectedTypesForField(
+  resolved: ReturnType<typeof resolveSchema>,
+  declaringType: string,
+  field: string
+): string[] {
+  const affected = [declaringType];
+  const traits = resolved.raw.traits ?? {};
+
+  // A type "redefines" the field when its own raw definition declares it, or one
+  // of its composed traits provides it. Such a type breaks inheritance from the
+  // declaring type — its field (and options) are independent of the parent's.
+  const redefinesField = (typeName: string): boolean => {
+    if (resolved.raw.types[typeName]?.fields?.[field] !== undefined) return true;
+    const composed = resolved.types.get(typeName)?.traits ?? [];
+    return composed.some((t) => traits[t]?.fields?.[field] !== undefined);
+  };
+
+  for (const descendantName of getDescendants(resolved, declaringType)) {
+    const descendant = resolved.types.get(descendantName);
+    if (!descendant) continue;
+    if (!(field in descendant.fields)) continue; // field not present at all
+
+    // The descendant inherits the declaring type's field iff neither it nor any
+    // type strictly between it and the declaring type redefines the field. A
+    // redefinition anywhere on that path means the descendant's options/multiple
+    // are its own, so the parent's change does not reach it.
+    const chainToParent = [descendantName, ...descendant.ancestors];
+    let overridden = false;
+    for (const typeName of chainToParent) {
+      if (typeName === declaringType) break; // reached the declaring type
+      if (redefinesField(typeName)) {
+        overridden = true;
+        break;
+      }
+    }
+
+    if (!overridden) affected.push(descendantName);
+  }
+
+  return affected;
+}
+
+/**
  * Classify a single `field-changed` detection into migration ops.
  *
  * Each property change is mapped to the safest action that keeps existing notes
@@ -333,10 +419,24 @@ function classifyFieldChange(
   change: Extract<DetectedChange, { kind: 'field-changed' }>,
   oldField: Field | undefined,
   newField: Field | undefined,
+  affectedTypes: string[],
   deterministic: MigrationOp[],
   nonDeterministic: MigrationOp[]
 ): void {
-  const { type: targetType, field, changes: changedProps } = change;
+  const { field, changes: changedProps } = change;
+
+  // A field-changed op applies to every type whose notes carry the field: the
+  // type that declares it AND all descendant types that inherit it (#728). We
+  // therefore emit one op per affected type so `executeMigration`, which matches
+  // ops to notes by exact type, reaches inheriting descendants too.
+  const emitForEach = (
+    bucket: MigrationOp[],
+    make: (targetType: string) => MigrationOp
+  ): void => {
+    for (const targetType of affectedTypes) {
+      bucket.push(make(targetType));
+    }
+  };
 
   if (changedProps.includes('options')) {
     const oldValues = getOptionValues(oldField?.options);
@@ -348,62 +448,75 @@ function classifyFieldChange(
       if (newValues.size > 0) {
         // The field is still a constrained select with a smaller allowed set.
         // Existing values outside that set are now invalid → lossy cleanup.
-        nonDeterministic.push({
+        emitForEach(nonDeterministic, (targetType) => ({
           op: 'clear-invalid-options',
           targetType,
           field,
           allowedValues: [...newValues],
-        });
+        }));
       } else {
         // Options were removed *entirely*: the field no longer constrains its
         // values (it has become free-text / unconstrained). Every existing value
         // is still valid for the new definition, so clearing them would be silent
         // data loss. Surface the change for review instead of mutating notes.
-        nonDeterministic.push({
+        emitForEach(nonDeterministic, (targetType) => ({
           op: 'review-field',
           targetType,
           field,
           reason:
             'field is no longer a constrained select (all options removed); existing values are kept as free text',
-        });
+        }));
       }
     }
   }
 
   if (changedProps.includes('multiple')) {
-    if (newField?.multiple === true && oldField?.multiple !== true) {
+    // Normalize `multiple`: an absent/`undefined` value means single-valued,
+    // exactly like an explicit `false`. Without this, merely ADDING (or removing)
+    // an explicit `multiple: false` — a pure no-op for data shape — was treated
+    // as a narrowing and wrongly emitted a `review-field` + suggested a MAJOR
+    // bump (#728 / Codex defect B).
+    const oldMultiple = oldField?.multiple === true;
+    const newMultiple = newField?.multiple === true;
+
+    if (newMultiple && !oldMultiple) {
       // Widening to multiple: existing scalar values wrap losslessly.
-      deterministic.push({ op: 'widen-field-to-multiple', targetType, field });
-    } else {
+      emitForEach(deterministic, (targetType) => ({
+        op: 'widen-field-to-multiple',
+        targetType,
+        field,
+      }));
+    } else if (!newMultiple && oldMultiple) {
       // Narrowing to single: collapsing an array is lossy and ambiguous.
-      nonDeterministic.push({
+      emitForEach(nonDeterministic, (targetType) => ({
         op: 'review-field',
         targetType,
         field,
         reason: 'field no longer accepts multiple values; existing arrays need manual review',
-      });
+      }));
     }
+    // Otherwise effective `multiple` is unchanged (e.g. false↔absent): no op.
   }
 
   if (changedProps.includes('required') && newField?.required === true && oldField?.required !== true) {
     // Field became required: notes missing the value now violate the schema,
     // but we cannot fabricate a value, so surface it for review.
-    nonDeterministic.push({
+    emitForEach(nonDeterministic, (targetType) => ({
       op: 'review-field',
       targetType,
       field,
       reason: 'field is now required; notes missing a value need manual review',
-    });
+    }));
   }
 
   if (changedProps.includes('source')) {
     // Relation source retargeted: existing links may point at the wrong type.
-    nonDeterministic.push({
+    emitForEach(nonDeterministic, (targetType) => ({
       op: 'review-field',
       targetType,
       field,
       reason: 'relation source changed; existing links may need manual review',
-    });
+    }));
   }
 }
 

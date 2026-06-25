@@ -159,6 +159,15 @@ These require confirmation because they affect existing data:
 | Rename type | Notes are moved to the new directory |
 | Remove type | Existing notes become orphaned (warning) |
 
+:::note[Inherited fields apply to descendants]
+A field change on a **parent** type also applies to notes of every descendant
+type that inherits the field via `extends` — e.g. removing a `phase` option on
+`objective` also cleans `task` notes when `task extends objective`. A descendant
+that **overrides** the field with its own definition is unaffected. Also, an
+absent `multiple` is treated as `false`, so adding or removing an explicit
+`multiple: false` is a no-op (no review, no version bump).
+:::
+
 :::caution[Field renames are not auto-detected]
 The schema diff engine compares two schema snapshots and has no way to tell an
 intentional rename apart from an unrelated drop-and-add. Renaming a field in

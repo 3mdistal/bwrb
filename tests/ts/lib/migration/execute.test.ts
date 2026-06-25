@@ -3,6 +3,7 @@ import { join } from "path";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "fs/promises";
 import { tmpdir } from "os";
 import { executeMigration } from "../../../../src/lib/migration/execute.js";
+import { diffSchemas } from "../../../../src/lib/migration/diff.js";
 import { loadSchema } from "../../../../src/lib/schema.js";
 import type { MigrationPlan } from "../../../../src/types/migration.js";
 
@@ -558,6 +559,97 @@ parent: "[[Task Two]]"
       expect(content).toContain("active");
       expect(content).toContain("completed");
       expect(content).not.toContain("archived");
+    });
+  });
+
+  // Defect A (#728): a field-changed op on a PARENT-declared field must reach
+  // notes of DESCENDANT types that inherit the field. Drives the real diff →
+  // execute pipeline so the end-to-end data-loss fix is exercised, not just the
+  // op-emission. (diffSchemas now emits one clear-invalid-options per affected
+  // type; executeMigration matches by exact note type.)
+  describe("inherited field-changed reaches descendant-type notes", () => {
+    it("clears an orphaned option in a child-type note when a parent option is removed", async () => {
+      // objective declares `phase`; task extends objective and inherits it.
+      const oldSchema = {
+        version: 2 as const,
+        schemaVersion: "1.0.0",
+        types: {
+          objective: {
+            output_dir: "Objectives",
+            fields: {
+              name: { prompt: "text", required: true },
+              phase: {
+                prompt: "select",
+                options: ["planned", "active", "done", "abandoned"],
+              },
+            },
+          },
+          task: {
+            extends: "objective",
+            output_dir: "Tasks",
+            fields: { name: { prompt: "text", required: true } },
+          },
+        },
+      };
+      // Remove "abandoned" from objective.phase.
+      const newSchema = {
+        ...oldSchema,
+        schemaVersion: "1.1.0",
+        types: {
+          ...oldSchema.types,
+          objective: {
+            ...oldSchema.types.objective,
+            fields: {
+              name: { prompt: "text", required: true },
+              phase: {
+                prompt: "select",
+                options: ["planned", "active", "done"],
+              },
+            },
+          },
+        },
+      };
+
+      // Live schema on disk is the NEW one (what the user just edited to).
+      await writeFile(
+        join(testDir, ".bwrb/schema.json"),
+        JSON.stringify(newSchema)
+      );
+      await mkdir(join(testDir, "Tasks"), { recursive: true });
+      // A TASK note (descendant type) holding the now-orphaned parent option.
+      await writeFile(
+        join(testDir, "Tasks/Task-1.md"),
+        `---\ntype: task\nname: Task One\nphase: abandoned\n---\n# Task One\n`
+      );
+
+      const schema = await loadSchema(testDir);
+      // Build the plan from the real diff engine (not a hand-written op).
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      // The diff must have produced a clear-invalid-options op targeting `task`.
+      expect(
+        plan.nonDeterministic.some(
+          (op) =>
+            op.op === "clear-invalid-options" &&
+            op.field === "phase" &&
+            op.targetType === "task"
+        )
+      ).toBe(true);
+
+      const result = await executeMigration({
+        vaultDir: testDir,
+        schema,
+        plan,
+        execute: true,
+        backup: false,
+      });
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.affectedFiles).toBe(1);
+      const content = await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8");
+      // The orphaned value is gone from the inheriting child-type note.
+      expect(content).not.toContain("abandoned");
+      expect(content).not.toContain("phase:");
     });
   });
 

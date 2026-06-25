@@ -361,6 +361,224 @@ describe("diffSchemas", () => {
       // Cosmetic-only edits must not trigger a snapshot refresh either.
       expect(plan.schemaChanged).toBe(false);
     });
+
+    // Defect B (#728): adding/removing an explicit `multiple: false` is a no-op —
+    // omitted and `false` both mean single-valued. It must NOT be treated as a
+    // narrowing (no review-field, no major bump), but the schema *shape* changed,
+    // so the snapshot still refreshes.
+    describe("multiple normalization (absent === false)", () => {
+      it("does NOT emit an op when an explicit `multiple: false` is ADDED (was absent)", () => {
+        // status has no `multiple` key in baseSchema → add explicit false.
+        const newSchema = withTaskField({
+          prompt: "select",
+          options: ["active", "completed", "archived"],
+          required: true,
+          multiple: false,
+        });
+
+        const plan = diffSchemas(baseSchema, newSchema, "1.0.0", "1.1.0");
+
+        const allOps = [...plan.deterministic, ...plan.nonDeterministic];
+        expect(
+          allOps.some((op) => op.op === "review-field" && op.field === "status")
+        ).toBe(false);
+        expect(
+          allOps.some((op) => op.op === "widen-field-to-multiple")
+        ).toBe(false);
+        expect(plan.hasChanges).toBe(false);
+        // No version bump for a no-op shape edit...
+        expect(suggestVersionBump("1.0.0", plan)).toBe("1.0.0");
+        // ...but the snapshot must still refresh so later real changes diff
+        // against the current schema.
+        expect(plan.schemaChanged).toBe(true);
+      });
+
+      it("does NOT emit an op when an explicit `multiple: false` is REMOVED (becomes absent)", () => {
+        const withExplicitFalse = withTaskField({
+          prompt: "select",
+          options: ["active", "completed", "archived"],
+          required: true,
+          multiple: false,
+        });
+        const withAbsent = withTaskField({
+          prompt: "select",
+          options: ["active", "completed", "archived"],
+          required: true,
+        });
+
+        const plan = diffSchemas(withExplicitFalse, withAbsent, "1.0.0", "1.1.0");
+
+        const allOps = [...plan.deterministic, ...plan.nonDeterministic];
+        expect(
+          allOps.some((op) => op.op === "review-field" && op.field === "status")
+        ).toBe(false);
+        expect(plan.hasChanges).toBe(false);
+        expect(suggestVersionBump("1.0.0", plan)).toBe("1.0.0");
+      });
+
+      it("still emits review-field when narrowing true → absent (absent === false)", () => {
+        const multi = withTaskField({
+          prompt: "select",
+          options: ["active", "completed", "archived"],
+          required: true,
+          multiple: true,
+        });
+        const absent = withTaskField({
+          prompt: "select",
+          options: ["active", "completed", "archived"],
+          required: true,
+        });
+
+        const plan = diffSchemas(multi, absent, "1.1.0", "1.2.0");
+
+        expect(
+          plan.nonDeterministic.some(
+            (op) => op.op === "review-field" && op.field === "status"
+          )
+        ).toBe(true);
+        // Narrowing is breaking → major bump.
+        expect(suggestVersionBump("1.1.0", plan)).toBe("2.0.0");
+      });
+
+      it("still emits review-field when narrowing true → explicit false", () => {
+        const multi = withTaskField({
+          prompt: "select",
+          options: ["active", "completed", "archived"],
+          required: true,
+          multiple: true,
+        });
+        const single = withTaskField({
+          prompt: "select",
+          options: ["active", "completed", "archived"],
+          required: true,
+          multiple: false,
+        });
+
+        const plan = diffSchemas(multi, single, "1.1.0", "1.2.0");
+
+        expect(
+          plan.nonDeterministic.some(
+            (op) => op.op === "review-field" && op.field === "status"
+          )
+        ).toBe(true);
+      });
+    });
+  });
+
+  // Defect A (#728): a field-changed op for a field declared on a PARENT type
+  // must also reach descendant types that INHERIT the field, because
+  // executeMigration matches ops to notes by exact type. A descendant that
+  // OVERRIDES the field with its own definition is excluded.
+  describe("field-changed inheritance (declaring type + inheriting descendants)", () => {
+    // objective declares `phase` (a select); task extends objective and inherits
+    // it; subtask extends task and overrides `phase` with its own options.
+    const inheritanceBase: BwrbSchemaType = {
+      version: 2,
+      schemaVersion: "1.0.0",
+      types: {
+        objective: {
+          fields: {
+            phase: {
+              prompt: "select",
+              options: ["planned", "active", "done", "abandoned"],
+            },
+          },
+        },
+        task: {
+          extends: "objective",
+          fields: {
+            title: { prompt: "text" },
+          },
+        },
+        subtask: {
+          extends: "task",
+          fields: {
+            // Overrides the inherited `phase` with its OWN options.
+            phase: { prompt: "select", options: ["todo", "doing", "done"] },
+          },
+        },
+      },
+    };
+
+    function withObjectivePhaseOptions(options: string[]): BwrbSchemaType {
+      return {
+        ...inheritanceBase,
+        schemaVersion: "1.1.0",
+        types: {
+          ...inheritanceBase.types,
+          objective: {
+            ...inheritanceBase.types.objective,
+            fields: {
+              phase: { prompt: "select", options },
+            },
+          },
+        },
+      };
+    }
+
+    it("includes inheriting descendant types in clear-invalid-options", () => {
+      // Remove "abandoned" from objective.phase. task INHERITS phase → its notes
+      // can hold "abandoned" and must be cleaned too.
+      const newSchema = withObjectivePhaseOptions(["planned", "active", "done"]);
+
+      const plan = diffSchemas(inheritanceBase, newSchema, "1.0.0", "1.1.0");
+
+      const clearOps = plan.nonDeterministic.filter(
+        (op) => op.op === "clear-invalid-options" && op.field === "phase"
+      );
+      const targetedTypes = clearOps.map((op) =>
+        op.op === "clear-invalid-options" ? op.targetType : ""
+      );
+
+      // Declaring type AND inheriting descendant are both targeted.
+      expect(targetedTypes).toContain("objective");
+      expect(targetedTypes).toContain("task");
+    });
+
+    it("does NOT target a descendant that OVERRIDES the field", () => {
+      const newSchema = withObjectivePhaseOptions(["planned", "active", "done"]);
+
+      const plan = diffSchemas(inheritanceBase, newSchema, "1.0.0", "1.1.0");
+
+      const targetedTypes = plan.nonDeterministic
+        .filter((op) => op.op === "clear-invalid-options")
+        .map((op) => (op.op === "clear-invalid-options" ? op.targetType : ""));
+
+      // subtask redefines `phase` with its own options → unaffected by the
+      // parent's option change.
+      expect(targetedTypes).not.toContain("subtask");
+    });
+
+    it("propagates a multiple-widen to inheriting descendants too", () => {
+      // objective.phase false → true. task inherits → both get widen ops.
+      const newSchema: BwrbSchemaType = {
+        ...inheritanceBase,
+        schemaVersion: "1.1.0",
+        types: {
+          ...inheritanceBase.types,
+          objective: {
+            ...inheritanceBase.types.objective,
+            fields: {
+              phase: {
+                prompt: "select",
+                options: ["planned", "active", "done", "abandoned"],
+                multiple: true,
+              },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(inheritanceBase, newSchema, "1.0.0", "1.1.0");
+
+      const widenTargets = plan.deterministic
+        .filter((op) => op.op === "widen-field-to-multiple" && op.field === "phase")
+        .map((op) => (op.op === "widen-field-to-multiple" ? op.targetType : ""));
+
+      expect(widenTargets).toContain("objective");
+      expect(widenTargets).toContain("task");
+      expect(widenTargets).not.toContain("subtask");
+    });
   });
 
   describe("type changes", () => {

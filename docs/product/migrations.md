@@ -134,6 +134,17 @@ bwrb schema history --json
 | Disallow multiple values (`multiple` true → false) | Non-deterministic (`review-field`) | Surfaced for manual review; collapsing an array is lossy, so notes are flagged, not changed |
 | Change relation `source` | Non-deterministic (`review-field`) | Surfaced for manual review; existing links may now point at the wrong type |
 
+When a changed field is declared on a **parent** type, the migration applies to
+notes of that type **and** every descendant type that inherits the field via
+`extends` (e.g. changing `objective.phase` also cleans `task` notes when `task`
+extends `objective`). A descendant that **overrides** the field with its own
+definition is unaffected by the parent's change.
+
+Note: only the *effective* value of `multiple` matters — an absent `multiple` is
+treated as `false`. Adding or removing an explicit `multiple: false` is therefore
+a no-op (no review, no version bump); only a genuine `true → false` narrowing is
+flagged for review.
+
 ### Type Operations
 
 | Change | Classification | Migration Action |
