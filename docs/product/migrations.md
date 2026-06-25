@@ -36,8 +36,15 @@ bwrb schema diff --json
 ```
 
 Output categorizes changes as:
-- **Deterministic**: Can be auto-applied (field additions, enum additions, type additions)
-- **Non-deterministic**: Require user input (field removals, enum value removals, type removals)
+- **Deterministic**: Can be auto-applied (field additions, type additions, widening a field to allow multiple values)
+- **Non-deterministic**: Require user input (field removals, removed select options, fields becoming required, relation source changes, type removals)
+
+Some schema edits change the schema *shape* without producing any note operation
+— adding a select option is the canonical example. `schema diff` still reports
+these as a **schema-only change** (rather than "No schema changes since last
+migration") and notes that the snapshot will refresh on `migrate --execute`. The
+JSON output carries this as `schemaChanged: true` alongside `hasChanges: false`
+and empty `deterministic`/`nonDeterministic` arrays (zero note migrations).
 
 ### `bwrb schema migrate`
 
@@ -102,6 +109,12 @@ When executing:
 5. Saves schema snapshot
 6. Records migration in history
 
+If the only schema change produces no note-mutating op (for example, *adding* a
+select option), `--execute` reports no affected files but still refreshes the
+schema snapshot. This keeps later diffs accurate: if that option is removed
+again, the removal is detected against the up-to-date snapshot instead of a stale
+one that never had the option.
+
 ### `bwrb schema history`
 
 Shows migration history.
@@ -117,12 +130,55 @@ bwrb schema history --json
 
 | Change | Classification | Migration Action |
 |--------|---------------|------------------|
-| Add field | Deterministic | No action needed (field absent in old notes is valid) |
-| Remove field | Non-deterministic | Removes field from affected notes |
+| Add field | Deterministic | No action needed (field absent in old notes is valid). Detected from the **effective** schema, so a field added to a composed **trait** (or a trait newly attached to a type) is detected the same as a new own field — the snapshot is refreshed on `--execute` so a *later* removal of that now-populated field is diffed correctly. An optional addition mutates no note (a backfill `default` is applied only when present and the note omits the field) |
+| Remove field | Non-deterministic | Removes field from affected notes, including descendant-type notes that inherit a removed parent field (see effective-schema note below) |
 | Rename field | Not detected by diff | A schema rename is seen as add + remove. Use `bwrb bulk --rename old=new` to rename while preserving values |
-| Add select option | Deterministic | No action needed |
-| Remove select option | Non-deterministic | Prompts for value mapping |
-| Rename select option | Non-deterministic | Updates references in notes |
+| Add select option | No note op | Existing values stay valid, so no note is changed. The schema snapshot is still refreshed on `--execute` so a *later* removal of that option is diffed correctly (not against a stale snapshot). |
+| Add *first* select options (field was unconstrained text/list → becomes a constrained select) | Non-deterministic (`clear-invalid-options`) | Existing arbitrary values may now be outside the new allowed set, so they are cleaned: a scalar outside the set is removed, an array is filtered to its still-valid members, and values that happen to match an allowed option are kept. This makes the change non-silent (a major bump is suggested and notes are cleaned on `--execute`) instead of advancing the snapshot past now-invalid values |
+| Remove *some* select options (field stays a constrained select) | Non-deterministic (`clear-invalid-options`) | Drops any note value that is no longer in the remaining allowed set — a scalar becomes empty, an array is filtered to its still-valid members |
+| Remove *all* select options (field becomes unconstrained / free text) | Non-deterministic (`review-field`) | Surfaced for manual review; the field no longer constrains values, so existing values are all valid and are **kept** — never cleared |
+| Make field required (**no** `default`) | Non-deterministic (`review-field`) | Surfaced for manual review; notes missing a value are flagged but not auto-filled |
+| Make field required **with** a `default` | No note op (from the required toggle) | Validation exempts a required field that has a `default` (a missing value is satisfied by the default), so notes missing the field stay valid. The required toggle alone emits **no** `review-field` and forces no major bump. Any *other* concurrent aspect of the same change (e.g. widening to `multiple`) is still classified independently. A static `value` does **not** exempt the required check — only `default` does |
+| Remove a `default` from an **already-required** field (`default` defined → undefined, `required` stays true) | Non-deterministic (`review-field`) | The default previously satisfied notes that omit the field; without it, those notes are now invalid (validation exempts a missing required value only while `default !== undefined`). The classifier treats this as the field newly *exposing* required-ness and surfaces it for manual review — the symmetric counterpart of "make field required (no `default`)". Removing a `default` from a **non**-required field, or adding/keeping a `default`, is a no-op |
+| Allow multiple values (`multiple` false → true) | Deterministic (`widen-field-to-multiple`) | Wraps an existing scalar value into a single-element array |
+| Disallow multiple values (`multiple` true → false) | Non-deterministic (`review-field`) | Surfaced for manual review; collapsing an array is lossy, so notes are flagged, not changed |
+| Narrow / retarget relation `source` (a previously-allowed type is removed) | Non-deterministic (`review-field`) | Surfaced for manual review; links targeting the dropped type may now be invalid |
+| Constrain a relation `source` that was unconstrained (absent or `any` → a specific set) | Non-deterministic (`review-field`) | An absent source and `source: "any"` both mean "any type allowed"; adding a constraining set means existing links may now point at a disallowed type, so they are surfaced for manual review |
+| Widen / reorder relation `source` (new set ⊇ old, both constrained) | No note op | Every existing link stays valid; allowing a *wider* set (or merely reordering one) cannot invalidate any link |
+| Loosen a relation `source` to unconstrained (a specific set → absent or `any`) | No note op | Removing the constraint allows any type, so all existing links remain valid |
+
+Field **addition**, **field-changed**, **and field-removal** migrations are all
+derived from the **effective (resolved) schema** — the field definition each
+concrete type actually resolves to after inheritance **and trait composition** —
+not from raw per-type entries. Deriving *additions* this way is what lets a field
+introduced only through composition (added to a composed trait, or a trait newly
+attached to a type) be detected at all: such a field never appears in the type's
+raw `fields`, so a raw-only check would miss it, leave the snapshot stale, and then
+fail to detect a later removal of the now-populated field. So when a changed or
+removed field is declared on a **parent** type, the migration applies to notes of
+that type **and** every descendant type that inherits the field via `extends` (e.g.
+changing
+`objective.phase` cleans `task` notes, and removing `objective.legacy` strips the
+inherited `legacy` field from `task` notes too, when `task` extends `objective`). A
+descendant that defines its **own** same-named field still resolves to that field
+after the parent's removal, so it is correctly left untouched.
+
+This includes descendants that re-declare the inherited field. The schema
+resolver applies a *restricted merge* to an inherited field: a child may override
+only metadata (`default`/`value`/`description`/`granularity`) — its raw structural
+keys (`options`/`multiple`/`required`/`source`) are **ignored**, and the parent's
+structure wins. Because a child therefore cannot structurally fork an inherited
+field, every inheriting descendant — even one whose raw entry re-declares
+`options` — is governed by the parent's structure and is cleaned/widened under its
+own concrete type when the parent changes. Conversely, editing only such an
+ignored raw override (while the parent is unchanged) leaves the effective schema
+identical and produces **no** migration op, so valid note values are never
+deleted.
+
+Note: only the *effective* value of `multiple` matters — an absent `multiple` is
+treated as `false`. Adding or removing an explicit `multiple: false` is therefore
+a no-op (no review, no version bump); only a genuine `true → false` narrowing is
+flagged for review.
 
 ### Type Operations
 

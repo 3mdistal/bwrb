@@ -122,6 +122,13 @@ This will:
 4. Save the new schema snapshot
 5. Record the migration in history
 
+Some schema edits change the schema's shape without requiring any note update —
+*adding* a select option is the canonical example. In that case `--execute`
+reports no affected files but still refreshes the snapshot, so that if the option
+is later removed, the removal is diffed against the current schema rather than a
+stale snapshot that never had the option (which would silently miss the now-invalid
+values).
+
 ## Change Classifications
 
 Bowerbird classifies schema changes into two categories:
@@ -134,6 +141,7 @@ These can be applied automatically without user input:
 |--------|-------------------------------------|
 | Add field | Missing fields are valid (fields aren't required by default) |
 | Add select option | Existing values remain valid |
+| Allow multiple values (`multiple` false → true) | An existing scalar is wrapped into a single-element array — no data is lost |
 | Add type | No existing notes to update |
 
 ### Non-Deterministic Changes
@@ -143,9 +151,36 @@ These require confirmation because they affect existing data:
 | Change | What Happens |
 |--------|--------------|
 | Remove field | Field is removed from affected notes |
-| Remove select option | Affected notes flagged for review |
+| Remove *some* select options (field stays a constrained select) | Note values no longer in the remaining allowed set are dropped — a scalar becomes empty, an array is filtered to its still-valid members (`clear-invalid-options`) |
+| Remove *all* select options (field becomes free text / unconstrained) | The field no longer constrains values, so every existing value is valid and **kept** — the change is flagged for review, not cleared (`review-field`) |
+| Make field required | Notes missing a value are flagged for review; bwrb cannot fabricate a value (`review-field`) |
+| Disallow multiple values (`multiple` true → false) | Notes holding arrays are flagged for review; collapsing an array is lossy, so bwrb does not auto-change them (`review-field`) |
+| Change relation `source` | Existing links may now point at the wrong type and are flagged for review (`review-field`) |
 | Rename type | Notes are moved to the new directory |
 | Remove type | Existing notes become orphaned (warning) |
+
+:::note[Inherited field changes fan out to descendants]
+Migrations are derived from the **effective (resolved) schema**, so a field change
+or removal on a **parent** type fans out to notes of every descendant type that
+inherits the field via `extends` — e.g. removing a `phase` option on `objective`
+(or removing the `phase` field entirely) also cleans `task` notes when
+`task extends objective`.
+
+A same-named field on the descendant does **not** automatically shield it. The
+schema resolver applies a *restricted merge* to an inherited field: a child may
+override only metadata (`default` / `value` / `description` / `granularity`) — its
+raw structural keys (`options` / `multiple` / `required` / `source`) are **ignored**
+and the parent's structure wins. So a descendant whose raw entry merely re-declares
+an inherited field (a metadata-only override) is still governed by the parent and is
+cleaned/widened alongside it. A descendant is shielded **only** when the field is its
+own genuine, non-inherited definition — i.e. it does not inherit that field from the
+parent at all.
+
+Conversely, editing only such an ignored raw override (while the parent is unchanged)
+leaves the effective schema identical and produces **no** migration op, so valid note
+values are never deleted. Also, an absent `multiple` is treated as `false`, so adding
+or removing an explicit `multiple: false` is a no-op (no review, no version bump).
+:::
 
 :::caution[Field renames are not auto-detected]
 The schema diff engine compares two schema snapshots and has no way to tell an
