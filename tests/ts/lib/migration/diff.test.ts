@@ -468,6 +468,71 @@ describe("diffSchemas", () => {
       ).toBe(true);
     });
 
+    // Build a schema whose task.parent relation field has the given `source`.
+    function withParentSource(
+      source: string | string[],
+      schemaVersion = "1.0.0"
+    ): BwrbSchemaType {
+      return {
+        ...baseSchema,
+        schemaVersion,
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              parent: { prompt: "relation", source },
+            },
+          },
+        },
+      };
+    }
+
+    it("does NOT emit review-field when a relation source only widens (new set ⊇ old)", () => {
+      // source: "task" → ["task", "project"]. Existing links targeting `task`
+      // remain valid; the change merely allows a wider set, so no review op.
+      const oldSchema = withParentSource("task", "1.0.0");
+      const newSchema = withParentSource(["task", "project"], "1.1.0");
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "parent"
+        )
+      ).toBe(false);
+    });
+
+    it("does NOT emit review-field when a relation source array is merely reordered", () => {
+      // Same allowed set, different order → no semantic change, no op.
+      const oldSchema = withParentSource(["task", "project"], "1.0.0");
+      const newSchema = withParentSource(["project", "task"], "1.1.0");
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "parent"
+        )
+      ).toBe(false);
+    });
+
+    it("emits review-field when a relation source removes a previously-allowed type", () => {
+      // source: ["task", "project"] → "task". Links targeting `project` may now
+      // be invalid → narrowing must still surface a review op.
+      const oldSchema = withParentSource(["task", "project"], "1.0.0");
+      const newSchema = withParentSource("task", "1.1.0");
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "parent"
+        )
+      ).toBe(true);
+    });
+
     it("does not treat an option description-only edit as a change", () => {
       // Same values, but document one option — cosmetic, no migration op.
       const newSchema = withTaskField({

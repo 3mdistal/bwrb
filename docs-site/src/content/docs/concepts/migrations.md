@@ -159,13 +159,27 @@ These require confirmation because they affect existing data:
 | Rename type | Notes are moved to the new directory |
 | Remove type | Existing notes become orphaned (warning) |
 
-:::note[Inherited fields apply to descendants]
-A field change on a **parent** type also applies to notes of every descendant
-type that inherits the field via `extends` — e.g. removing a `phase` option on
-`objective` also cleans `task` notes when `task extends objective`. A descendant
-that **overrides** the field with its own definition is unaffected. Also, an
-absent `multiple` is treated as `false`, so adding or removing an explicit
-`multiple: false` is a no-op (no review, no version bump).
+:::note[Inherited field changes fan out to descendants]
+Migrations are derived from the **effective (resolved) schema**, so a field change
+or removal on a **parent** type fans out to notes of every descendant type that
+inherits the field via `extends` — e.g. removing a `phase` option on `objective`
+(or removing the `phase` field entirely) also cleans `task` notes when
+`task extends objective`.
+
+A same-named field on the descendant does **not** automatically shield it. The
+schema resolver applies a *restricted merge* to an inherited field: a child may
+override only metadata (`default` / `value` / `description` / `granularity`) — its
+raw structural keys (`options` / `multiple` / `required` / `source`) are **ignored**
+and the parent's structure wins. So a descendant whose raw entry merely re-declares
+an inherited field (a metadata-only override) is still governed by the parent and is
+cleaned/widened alongside it. A descendant is shielded **only** when the field is its
+own genuine, non-inherited definition — i.e. it does not inherit that field from the
+parent at all.
+
+Conversely, editing only such an ignored raw override (while the parent is unchanged)
+leaves the effective schema identical and produces **no** migration op, so valid note
+values are never deleted. Also, an absent `multiple` is treated as `false`, so adding
+or removing an explicit `multiple: false` is a no-op (no review, no version bump).
 :::
 
 :::caution[Field renames are not auto-detected]

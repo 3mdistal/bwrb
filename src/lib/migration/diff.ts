@@ -497,9 +497,11 @@ function classifyChanges(
  *   (non-deterministic, no note mutation).
  * - `multiple` false → true: a scalar value is still valid as a single-element
  *   array → `widen-field-to-multiple` (deterministic, lossless wrap).
- * - `multiple` true → false, `required` toggled on, or `source` retargeted:
- *   existing values may now be invalid but there is no safe deterministic fix →
- *   `review-field` (non-deterministic, no note mutation, surfaced for the user).
+ * - `multiple` true → false, `required` toggled on, or `source` narrowed/retargeted
+ *   (an allowed source type is removed): existing values may now be invalid but
+ *   there is no safe deterministic fix → `review-field` (non-deterministic, no note
+ *   mutation, surfaced for the user). A pure `source` widening (new allowed set ⊇
+ *   old) or reorder keeps existing links valid → no op.
  */
 function classifyFieldChange(
   change: Extract<DetectedChange, { kind: 'field-changed' }>,
@@ -613,14 +615,41 @@ function classifyFieldChange(
   }
 
   if (changedProps.includes('source')) {
-    // Relation source retargeted: existing links may point at the wrong type.
-    nonDeterministic.push({
-      op: 'review-field',
-      targetType,
-      field,
-      reason: 'relation source changed; existing links may need manual review',
-    });
+    // Normalize both old and new `source` into a SET of allowed source types so
+    // the comparison is order-insensitive and treats a bare string identically to
+    // a one-element array. `source: "task"` and `source: ["task"]` are the same
+    // allowed set; reordering an array changes nothing.
+    const oldSources = normalizeSourceSet(oldField?.source);
+    const newSources = normalizeSourceSet(newField?.source);
+
+    // A change is only risky for existing links when an allowed source is REMOVED
+    // (the field is narrowed or retargeted so previously-valid links may now point
+    // at a type that is no longer accepted). A pure WIDENING (new ⊇ old) or a
+    // reorder (sets equal) keeps every existing link valid → no op for this aspect.
+    const removedSource = [...oldSources].some((s) => !newSources.has(s));
+    if (removedSource) {
+      nonDeterministic.push({
+        op: 'review-field',
+        targetType,
+        field,
+        reason: 'relation source changed; existing links may need manual review',
+      });
+    }
   }
+}
+
+/**
+ * Normalize a relation `source` (a bare type name, an array of type names, or
+ * `undefined`) into an order-insensitive SET of allowed source types. A bare
+ * string becomes a one-element set; an array becomes a set; `undefined` becomes
+ * the empty set. This lets the migration diff treat `"task"`, `["task"]`, and a
+ * reordered `["task", "project"]` consistently.
+ */
+function normalizeSourceSet(source: string | string[] | undefined): Set<string> {
+  if (source === undefined) {
+    return new Set();
+  }
+  return new Set(Array.isArray(source) ? source : [source]);
 }
 
 /**
