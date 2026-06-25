@@ -102,6 +102,12 @@ When executing:
 5. Saves schema snapshot
 6. Records migration in history
 
+If the only schema change produces no note-mutating op (for example, *adding* a
+select option), `--execute` reports no affected files but still refreshes the
+schema snapshot. This keeps later diffs accurate: if that option is removed
+again, the removal is detected against the up-to-date snapshot instead of a stale
+one that never had the option.
+
 ### `bwrb schema history`
 
 Shows migration history.
@@ -120,8 +126,9 @@ bwrb schema history --json
 | Add field | Deterministic | No action needed (field absent in old notes is valid) |
 | Remove field | Non-deterministic | Removes field from affected notes |
 | Rename field | Not detected by diff | A schema rename is seen as add + remove. Use `bwrb bulk --rename old=new` to rename while preserving values |
-| Add select option | Deterministic | No action needed (existing values stay valid) |
-| Remove select option | Non-deterministic (`clear-invalid-options`) | Drops any note value that is no longer in the allowed set — a scalar becomes empty, an array is filtered to its still-valid members |
+| Add select option | No note op | Existing values stay valid, so no note is changed. The schema snapshot is still refreshed on `--execute` so a *later* removal of that option is diffed correctly (not against a stale snapshot). |
+| Remove *some* select options (field stays a constrained select) | Non-deterministic (`clear-invalid-options`) | Drops any note value that is no longer in the remaining allowed set — a scalar becomes empty, an array is filtered to its still-valid members |
+| Remove *all* select options (field becomes unconstrained / free text) | Non-deterministic (`review-field`) | Surfaced for manual review; the field no longer constrains values, so existing values are all valid and are **kept** — never cleared |
 | Make field required | Non-deterministic (`review-field`) | Surfaced for manual review; notes missing a value are flagged but not auto-filled |
 | Allow multiple values (`multiple` false → true) | Deterministic (`widen-field-to-multiple`) | Wraps an existing scalar value into a single-element array |
 | Disallow multiple values (`multiple` true → false) | Non-deterministic (`review-field`) | Surfaced for manual review; collapsing an array is lossy, so notes are flagged, not changed |

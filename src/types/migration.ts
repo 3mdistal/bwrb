@@ -133,8 +133,19 @@ export interface MigrationPlan {
   deterministic: MigrationOp[];
   /** Operations that require user confirmation or input */
   nonDeterministic: MigrationOp[];
-  /** Whether there are any changes to apply */
+  /** Whether there are any note-mutating/reviewable operations to apply */
   hasChanges: boolean;
+  /**
+   * Whether the live schema differs from the snapshot in any migration-relevant
+   * shape (e.g. a select option was *added*), even when that difference produces
+   * no migration op. Cosmetic-only edits (descriptions, labels) do not set this.
+   *
+   * Distinct from `hasChanges`: a schema can change shape (`schemaChanged: true`)
+   * without producing any note ops (`hasChanges: false`). The migrate command
+   * uses this to persist a fresh snapshot so later diffs are computed against the
+   * current schema rather than a stale one.
+   */
+  schemaChanged: boolean;
 }
 
 // ============================================================================

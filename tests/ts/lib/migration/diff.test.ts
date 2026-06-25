@@ -178,6 +178,61 @@ describe("diffSchemas", () => {
       expect(allOps.some((op) => op.op === "clear-invalid-options")).toBe(false);
       // Adding an allowed value is a no-op for existing notes.
       expect(plan.hasChanges).toBe(false);
+      // ...but the schema *shape* did change. `schemaChanged` must reflect this
+      // so the migrate command can refresh the snapshot (defect #2 / #719):
+      // otherwise a later removal of this option is diffed against a stale
+      // snapshot that never had it, and the orphaned values are silently missed.
+      expect(plan.schemaChanged).toBe(true);
+    });
+
+    it("does NOT emit a destructive op when select options are removed ENTIRELY (field becomes free text)", () => {
+      // status: select[active, completed, archived] → unconstrained text. The
+      // new allowed-option set is empty, but every existing value is valid for a
+      // free-text field, so clearing them would be silent data loss (defect #1).
+      const newSchema = withTaskField({
+        prompt: "text",
+        required: true,
+      });
+
+      const plan = diffSchemas(baseSchema, newSchema, "1.0.0", "1.1.0");
+
+      const allOps = [...plan.deterministic, ...plan.nonDeterministic];
+      // No value-deleting op may be emitted.
+      expect(allOps.some((op) => op.op === "clear-invalid-options")).toBe(false);
+      // Surface it for review instead (non-mutating).
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "status"
+        )
+      ).toBe(true);
+      expect(plan.schemaChanged).toBe(true);
+    });
+
+    it("does NOT emit a destructive op when options are removed entirely on a MULTIPLE (array) field", () => {
+      // Array variant of the entire-removal case: a constrained multi-select
+      // becomes an unconstrained multi-value list. Existing array values are all
+      // still valid, so nothing may be filtered/cleared.
+      const baseWithMulti: BwrbSchemaType = withTaskField({
+        prompt: "select",
+        options: ["active", "completed", "archived"],
+        required: true,
+        multiple: true,
+      });
+      const newSchema = withTaskField({
+        prompt: "list",
+        required: true,
+        multiple: true,
+      });
+
+      const plan = diffSchemas(baseWithMulti, newSchema, "1.1.0", "1.2.0");
+
+      const allOps = [...plan.deterministic, ...plan.nonDeterministic];
+      expect(allOps.some((op) => op.op === "clear-invalid-options")).toBe(false);
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "status"
+        )
+      ).toBe(true);
     });
 
     it("emits a deterministic widen-field-to-multiple when multiple flips false → true", () => {
@@ -303,6 +358,8 @@ describe("diffSchemas", () => {
       const plan = diffSchemas(baseSchema, newSchema, "1.0.0", "1.0.0");
 
       expect(plan.hasChanges).toBe(false);
+      // Cosmetic-only edits must not trigger a snapshot refresh either.
+      expect(plan.schemaChanged).toBe(false);
     });
   });
 
@@ -356,6 +413,7 @@ describe("diffSchemas", () => {
       const plan = diffSchemas(baseSchema, baseSchema, "1.0.0", "1.0.0");
 
       expect(plan.hasChanges).toBe(false);
+      expect(plan.schemaChanged).toBe(false);
       expect(plan.deterministic).toHaveLength(0);
       expect(plan.nonDeterministic).toHaveLength(0);
     });

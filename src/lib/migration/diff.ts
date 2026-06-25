@@ -26,17 +26,24 @@ export function diffSchemas(
 ): MigrationPlan {
   const changes = detectChanges(oldSchema, newSchema);
   const { deterministic, nonDeterministic } = classifyChanges(changes, oldSchema, newSchema);
-  
+
   // Check for config.linkFormat changes
   const configOps = detectConfigChanges(oldSchema, newSchema);
   deterministic.push(...configOps);
-  
+
+  // `schemaChanged` tracks migration-relevant *shape* differences vs the
+  // snapshot, including ones that emit no op (e.g. a select option was added).
+  // `detectChanges`/`detectConfigChanges` already exclude cosmetic edits
+  // (descriptions, labels, key reordering), so this stays quiet for those.
+  const schemaChanged = changes.length > 0 || configOps.length > 0;
+
   return {
     fromVersion,
     toVersion,
     deterministic,
     nonDeterministic,
     hasChanges: deterministic.length > 0 || nonDeterministic.length > 0,
+    schemaChanged,
   };
 }
 
@@ -308,9 +315,14 @@ function classifyChanges(
  * Each property change is mapped to the safest action that keeps existing notes
  * consistent with the new field definition:
  *
- * - `options` narrowed (values removed): existing notes may hold a value that is
- *   no longer allowed → `clear-invalid-options` (non-deterministic, lossy
+ * - `options` narrowed (values removed) while the field stays a constrained
+ *   select (a non-empty allowed set remains): existing notes may hold a value
+ *   that is no longer allowed → `clear-invalid-options` (non-deterministic, lossy
  *   cleanup). Options *added* keep every existing value valid → no op.
+ * - `options` removed *entirely* (the allowed set becomes empty, i.e. the field
+ *   is no longer a constrained select): every existing value is valid for the
+ *   now-unconstrained field, so clearing would be data loss → `review-field`
+ *   (non-deterministic, no note mutation).
  * - `multiple` false → true: a scalar value is still valid as a single-element
  *   array → `widen-field-to-multiple` (deterministic, lossless wrap).
  * - `multiple` true → false, `required` toggled on, or `source` retargeted:
@@ -333,12 +345,28 @@ function classifyFieldChange(
     // Only a *narrowing* (removed allowed values) can orphan existing data.
     // Pure additions leave every existing value valid, so they need no op.
     if (removed.length > 0) {
-      nonDeterministic.push({
-        op: 'clear-invalid-options',
-        targetType,
-        field,
-        allowedValues: [...newValues],
-      });
+      if (newValues.size > 0) {
+        // The field is still a constrained select with a smaller allowed set.
+        // Existing values outside that set are now invalid → lossy cleanup.
+        nonDeterministic.push({
+          op: 'clear-invalid-options',
+          targetType,
+          field,
+          allowedValues: [...newValues],
+        });
+      } else {
+        // Options were removed *entirely*: the field no longer constrains its
+        // values (it has become free-text / unconstrained). Every existing value
+        // is still valid for the new definition, so clearing them would be silent
+        // data loss. Surface the change for review instead of mutating notes.
+        nonDeterministic.push({
+          op: 'review-field',
+          targetType,
+          field,
+          reason:
+            'field is no longer a constrained select (all options removed); existing values are kept as free text',
+        });
+      }
     }
   }
 

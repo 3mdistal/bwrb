@@ -679,6 +679,99 @@ status: in-flight
         await cleanupTestVault(tempVaultDir);
       }
     });
+
+    /**
+     * Regression for defect #2 / issue #719 (stale snapshot on no-op edits).
+     *
+     * Adding a select option produces no note-mutating op, so the migration has
+     * no affected files. Previously `--execute` returned early without saving the
+     * snapshot, leaving it stale: a *later* removal of that option would then be
+     * diffed against a snapshot that never had it, so the orphaned notes were
+     * silently missed. The fix persists the snapshot whenever the schema shape
+     * changed, even with zero note ops — while still reporting no note changes.
+     */
+    it('persists the snapshot when only a select option is added (no note changes), so a later removal is detected', async () => {
+      const tempVaultDir = await createTestVault();
+      try {
+        const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+        const snapshotPath = join(tempVaultDir, '.bwrb', 'schema.applied.json');
+
+        // Snapshot == the baseline current schema (task.status: raw, backlog,
+        // in-flight, settled).
+        const baselineSchema = JSON.parse(await readFile(schemaPath, 'utf8'));
+        await writeFile(
+          snapshotPath,
+          JSON.stringify(
+            {
+              schemaVersion: '1.0.0',
+              snapshotAt: new Date().toISOString(),
+              schema: baselineSchema,
+            },
+            null,
+            2
+          )
+        );
+
+        // Current schema ADDS a new option `paused` to task.status.
+        const withAddedOption = JSON.parse(JSON.stringify(baselineSchema));
+        withAddedOption.types.task.fields.status.options = [
+          'raw',
+          'backlog',
+          'in-flight',
+          'settled',
+          'paused',
+        ];
+        await writeFile(schemaPath, JSON.stringify(withAddedOption, null, 2));
+
+        // Execute: no note-mutating ops, but the snapshot must be refreshed.
+        const addResult = await runCLI(
+          ['schema', 'migrate', '--output', 'json', '--execute', '--no-backup'],
+          tempVaultDir
+        );
+        expect(addResult.exitCode).toBe(0);
+        const addResponse = JSON.parse(addResult.stdout);
+        expect(addResponse.success).toBe(true);
+        // Tester-verified behavior preserved: adding an option is not a note change.
+        expect(addResponse.data.affectedFiles).toBe(0);
+
+        // The snapshot now reflects the added option (it is no longer stale).
+        const refreshedSnapshot = JSON.parse(await readFile(snapshotPath, 'utf8'));
+        expect(refreshedSnapshot.schema.types.task.fields.status.options).toContain(
+          'paused'
+        );
+
+        // Now a note adopts the new value, then the option is REMOVED again.
+        await writeFile(
+          join(tempVaultDir, 'Objectives', 'Tasks', 'Paused Task.md'),
+          `---
+type: task
+status: paused
+---
+`
+        );
+        await writeFile(schemaPath, JSON.stringify(baselineSchema, null, 2));
+
+        // Because the snapshot was refreshed, the removal of `paused` is now
+        // correctly detected and the orphaned value is cleared.
+        const removeResult = await runCLI(
+          ['schema', 'migrate', '--output', 'json', '--execute', '--no-backup'],
+          tempVaultDir
+        );
+        expect(removeResult.exitCode).toBe(0);
+        const removeResponse = JSON.parse(removeResult.stdout);
+        expect(removeResponse.success).toBe(true);
+        expect(removeResponse.data.affectedFiles).toBeGreaterThan(0);
+
+        // The now-invalid `status: paused` was cleared from the note.
+        const pausedNote = await readFile(
+          join(tempVaultDir, 'Objectives', 'Tasks', 'Paused Task.md'),
+          'utf8'
+        );
+        expect(pausedNote).not.toContain('paused');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
   });
 
   describe('schema list type <name> --output json', () => {
