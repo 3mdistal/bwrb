@@ -235,6 +235,53 @@ describe("diffSchemas", () => {
       ).toBe(true);
     });
 
+    it("emits clear-invalid-options when an unconstrained field GAINS its first options (text → select)", () => {
+      // baseSchema.note.tags is an unconstrained list. Here we constrain task's
+      // `status`... but `status` starts constrained. Use a fresh unconstrained
+      // field: redefine status as plain text first, then add options.
+      const oldUnconstrained = withTaskField({ prompt: "text", required: true });
+      const newConstrained = withTaskField({
+        prompt: "select",
+        options: ["active", "completed"],
+        required: true,
+      });
+
+      const plan = diffSchemas(oldUnconstrained, newConstrained, "1.0.0", "1.1.0");
+
+      // The transition is non-silent: hasChanges true → major bump suggested.
+      expect(plan.hasChanges).toBe(true);
+      expect(plan.nonDeterministic).toContainEqual({
+        op: "clear-invalid-options",
+        targetType: "task",
+        field: "status",
+        allowedValues: ["active", "completed"],
+      });
+      // Non-deterministic op present → major bump suggested.
+      expect(suggestVersionBump("1.0.0", plan)).toBe("2.0.0");
+    });
+
+    it("emits clear-invalid-options when an unconstrained MULTIPLE list GAINS its first options (list → multi-select)", () => {
+      const oldUnconstrained = withTaskField({
+        prompt: "list",
+        multiple: true,
+      });
+      const newConstrained = withTaskField({
+        prompt: "select",
+        options: ["active", "completed"],
+        multiple: true,
+      });
+
+      const plan = diffSchemas(oldUnconstrained, newConstrained, "1.0.0", "1.1.0");
+
+      expect(plan.hasChanges).toBe(true);
+      expect(plan.nonDeterministic).toContainEqual({
+        op: "clear-invalid-options",
+        targetType: "task",
+        field: "status",
+        allowedValues: ["active", "completed"],
+      });
+    });
+
     it("emits a deterministic widen-field-to-multiple when multiple flips false → true", () => {
       const newSchema = withTaskField({
         prompt: "select",
@@ -576,6 +623,65 @@ describe("diffSchemas", () => {
         field: "phase",
         allowedValues: ["planned", "active", "done"],
       });
+    });
+
+    it("fans out clear-invalid-options to inheriting descendants when a PARENT field gains its first options", () => {
+      // Start: objective.phase is UNCONSTRAINED text; task inherits it. Then
+      // objective.phase gains a constraining option set. Both the declaring type
+      // AND the inheriting descendant must be cleaned, because descendant notes
+      // can hold arbitrary text values now outside the new allowed set.
+      const unconstrainedBase: BwrbSchemaType = {
+        ...inheritanceBase,
+        types: {
+          ...inheritanceBase.types,
+          objective: {
+            fields: {
+              phase: { prompt: "text" },
+            },
+          },
+          // Drop subtask's raw override so the fixture is purely about
+          // declaring-type + inheriting-descendant fan-out.
+          subtask: {
+            extends: "task",
+            fields: {
+              title: { prompt: "text" },
+            },
+          },
+        },
+      };
+      const newSchema: BwrbSchemaType = {
+        ...unconstrainedBase,
+        schemaVersion: "1.1.0",
+        types: {
+          ...unconstrainedBase.types,
+          objective: {
+            fields: {
+              phase: { prompt: "select", options: ["planned", "active", "done"] },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(unconstrainedBase, newSchema, "1.0.0", "1.1.0");
+
+      const clearOps = plan.nonDeterministic.filter(
+        (op) => op.op === "clear-invalid-options" && op.field === "phase"
+      );
+      const targetedTypes = clearOps.map((op) =>
+        op.op === "clear-invalid-options" ? op.targetType : ""
+      );
+
+      // Declaring type AND every inheriting descendant are targeted, each with
+      // the parent's new effective allowed set.
+      expect(targetedTypes).toContain("objective");
+      expect(targetedTypes).toContain("task");
+      expect(targetedTypes).toContain("subtask");
+      for (const op of clearOps) {
+        expect(op).toMatchObject({
+          op: "clear-invalid-options",
+          allowedValues: ["planned", "active", "done"],
+        });
+      }
     });
 
     it("propagates a multiple-widen to every inheriting descendant", () => {

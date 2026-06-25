@@ -653,6 +653,110 @@ parent: "[[Task Two]]"
     });
   });
 
+  // #728 — a field that gains its FIRST options (unconstrained → constrained)
+  // must clean note values now outside the new allowed set, keep in-set values,
+  // filter arrays, and fan out to inheriting descendant-type notes.
+  describe("newly-constrained field (gains first options) cleans out-of-set note values", () => {
+    it("removes a scalar value not in the new option set; keeps one that is; filters arrays", async () => {
+      // objective declares `phase` as UNCONSTRAINED text; task inherits it.
+      const oldSchema = {
+        version: 2 as const,
+        schemaVersion: "1.0.0",
+        types: {
+          objective: {
+            output_dir: "Objectives",
+            fields: {
+              name: { prompt: "text", required: true },
+              phase: { prompt: "text" },
+              labels: { prompt: "list", multiple: true },
+            },
+          },
+          task: {
+            extends: "objective",
+            output_dir: "Tasks",
+            fields: { name: { prompt: "text", required: true } },
+          },
+        },
+      };
+      // phase gains a constraining option set; labels becomes a multi-select.
+      const newSchema = {
+        ...oldSchema,
+        schemaVersion: "1.1.0",
+        types: {
+          ...oldSchema.types,
+          objective: {
+            ...oldSchema.types.objective,
+            fields: {
+              name: { prompt: "text", required: true },
+              phase: { prompt: "select", options: ["planned", "active", "done"] },
+              labels: {
+                prompt: "select",
+                options: ["red", "green"],
+                multiple: true,
+              },
+            },
+          },
+        },
+      };
+
+      await writeFile(
+        join(testDir, ".bwrb/schema.json"),
+        JSON.stringify(newSchema)
+      );
+      await mkdir(join(testDir, "Objectives"), { recursive: true });
+      // An objective note: phase out of set (removed), labels mixed (filtered).
+      await writeFile(
+        join(testDir, "Objectives/Obj-1.md"),
+        `---\ntype: objective\nname: Obj One\nphase: legacy-status\nlabels:\n  - red\n  - purple\n---\n# Obj One\n`
+      );
+      // An objective note whose phase IS in the new set → must be untouched.
+      await writeFile(
+        join(testDir, "Objectives/Obj-2.md"),
+        `---\ntype: objective\nname: Obj Two\nphase: active\n---\n# Obj Two\n`
+      );
+      // A descendant TASK note inheriting phase, holding an out-of-set value.
+      await writeFile(
+        join(testDir, "Tasks/Task-1.md"),
+        `---\ntype: task\nname: Task One\nphase: whatever\n---\n# Task One\n`
+      );
+
+      const schema = await loadSchema(testDir);
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      // clear-invalid-options must target both the declaring type and descendant.
+      const phaseTargets = plan.nonDeterministic
+        .filter((op) => op.op === "clear-invalid-options" && op.field === "phase")
+        .map((op) => (op.op === "clear-invalid-options" ? op.targetType : ""));
+      expect(phaseTargets).toContain("objective");
+      expect(phaseTargets).toContain("task");
+
+      const result = await executeMigration({
+        vaultDir: testDir,
+        schema,
+        plan,
+        execute: true,
+        backup: false,
+      });
+      expect(result.errors).toHaveLength(0);
+
+      // Obj-1: out-of-set scalar removed; array filtered to the still-valid member.
+      const obj1 = await readFile(join(testDir, "Objectives/Obj-1.md"), "utf-8");
+      expect(obj1).not.toContain("legacy-status");
+      expect(obj1).not.toContain("phase:");
+      expect(obj1).toContain("red");
+      expect(obj1).not.toContain("purple");
+
+      // Obj-2: in-set value untouched.
+      const obj2 = await readFile(join(testDir, "Objectives/Obj-2.md"), "utf-8");
+      expect(obj2).toContain("phase: active");
+
+      // Task-1 (descendant): out-of-set inherited value cleaned under its own type.
+      const task1 = await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8");
+      expect(task1).not.toContain("whatever");
+      expect(task1).not.toContain("phase:");
+    });
+  });
+
   // #728 (removal fan-out) — removing a field declared on a PARENT must clean the
   // inherited frontmatter from descendant-type notes too, under their OWN type.
   describe("inherited field-removal reaches descendant-type notes", () => {

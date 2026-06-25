@@ -483,7 +483,14 @@ function classifyChanges(
  * - `options` narrowed (values removed) while the field stays a constrained
  *   select (a non-empty allowed set remains): existing notes may hold a value
  *   that is no longer allowed → `clear-invalid-options` (non-deterministic, lossy
- *   cleanup). Options *added* keep every existing value valid → no op.
+ *   cleanup). Options *added* to an already-constrained set keep every existing
+ *   value valid → no op.
+ * - `options` gained for the first time (old field had no constraining options,
+ *   i.e. was unconstrained text/list, and the new field has a non-empty allowed
+ *   set): existing arbitrary values outside the new set are now invalid →
+ *   `clear-invalid-options` (non-deterministic, lossy cleanup). This is the
+ *   inverse of "removed entirely" and keeps the change non-silent so notes are
+ *   actually cleaned rather than left invalid behind an advanced snapshot.
  * - `options` removed *entirely* (the allowed set becomes empty, i.e. the field
  *   is no longer a constrained select): every existing value is valid for the
  *   now-unconstrained field, so clearing would be data loss → `review-field`
@@ -507,9 +514,28 @@ function classifyFieldChange(
     const oldValues = getOptionValues(oldField?.options);
     const newValues = new Set(getOptionValues(newField?.options));
     const removed = oldValues.filter((value) => !newValues.has(value));
-    // Only a *narrowing* (removed allowed values) can orphan existing data.
-    // Pure additions leave every existing value valid, so they need no op.
-    if (removed.length > 0) {
+    // A field that gained its FIRST constraining option set: the old effective
+    // field was unconstrained (text/list, no allowed values) and the new one is a
+    // non-empty select/multi-select. Existing notes may hold arbitrary values that
+    // are not in the new allowed set, so those are now invalid → lossy cleanup.
+    const newlyConstrained = oldValues.length === 0 && newValues.size > 0;
+    // Only a *narrowing* (removed allowed values) or a *newly added* constraint can
+    // orphan existing data. Pure additions to an already-constrained set leave every
+    // existing value valid, so they need no op.
+    if (newlyConstrained) {
+      // Unconstrained → constrained: clean values outside the new allowed set.
+      // This makes the change NON-silent (hasChanges true → major bump suggested
+      // → notes actually cleaned on execute) rather than letting the snapshot
+      // advance past now-invalid values. Uses the same op as per-option removal:
+      // invalid scalars are removed, arrays are filtered to still-valid members,
+      // and values that happen to match an allowed option are kept.
+      nonDeterministic.push({
+        op: 'clear-invalid-options',
+        targetType,
+        field,
+        allowedValues: [...newValues],
+      });
+    } else if (removed.length > 0) {
       if (newValues.size > 0) {
         // The field is still a constrained select with a smaller allowed set.
         // Existing values outside that set are now invalid → lossy cleanup.
