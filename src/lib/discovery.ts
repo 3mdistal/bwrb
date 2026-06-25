@@ -7,7 +7,7 @@
 
 import ignore, { type Ignore } from 'ignore';
 import { minimatch } from 'minimatch';
-import { readdir, readFile } from 'fs/promises';
+import { readdir, readFile, stat } from 'fs/promises';
 import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import {
@@ -622,6 +622,54 @@ export async function discoverManagedFiles(
   }
 
   return discoverFilesForQueryResolution(schema, vaultDir);
+}
+
+/**
+ * Collapse a list of {@link ManagedFile}s that point at the SAME physical file to
+ * a single entry, keyed on real filesystem identity (`device + inode`).
+ *
+ * On a case-insensitive filesystem (e.g. macOS APFS, Windows NTFS) a single note
+ * can be enumerated under two different path casings — for example a type whose
+ * `output_dir` is declared `Tasks` but lives on disk as `tasks/`, where the
+ * managed-type walk roots the path at `Tasks/...` while the unmanaged vault walk
+ * sees the real `tasks/...`. Both refer to one file, so a consumer that processes
+ * each entry (like `bulk`) would otherwise write and report that note twice.
+ *
+ * We dedupe on `stat().ino`/`dev` rather than a lowercased path so the collapse
+ * is driven by true on-disk identity: on a case-SENSITIVE filesystem two paths
+ * differing only by case are genuinely distinct files (distinct inodes) and are
+ * correctly kept apart, while hardlinks/case-variants of one file collapse. This
+ * mirrors the inode-based identity check already used by bulk `move`
+ * (`destinationIsOccupiedByDifferentFile`).
+ *
+ * The first occurrence wins, so callers can pre-order to control which on-disk
+ * casing is kept for display. Entries whose `path` cannot be `stat`ed (e.g. a
+ * race deletion) fall back to keying on the literal path so they are never
+ * silently dropped. Output order follows first-seen order of the input.
+ */
+export async function dedupeByFilesystemIdentity(
+  files: ManagedFile[]
+): Promise<ManagedFile[]> {
+  const seen = new Set<string>();
+  const result: ManagedFile[] = [];
+
+  for (const file of files) {
+    let key: string;
+    try {
+      const info = await stat(file.path);
+      key = `${info.dev}:${info.ino}`;
+    } catch {
+      // If we can't stat (file vanished mid-run), fall back to the literal path
+      // so distinct unresolved entries are preserved rather than collapsed.
+      key = `path:${file.path}`;
+    }
+
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(file);
+  }
+
+  return result;
 }
 
 // ============================================================================

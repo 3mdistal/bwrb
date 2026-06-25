@@ -16,6 +16,7 @@ import {
   deriveNoteTypeMap,
   deriveNoteTargetIndex,
   discoverManagedFiles,
+  dedupeByFilesystemIdentity,
   collectFilesForType,
   collectPooledFiles,
   findSimilarFiles,
@@ -28,7 +29,7 @@ import {
 } from '../../../src/lib/discovery.js';
 import { loadSchema } from '../../../src/lib/schema.js';
 import type { LoadedSchema } from '../../../src/types/schema.js';
-import { writeFile, mkdir, rm } from 'fs/promises';
+import { writeFile, mkdir, rm, symlink } from 'fs/promises';
 import { join } from 'path';
 
 describe('Discovery', () => {
@@ -325,6 +326,61 @@ describe('Discovery', () => {
       const files = await discoverManagedFiles(schema, vaultDir, 'idea');
       
       expect(files.every(f => f.expectedType === 'idea')).toBe(true);
+    });
+  });
+
+  describe('dedupeByFilesystemIdentity', () => {
+    it('collapses entries that resolve to the same physical file (case-variant duplicate)', async () => {
+      // Simulate a case-insensitive FS surfacing one note under two path casings:
+      // a directory symlink gives a second path that stat()s to the SAME inode,
+      // which is exactly what `Tasks/` vs `tasks/` produce on macOS/Windows.
+      await mkdir(join(vaultDir, 'CaseDir'), { recursive: true });
+      await writeFile(join(vaultDir, 'CaseDir', 'Note.md'), '---\ntype: idea\n---\n');
+      await symlink(join(vaultDir, 'CaseDir'), join(vaultDir, 'casedir-alias'));
+
+      const realEntry: ManagedFile = {
+        path: join(vaultDir, 'CaseDir', 'Note.md'),
+        relativePath: 'CaseDir/Note.md',
+      };
+      const aliasEntry: ManagedFile = {
+        path: join(vaultDir, 'casedir-alias', 'Note.md'),
+        relativePath: 'casedir-alias/Note.md',
+      };
+
+      const result = await dedupeByFilesystemIdentity([realEntry, aliasEntry]);
+
+      expect(result).toHaveLength(1);
+      // First occurrence wins, preserving caller-controlled display casing.
+      expect(result[0]!.relativePath).toBe('CaseDir/Note.md');
+    });
+
+    it('keeps genuinely distinct files (distinct inodes) separate', async () => {
+      await mkdir(join(vaultDir, 'Distinct'), { recursive: true });
+      await writeFile(join(vaultDir, 'Distinct', 'Alpha.md'), '---\ntype: idea\n---\n');
+      await writeFile(join(vaultDir, 'Distinct', 'Beta.md'), '---\ntype: idea\n---\n');
+
+      const entries: ManagedFile[] = [
+        { path: join(vaultDir, 'Distinct', 'Alpha.md'), relativePath: 'Distinct/Alpha.md' },
+        { path: join(vaultDir, 'Distinct', 'Beta.md'), relativePath: 'Distinct/Beta.md' },
+      ];
+
+      const result = await dedupeByFilesystemIdentity(entries);
+
+      expect(result.map(f => f.relativePath).sort()).toEqual([
+        'Distinct/Alpha.md',
+        'Distinct/Beta.md',
+      ]);
+    });
+
+    it('preserves entries whose path cannot be stat-ed instead of dropping them', async () => {
+      const entries: ManagedFile[] = [
+        { path: join(vaultDir, 'does-not-exist-a.md'), relativePath: 'does-not-exist-a.md' },
+        { path: join(vaultDir, 'does-not-exist-b.md'), relativePath: 'does-not-exist-b.md' },
+      ];
+
+      const result = await dedupeByFilesystemIdentity(entries);
+
+      expect(result).toHaveLength(2);
     });
   });
 
