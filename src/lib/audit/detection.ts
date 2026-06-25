@@ -431,7 +431,13 @@ export async function auditFile(
   // (#703) by the ownership check, not duplicated.
   const isMisplacedOwnedNote =
     ownershipIndex !== undefined &&
-    findMisplacedOwnedNote(schema, ownershipIndex, file, resolvedTypePath) !== undefined;
+    findMisplacedOwnedNote(
+      schema,
+      ownershipIndex,
+      file,
+      resolvedTypePath,
+      noteIndex?.noteTargetIndex
+    ) !== undefined;
 
   if (expectedOutputDir && !isMisplacedOwnedNote) {
     const expectedPath = expectedOutputDir;
@@ -917,7 +923,8 @@ export async function auditFile(
       fields,
       ownershipIndex,
       noteIndex.notePathMap,
-      resolvedTypePath
+      resolvedTypePath,
+      noteIndex.noteTargetIndex
     );
     issues.push(...ownershipIssues);
   }
@@ -1758,7 +1765,8 @@ function findMisplacedOwnedNote(
   schema: LoadedSchema,
   ownershipIndex: OwnershipIndex,
   file: ManagedFile,
-  resolvedTypePath: string
+  resolvedTypePath: string,
+  noteTargetIndex: import('../discovery.js').NoteTargetIndex | undefined
 ): MisplacedOwnedNote | undefined {
   const noteName = basename(file.relativePath, '.md');
   const actualDir = dirname(file.relativePath);
@@ -1777,13 +1785,53 @@ function findMisplacedOwnedNote(
     (resolvedTypePath === childType ||
       getDescendants(schema, childType).includes(resolvedTypePath));
 
+  // PATH-AWARE matching (#734): decide whether a declaring owner's declaration is
+  // satisfied BY THE AUDITED FILE. Basename matching alone (`getDeclaredOwners`
+  // is basename-keyed) over-broadens when the declaration is PATH-QUALIFIED to a
+  // specific note that actually EXISTS at that path: an unrelated same-basename
+  // note elsewhere would also "match" and be wrongly restored/moved.
+  //
+  // For a PATH-QUALIFIED declaration (`declaredTarget` contains a `/`): resolve
+  // it to the file at that EXACT relative path via the vault's existing link
+  // resolver (`noteTargetIndex`, keyed by path-without-extension, lowercased —
+  // the same map `resolveRelationTarget` consults). If a file EXISTS there, only
+  // THAT file is the declared owned note; an audited file at a DIFFERENT path is
+  // not, so this declaration does not count toward it. If NO file exists at the
+  // declared path the note is genuinely misplaced, so we fall back to basename
+  // matching (the basename already matched, since `getDeclaredOwners` is
+  // basename-keyed) to still restore it (round-2 behaviour preserved).
+  //
+  // For a BARE declaration (no `/`) or one with no remembered target, basename
+  // matching as before (Obsidian resolves bare links by basename).
+  const auditedPathKey = file.relativePath.replace(/\.md$/, '').toLowerCase();
+  const declarationMatchesAuditedFile = (declared: OwnedNoteInfo): boolean => {
+    const target = declared.declaredTarget;
+    if (target === undefined || !target.includes('/')) {
+      // Bare link (or no remembered target) → basename match (already true here).
+      return true;
+    }
+    // Path-qualified link → resolve to the file at that exact path.
+    const resolved = noteTargetIndex?.targetToPaths.get(target.toLowerCase());
+    if (resolved && resolved.length > 0) {
+      // The declared path points at real file(s). Only the audited file IS the
+      // declared owned note if it is one of them; otherwise the declaration is
+      // satisfied by a different note and must NOT claim the audited file.
+      return resolved.some(p => p.replace(/\.md$/, '').toLowerCase() === auditedPathKey);
+    }
+    // Declared path resolves to nothing → genuinely misplaced → basename fallback.
+    return true;
+  };
+
   // Only declarations whose owned child type matches the AUDITED note's resolved
-  // type count toward ownership of this note. Applying this type filter BEFORE
-  // deciding ambiguity is the fix for #734's follow-up: a correctly-filed note of
-  // a different type that merely shares a basename with an ambiguous owned
+  // type AND whose (path-aware) target is satisfied by the audited file count
+  // toward ownership of this note. Applying the type filter BEFORE deciding
+  // ambiguity is the fix for #734's follow-up: a correctly-filed note of a
+  // different type that merely shares a basename with an ambiguous owned
   // declaration must NOT be treated as owned (neither ambiguous nor misplaced).
-  const matchingOwners = getDeclaredOwners(ownershipIndex, noteName).filter(o =>
-    typeMatchesAudited(declaredChildType(o))
+  // The path filter additionally drops a path-qualified declaration that is
+  // satisfied by a different (correctly-placed) note at the declared path.
+  const matchingOwners = getDeclaredOwners(ownershipIndex, noteName).filter(
+    o => typeMatchesAudited(declaredChildType(o)) && declarationMatchesAuditedFile(o)
   );
 
   // 0 type-matching owners → not an owned note of this type. Fall through to
@@ -1834,7 +1882,8 @@ async function checkOwnershipViolations(
   fields: Record<string, Field>,
   ownershipIndex: OwnershipIndex,
   notePathMap: Map<string, string>,
-  resolvedTypePath: string
+  resolvedTypePath: string,
+  noteTargetIndex: import('../discovery.js').NoteTargetIndex | undefined
 ): Promise<AuditIssue[]> {
   const issues: AuditIssue[] = [];
 
@@ -1851,7 +1900,13 @@ async function checkOwnershipViolations(
   // target restores it under the owner subtree (#702). The generic
   // `wrong-directory` check upstream is suppressed for the same note so it is
   // reported exactly once.
-  const misplaced = findMisplacedOwnedNote(schema, ownershipIndex, file, resolvedTypePath);
+  const misplaced = findMisplacedOwnedNote(
+    schema,
+    ownershipIndex,
+    file,
+    resolvedTypePath,
+    noteTargetIndex
+  );
   if (misplaced?.kind === 'ambiguous') {
     // Two or more distinct owners declare this basename (#734). We cannot pick
     // one without guessing, so report a conflict for MANUAL resolution and mark

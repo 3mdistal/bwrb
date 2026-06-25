@@ -3197,6 +3197,158 @@ status: raw
       );
       expect(occupant).toContain('OCCUPANT');
     });
+
+    // #734 (path-qualified over-broadening): an earlier round normalized declared
+    // owner wikilinks to BASENAME so a misplaced note could still be found. That
+    // over-broadened matching: a PATH-QUALIFIED declaration whose target EXISTS at
+    // that exact path would ALSO claim an UNRELATED same-basename note living
+    // elsewhere, flagging it owned-wrong-location and trying to move it. The fix
+    // resolves a path-qualified declaration to the file at that exact relative
+    // path first (via the vault's existing link/path index), and only falls back
+    // to basename matching when nothing exists there (genuinely misplaced).
+    describe('path-aware declared-ownership resolution (#734)', () => {
+      it('does NOT claim an unrelated same-basename sibling when the path-qualified target EXISTS at its path', async () => {
+        // Owner declares ownership PATH-QUALIFIED to the song under its subtree.
+        await writeFile(
+          join(tempVaultDir, 'Albums/Best Album', 'Best Album.md'),
+          `---\ntype: album\nsongs:\n  - "[[Albums/Best Album/songs/Owned]]"\n---\n`
+        );
+        // The declared note actually EXISTS at that path (correctly placed).
+        await writeFile(
+          join(tempVaultDir, 'Albums/Best Album/songs', 'Owned.md'),
+          `---\ntype: track\nmarker: REAL\n---\n`
+        );
+        // An UNRELATED track of the SAME basename lives elsewhere, correctly under
+        // its own output_dir (Tracks/). It is NOT the declared owned note.
+        await writeFile(
+          join(tempVaultDir, 'Tracks', 'Owned.md'),
+          `---\ntype: track\nmarker: SIBLING\n---\n`
+        );
+
+        const result = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+        const output = JSON.parse(result.stdout);
+
+        // The unrelated sibling must NOT be flagged owned-wrong-location...
+        const sibling = output.files.find((f: { path: string }) =>
+          f.path.includes('Tracks/Owned.md')
+        );
+        const siblingOwnedIssue = sibling?.issues?.find(
+          (i: { code: string }) => i.code === 'owned-wrong-location'
+        );
+        expect(siblingOwnedIssue).toBeUndefined();
+        // ...nor any generic wrong-directory (Tracks IS its correct output_dir).
+        const siblingWrongDir = sibling?.issues?.find(
+          (i: { code: string }) => i.code === 'wrong-directory'
+        );
+        expect(siblingWrongDir).toBeUndefined();
+
+        // The correctly-placed declared note has no location issue either.
+        const real = output.files.find((f: { path: string }) =>
+          f.path.includes('Albums/Best Album/songs/Owned.md')
+        );
+        const realOwnedIssue = real?.issues?.find(
+          (i: { code: string }) =>
+            i.code === 'owned-wrong-location' || i.code === 'wrong-directory'
+        );
+        expect(realOwnedIssue).toBeUndefined();
+      });
+
+      it('--fix --auto --execute leaves the unrelated sibling untouched (no move/collision)', async () => {
+        await writeFile(
+          join(tempVaultDir, 'Albums/Best Album', 'Best Album.md'),
+          `---\ntype: album\nsongs:\n  - "[[Albums/Best Album/songs/Owned]]"\n---\n`
+        );
+        await writeFile(
+          join(tempVaultDir, 'Albums/Best Album/songs', 'Owned.md'),
+          `---\ntype: track\nmarker: REAL\n---\n`
+        );
+        await writeFile(
+          join(tempVaultDir, 'Tracks', 'Owned.md'),
+          `---\ntype: track\nmarker: SIBLING\n---\n`
+        );
+
+        await runCLI(['audit', '--fix', '--all', '--auto', '--execute'], tempVaultDir);
+
+        // The sibling stays put with its original content — never moved under the
+        // owner (which would also have collided with the real owned note).
+        const sibling = await readFile(
+          join(tempVaultDir, 'Tracks', 'Owned.md'),
+          'utf-8'
+        ).catch(() => null);
+        expect(sibling).not.toBeNull();
+        expect(sibling).toContain('SIBLING');
+        // The real owned note is untouched too.
+        const real = await readFile(
+          join(tempVaultDir, 'Albums/Best Album/songs', 'Owned.md'),
+          'utf-8'
+        );
+        expect(real).toContain('REAL');
+      });
+
+      it('still restores a note declared PATH-QUALIFIED but genuinely MISSING at that path (basename fallback)', async () => {
+        // Owner points at a path under its subtree, but NO file exists there...
+        await writeFile(
+          join(tempVaultDir, 'Albums/Best Album', 'Best Album.md'),
+          `---\ntype: album\nsongs:\n  - "[[Albums/Best Album/songs/Opening Track]]"\n---\n`
+        );
+        // ...the note actually lives (misplaced) in Tracks/.
+        await writeFile(
+          join(tempVaultDir, 'Tracks', 'Opening Track.md'),
+          `---\ntype: track\n---\n`
+        );
+
+        const detect = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+        expect(detect.exitCode).toBe(1);
+        const output = JSON.parse(detect.stdout);
+        const stray = output.files.find((f: { path: string }) =>
+          f.path.includes('Tracks/Opening Track.md')
+        );
+        expect(stray).toBeDefined();
+        const ownedIssue = stray.issues.find(
+          (i: { code: string }) => i.code === 'owned-wrong-location'
+        );
+        expect(ownedIssue).toBeDefined();
+        expect(ownedIssue.expectedDirectory).toBe('Albums/Best Album/songs');
+
+        // --fix restores it under the owner subtree.
+        const fix = await runCLI(
+          ['audit', '--fix', '--all', '--auto', '--execute'],
+          tempVaultDir
+        );
+        expect(fix.exitCode).toBe(0);
+        const restored = await readFile(
+          join(tempVaultDir, 'Albums/Best Album/songs', 'Opening Track.md'),
+          'utf-8'
+        ).catch(() => null);
+        expect(restored).not.toBeNull();
+        const after = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+        expect(after.exitCode).toBe(0);
+      });
+
+      it('still restores a misplaced note declared with a BARE link (basename match unchanged)', async () => {
+        // Bare declaration + a single misplaced note → restored as before.
+        await writeFile(
+          join(tempVaultDir, 'Albums/Best Album', 'Best Album.md'),
+          `---\ntype: album\nsongs:\n  - "[[Opening Track]]"\n---\n`
+        );
+        await writeFile(
+          join(tempVaultDir, 'Tracks', 'Opening Track.md'),
+          `---\ntype: track\n---\n`
+        );
+
+        const detect = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+        expect(detect.exitCode).toBe(1);
+        const output = JSON.parse(detect.stdout);
+        const stray = output.files.find((f: { path: string }) =>
+          f.path.includes('Tracks/Opening Track.md')
+        );
+        const ownedIssue = stray.issues.find(
+          (i: { code: string }) => i.code === 'owned-wrong-location'
+        );
+        expect(ownedIssue).toBeDefined();
+        expect(ownedIssue.expectedDirectory).toBe('Albums/Best Album/songs');
+      });
+    });
   });
 
   // #734 multi-owner correctness/safety gaps.

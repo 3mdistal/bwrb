@@ -18,7 +18,12 @@ import {
 } from './schema.js';
 import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
 import type { LoadedSchema } from '../types/schema.js';
-import { extractLinkTargets, isWikilink, wikilinkTargetBasename } from './links.js';
+import {
+  extractLinkTargets,
+  isWikilink,
+  wikilinkTargetBasename,
+  wikilinkTargetPath,
+} from './links.js';
 import { parseNote } from './frontmatter.js';
 
 // ============================================================================
@@ -37,6 +42,21 @@ export interface OwnedNoteInfo {
   ownerType: string;
   /** Field on owner that declares ownership */
   fieldName: string;
+  /**
+   * The PATH-QUALIFIED target portion of the wikilink the owner wrote in its
+   * `owned` field, with any display alias/heading stripped but the path qualifier
+   * PRESERVED (via `wikilinkTargetPath`). For a declaration built from the
+   * physical-folder scan this is undefined (no original link to remember).
+   *
+   * This is what makes declared-ownership resolution path-aware (#734): when the
+   * declaration is path-qualified (`Albums/Best Album/songs/Owned`) the link can
+   * be resolved to the file at that EXACT relative path, so an UNRELATED note
+   * that merely shares the basename at a different path is NOT mistaken for the
+   * declared owned note. A bare declaration (`Owned`, no `/`) leaves this as the
+   * bare basename and falls back to basename matching as before. Always present
+   * for declarations sourced from owner frontmatter.
+   */
+  declaredTarget?: string;
 }
 
 /**
@@ -273,6 +293,10 @@ async function indexOwnerNote(
         ownerPath: relativeOwnerPath,
         ownerType: ownerTypeName,
         fieldName: ownedField.fieldName,
+        // Preserve the PATH-QUALIFIED target so detection can resolve a
+        // path-qualified declaration to the file at that exact path and avoid
+        // claiming an unrelated same-basename note elsewhere (#734).
+        declaredTarget: wikilinkTargetPath(refName),
       };
       const existing = declaredOwned.get(key);
       if (existing === undefined) {
