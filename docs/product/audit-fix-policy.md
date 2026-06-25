@@ -51,7 +51,7 @@ For list fields, `invalid-list-element` may auto-fix only when deterministic:
 
 - Remove `null` / empty-string elements if the list remains valid
 - Flatten a single nested list only when exactly one level deep and all elements are valid
-- Apply safe scalar coercions per `wrong-scalar-type` when unambiguous
+- Coerce a wrong-typed scalar element (a bare `number` or `boolean`, e.g. `42` or `true`) to its string form in place, leaving the rest of the array intact. The coerced element is written as a **quoted** YAML string (`- "42"`, not bare `- 42`) and re-read as a string, so it survives the YAML round-trip and a re-audit finds nothing to fix — the coerce converges in one pass (idempotent, the #700 trap). The fix re-derives the element from the live array and only acts while it is still a number/boolean, so a re-applied or stale issue is a safe no-op.
 
 A **valid numeric element of a `multiple` date field** (e.g. an unquoted `2026` at year granularity) is reported as `wrong-scalar-type` with a `listIndex` and is auto-fixable per-element (#673): the fix quotes that single element in place (`2026` → `"2026"`), preserving array order and all other elements — it never collapses the array to one scalar. Quoting is index-safe (each element is re-derived from the live array, like the #683 blank removal) and idempotent: the quoted string is written and re-read as a string, so the value survives the YAML round-trip and a second pass finds nothing (avoiding the #700 non-idempotency trap). An **invalid** numeric date element (not a valid date at the field's granularity) is left as `invalid-date-format` for manual correction and is never auto-quoted.
 

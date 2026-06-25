@@ -1514,7 +1514,25 @@ export async function runAutoFix(
           if (listIndex < 0 || listIndex >= current.length) return false;
 
           if (action === 'coerce') {
-            current[listIndex] = String(current[listIndex]);
+            // Stringify a wrong-typed scalar element (a number or boolean) so the
+            // list becomes all-strings. Re-derive from the LIVE array and only act
+            // when the element is still a number/boolean — if it was already
+            // coerced (e.g. a stale duplicate issue, or a prior pass), this is a
+            // no-op and the file is left untouched.
+            //
+            // Idempotency / round-trip stability (#700): the coerced value is the
+            // JS string `String(42)` → `"42"`. `serializeFrontmatter` writes it via
+            // yaml.stringify, which force-quotes a numeric/boolean-looking string
+            // (`- "42"`, not bare `- 42`), and gray-matter re-reads a quoted scalar
+            // as a string. So a second audit pass finds an all-string list and does
+            // NOT re-flag — the fix converges in one pass. Coercing a value that is
+            // no longer a number/boolean would risk re-quoting a real string, so we
+            // guard against it.
+            const element = current[listIndex];
+            if (typeof element !== 'number' && typeof element !== 'boolean') {
+              return false;
+            }
+            current[listIndex] = String(element);
             frontmatter[issue.field!] = current;
             return true;
           }
