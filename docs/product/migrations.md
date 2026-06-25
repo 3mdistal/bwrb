@@ -141,11 +141,24 @@ bwrb schema history --json
 | Disallow multiple values (`multiple` true → false) | Non-deterministic (`review-field`) | Surfaced for manual review; collapsing an array is lossy, so notes are flagged, not changed |
 | Change relation `source` | Non-deterministic (`review-field`) | Surfaced for manual review; existing links may now point at the wrong type |
 
-When a changed field is declared on a **parent** type, the migration applies to
-notes of that type **and** every descendant type that inherits the field via
-`extends` (e.g. changing `objective.phase` also cleans `task` notes when `task`
-extends `objective`). A descendant that **overrides** the field with its own
-definition is unaffected by the parent's change.
+Field-changed migrations are derived from the **effective (resolved) schema** —
+the field definition each concrete type actually resolves to after inheritance —
+not from raw per-type entries. So when a changed field is declared on a **parent**
+type, the migration applies to notes of that type **and** every descendant type
+that inherits the field via `extends` (e.g. changing `objective.phase` also cleans
+`task` notes when `task` extends `objective`).
+
+This includes descendants that re-declare the inherited field. The schema
+resolver applies a *restricted merge* to an inherited field: a child may override
+only metadata (`default`/`value`/`description`/`granularity`) — its raw structural
+keys (`options`/`multiple`/`required`/`source`) are **ignored**, and the parent's
+structure wins. Because a child therefore cannot structurally fork an inherited
+field, every inheriting descendant — even one whose raw entry re-declares
+`options` — is governed by the parent's structure and is cleaned/widened under its
+own concrete type when the parent changes. Conversely, editing only such an
+ignored raw override (while the parent is unchanged) leaves the effective schema
+identical and produces **no** migration op, so valid note values are never
+deleted.
 
 Note: only the *effective* value of `multiple` matters — an absent `multiple` is
 treated as `false`. Adding or removing an explicit `multiple: false` is therefore

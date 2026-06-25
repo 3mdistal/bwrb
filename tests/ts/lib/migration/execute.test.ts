@@ -653,6 +653,99 @@ parent: "[[Task Two]]"
     });
   });
 
+  // P1 (#728, fourth review) — data-loss guard. A subtype that edits its OWN raw
+  // structural override of an INHERITED field changes nothing EFFECTIVELY (the
+  // resolver drops the child's structural keys for an inherited field). The diff
+  // must emit NO op, so a valid child-note value survives migration. End-to-end:
+  // a stale heuristic here would emit clear-invalid-options from the IGNORED raw
+  // override and silently delete the note's value.
+  describe("subtype raw-override of inherited field does not delete child-note data (P1)", () => {
+    it("keeps a valid child-note value when only the subtype's ignored raw options change", async () => {
+      // objective declares `phase`; task re-declares it with its OWN options,
+      // which resolution IGNORES — task's effective `phase` == objective's.
+      const oldSchema = {
+        version: 2 as const,
+        schemaVersion: "1.0.0",
+        types: {
+          objective: {
+            output_dir: "Objectives",
+            fields: {
+              name: { prompt: "text", required: true },
+              phase: {
+                prompt: "select",
+                options: ["planned", "active", "done", "abandoned"],
+              },
+            },
+          },
+          task: {
+            extends: "objective",
+            output_dir: "Tasks",
+            fields: {
+              name: { prompt: "text", required: true },
+              // Raw structural override DROPPED by the resolver. Editing these
+              // must not touch notes.
+              phase: {
+                prompt: "select",
+                options: ["todo", "doing", "done", "wontfix"],
+              },
+            },
+          },
+        },
+      };
+      // Parent UNCHANGED; only task's ignored raw override narrows (drop "wontfix").
+      const newSchema = {
+        ...oldSchema,
+        schemaVersion: "1.1.0",
+        types: {
+          ...oldSchema.types,
+          task: {
+            ...oldSchema.types.task,
+            fields: {
+              name: { prompt: "text", required: true },
+              phase: {
+                prompt: "select",
+                options: ["todo", "doing", "done"],
+              },
+            },
+          },
+        },
+      };
+
+      await writeFile(
+        join(testDir, ".bwrb/schema.json"),
+        JSON.stringify(newSchema)
+      );
+      await mkdir(join(testDir, "Tasks"), { recursive: true });
+      // A task note carrying a value valid under the EFFECTIVE (parent) options.
+      await writeFile(
+        join(testDir, "Tasks/Task-1.md"),
+        `---\ntype: task\nname: Task One\nphase: abandoned\n---\n# Task One\n`
+      );
+
+      const schema = await loadSchema(testDir);
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      // No op may be emitted: the effective schema did not change.
+      const allOps = [...plan.deterministic, ...plan.nonDeterministic];
+      expect(allOps.some((op) => op.op === "clear-invalid-options")).toBe(false);
+      expect(plan.hasChanges).toBe(false);
+
+      const result = await executeMigration({
+        vaultDir: testDir,
+        schema,
+        plan,
+        execute: true,
+        backup: false,
+      });
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.affectedFiles).toBe(0);
+      const content = await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8");
+      // The child note's value SURVIVES — no silent data loss.
+      expect(content).toContain("phase: abandoned");
+    });
+  });
+
   describe("widen-field-to-multiple operation", () => {
     it("wraps a scalar value into a single-element array", async () => {
       await writeFile(

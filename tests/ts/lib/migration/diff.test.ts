@@ -465,13 +465,25 @@ describe("diffSchemas", () => {
     });
   });
 
-  // Defect A (#728): a field-changed op for a field declared on a PARENT type
-  // must also reach descendant types that INHERIT the field, because
-  // executeMigration matches ops to notes by exact type. A descendant that
-  // OVERRIDES the field with its own definition is excluded.
+  // #728: a field-changed op for a field declared on a PARENT type must reach
+  // every CONCRETE descendant whose EFFECTIVE field changed, because
+  // executeMigration matches ops to notes by exact type. Ops are derived by
+  // comparing each type's RESOLVED field old → new (see detectEffectiveFieldChanges).
+  //
+  // IMPORTANT — resolver semantics (verified in computeEffectiveFields,
+  // src/lib/schema.ts): a child CANNOT structurally override an INHERITED field.
+  // Its raw `options`/`multiple`/`required`/`source` are DROPPED by the restricted
+  // merge; only metadata (default/value/description/granularity) merges. So a
+  // descendant's effective structure ALWAYS follows the declaring ancestor — and
+  // therefore EVERY inheriting descendant is affected by a parent field change,
+  // even one that raw-redeclares the field's options. (The migration diff matches
+  // this actual resolver behavior; whether the resolver SHOULD allow a child to
+  // fork an inherited field's structure is a separate design question — see the
+  // PR follow-up note.)
   describe("field-changed inheritance (declaring type + inheriting descendants)", () => {
     // objective declares `phase` (a select); task extends objective and inherits
-    // it; subtask extends task and overrides `phase` with its own options.
+    // it; subtask extends task and re-declares `phase` with its own options —
+    // which the resolver IGNORES, so subtask's effective `phase` is objective's.
     const inheritanceBase: BwrbSchemaType = {
       version: 2,
       schemaVersion: "1.0.0",
@@ -493,7 +505,9 @@ describe("diffSchemas", () => {
         subtask: {
           extends: "task",
           fields: {
-            // Overrides the inherited `phase` with its OWN options.
+            // Raw override of the inherited `phase` — DROPPED by the resolver's
+            // restricted merge, so subtask still effectively inherits objective's
+            // options.
             phase: { prompt: "select", options: ["todo", "doing", "done"] },
           },
         },
@@ -535,28 +549,39 @@ describe("diffSchemas", () => {
       expect(targetedTypes).toContain("task");
     });
 
-    it("does NOT target a descendant that OVERRIDES the field", () => {
+    it("DOES target a descendant whose raw override of an inherited field the resolver ignores (#728 P2)", () => {
       const newSchema = withObjectivePhaseOptions(["planned", "active", "done"]);
 
       const plan = diffSchemas(inheritanceBase, newSchema, "1.0.0", "1.1.0");
 
-      const targetedTypes = plan.nonDeterministic
-        .filter((op) => op.op === "clear-invalid-options")
-        .map((op) => (op.op === "clear-invalid-options" ? op.targetType : ""));
+      const clearOps = plan.nonDeterministic.filter(
+        (op) => op.op === "clear-invalid-options" && op.field === "phase"
+      );
+      const targetedTypes = clearOps.map((op) =>
+        op.op === "clear-invalid-options" ? op.targetType : ""
+      );
 
-      // subtask redefines `phase` with its own options → unaffected by the
-      // parent's option change.
-      expect(targetedTypes).not.toContain("subtask");
+      // subtask raw-redeclares `phase`, but the resolver DROPS that override for
+      // an inherited field — subtask's effective options ARE objective's, so its
+      // notes hold the now-orphaned "abandoned" and MUST be cleaned. The op's
+      // allowed set is the PARENT's new effective options, not subtask's ignored
+      // raw override.
+      expect(targetedTypes).toContain("subtask");
+      const subtaskOp = clearOps.find(
+        (op) => op.op === "clear-invalid-options" && op.targetType === "subtask"
+      );
+      expect(subtaskOp).toEqual({
+        op: "clear-invalid-options",
+        targetType: "subtask",
+        field: "phase",
+        allowedValues: ["planned", "active", "done"],
+      });
     });
 
-    it("propagates a multiple-widen per-aspect (options override does NOT shield a multiple change)", () => {
-      // objective.phase multiple false → true. The affectedness decision is
-      // PER-ASPECT: a descendant is shielded from a `multiple` change only if it
-      // overrode `multiple`. subtask in `inheritanceBase` overrides only
-      // `options` (and resolution's restricted merge even DROPS that for an
-      // inherited field), so its notes still inherit objective's `multiple` and
-      // it IS widened too. (Codex defect A: the prior fix shielded subtask for
-      // any aspect because it had a raw entry — over-conservative.)
+    it("propagates a multiple-widen to every inheriting descendant", () => {
+      // objective.phase multiple false → true. Every concrete descendant inherits
+      // objective's `multiple` effectively (raw overrides of inherited fields are
+      // dropped), so task AND subtask are both widened.
       const newSchema: BwrbSchemaType = {
         ...inheritanceBase,
         schemaVersion: "1.1.0",
@@ -583,14 +608,14 @@ describe("diffSchemas", () => {
 
       expect(widenTargets).toContain("objective");
       expect(widenTargets).toContain("task");
-      // subtask did NOT override `multiple`, so it is affected by the multiple
-      // change too.
       expect(widenTargets).toContain("subtask");
     });
 
-    it("does NOT widen a descendant that overrides the `multiple` aspect", () => {
-      // subtask here overrides `multiple` explicitly → it owns that aspect and is
-      // shielded from objective's multiple change.
+    it("widens a descendant even when it raw-overrides `multiple` (override is ignored for an inherited field)", () => {
+      // subtask raw-declares `multiple: false`, but that is an inherited field, so
+      // the resolver DROPS it — subtask still effectively inherits objective's
+      // `multiple` and IS widened. (Under the current resolver, a child cannot
+      // shield itself from a parent's structural change to an inherited field.)
       const base: BwrbSchemaType = {
         ...inheritanceBase,
         types: {
@@ -629,19 +654,17 @@ describe("diffSchemas", () => {
 
       expect(widenTargets).toContain("objective");
       expect(widenTargets).toContain("task");
-      expect(widenTargets).not.toContain("subtask");
+      expect(widenTargets).toContain("subtask");
     });
 
-    // Defect A (Codex, third review): a child that re-declares the inherited
-    // field ONLY to override allowed METADATA (description/default/value/
-    // granularity) is NOT a structural override — schema resolution keeps the
-    // parent's options/multiple via the restricted merge — so its notes still
-    // inherit the parent's value set and MUST be cleaned. The prior fix wrongly
-    // treated any raw child field entry as a full redefinition and excluded it.
+    // A child that re-declares the inherited field ONLY to override allowed
+    // METADATA (description/default/value/granularity) keeps the parent's
+    // structural options/multiple via the restricted merge, so its notes still
+    // inherit the parent's value set and MUST be cleaned on a parent option
+    // removal — identical in outcome to a child with no raw entry, because the
+    // resolver treats a metadata-only override and an ignored structural override
+    // the same effectively.
     describe("metadata-only child override is still affected", () => {
-      // task extends objective and re-declares `phase` but only sets a
-      // `description` (metadata) — structurally it still inherits objective's
-      // options. subtask is a real structural override (own options).
       const metadataOverrideBase: BwrbSchemaType = {
         version: 2,
         schemaVersion: "1.0.0",
@@ -668,7 +691,8 @@ describe("diffSchemas", () => {
           subtask: {
             extends: "task",
             fields: {
-              // Real structural override: its own options.
+              // Raw structural override — ALSO dropped by the resolver, so it is
+              // effectively governed by objective's options too.
               phase: { prompt: "select", options: ["todo", "doing", "done"] },
             },
           },
@@ -704,11 +728,11 @@ describe("diffSchemas", () => {
           .filter((op) => op.op === "clear-invalid-options" && op.field === "phase")
           .map((op) => (op.op === "clear-invalid-options" ? op.targetType : ""));
 
-        // Declaring type AND the metadata-only-override child are cleaned.
+        // Declaring type, the metadata-only-override child, AND the
+        // (resolver-ignored) structural-override grandchild are all cleaned.
         expect(targeted).toContain("objective");
         expect(targeted).toContain("task");
-        // The real structural override is NOT cleaned.
-        expect(targeted).not.toContain("subtask");
+        expect(targeted).toContain("subtask");
       });
 
       it("cleans a child that overrides ONLY a default", () => {
@@ -749,7 +773,196 @@ describe("diffSchemas", () => {
 
         expect(targeted).toContain("objective");
         expect(targeted).toContain("task");
-        expect(targeted).not.toContain("subtask");
+        expect(targeted).toContain("subtask");
+      });
+    });
+  });
+
+  // P1 (#728, fourth review): field-changed ops are derived from the EFFECTIVE
+  // (resolved) schema, not raw field entries. A subtype that edits its OWN raw
+  // structural override of an INHERITED field changes NOTHING effectively — the
+  // resolver's restricted merge drops a child's structural keys for an inherited
+  // field (see computeEffectiveFields in src/lib/schema.ts). So no op may be
+  // emitted, and the child's valid note values must not be deleted.
+  describe("subtype raw-override of an inherited field is a no-op (effective unchanged)", () => {
+    // objective declares `phase`; task extends objective and re-declares `phase`
+    // with its OWN options. Resolution IGNORES task's options (parent wins), so
+    // task's effective `phase` == objective's regardless of task's raw entry.
+    const base: BwrbSchemaType = {
+      version: 2,
+      schemaVersion: "1.0.0",
+      types: {
+        objective: {
+          fields: {
+            phase: {
+              prompt: "select",
+              options: ["planned", "active", "done", "abandoned"],
+            },
+          },
+        },
+        task: {
+          extends: "objective",
+          fields: {
+            // Raw structural override that the resolver DROPS for an inherited
+            // field. Editing these options must not produce a migration op.
+            phase: {
+              prompt: "select",
+              options: ["todo", "doing", "done", "wontfix"],
+            },
+          },
+        },
+      },
+    };
+
+    it("emits NO op when a subtype edits its own raw options on an inherited field", () => {
+      // Parent's `phase` is UNCHANGED; only task's (ignored) raw override is
+      // narrowed. The effective schema is identical old → new.
+      const newSchema: BwrbSchemaType = {
+        ...base,
+        schemaVersion: "1.1.0",
+        types: {
+          ...base.types,
+          task: {
+            extends: "objective",
+            fields: {
+              // "wontfix" removed from the IGNORED override — effectively a no-op.
+              phase: {
+                prompt: "select",
+                options: ["todo", "doing", "done"],
+              },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(base, newSchema, "1.0.0", "1.1.0");
+
+      const allOps = [...plan.deterministic, ...plan.nonDeterministic];
+      // No clear-invalid-options (or any op) for the ignored raw override.
+      expect(allOps.some((op) => op.op === "clear-invalid-options")).toBe(false);
+      expect(
+        allOps.filter(
+          (op) =>
+            (op.op === "clear-invalid-options" ||
+              op.op === "review-field" ||
+              op.op === "widen-field-to-multiple") &&
+            op.field === "phase"
+        )
+      ).toHaveLength(0);
+      // Effective schema is unchanged → nothing migration-relevant happened.
+      expect(plan.hasChanges).toBe(false);
+      expect(plan.schemaChanged).toBe(false);
+    });
+  });
+
+  // P2 (#728, fourth review): when a PARENT removes an option, a descendant that
+  // has a raw same-name entry the resolver IGNORES is STILL governed by the
+  // parent field (its effective options come from the parent), so its notes must
+  // be cleaned. This is the inverse of P1: same ignored raw override, but here
+  // the parent changed, so the descendant's EFFECTIVE field changed too.
+  describe("parent option removal cleans a descendant whose raw same-name override is ignored", () => {
+    const base: BwrbSchemaType = {
+      version: 2,
+      schemaVersion: "1.0.0",
+      types: {
+        objective: {
+          fields: {
+            phase: {
+              prompt: "select",
+              options: ["planned", "active", "done", "abandoned"],
+            },
+          },
+        },
+        task: {
+          extends: "objective",
+          fields: {
+            // Raw structural override DROPPED by the resolver for an inherited
+            // field → task's effective `phase` is objective's value set.
+            phase: { prompt: "select", options: ["x", "y", "z"] },
+          },
+        },
+      },
+    };
+
+    it("targets the descendant even though it raw-redeclares the field's options", () => {
+      // Remove "abandoned" from objective.phase (the real, effective value set).
+      const newSchema: BwrbSchemaType = {
+        ...base,
+        schemaVersion: "1.1.0",
+        types: {
+          ...base.types,
+          objective: {
+            fields: {
+              phase: {
+                prompt: "select",
+                options: ["planned", "active", "done"],
+              },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(base, newSchema, "1.0.0", "1.1.0");
+
+      const targeted = plan.nonDeterministic
+        .filter((op) => op.op === "clear-invalid-options" && op.field === "phase")
+        .map((op) => (op.op === "clear-invalid-options" ? op.targetType : ""));
+
+      // objective changed; task inherits the effective value set → both cleaned.
+      expect(targeted).toContain("objective");
+      expect(targeted).toContain("task");
+      // The allowed set used for task is the PARENT's new effective options, not
+      // task's ignored raw override.
+      const taskOp = plan.nonDeterministic.find(
+        (op) => op.op === "clear-invalid-options" && op.targetType === "task"
+      );
+      expect(taskOp).toEqual({
+        op: "clear-invalid-options",
+        targetType: "task",
+        field: "phase",
+        allowedValues: ["planned", "active", "done"],
+      });
+    });
+  });
+
+  // A type with its OWN field (declared fresh, not inherited via `extends`) is
+  // governed by its own options exactly as before. This is the control case
+  // proving the effective-schema rework did not regress own-field handling.
+  describe("a type's OWN (non-inherited) field is governed by its own options", () => {
+    it("emits clear-invalid-options when an own field's options are narrowed", () => {
+      const own: BwrbSchemaType = {
+        version: 2,
+        schemaVersion: "1.0.0",
+        types: {
+          ticket: {
+            fields: {
+              severity: {
+                prompt: "select",
+                options: ["low", "high", "critical"],
+              },
+            },
+          },
+        },
+      };
+      const newSchema: BwrbSchemaType = {
+        ...own,
+        schemaVersion: "1.1.0",
+        types: {
+          ticket: {
+            fields: {
+              severity: { prompt: "select", options: ["low", "high"] },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(own, newSchema, "1.0.0", "1.1.0");
+
+      expect(plan.nonDeterministic).toContainEqual({
+        op: "clear-invalid-options",
+        targetType: "ticket",
+        field: "severity",
+        allowedValues: ["low", "high"],
       });
     });
   });
