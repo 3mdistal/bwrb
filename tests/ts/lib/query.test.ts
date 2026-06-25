@@ -513,6 +513,107 @@ describe('query', () => {
       });
     });
 
+    describe('duplicate basename does not hijack a parentless candidate (#737)', () => {
+      // parentMap is keyed by BASENAME. The full-vault augmentation (#709) merges
+      // parent edges for the WHOLE vault so chains can climb through filtered-out
+      // notes. The hazard: a parentless CANDIDATE shares its basename with a
+      // DIFFERENT, parented note elsewhere in the vault. The vault merge must not
+      // borrow that other note's `parent` for the candidate's basename, or the
+      // root candidate falsely matches isDescendantOf/isChildOf of that other
+      // note's ancestor. Duplicate basenames are a supported vault shape.
+      const builtNotes: string[] = [];
+
+      beforeAll(async () => {
+        const writeNote = async (
+          dir: string,
+          name: string,
+          fm: string
+        ): Promise<void> => {
+          const path = join(vaultDir, dir, `${name}.md`);
+          await writeFile(path, `---\n${fm}\n---\n`);
+          builtNotes.push(path);
+        };
+        // Root ancestor.
+        await writeNote('Objectives/Tasks', 'hijack-root', 'type: task\nstatus: backlog');
+        // A DIFFERENT note named `Shared` that DOES have a parent, living
+        // elsewhere in the vault. It is under `hijack-root`.
+        await writeNote(
+          'Objectives/Milestones',
+          'Shared',
+          'type: milestone\nstatus: backlog\nparent: "[[hijack-root]]"'
+        );
+      });
+
+      afterAll(async () => {
+        await Promise.all(builtNotes.map(p => rm(p, { force: true })));
+      });
+
+      it('a parentless candidate is NOT a descendant of the other Shared note\'s ancestor', async () => {
+        // The candidate is a ROOT task named `Shared` with NO parent. It collides
+        // by basename with the parented milestone `Shared` written above. The
+        // candidate must stay root, not inherit the milestone's parent.
+        const files = makeFiles([
+          {
+            path: 'Objectives/Tasks/Shared.md',
+            fm: { type: 'task', status: 'backlog' },
+          },
+        ]);
+
+        const descResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ["isDescendantOf('[[hijack-root]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(descResult).toHaveLength(0);
+
+        const childResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ["isChildOf('[[hijack-root]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(childResult).toHaveLength(0);
+      });
+
+      it('the parentless candidate is still a root despite the same-basename parented note', async () => {
+        const files = makeFiles([
+          {
+            path: 'Objectives/Tasks/Shared.md',
+            fm: { type: 'task', status: 'backlog' },
+          },
+        ]);
+
+        const rootResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ['isRoot()'],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(rootResult).toHaveLength(1);
+      });
+
+      it('a candidate with its OWN parent keeps its own chain, not the colliding note\'s', async () => {
+        // Candidate `Shared` here HAS its own parent (`hijack-root` directly).
+        // Its own edge must win, and it must be a DIRECT child (isChildOf), which
+        // would be impossible if it had borrowed the milestone\'s parent.
+        const files = makeFiles([
+          {
+            path: 'Objectives/Tasks/Shared.md',
+            fm: { type: 'task', status: 'backlog', parent: '"[[hijack-root]]"' },
+          },
+        ]);
+
+        const childResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ["isChildOf('[[hijack-root]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(childResult).toHaveLength(1);
+      });
+    });
+
     it('should throw on invalid expression syntax', async () => {
       const files = makeFiles([
         { path: 'a.md', fm: { status: 'active' } },

@@ -104,10 +104,14 @@ function buildHierarchyDataFromFiles(
   const parentMap = new Map<string, string>();
   const childrenMap = new Map<string, Set<string>>();
   const nonRootNames = new Set<string>();
+  const reservedNames = new Set<string>();
   const hierarchyFieldCache = new Map<string, string[]>();
 
   for (const file of files) {
-    addParentRelationship(file, parentMap, childrenMap);
+    // Candidate pass: reserve every candidate's basename as an authoritative
+    // hierarchy identity (with or without a literal `parent`), so the full-vault
+    // augmentation cannot fill/overwrite it from a same-basename note elsewhere.
+    addParentRelationship(file, parentMap, childrenMap, reservedNames, true);
     // Separately record whether the candidate carries ANY parent-like link, for
     // `isRoot`. This is broader than the structural `parent` chain (it includes
     // single-valued same-ancestry relations like `task.milestone`), which is why
@@ -117,7 +121,7 @@ function buildHierarchyDataFromFiles(
     }
   }
 
-  return { parentMap, childrenMap, nonRootNames };
+  return { parentMap, childrenMap, nonRootNames, reservedNames };
 }
 
 /**
@@ -137,12 +141,40 @@ function noteHasParentLikeLink(
   return getHierarchyParentValue(file.frontmatter, hierarchyFields) !== undefined;
 }
 
+/**
+ * Record a note's structural `parent` edge into the parent/children maps.
+ *
+ * `reservedNames` distinguishes the two passes (see `HierarchyData.reservedNames`):
+ *
+ * - CANDIDATE pass (`reserve: true`): always RESERVE the candidate's basename as
+ *   an authoritative identity — even when the candidate has no `parent` (it then
+ *   stays terminal/root). This claims the basename so the later full-vault pass
+ *   cannot fill or overwrite it from a same-basename note elsewhere.
+ * - VAULT-AUGMENTATION pass (`reserve: false`): SKIP any basename already
+ *   reserved by a candidate, and only add edges for non-candidate notes (the
+ *   intermediate ancestors that complete a chain climbing through filtered-out
+ *   notes, #709).
+ */
 function addParentRelationship(
   file: FileWithFrontmatter,
   parentMap: Map<string, string>,
-  childrenMap: Map<string, Set<string>>
+  childrenMap: Map<string, Set<string>>,
+  reservedNames: Set<string>,
+  reserve: boolean
 ): void {
   const noteName = basename(file.path, '.md');
+
+  if (reserve) {
+    // Claim this candidate's basename as authoritative so the full-vault pass
+    // cannot fill/overwrite it from a same-basename note elsewhere. A parentless
+    // candidate is reserved too: it must stay root, not be hijacked.
+    reservedNames.add(noteName);
+  } else if (reservedNames.has(noteName)) {
+    // A candidate already owns this basename; never let a same-basename vault
+    // note supply or clobber its hierarchy.
+    return;
+  }
+
   // Don't let a later (less specific, full-vault) pass clobber an entry the
   // type-aware pass already resolved for the candidate set.
   if (parentMap.has(noteName)) return;
@@ -206,12 +238,20 @@ async function augmentHierarchyDataFromVault(
   const snapshot =
     options.snapshot ?? (await buildVaultNoteSnapshot(options.schema, options.vaultDir));
 
+  // Candidate basenames are authoritative identities; the vault pass must not
+  // fill or overwrite them from a same-basename note elsewhere (see
+  // HierarchyData.reservedNames). It still supplies parent edges for
+  // NON-candidate notes — the intermediate ancestors of a chain that climbs
+  // through filtered-out notes (#709).
+  const reservedNames = hierarchyData.reservedNames ?? new Set<string>();
   for (const note of snapshot.notes) {
     if (!note.frontmatter) continue;
     addParentRelationship(
       { path: note.path, frontmatter: note.frontmatter },
       hierarchyData.parentMap,
-      hierarchyData.childrenMap
+      hierarchyData.childrenMap,
+      reservedNames,
+      false
     );
   }
 

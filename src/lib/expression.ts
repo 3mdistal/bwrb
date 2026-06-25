@@ -57,6 +57,19 @@ export interface HierarchyData {
    * silently picking one note's subtree.
    */
   aliasMap?: Map<string, string>;
+  /**
+   * Basenames of the CANDIDATE notes being filtered/evaluated. A candidate's own
+   * hierarchy identity is authoritative: the full-vault augmentation pass must
+   * NOT overwrite a candidate's `parent` entry, nor invent a `parent` for a
+   * parentless candidate, just because a DIFFERENT note elsewhere in the vault
+   * shares its basename (`parentMap` is basename-keyed). Reserving every
+   * candidate basename here keeps a parentless candidate at the root and stops a
+   * same-basename note elsewhere from hijacking its hierarchy
+   * (`isChildOf`/`isDescendantOf` false positives). Non-candidate intermediate
+   * ancestors are NOT reserved, so the vault pass still fills chains that climb
+   * through filtered-out notes (#709).
+   */
+  reservedNames?: Set<string>;
 }
 
 /**
