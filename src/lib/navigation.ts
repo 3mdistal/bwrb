@@ -12,6 +12,7 @@ import type { LoadedSchema } from '../types/schema.js';
 import {
   buildVaultNoteSnapshot,
   discoverFilesForNavigation,
+  filterByPath,
   findSimilarFiles,
   type ManagedFile
 } from './discovery.js';
@@ -30,6 +31,22 @@ export interface NoteIndex {
   byAlias: Map<string, ManagedFile[]>;
   /** All discovered files */
   allFiles: ManagedFile[];
+  /**
+   * Full-vault basename map used ONLY for wikilink disambiguation.
+   *
+   * When the index is path-filtered (`buildNoteIndex(..., pathFilter)`), the
+   * `byBasename` map above is scoped to the in-path notes so resolution honors
+   * `--path` (#705). But wikilink generation must NOT use that scoped map to
+   * decide whether a basename is globally unique: a basename duplicated across
+   * the vault but unique within the path glob would otherwise emit a bare
+   * `[[Duplicate]]` that can resolve to the wrong note in Obsidian.
+   *
+   * This map always reflects the UNFILTERED vault, so `getShortestWikilinkTarget`
+   * path-qualifies globally-duplicated basenames even under a path-scoped search.
+   * It is only populated when a path filter is applied; otherwise `byBasename`
+   * already covers the whole vault and disambiguation falls back to it.
+   */
+  fullByBasename?: Map<string, ManagedFile[]>;
 }
 
 export interface ResolutionResult {
@@ -53,9 +70,26 @@ export type { ManagedFile };
   *
   * Uses the same global discovery rules as the rest of the CLI (exclusions apply
   * consistently across list/search/open/edit/audit).
+  *
+  * When `pathFilter` is provided, the candidate file set is narrowed by the same
+  * glob normalization used by content search and bulk commands (`filterByPath`)
+  * BEFORE any maps are built. This scopes every downstream resolution (path,
+  * basename, alias, and fuzzy/partial matching) to the path-filtered set, so
+  * name-mode `search --path` behaves consistently with `search --body --path`.
   */
-export async function buildNoteIndex(schema: LoadedSchema, vaultDir: string): Promise<NoteIndex> {
-  const files = await discoverFilesForNavigation(schema, vaultDir);
+export async function buildNoteIndex(
+  schema: LoadedSchema,
+  vaultDir: string,
+  pathFilter?: string
+): Promise<NoteIndex> {
+  const allDiscovered = await discoverFilesForNavigation(schema, vaultDir);
+
+  // When a path filter is active, resolution maps are built over the in-path
+  // subset only, but we ALSO retain a full-vault basename map (derived from the
+  // unfiltered discovery already in memory — no extra IO) so wikilink generation
+  // can detect globally-duplicated basenames and path-qualify them even though
+  // resolution is scoped to the glob (#705 regression fix).
+  const files = pathFilter ? filterByPath(allDiscovered, pathFilter) : allDiscovered;
 
   const byPath = new Map<string, ManagedFile>();
   const byBasename = new Map<string, ManagedFile[]>();
@@ -67,6 +101,20 @@ export async function buildNoteIndex(schema: LoadedSchema, vaultDir: string): Pr
     const existing = byBasename.get(name) || [];
     existing.push(file);
     byBasename.set(name, existing);
+  }
+
+  // Full-vault basename map for wikilink disambiguation. Only needed when the
+  // resolution maps above were scoped by a path filter; without a filter,
+  // `byBasename` already spans the whole vault.
+  let fullByBasename: Map<string, ManagedFile[]> | undefined;
+  if (pathFilter) {
+    fullByBasename = new Map<string, ManagedFile[]>();
+    for (const file of allDiscovered) {
+      const name = basename(file.relativePath, '.md');
+      const existing = fullByBasename.get(name) || [];
+      existing.push(file);
+      fullByBasename.set(name, existing);
+    }
   }
 
   // Index entity aliases as additional resolution keys, so notes are findable by
@@ -96,7 +144,13 @@ export async function buildNoteIndex(schema: LoadedSchema, vaultDir: string): Pr
     }
   }
 
-  return { byPath, byBasename, byAlias, allFiles: files };
+  return {
+    byPath,
+    byBasename,
+    byAlias,
+    allFiles: files,
+    ...(fullByBasename ? { fullByBasename } : {}),
+  };
 }
 
 // ============================================================================
@@ -228,7 +282,14 @@ export function resolveNoteQuery(index: NoteIndex, query: string): ResolutionRes
  */
 export function getShortestWikilinkTarget(index: NoteIndex, file: ManagedFile): string {
   const name = basename(file.relativePath, '.md');
-  const filesWithSameName = index.byBasename.get(name);
+  // Disambiguate against the FULL vault, not a path-filtered subset. When the
+  // index was scoped by `--path` (#705), `byBasename` only contains in-path
+  // notes; using it here would treat a globally-duplicated basename as unique
+  // and emit a bare `[[Duplicate]]` that resolves ambiguously in Obsidian.
+  // `fullByBasename` (when present) always spans the whole vault; otherwise the
+  // index is already unfiltered and `byBasename` is the full-vault map.
+  const disambiguationByBasename = index.fullByBasename ?? index.byBasename;
+  const filesWithSameName = disambiguationByBasename.get(name);
   
   // If basename is unique, use just the basename
   if (filesWithSameName && filesWithSameName.length === 1) {

@@ -19,6 +19,22 @@ Search operates in three modes:
 - **Fuzzy search** (`--fuzzy`): Ranked approximate matching over note names and aliases, with scores
 - **Content search** (`--body`): Full-text search across note contents using ripgrep
 
+## Path Filtering
+
+`-p, --path <pattern>` scopes the candidate notes to a path glob (e.g.
+`"Projects/**"`) using the same normalization as `list` and the bulk commands.
+It applies in **all three modes**:
+
+- **Name search** — narrows resolution so the glob can disambiguate or exclude
+  matches by directory (e.g. `search Sample --path "Ideas/**"`).
+- **Fuzzy search** (`--fuzzy`) — ranks only candidates inside the glob.
+- **Content search** (`--body`) — prefilters files before the content scan, so
+  `--limit` applies to the path-scoped set.
+
+`--path-glob` is a **deprecated alias** for `--path`. If you pass both, `--path`
+wins and `--path-glob` is ignored — `search` prints a warning to stderr so the
+ignored value is never silent.
+
 ## Options
 
 ### Output
@@ -43,7 +59,7 @@ Search operates in three modes:
 | Option | Description |
 |--------|-------------|
 | `-t, --type <type>` | Restrict search to a type |
-| `-p, --path <pattern>` | Filter by file path glob pattern |
+| `-p, --path <pattern>` | Filter by file path glob pattern (applies in **all** modes — name, `--fuzzy`, and `--body`) |
 | `-w, --where <expr>` | Filter results by frontmatter expression (repeatable) |
 | `-b, --body` | Enable content search mode |
 | `--fuzzy` | Enable fuzzy ranked matching over names and aliases |
@@ -66,6 +82,12 @@ Search operates in three modes:
 | `-E, --regex` | Treat pattern as regex (default: literal) |
 | `-l, --limit <count>` | Maximum files to return (default: 100) |
 
+`--context` and `--limit` are strictly validated, consistent with `--fuzzy`'s
+`--threshold` / `--limit`: a malformed value (e.g. `--limit abc`, `--limit 2.7`,
+`--context -1`) is rejected with a clear error rather than being silently coerced.
+`--context` accepts `0` (equivalent to `--no-context`); `--limit` must be a
+positive integer.
+
 ## Output Formats
 
 | Format | Description |
@@ -83,6 +105,9 @@ Search operates in three modes:
 ```bash
 # Find by name
 bwrb search "My Note"
+
+# Scope name resolution to a directory (disambiguates duplicate basenames)
+bwrb search "Sample" --path "Ideas/**"
 
 # Output as wikilink
 bwrb search "My Note" --output link
@@ -227,6 +252,11 @@ bwrb search "bug" --output paths | xargs -I {} code {}
 Uses shortest unambiguous form:
 - Unique basename: `[[My Note]]`
 - Ambiguous (multiple notes with same name): `[[Ideas/My Note]]`
+
+Disambiguation is always evaluated against the **whole vault**, even when
+`--path` scopes the search. A basename that is duplicated elsewhere in the vault
+stays path-qualified (`[[Ideas/My Note]]`) so the emitted link is unambiguous in
+Obsidian — even if only one copy falls inside the `--path` glob.
 
 ## App Mode Precedence
 
