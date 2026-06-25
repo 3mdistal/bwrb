@@ -7,7 +7,7 @@
 
 import ignore, { type Ignore } from 'ignore';
 import { minimatch } from 'minimatch';
-import { readdir, readFile } from 'fs/promises';
+import { readdir, readFile, realpath } from 'fs/promises';
 import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
 import {
@@ -622,6 +622,60 @@ export async function discoverManagedFiles(
   }
 
   return discoverFilesForQueryResolution(schema, vaultDir);
+}
+
+/**
+ * Collapse a list of {@link ManagedFile}s that resolve to the SAME canonical
+ * on-disk path to a single entry, keyed on `fs.realpath`.
+ *
+ * On a case-insensitive filesystem (e.g. macOS APFS, Windows NTFS) a single note
+ * can be enumerated under two different path casings — for example a type whose
+ * `output_dir` is declared `Tasks` but lives on disk as `tasks/`, where the
+ * managed-type walk roots the path at `Tasks/...` while the unmanaged vault walk
+ * sees the real `tasks/...`. Both casings name the SAME directory entry, so
+ * `realpath('Tasks/X.md')` and `realpath('tasks/X.md')` resolve to one canonical
+ * path and collapse — a consumer like `bulk` then writes/reports that note once.
+ *
+ * We key on the canonical PATH rather than `stat().dev:ino` precisely so that
+ * genuine HARDLINKS are NOT collapsed: two hardlinked notes share an inode but
+ * are DISTINCT directory entries with DISTINCT realpaths. A bulk `move` is
+ * path-based — `rename` only relocates the one kept directory entry — so keying
+ * on inode would silently leave the other hardlink unmoved and omit it from the
+ * candidate count/results. Distinct realpaths keep both, so each is moved and
+ * reported. (Genuinely distinct files have distinct realpaths too, so they are
+ * unaffected.)
+ *
+ * The first occurrence wins, so callers can pre-order to control which on-disk
+ * casing is kept for display. Entries whose `path` cannot be resolved (e.g. a
+ * race deletion, or a broken symlink) fall back to keying on the literal
+ * normalized path so they are never silently dropped. Output order follows
+ * first-seen order of the input.
+ */
+export async function dedupeByCanonicalPath(
+  files: ManagedFile[]
+): Promise<ManagedFile[]> {
+  const seen = new Set<string>();
+  const result: ManagedFile[] = [];
+
+  for (const file of files) {
+    let key: string;
+    try {
+      // Canonical on-disk path: collapses case-variant aliases of one directory
+      // entry, keeps distinct hardlinked paths apart.
+      key = `canonical:${await realpath(file.path)}`;
+    } catch {
+      // If we can't resolve (file vanished mid-run, broken symlink), fall back
+      // to the literal path so distinct unresolved entries are preserved rather
+      // than collapsed.
+      key = `path:${file.path}`;
+    }
+
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(file);
+  }
+
+  return result;
 }
 
 // ============================================================================

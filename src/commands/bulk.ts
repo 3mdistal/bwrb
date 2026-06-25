@@ -19,7 +19,7 @@ import {
   resolveTypeFromFrontmatter,
   formatUnknownTypeError,
 } from '../lib/schema.js';
-import { discoverManagedFiles } from '../lib/discovery.js';
+import { discoverManagedFiles, dedupeByCanonicalPath } from '../lib/discovery.js';
 import { parseNote } from '../lib/frontmatter.js';
 import { filterByPath } from '../lib/targeting.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
@@ -796,6 +796,10 @@ async function preflightDiscovery(options: PreflightOptions): Promise<PreflightR
   if (pathGlob) {
     files = filterByPath(files, pathGlob);
   }
+
+  // Collapse same-file-different-casing duplicates (case-insensitive FS) so the
+  // preflight count and confirmation threshold match what executeBulk will act on.
+  files = await dedupeByCanonicalPath(files);
 
   // Note: We don't filter by body content or where expressions in preflight
   // because that would require parsing all files. The preflight is an upper bound
