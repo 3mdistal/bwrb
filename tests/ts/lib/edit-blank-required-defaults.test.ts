@@ -35,6 +35,7 @@ const SCHEMA: Schema = {
         status: { prompt: 'select', options: ['todo', 'doing', 'done'], required: true, default: 'todo' },
         priority: { prompt: 'select', options: ['low', 'high'], default: 'low' },
         deadline: { prompt: 'date', default: '12/25/2026' },
+        dates: { prompt: 'date', multiple: true, default: ['12/25/2026'] },
       },
     },
     record: {
@@ -279,5 +280,77 @@ deadline: 2026-01-01
     // Parity: audit finds no invalid-date-format for the materialized default.
     const results = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
     expect(auditIssues(results, 'Deadline.md')).not.toContain('invalid-date-format');
+  });
+
+  it('blanking a multiple:true date field with a NON-canonical default array persists CANONICAL per-element dates; audit stays clean (#707)', async () => {
+    // Defect: the scoped `applyDefaults` materialized the `multiple: true` date
+    // default array (`["12/25/2026"]`), but `normalizeDateFields` only
+    // canonicalized SCALAR date fields — it never iterated the elements of a
+    // date ARRAY. So `dates: ["12/25/2026"]` was persisted un-normalized and the
+    // next `audit` flagged `invalid-date-format`, reopening the write↔audit gap.
+    // The fix canonicalizes each element of a `multiple: true` date default.
+    const taskPath = join(vaultDir, 'tasks', 'Dates.md');
+    await writeFile(
+      taskPath,
+      `---
+type: task
+name: Dates
+status: doing
+dates:
+  - 2026-01-01
+---
+
+# Dates
+`
+    );
+
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(schema, vaultDir, taskPath, JSON.stringify({ dates: '   ' }), {
+      jsonMode: false,
+    });
+
+    // Each materialized element is the CANONICAL ISO form, not the raw slash date.
+    const fm = await readFrontmatter(taskPath);
+    expect(fm['dates']).toEqual(['2026-12-25']);
+
+    // Parity: audit finds no invalid-date-format for the materialized default.
+    const results = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    expect(auditIssues(results, 'Dates.md')).not.toContain('invalid-date-format');
+  });
+
+  it('a user-supplied multiple:true date value in non-canonical form is normalized per-element on write (parity with scalar)', async () => {
+    // A non-canonical-but-accepted list-date value the user supplies directly
+    // must be written in the same canonical ISO form `audit` validates — keeping
+    // `multiple` date normalization in lockstep with scalar date normalization.
+    const taskPath = join(vaultDir, 'tasks', 'UserDates.md');
+    await writeFile(
+      taskPath,
+      `---
+type: task
+name: UserDates
+status: doing
+dates:
+  - 2026-01-01
+---
+
+# UserDates
+`
+    );
+
+    const schema = await loadSchema(vaultDir);
+    await editNoteFromJson(
+      schema,
+      vaultDir,
+      taskPath,
+      JSON.stringify({ dates: ['12/25/2026', '2026-02-03'] }),
+      { jsonMode: false }
+    );
+
+    // Slash form canonicalized; already-canonical element left intact.
+    const fm = await readFrontmatter(taskPath);
+    expect(fm['dates']).toEqual(['2026-12-25', '2026-02-03']);
+
+    const results = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    expect(auditIssues(results, 'UserDates.md')).not.toContain('invalid-date-format');
   });
 });

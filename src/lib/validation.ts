@@ -132,30 +132,53 @@ export function normalizeDateFields(
     if (!(fieldName in normalized)) continue;
 
     const value = normalized[fieldName];
-    // A blank optional value (null/undefined/empty/whitespace-only) is "unset";
-    // leave it untouched so it isn't normalized into a bogus date (#707).
-    if (isBlankScalar(value)) continue;
+    const granularity = resolveDateGranularity(field, schema.config);
 
-    // Handle any residual Date objects (defense-in-depth).
-    // Use UTC components since YAML dates are stored as midnight UTC.
-    if (value instanceof Date) {
-      normalized[fieldName] = formatUtcDate(value);
+    // A `multiple: true` date field holds an array; canonicalize each element
+    // against the field's granularity so list-date values (default-materialized
+    // OR user-supplied) are written in the same ISO form `audit` validates and
+    // `#673`-style per-element quoting expects. Mirrors the per-element validation
+    // in `validateFieldType` (#707).
+    if (field.multiple && Array.isArray(value)) {
+      normalized[fieldName] = value.map((element) =>
+        normalizeDateValue(element, granularity)
+      );
       continue;
     }
 
-    // A bare year (e.g. 2026) may arrive as a number from YAML/JSON; coerce so
-    // it can be normalized against the field's granularity.
-    const dateValue = typeof value === 'number' ? String(value) : value;
-    if (typeof dateValue !== 'string') continue;
-
-    const granularity = resolveDateGranularity(field, schema.config);
-    const result = normalizeToIsoDate(dateValue, granularity);
-    if (result.valid) {
-      normalized[fieldName] = result.value;
-    }
+    normalized[fieldName] = normalizeDateValue(value, granularity);
   }
 
   return normalized;
+}
+
+/**
+ * Canonicalize a single date value to its ISO stored form against the supplied
+ * granularity. Shared by scalar date fields and per-element normalization of
+ * `multiple: true` date arrays so the two paths stay in lockstep (#707).
+ *
+ * Returns the input untouched when it is blank/unset, a residual `Date`
+ * (formatted from UTC), a non-coercible non-string, or fails normalization — in
+ * the last case the validation layer surfaces a clear error.
+ */
+function normalizeDateValue(value: unknown, granularity: DatePrecision): unknown {
+  // A blank value (null/undefined/empty/whitespace-only) is "unset"; leave it
+  // untouched so it isn't normalized into a bogus date (#707).
+  if (isBlankScalar(value)) return value;
+
+  // Handle any residual Date objects (defense-in-depth).
+  // Use UTC components since YAML dates are stored as midnight UTC.
+  if (value instanceof Date) {
+    return formatUtcDate(value);
+  }
+
+  // A bare year (e.g. 2026) may arrive as a number from YAML/JSON; coerce so
+  // it can be normalized against the field's granularity.
+  const dateValue = typeof value === 'number' ? String(value) : value;
+  if (typeof dateValue !== 'string') return value;
+
+  const result = normalizeToIsoDate(dateValue, granularity);
+  return result.valid ? result.value : value;
 }
 
 
