@@ -16,7 +16,7 @@ import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError }
 import { buildNoteIndex, type ManagedFile } from '../lib/navigation.js';
 import { parsePickerMode, resolveAndPick, type PickerMode } from '../lib/picker.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
-import { openNote, resolveAppMode } from './open.js';
+import { openNote, resolveAppMode, parseAppMode } from './open.js';
 import { resolveTargets, hasAnyTargeting, type TargetingOptions } from '../lib/targeting.js';
 import { UserCancelledError } from '../lib/errors.js';
 
@@ -64,6 +64,7 @@ function printEditSuccess(path: string, updatedFields: string[], jsonMode: boole
 export const editCommand = new Command('edit')
   .description('Edit an existing note')
   .argument('[query]', 'Note name or path to edit')
+  .argument('[mode]', 'App mode for --open: system, editor, visual, obsidian, print')
   .option('--picker <mode>', 'Picker mode: fzf, numbered, none', 'fzf')
   .option('-t, --type <type>', 'Filter by note type')
   .option('-p, --path <glob>', 'Filter by path pattern')
@@ -97,9 +98,33 @@ Examples:
 
   # Edit and open
   bwrb edit "My Note" --open                # Open the note after editing
-  bwrb edit "My Note" --open --app editor   # Edit then open in $EDITOR`)
-  .action(async (query: string | undefined, options: EditOptions, cmd: Command) => {
+  bwrb edit "My Note" --open --app editor   # Edit then open in $EDITOR
+  bwrb edit "My Note" --open print          # Positional mode (for --open)
+
+App Modes (for --open):
+  system      Open with OS default handler (default)
+  editor      Open in terminal editor ($EDITOR or config.editor)
+  visual      Open in GUI editor ($VISUAL or config.visual)
+  obsidian    Open in Obsidian via URI scheme
+  print       Print the resolved path (for scripting)
+
+Precedence (for --open app mode):
+  1. --app flag (explicit)
+  2. [mode] positional argument (e.g. bwrb edit "My Note" --open print)
+  3. BWRB_DEFAULT_APP environment variable
+  4. config.open_with in .bwrb/schema.json
+  5. Fallback: system`)
+  // Reject excess positional args (e.g. `edit "Note" print bogus`). Only
+  // [query] and [mode] are accepted; a third+ token is almost certainly a
+  // typo, and silently swallowing it (commander's default) hides the mistake.
+  .allowExcessArguments(false)
+  .action(async (query: string | undefined, mode: string | undefined, options: EditOptions, cmd: Command) => {
     const patchMode = options.json !== undefined;
+    // App-mode precedence: an explicit --app flag wins over the positional
+    // [mode]; the positional is the convenience form. An invalid positional
+    // mode surfaces via parseAppMode (inside resolveAppMode) as a clear error
+    // rather than silently falling back to the default app.
+    const appModeInput = options.app ?? mode;
     let jsonMode = patchMode;
     try {
       const globalOpts = getGlobalOpts(cmd);
@@ -122,6 +147,24 @@ Examples:
       if (globalOpts.nonInteractive && !patchMode) {
         printError('bwrb edit requires --json <patch> when --non-interactive is set.');
         process.exit(1);
+      }
+
+      // Validate the app mode eagerly (mirrors `open`): an invalid value from
+      // either --app or the positional [mode] errors loudly here rather than
+      // being silently ignored when --open isn't requested. Surface it as a
+      // VALIDATION_ERROR (exit 1) with a clear message, consistent with `open`.
+      if (appModeInput !== undefined) {
+        try {
+          parseAppMode(appModeInput);
+        } catch (modeErr) {
+          const message = modeErr instanceof Error ? modeErr.message : String(modeErr);
+          if (jsonMode) {
+            printJson(jsonError(message));
+            process.exit(ExitCodes.VALIDATION_ERROR);
+          }
+          printError(message);
+          process.exit(1);
+        }
       }
 
       // Validate type if provided
@@ -159,14 +202,14 @@ Examples:
             const editResult = await editNoteFromJson(schema, vaultDir, query, options.json!, { jsonMode });
             printEditSuccess(relative(vaultDir, query), editResult.updatedFields, jsonMode);
             if (options.open) {
-              const appMode = resolveAppMode(options.app, schema.config);
+              const appMode = resolveAppMode(appModeInput, schema.config);
               await openNote(vaultDir, query, appMode, schema.config, true);
             }
           } else {
             await editNoteInteractive(schema, vaultDir, query, {});
             printSuccess(`Updated ${basename(query, '.md')}`);
             if (options.open) {
-              const appMode = resolveAppMode(options.app, schema.config);
+              const appMode = resolveAppMode(appModeInput, schema.config);
               await openNote(vaultDir, query, appMode, schema.config, false);
             }
           }
@@ -265,7 +308,7 @@ Examples:
 
         // Open after edit if requested
         if (options.open) {
-          const appMode = resolveAppMode(options.app, schema.config);
+          const appMode = resolveAppMode(appModeInput, schema.config);
           await openNote(vaultDir, targetFile.path, appMode, schema.config, true);
         }
       } else {
@@ -275,7 +318,7 @@ Examples:
 
         // Open after edit if requested
         if (options.open) {
-          const appMode = resolveAppMode(options.app, schema.config);
+          const appMode = resolveAppMode(appModeInput, schema.config);
           await openNote(vaultDir, targetFile.path, appMode, schema.config, false);
         }
       }

@@ -8,8 +8,16 @@ Search for notes by name or content, with interactive selection and multiple out
 ## Synopsis
 
 ```bash
-bwrb search [options] [query]
+bwrb search [options] [query] [mode]
 ```
+
+The optional second positional `[mode]` is the app mode used with `--open`
+(`system`, `editor`, `visual`, `obsidian`, `print`) — parity with
+[`bwrb open`](/reference/commands/open/). For example,
+`bwrb search "My Note" --open print` prints the resolved path. An explicit
+`--app` flag always takes precedence over the positional `[mode]`, an invalid
+mode value is rejected with a clear error, and a third excess positional is
+rejected.
 
 ## Modes
 
@@ -118,6 +126,9 @@ bwrb search "My Note" --open
 
 # Find and open in $EDITOR
 bwrb search "My Note" --open --app editor
+
+# Find and open with a positional app mode (parity with `open`)
+bwrb search "My Note" --open print
 
 # Find and edit frontmatter
 bwrb search "My Note" --edit

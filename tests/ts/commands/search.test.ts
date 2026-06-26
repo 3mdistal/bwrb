@@ -470,10 +470,22 @@ Some content
   });
 
   describe('argument validation', () => {
-    it('should reject extra positional arguments', async () => {
+    it('should reject a second positional that is not a valid app mode', async () => {
+      // After #711, the second positional is [mode] (parity with `open`). A
+      // non-mode value like "status!=done" is rejected via app-mode validation
+      // (in JSON mode the error is returned as structured JSON on stdout).
       const result = await runCLI(['search', 'TODO', '--body', 'status!=done', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/Invalid app mode/i);
+    });
+
+    it('should reject a third excess positional argument', async () => {
+      const result = await runCLI(['search', 'TODO', 'print', 'extra'], vaultDir);
+
+      expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toMatch(/too many arguments/i);
     });
   });
@@ -967,6 +979,70 @@ Some content
         expect(json.error).toContain('Unknown function: missingFn');
       });
     });
+  });
+});
+
+// Positional [mode] parity with `open` (#711). `search` already takes a
+// [query] positional; [mode] is the trailing second positional and is honored
+// only with --open. An explicit --app flag wins over the positional; an invalid
+// mode errors loudly; a third positional is rejected.
+describe('search positional app mode (#711)', () => {
+  let vaultDir: string;
+
+  beforeEach(async () => {
+    vaultDir = await createTestVault();
+  });
+
+  afterEach(async () => {
+    await cleanupTestVault(vaultDir);
+  });
+
+  it('honors a positional mode with --open (search <query> print --open)', async () => {
+    const result = await runCLI(
+      ['search', 'Sample Idea', 'print', '--open', '--picker', 'none'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Sample Idea.md');
+  });
+
+  it('lets --app flag take precedence over positional mode', async () => {
+    // Positional says system, flag says print -> print wins (prints path).
+    const result = await runCLI(
+      ['search', 'Sample Idea', 'system', '--open', '--app', 'print', '--picker', 'none'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Sample Idea.md');
+  });
+
+  it('errors on an invalid positional mode', async () => {
+    const result = await runCLI(
+      ['search', 'Sample Idea', 'bogus-mode', '--open', '--picker', 'none'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Invalid app mode');
+  });
+
+  it('rejects excess positional args (search <query> <mode> <extra>)', async () => {
+    const result = await runCLI(
+      ['search', 'Sample Idea', 'print', 'bogus', '--open', '--picker', 'none'],
+      vaultDir
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('too many arguments');
+  });
+
+  it('does not regress single-positional name search', async () => {
+    const result = await runCLI(['search', 'Sample Idea'], vaultDir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe('Sample Idea');
   });
 });
 
