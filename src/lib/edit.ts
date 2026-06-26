@@ -32,7 +32,9 @@ import {
   validateFrontmatter,
   validateContextFields,
   normalizeDateFields,
+  applyDefaults,
 } from './validation.js';
+import { isBlankScalar } from './emptiness.js';
 import { validateParentNoCycle } from './hierarchy.js';
 import {
   printJson,
@@ -158,11 +160,52 @@ export async function editNoteFromJson(
   const mergedFrontmatter = mergeFrontmatter(frontmatter, patchData);
   const updatedFields = Object.keys(patchData).filter(k => patchData[k] !== undefined);
 
-  // Normalize date-like fields to canonical YYYY-MM-DD strings
-  const normalizedFrontmatter = normalizeDateFields(schema, typePath, mergedFrontmatter);
+  // Materialize defaults BEFORE validating/writing — but ONLY for the parity
+  // case, SURGICALLY scoped to the keys the user blanked in THIS patch.
+  //
+  // The write↔audit parity bug (#707): a blank (incl. whitespace-only) value for
+  // a key whose field HAS a `default`/`value` passes validation —
+  // `validateFrontmatter` treats it as "unset → satisfied by the default" — but
+  // the blank would be PERSISTED, so `audit` then flags `empty-string-required`:
+  // write says OK, audit says broken. Materializing the default for that key makes
+  // write and audit agree.
+  //
+  // A BLANKET `applyDefaults` over the whole merged frontmatter over-corrects in
+  // two ways, so we scope instead:
+  //   1. Explicit removal (`{"field": null}`) is the documented way to delete a
+  //      field. `mergeFrontmatter` deletes it; a blanket default would write it
+  //      straight back. We EXCLUDE null (isBlankScalar is true for null, so we
+  //      filter on a blank STRING specifically) → removal is preserved.
+  //   2. An edit must not materialize defaults for fields the user never touched.
+  //      Scoping to user-patch keys leaves untouched fields alone.
+  //
+  // Keys the user blanked but whose field has NO default stay blank: optional →
+  // unset (trim-everywhere preserved), required → still rejected at validation.
+  const blankPatchKeys = new Set(
+    Object.keys(patchData).filter(
+      (key) => typeof patchData[key] === 'string' && isBlankScalar(patchData[key])
+    )
+  );
+  const defaultedFrontmatter = applyDefaults(
+    schema,
+    typePath,
+    mergedFrontmatter,
+    blankPatchKeys
+  );
+
+  // Normalize date-like fields to canonical YYYY-MM-DD strings — AFTER defaults
+  // are materialized (#707). A materialized date default can be non-canonical
+  // (e.g. `default: "12/25/2026"`); `validateFrontmatter` accepts the slash form,
+  // so without normalizing it here the raw default would be PERSISTED and `audit`
+  // would then flag `invalid-date-format`. Running the single date-normalization
+  // pass after `applyDefaults` canonicalizes BOTH user-supplied date values and
+  // any date default we just filled in, so write and audit agree on the stored
+  // form. (Mirrors `new`/json-mode, which materializes defaults before building
+  // the note.)
+  const resolvedFrontmatter = normalizeDateFields(schema, typePath, defaultedFrontmatter);
 
   // Validate merged result
-  const validation = validateFrontmatter(schema, typePath, normalizedFrontmatter);
+  const validation = validateFrontmatter(schema, typePath, resolvedFrontmatter);
   if (!validation.valid) {
     if (jsonMode) {
       printJson({
@@ -183,7 +226,7 @@ export async function editNoteFromJson(
   }
 
   // Validate context fields (source type constraints)
-  const contextValidation = await validateContextFields(schema, vaultDir, typePath, normalizedFrontmatter);
+  const contextValidation = await validateContextFields(schema, vaultDir, typePath, resolvedFrontmatter);
   if (!contextValidation.valid) {
     if (jsonMode) {
       printJson({
@@ -204,13 +247,13 @@ export async function editNoteFromJson(
   }
 
   // Validate parent field doesn't create a cycle (for recursive types)
-  if (typeDef.recursive && normalizedFrontmatter['parent']) {
+  if (typeDef.recursive && resolvedFrontmatter['parent']) {
     const noteName = filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
     const cycleError = await validateParentNoCycle(
       schema,
       vaultDir,
       noteName,
-      normalizedFrontmatter['parent'] as string
+      resolvedFrontmatter['parent'] as string
     );
     if (cycleError) {
       if (jsonMode) {
@@ -230,7 +273,7 @@ export async function editNoteFromJson(
 
   // Get field order
   const fieldOrder = getFrontmatterOrder(typeDef);
-  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(normalizedFrontmatter);
+  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(resolvedFrontmatter);
 
   // Recurrence fast path (atomicity, #107): VALIDATE + COMPUTE the successor
   // BEFORE mutating the predecessor. If this completion would spawn a successor
@@ -243,12 +286,12 @@ export async function editNoteFromJson(
     typeDef.name,
     filePath,
     frontmatter,
-    normalizedFrontmatter,
+    resolvedFrontmatter,
     body
   );
 
   // Write updated note (predecessor status change is now safe to commit).
-  await writeNote(filePath, normalizedFrontmatter, body, orderedFields);
+  await writeNote(filePath, resolvedFrontmatter, body, orderedFields);
 
   // Commit the prepared spawn (create successor + back-link `next`). Identical
   // result to the audit backstop, which shares the same engine.

@@ -5026,13 +5026,14 @@ effort: ""
       }
     });
 
-    it('should flag a blank (whitespace) optional number as wrong-scalar-type (write/audit parity)', async () => {
-      // Parity with the write path: validateFrontmatter computes emptiness with
-      // `value !== ''` (NOT trimmed), so a whitespace-only value like "   " is
-      // NOT treated as unset and is rejected as a wrong-type scalar. Audit must
-      // agree and flag it as wrong-scalar-type. Only the literal empty string
-      // ("") is skipped as "unset" (see the #664 test above). This keeps audit
-      // and `new --json`/`edit` in agreement on whitespace-only scalars.
+    it('should not flag a blank (whitespace) optional number as wrong-scalar-type (#707)', async () => {
+      // #707 unifies whitespace handling to trim-everywhere: a whitespace-only
+      // value like "   " is "unset" the same as "" across ALL scalar types, on
+      // both write and audit. validateFrontmatter now treats blank optional
+      // values as unset via the shared `isBlankScalar` helper, so audit must
+      // agree and NOT flag a blank optional number. Mirrors the optional-date
+      // behaviour (see the blank-date test above), so dates and numbers handle
+      // whitespace-only values identically.
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Blank Effort.md'),
         `---
@@ -5047,13 +5048,51 @@ effort: "   "
       const output = JSON.parse(result.stdout);
       const file = output.files.find((f: { path: string }) => f.path.includes('Blank Effort.md'));
 
-      expect(file).toBeDefined();
-      const numberIssue = file.issues.find(
-        (i: { code: string; field?: string }) =>
-          i.code === 'wrong-scalar-type' && i.field === 'effort'
+      if (file) {
+        const numberIssue = file.issues.find(
+          (i: { code: string; field?: string }) =>
+            i.code === 'wrong-scalar-type' && i.field === 'effort'
+        );
+        expect(numberIssue).toBeUndefined();
+      }
+    });
+
+    it('should not flag an empty or blank optional boolean as wrong-scalar-type (#707)', async () => {
+      // Booleans must follow the same unified trim-everywhere rule as dates and
+      // numbers (#707): both an empty string and a whitespace-only string are
+      // "unset" and skipped on write and audit alike.
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Empty Archived.md'),
+        `---
+type: idea
+status: raw
+archived: ""
+---
+`
       );
-      expect(numberIssue).toBeDefined();
-      expect(numberIssue.expected).toBe('number');
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Blank Archived.md'),
+        `---
+type: idea
+status: raw
+archived: "   "
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(result.stdout);
+
+      for (const name of ['Empty Archived.md', 'Blank Archived.md']) {
+        const file = output.files.find((f: { path: string }) => f.path.includes(name));
+        if (file) {
+          const boolIssue = file.issues.find(
+            (i: { code: string; field?: string }) =>
+              i.code === 'wrong-scalar-type' && i.field === 'archived'
+          );
+          expect(boolIssue).toBeUndefined();
+        }
+      }
     });
 
     it('should still flag a non-numeric optional number value', async () => {

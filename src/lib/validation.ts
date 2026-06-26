@@ -4,6 +4,7 @@ import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { queryByType } from './vault.js';
 import { extractWikilinkTarget } from './links.js';
 import { levenshteinDistance } from './levenshtein.js';
+import { isBlankScalar } from './emptiness.js';
 import {
   expandStaticValue,
   parseDate,
@@ -131,28 +132,53 @@ export function normalizeDateFields(
     if (!(fieldName in normalized)) continue;
 
     const value = normalized[fieldName];
-    if (value === undefined || value === null || value === '') continue;
+    const granularity = resolveDateGranularity(field, schema.config);
 
-    // Handle any residual Date objects (defense-in-depth).
-    // Use UTC components since YAML dates are stored as midnight UTC.
-    if (value instanceof Date) {
-      normalized[fieldName] = formatUtcDate(value);
+    // A `multiple: true` date field holds an array; canonicalize each element
+    // against the field's granularity so list-date values (default-materialized
+    // OR user-supplied) are written in the same ISO form `audit` validates and
+    // `#673`-style per-element quoting expects. Mirrors the per-element validation
+    // in `validateFieldType` (#707).
+    if (field.multiple && Array.isArray(value)) {
+      normalized[fieldName] = value.map((element) =>
+        normalizeDateValue(element, granularity)
+      );
       continue;
     }
 
-    // A bare year (e.g. 2026) may arrive as a number from YAML/JSON; coerce so
-    // it can be normalized against the field's granularity.
-    const dateValue = typeof value === 'number' ? String(value) : value;
-    if (typeof dateValue !== 'string') continue;
-
-    const granularity = resolveDateGranularity(field, schema.config);
-    const result = normalizeToIsoDate(dateValue, granularity);
-    if (result.valid) {
-      normalized[fieldName] = result.value;
-    }
+    normalized[fieldName] = normalizeDateValue(value, granularity);
   }
 
   return normalized;
+}
+
+/**
+ * Canonicalize a single date value to its ISO stored form against the supplied
+ * granularity. Shared by scalar date fields and per-element normalization of
+ * `multiple: true` date arrays so the two paths stay in lockstep (#707).
+ *
+ * Returns the input untouched when it is blank/unset, a residual `Date`
+ * (formatted from UTC), a non-coercible non-string, or fails normalization — in
+ * the last case the validation layer surfaces a clear error.
+ */
+function normalizeDateValue(value: unknown, granularity: DatePrecision): unknown {
+  // A blank value (null/undefined/empty/whitespace-only) is "unset"; leave it
+  // untouched so it isn't normalized into a bogus date (#707).
+  if (isBlankScalar(value)) return value;
+
+  // Handle any residual Date objects (defense-in-depth).
+  // Use UTC components since YAML dates are stored as midnight UTC.
+  if (value instanceof Date) {
+    return formatUtcDate(value);
+  }
+
+  // A bare year (e.g. 2026) may arrive as a number from YAML/JSON; coerce so
+  // it can be normalized against the field's granularity.
+  const dateValue = typeof value === 'number' ? String(value) : value;
+  if (typeof dateValue !== 'string') return value;
+
+  const result = normalizeToIsoDate(dateValue, granularity);
+  return result.valid ? result.value : value;
 }
 
 
@@ -218,10 +244,54 @@ export function validateFrontmatter(
   // Check for required fields
   for (const [fieldName, field] of Object.entries(fields)) {
     const value = frontmatter[fieldName];
-    const hasValue = value !== undefined && value !== null && value !== '';
+
+    // The blank-as-unset handling (#707) splits into two questions, because a
+    // blank value plays a different role in the REQUIRED check vs the TYPE check.
+    //
+    // A field is LIST-SHAPED if `field.multiple === true` OR `field.prompt ===
+    // 'list'` — the exact predicate audit uses to decide "expects an array" (see
+    // `expectsList` in `src/lib/audit/detection.ts` and `src/lib/audit/fix.ts`).
+    //
+    // (1) Is the value MISSING for the required check? — mirrors audit's
+    //     `isEmptyRequiredValue`: `null`/`undefined`/blank-string for any field,
+    //     PLUS an empty array `[]` for a list-shaped field. So a REQUIRED list
+    //     field given `""`/`"   "`/`[]` is reported as required-missing (audit
+    //     emits `empty-string-required`); an OPTIONAL one is simply skipped here.
+    //     This restores the required-emptiness check that an earlier round
+    //     regressed by routing list fields around `isBlankScalar` entirely.
+    //
+    // (2) Is there a value to TYPE-CHECK? — this is where scalar and list shapes
+    //     diverge:
+    //       - scalar field: a blank scalar string is "unset" and skips the type
+    //         check (the PR's main change — `dates: "   "` on an optional scalar
+    //         is accepted). Only a NON-blank scalar is type-checked.
+    //       - list-shaped field: a blank scalar string is NOT unset — it is the
+    //         wrong SHAPE (a scalar where a list is expected) and must reach
+    //         `validateFieldType`, which rejects it for a `multiple` date field
+    //         (bad date) and for an alias field (`invalid_alias`), matching
+    //         audit's `wrong-scalar-type` flag. Only `null`/`undefined`/`[]` are
+    //         genuinely unset for a list field and skip the type check.
+    //
+    // A non-blank scalar on a non-alias list field (e.g. `labels: 'urgent'`) is
+    // unaffected: it was never blank, so it flows to type validation and keeps its
+    // long-standing soft-coercion (audit autofixes it as `wrong-scalar-type`) —
+    // intentionally out of scope here.
+    const isListShapedField = field.multiple === true || field.prompt === 'list';
+    const isNullish = value === undefined || value === null;
+    const isEmptyArray = Array.isArray(value) && value.length === 0;
+
+    // (1) Required-check emptiness (audit's `isEmptyRequiredValue` semantics).
+    const isMissingForRequired = isListShapedField
+      ? isBlankScalar(value) || isEmptyArray
+      : isBlankScalar(value);
+
+    // (2) Whether there is a value worth type-/option-checking. A blank scalar
+    // string is unset for SCALAR fields only; for LIST-shaped fields it is the
+    // wrong shape and must be type-checked.
+    const hasValue = isListShapedField ? !(isNullish || isEmptyArray) : !isBlankScalar(value);
 
     // Check required fields
-    if (field.required && !hasValue && field.default === undefined) {
+    if (field.required && isMissingForRequired && field.default === undefined) {
       const expected = getFieldExpected(schema, field);
       errors.push({
         type: 'required_field_missing',
@@ -308,24 +378,36 @@ export function validateFrontmatter(
 /**
  * Apply defaults to frontmatter for missing fields.
  * Also injects the 'type' field with the type name.
+ *
+ * When `keyScope` is provided, ONLY those field names are considered for default
+ * materialization (and the `type` field is left untouched). The `edit` write path
+ * uses this to restore the #707 write↔audit parity case SURGICALLY: it scopes
+ * defaults to just the keys the user blanked in their patch, so an explicit
+ * `null` removal is not re-defaulted and untouched fields are never materialized.
+ * Without a scope, every declared field is considered (the `new` behavior).
  */
 export function applyDefaults(
   schema: LoadedSchema,
   typeName: string,
-  frontmatter: Record<string, unknown>
+  frontmatter: Record<string, unknown>,
+  keyScope?: ReadonlySet<string>
 ): Record<string, unknown> {
   const result = { ...frontmatter };
   const fields = getFieldsForType(schema, typeName);
 
-  // Always inject the type field with the type name
+  // Always inject the type field with the type name (unscoped path only).
   // In the new inheritance model, type is auto-injected, not a field definition
-  if (!result['type']) {
+  if (keyScope === undefined && !result['type']) {
     result['type'] = typeName;
   }
 
   for (const [fieldName, field] of Object.entries(fields)) {
+    if (keyScope !== undefined && !keyScope.has(fieldName)) continue;
+
     const value = result[fieldName];
-    const hasValue = value !== undefined && value !== null && value !== '';
+    // Blank optional values (incl. whitespace-only) are "unset", so defaults and
+    // static values fill them in just like a missing field (#707).
+    const hasValue = !isBlankScalar(value);
 
     if (!hasValue && field.default !== undefined) {
       result[fieldName] = field.default;
@@ -424,9 +506,10 @@ function validateFieldType(
     if (field.multiple && Array.isArray(value)) {
       for (let index = 0; index < value.length; index++) {
         const element = value[index];
-        // Skip structural gaps (null/empty); those are reported separately.
-        if (element === null || element === undefined) continue;
-        if (typeof element === 'string' && element.trim().length === 0) continue;
+        // Skip blank/structural gaps (null/empty/whitespace-only); those are
+        // reported separately. Shared `isBlankScalar` rule keeps this in step
+        // with the scalar paths (#707).
+        if (isBlankScalar(element)) continue;
         const elementError = validateDateValue(fieldName, element, granularity, index);
         if (elementError) return elementError;
       }
@@ -744,9 +827,10 @@ export async function validateContextFields(
     if (!field.source) continue;
 
     const value = frontmatter[fieldName];
-    
-    // Skip empty/null values (required field check is separate)
-    if (value === undefined || value === null || value === '') continue;
+
+    // Skip blank values, incl. whitespace-only (required field check is
+    // separate). Arrays fall through to per-element handling below (#707).
+    if (isBlankScalar(value)) continue;
 
     // Validate each value (handle both single and array values)
     const values = Array.isArray(value) ? value : [value];

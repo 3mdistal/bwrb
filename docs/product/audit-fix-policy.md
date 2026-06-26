@@ -15,11 +15,11 @@ If the field is absent entirely, report `missing-required`.
 
 ## Optional Field Emptiness
 
-An **optional** scalar field set to the literal empty string (`""`), `null`, or absent entirely is treated as "unset" — never an error. Audit and the write path agree here: `validateFrontmatter` computes emptiness with `value !== ''` (an exact check, **not** trimmed), so it accepts `''`, and audit must not flag what writing would have accepted.
+An **optional** scalar field is treated as "unset" — never an error — when its value is blank: `null`, `undefined`, absent entirely, the empty string (`""`), **or a whitespace-only string** (e.g. `"   "`). This single rule applies uniformly to every scalar type (`number`, `boolean`, `date`, `string`). The write path and the audit path share one emptiness predicate (`isBlankScalar`, which trims), so `validateFrontmatter` accepts a blank optional value and audit must not flag what writing would have accepted (#707).
 
-In particular, an empty optional `number` (e.g. `count: ""`) is *not* reported as `wrong-scalar-type`; it is simply unset (#664, mirroring #614).
+In particular, a blank optional `number` (e.g. `count: ""` or `count: "   "`), a blank optional `boolean`, and a blank optional `date` (e.g. `deadline: "   "`) are all *not* reported as `wrong-scalar-type` / `invalid-date-format`; they are simply unset. This is the **trim-everywhere** policy unifying the earlier per-type rules from #614 (dates) and #664 (numbers/booleans).
 
-A **whitespace-only** value (e.g. `count: "   "`) is *not* unset. Because the check is exact rather than trimmed, audit skips only the literal empty string, so a whitespace-only optional `number` or `boolean` is flagged `wrong-scalar-type` — consistent with the write path, which rejects it. This write/audit parity is intentional. A genuinely non-numeric value (e.g. `count: "abc"`) is likewise flagged.
+A genuinely non-empty bad value (e.g. `count: "abc"`, `deadline: "not-a-date"`) is *not* blank and is still flagged on both write and audit. A blank **required** field is reported once as `empty-string-required` (or `missing-required` if absent), never as a scalar-type error.
 
 ## Auto-Coercion Policy (Unambiguous Only)
 

@@ -290,6 +290,98 @@ describe('validation', () => {
         )
       ).toBe(true);
     });
+
+    // #707: blank optional scalar values (empty OR whitespace-only) are treated
+    // as "unset" UNIFORMLY across all scalar types on the write path, matching
+    // the audit path. validateFrontmatter must accept them (no type error).
+    describe('unified whitespace emptiness (#707)', () => {
+      const blanks: Array<[string, string]> = [
+        ['empty string', ''],
+        ['whitespace-only', '   '],
+      ];
+
+      for (const [label, blank] of blanks) {
+        it(`accepts a ${label} optional number as unset`, () => {
+          const result = validateFrontmatter(schema, 'idea', {
+            type: 'idea',
+            status: 'raw',
+            effort: blank,
+          });
+          expect(result.valid).toBe(true);
+          expect(result.errors).toHaveLength(0);
+        });
+
+        it(`accepts a ${label} optional boolean as unset`, () => {
+          const result = validateFrontmatter(schema, 'idea', {
+            type: 'idea',
+            status: 'raw',
+            archived: blank,
+          });
+          expect(result.valid).toBe(true);
+          expect(result.errors).toHaveLength(0);
+        });
+
+        it(`accepts a ${label} optional date as unset`, () => {
+          const result = validateFrontmatter(schema, 'task', {
+            type: 'objective',
+            'objective-type': 'task',
+            status: 'raw',
+            deadline: blank,
+          });
+          expect(result.valid).toBe(true);
+          expect(result.errors).toHaveLength(0);
+        });
+      }
+
+      // Non-blank values are unaffected — a genuine bad scalar still fails.
+      it('still rejects a non-numeric optional number', () => {
+        const result = validateFrontmatter(schema, 'idea', {
+          type: 'idea',
+          status: 'raw',
+          effort: 'abc',
+        });
+        expect(result.valid).toBe(false);
+        expect(result.errors.some((e) => e.field === 'effort')).toBe(true);
+      });
+
+      it('still rejects a malformed optional date', () => {
+        const result = validateFrontmatter(schema, 'task', {
+          type: 'objective',
+          'objective-type': 'task',
+          status: 'raw',
+          deadline: 'not-a-date',
+        });
+        expect(result.valid).toBe(false);
+        expect(result.errors.some((e) => e.type === 'invalid_date')).toBe(true);
+      });
+
+      // A required field that is whitespace-only is "unset", so it is reported
+      // as missing (not as a bad scalar) — consistent with the empty-string case.
+      it('reports a whitespace-only required field as missing', () => {
+        const raw: Schema = {
+          version: 2,
+          types: {
+            widget: {
+              output_dir: 'Widgets',
+              fields: {
+                count: { prompt: 'number', required: true },
+              },
+            },
+          },
+        } as unknown as Schema;
+        const loaded = resolveSchema(raw);
+        const result = validateFrontmatter(loaded, 'widget', {
+          type: 'widget',
+          count: '   ',
+        });
+        expect(result.valid).toBe(false);
+        expect(
+          result.errors.some(
+            (e) => e.type === 'required_field_missing' && e.field === 'count'
+          )
+        ).toBe(true);
+      });
+    });
   });
 
   describe('partial date granularity', () => {

@@ -36,6 +36,7 @@ import {
   isAcceptableDate,
 } from './fix-policy.js';
 import { extractYamlNodeValue, isEffectivelyEmpty } from './value-utils.js';
+import { isBlankScalar } from '../emptiness.js';
 import { isMap } from 'yaml';
 import type { Pair, Scalar, YAMLMap } from 'yaml';
 import { isDeepStrictEqual } from 'node:util';
@@ -544,21 +545,19 @@ export async function auditFile(
     } else if (
       expectedScalarType !== 'string' &&
       typeof value === 'string' &&
-      value === ''
+      isBlankScalar(value)
     ) {
-      // A literal empty string is "unset", not an invalid scalar. This mirrors
-      // the write path exactly: validateFrontmatter computes emptiness with
-      // `value !== ''` (NOT trimmed) and accepts `''`, so we skip only `''`
-      // here too. A whitespace-only value (e.g. "   ") is NOT skipped — the
-      // write path rejects it as a wrong-type scalar, so audit must flag it as
-      // `wrong-scalar-type` to keep write and audit in agreement (parity).
-      // Other optional fields behave the same (e.g. empty selects/dates are
-      // skipped — see the date block below). A *required* empty value is
+      // A blank string — empty OR whitespace-only — is "unset", not an invalid
+      // scalar. This mirrors the write path exactly: validateFrontmatter now
+      // treats any blank optional value as unset via the shared `isBlankScalar`
+      // helper (#707), so a blank optional number/boolean is accepted on write
+      // and must likewise be skipped here to keep write and audit in agreement
+      // (parity from #664). Other optional fields behave the same (empty/blank
+      // selects and dates are skipped — see the date block below, all routed
+      // through the same trim-everywhere rule). A *required* blank value is
       // reported once as `empty-string-required` by the required-field loop
-      // above. Skipping here avoids both double-reporting and flagging an unset
-      // optional number as `wrong-scalar-type` (#664, mirroring #614). A
-      // genuinely non-numeric value (e.g. "abc") is not empty and so is still
-      // flagged by the coercion check below.
+      // above. A genuinely non-numeric value (e.g. "abc") is not blank and so is
+      // still flagged by the coercion check below.
     } else {
       if (Array.isArray(value)) {
         const listCoercion = getScalarFromList(value, expectedScalarType);
@@ -634,13 +633,15 @@ export async function auditFile(
       const checkDateElement = (element: unknown, listIndex?: number) => {
         if (typeof element !== 'string' && typeof element !== 'number') return;
 
-        // An empty/blank string is "unset", not an invalid date. This mirrors the
-        // write path (validateFrontmatter treats `''` as no value) and how other
-        // optional fields behave (e.g. empty selects are skipped). A *required*
-        // empty date is reported once as `empty-string-required`; an empty list
-        // element is reported once as `invalid-list-element`. Skipping here keeps
-        // write and audit in agreement and avoids double-reporting (#614).
-        if (typeof element === 'string' && element.trim().length === 0) return;
+        // A blank string — empty OR whitespace-only — is "unset", not an invalid
+        // date. This uses the same shared `isBlankScalar` rule as the write path
+        // (validateFrontmatter treats any blank optional value as no value) and
+        // as the number/boolean guard above, so all scalar types skip blanks
+        // identically (#614, unified in #707). A *required* blank date is
+        // reported once as `empty-string-required`; an empty list element is
+        // reported once as `invalid-list-element`. Skipping here keeps write and
+        // audit in agreement and avoids double-reporting.
+        if (typeof element === 'string' && isBlankScalar(element)) return;
 
         // A bare year (e.g. 2026) is parsed as a number by YAML; treat it as a
         // partial date string for validation.
