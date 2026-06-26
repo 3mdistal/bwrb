@@ -4,9 +4,55 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-26
+
+Changes since `v0.1.9` — a large release (78 PRs). Headlines: schema **traits**, **hierarchical scope** (contexts as notes + `under()`), **fuzzy search**, the new **`recent`** command, **partial dates**, and a deep audit / migration / ownership hardening wave.
+
+### Added
+
+- **Traits — reusable field bundles** (#627, #442) — define a named set of fields once and compose it into multiple types instead of repeating fields per type. Trait/inherited provenance is shown in the flat fields view (#686).
+- **Hierarchical scope: contexts as notes + `under()`** (#635, #554, #633) — contexts become first-class notes, and a new `under` operator in `--where` matches notes whose relation target lives anywhere beneath a given ancestor in the hierarchy.
+- **Partial dates** (#591) — date fields accept `YYYY` and `YYYY-MM` precision via a per-field granularity, validated and canonicalized accordingly.
+- **Aliases for name resolution and linking** (#615) — an `alias` field role lets a note be resolved and linked by alternate names.
+- **Fuzzy search** (#618) — `--fuzzy` scored entity/note lookup, with `--output content` (#674) and `--open` / `--edit` (#712) wired in.
+- **`recent` command** (#654) — list recently modified notes, with `--open` / `--save-as` and `file.*` sort keys (#688).
+- **`list --output tree` for any parent hierarchy** (#687, #637) — render any relation-parent chain as a tree; plus `file.*` stats as `--fields` columns (#689, #713).
+- **Audit — ingest safety net**:
+  - Unlinked-mention detection (#621) with a tunable fuzzy threshold and interactive ambiguous-mention resolution (#684)
+  - Frequent-unlinked-term advisory (#601, #623), Unicode-aware (#685)
+  - Body wikilink + relative file/image link validation (#652, #680)
+  - Required body-section validation (#510, #651)
+  - Auto-fix valid numeric date-list elements by quoting them in place (#673, #723)
+- **Recurrence** — event-driven recurrence + offset multi-spawn (#107, #631), an optional `name_template` for successor naming (#679, #722), and vault-global cross-type successor-name disambiguation (#678).
+- **Schema tooling** — `schema discover` deterministic field-usage report (#638); per-note before→after preview wired into `schema migrate` (#692); published JSON Schema generated from Zod (#666, #724).
+- **Template `@today` date-offset expressions** evaluated in template values (#629).
+
+### Changed
+
+- **Nested-subdir indexing** (#619, #660) — notes in nested subdirectories under a type's `output_dir` are now discovered, not just those directly at the top level.
+- **`schema.schema.json` reconciled** with the Zod / loader contract (#626, #665).
+- **Sharper unknown-type help** — "did you mean a type?" suggestions extended to template commands and case-only mismatches (#669, #721).
+- **Multi-select template defaults** — multi-select fields now receive multi-value defaults (#668, #714).
+
 ### Fixed
 
-- **`new` now normalizes date fields to canonical `YYYY-MM-DD`** (#592) — `bwrb new` previously stored date values verbatim (e.g. `12/25/2026`), so freshly created notes could fail `bwrb audit`. The create path now normalizes dates the same way `edit` does — accepting unambiguous `MM/DD/YYYY`/`DD/MM/YYYY` and interpolated defaults (`today()`), while preserving valid partial dates per the field's granularity. The normalization logic is shared with the audit/validation and `edit` layers.
+- **Dates** — `new` normalizes date fields to canonical `YYYY-MM-DD` (#592); each element of list/`multiple` date fields is validated (#640) and single-reported when numeric (#641, #672); empty optional date/number treated as unset rather than invalid (#614, #663, #706).
+- **Search & query** — content search and name/fuzzy modes honor a canonical `--path` (#675, #704, #740); aliases canonicalized in `under()` and `isChildOf`/`isDescendantOf` walks (#658, #708), ancestors resolved over the full vault (#737); `real-name-wins` guard made case-insensitive (#616, #671); duplicate basenames can no longer hijack hierarchy (#709, #739).
+- **Audit & ownership** — correctly-placed owned notes exempted from wrong-directory (#701); misplaced owned notes restored under their declaring owner (#702, #703, #734); duplicate-alias severity aligned and illegal aliases made auto-fixable (#682); invalid-list-element removal made index-safe and idempotent (#683, #699, #700).
+- **Migration** — field-changed edits generate ops and unify the version-bump suggestion, fanned out across inheriting descendants (#718, #719, #728).
+- **Edit** — nested body sections recurse so `add-sections` agrees with audit (#653, #697, #716).
+- **Open** — positional app mode so `open <name> print` works (#662, #710).
+- **Bulk** — affected files de-duplicated by filesystem identity (#720, #736).
+
+### Performance
+
+- Build the backlink index once per fix run (#500, #642).
+- Single vault pass for `under()` plus relation-field arg validation (#681).
+- Two-row rolling-buffer Levenshtein — O(min(n,m)) memory (#726).
+
+### Internal
+
+- Refactors consolidating formatters, audit fix-handlers, prompt logic, sort/tree helpers, and fuzzy/Levenshtein utils (#594, #607, #644, #645, #647, #649, #690, #695, #696); knip cleanup and dead-export removal (#693, #725); real-CLI harness hardened against parallel-load flake (#643, #657).
 
 ## [0.1.9] - 2026-06-20
 
