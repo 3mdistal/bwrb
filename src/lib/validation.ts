@@ -245,24 +245,31 @@ export function validateFrontmatter(
   for (const [fieldName, field] of Object.entries(fields)) {
     const value = frontmatter[fieldName];
 
-    // The blank-as-unset shortcut (#707) applies only to SCALAR (`multiple`
-    // falsy) fields. For a `multiple: true` field a whitespace-only scalar string
-    // is NOT a valid "unset": it is the wrong SHAPE (a scalar where a list is
-    // expected) and has no sensible list interpretation. Audit flags any non-array
-    // scalar on a list field as `wrong-scalar-type`, including a whitespace blank
-    // (it does NOT route list fields through `isBlankScalar`). If we let
-    // `isBlankScalar` treat `dates: "   "` as unset here, write would SKIP every
-    // shape/type check and silently PERSIST the blank scalar, while audit still
-    // flagged it — the write↔audit parity break this PR exists to close.
+    // The blank-as-unset shortcut (#707) applies only to genuinely SCALAR fields.
+    // A field is LIST-SHAPED if `field.multiple === true` OR `field.prompt ===
+    // 'list'` — this is the exact predicate audit uses to decide "expects an
+    // array" (see `expectsList` in `src/lib/audit/detection.ts` and
+    // `src/lib/audit/fix.ts`), and it covers the alias role too (the ALIAS schema
+    // pattern declares `aliases` as `prompt: 'list'`). For a list-shaped field a
+    // whitespace-only scalar string is NOT a valid "unset": it is the wrong SHAPE
+    // (a scalar where a list is expected) and has no sensible list interpretation.
+    // Audit flags any non-array scalar on a list field as `wrong-scalar-type`,
+    // including a whitespace blank (it does NOT route list fields through
+    // `isBlankScalar`). If we let `isBlankScalar` treat `dates: "   "` or
+    // `aliases: "   "` as unset here, write would SKIP every shape/type check and
+    // silently PERSIST the blank scalar, while audit still flagged it — the
+    // write↔audit parity break this PR exists to close.
     //
-    // So we do NOT short-circuit blank scalars on `multiple` fields; they fall
-    // through to the type check below, where a blank scalar on (e.g.) a
-    // `multiple` date field is rejected as an invalid value — keeping write and
-    // audit in agreement (both reject). A genuine non-array scalar that DOES carry
-    // a value (e.g. `labels: "urgent"`) is unaffected: it was never blank, so its
-    // long-standing accept-on-write / autofix-on-audit behavior is preserved.
-    // `null`/`undefined`/absent and empty arrays remain "unset" exactly as before.
-    const treatBlankAsUnset = field.multiple !== true;
+    // So we do NOT short-circuit blank scalars on list-shaped fields; they fall
+    // through to the type check below, where a blank scalar on (e.g.) a `multiple`
+    // date field or a `prompt: 'list'` alias field is rejected as an invalid value
+    // — keeping write and audit in agreement (both reject). A genuine non-array
+    // scalar that DOES carry a value (e.g. `labels: "urgent"`) is unaffected: it
+    // was never blank, so its long-standing accept-on-write / autofix-on-audit
+    // behavior is preserved. `null`/`undefined`/absent and empty arrays remain
+    // "unset" exactly as before.
+    const isListShapedField = field.multiple === true || field.prompt === 'list';
+    const treatBlankAsUnset = !isListShapedField;
     const hasValue = treatBlankAsUnset ? !isBlankScalar(value) : value !== undefined && value !== null;
 
     // Check required fields
