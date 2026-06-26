@@ -139,6 +139,43 @@ describe('search command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
     });
+
+    // Name-mode --path is now honored (was previously ignored): the candidate
+    // set is scoped before resolution, so --path can disambiguate or exclude
+    // matches by directory (issue #705).
+    describe('name-mode --path is honored (issue #705)', () => {
+      it('should scope name resolution to the path glob', async () => {
+        // "Sample" is ambiguous across Ideas/ and Objectives/Tasks/. Scoping to
+        // Ideas/ makes it resolve unambiguously to the idea.
+        const result = await runCLI([
+          'search', 'Sample', '--path', 'Ideas/**', '--picker', 'none', '--output', 'paths',
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('Ideas/Sample Idea.md');
+      });
+
+      it('should exclude matches outside the path glob', async () => {
+        // Scoping the same ambiguous query to Objectives/ resolves to the task.
+        const result = await runCLI([
+          'search', 'Sample', '--path', 'Objectives/**', '--picker', 'none', '--output', 'paths',
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('Objectives/Tasks/Sample Task.md');
+      });
+
+      it('should report no matches when the query is outside the path glob', async () => {
+        // "Another Idea" only exists under Ideas/ and shares no substring with
+        // any note under Objectives/, so scoping there yields no resolution.
+        const result = await runCLI([
+          'search', 'Another Idea', '--path', 'Objectives/**', '--picker', 'none',
+        ], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        expect(result.stderr).toContain('No matching notes found');
+      });
+    });
   });
 
   describe('deprecated --path-glob flag', () => {
@@ -150,6 +187,29 @@ describe('search command', () => {
       expect(json.success).toBe(true);
       expect(result.stderr).toContain('Warning');
       expect(result.stderr).toContain('--path');
+    });
+
+    // Passing both --path and the deprecated --path-glob used to silently ignore
+    // --path-glob with no signal. We now warn that --path wins (issue #705).
+    it('should warn when both --path and --path-glob are provided, and --path wins', async () => {
+      const result = await runCLI([
+        'search', 'status', '--body',
+        '--path', 'Ideas/*',
+        '--path-glob', 'Objectives/**',
+        '--output', 'json',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain('Warning');
+      expect(result.stderr).toContain('--path-glob');
+      expect(result.stderr).toContain('ignored');
+
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      // --path ("Ideas/*") wins; nothing from Objectives/ leaks in.
+      for (const item of json.data) {
+        expect(item.path).toMatch(/^Ideas\//);
+      }
     });
   });
 
@@ -191,6 +251,51 @@ status: backlog
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('Ambiguous');
+    });
+
+    // Regression (#705/#740): when --path scopes the name-search index, a
+    // basename that is globally duplicated but unique WITHIN the path glob must
+    // still be path-qualified in generated wikilinks. Disambiguation has to
+    // consult the FULL vault, not the path-filtered result set; otherwise the
+    // emitted link is ambiguous in Obsidian and can resolve to the wrong note.
+    describe('path-scoped search still disambiguates wikilinks against the full vault (#705)', () => {
+      it('emits the globally-qualified link for --output link when --path scopes one duplicate', async () => {
+        // Only Ideas/Duplicate.md is in scope, but Objectives/Tasks/Duplicate.md
+        // also exists globally, so the basename "Duplicate" is NOT globally unique.
+        const result = await runCLI(
+          ['search', 'Duplicate', '--path', 'Ideas/**', '--picker', 'none', '--output', 'link'],
+          tempVaultDir,
+        );
+
+        expect(result.exitCode).toBe(0);
+        // Must be path-qualified, NOT the bare [[Duplicate]].
+        expect(result.stdout.trim()).toBe('[[Ideas/Duplicate]]');
+      });
+
+      it('emits the globally-qualified link in the JSON link field under --path', async () => {
+        const result = await runCLI(
+          ['search', 'Duplicate', '--path', 'Ideas/**', '--picker', 'none', '--output', 'json'],
+          tempVaultDir,
+        );
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        expect(json.data).toHaveLength(1);
+        expect(json.data[0].wikilink).toBe('[[Ideas/Duplicate]]');
+        // Result-set filtering (#705) is unchanged: only the in-path note matches.
+        expect(json.data[0].path).toBe('Ideas/Duplicate.md');
+      });
+
+      it('control: a genuinely unique basename still uses the short link form under --path', async () => {
+        const result = await runCLI(
+          ['search', 'Sample Idea', '--path', 'Ideas/**', '--picker', 'none', '--output', 'link'],
+          tempVaultDir,
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('[[Sample Idea]]');
+      });
     });
   });
 
@@ -563,6 +668,73 @@ Some content
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
       expect(json.data.length).toBeLessThanOrEqual(1);
+    });
+
+    describe('strict numeric parsing (issue #705)', () => {
+      it('should reject a malformed --limit instead of coercing it', async () => {
+        const result = await runCLI([
+          'search', 'type', '--body', '--limit', 'abc', '--output', 'json',
+        ], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain('--limit');
+      });
+
+      it('should reject a non-integer --limit (e.g. 2.7)', async () => {
+        const result = await runCLI([
+          'search', 'type', '--body', '--limit', '2.7', '--output', 'json',
+        ], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain('--limit');
+      });
+
+      it('should reject a zero/negative --limit', async () => {
+        const result = await runCLI([
+          'search', 'type', '--body', '--limit', '0', '--output', 'json',
+        ], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain('--limit');
+      });
+
+      it('should reject a malformed --context instead of coercing it', async () => {
+        const result = await runCLI([
+          'search', 'type', '--body', '--context', 'abc', '--output', 'json',
+        ], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain('--context');
+      });
+
+      it('should reject a negative --context', async () => {
+        const result = await runCLI([
+          'search', 'type', '--body', '--context', '-1', '--output', 'json',
+        ], vaultDir);
+
+        expect(result.exitCode).not.toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(false);
+        expect(json.error).toContain('--context');
+      });
+
+      it('should still accept a valid --context of 0', async () => {
+        const result = await runCLI([
+          'search', 'type', '--body', '--context', '0', '--output', 'json',
+        ], vaultDir);
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+      });
     });
 
     it('should show updated help with content search options', async () => {
