@@ -1471,3 +1471,74 @@ status: done
     });
   });
 });
+
+// Positional [mode] parity with `open` (#711). [mode] is the SECOND positional,
+// after the smart filter positional. A single positional is always the filter,
+// never the mode. --app wins over the positional; an invalid mode errors loudly;
+// a third positional is rejected.
+describe('list positional app mode (#711)', () => {
+  let vaultDir: string;
+
+  beforeEach(async () => {
+    vaultDir = await createTestVault();
+  });
+
+  afterEach(async () => {
+    await cleanupTestVault(vaultDir);
+  });
+
+  it('honors a positional mode after a filter positional (list idea print --open ...)', async () => {
+    // Scope to a single idea so --open resolves deterministically (no picker).
+    const result = await runCLI(
+      ['list', 'idea', 'print', '--where', "status == 'raw'", '--open'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Sample Idea.md');
+  });
+
+  it('lets --app flag take precedence over positional mode', async () => {
+    const result = await runCLI(
+      ['list', 'idea', 'system', '--where', "status == 'raw'", '--open', '--app', 'print'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Sample Idea.md');
+  });
+
+  it('errors on an invalid positional mode even without --open', async () => {
+    const result = await runCLI(['list', 'idea', 'bogus-mode'], vaultDir);
+
+    expect(result.exitCode).toBe(1);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toContain('Invalid app mode');
+  });
+
+  it('rejects excess positional args (list <filter> <mode> <extra>)', async () => {
+    const result = await runCLI(
+      ['list', 'idea', 'print', 'bogus', '--open'],
+      vaultDir
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('too many arguments');
+  });
+
+  it('treats a single positional as the smart filter, not the mode', async () => {
+    // `list print` -> "print" is parsed as a type filter (unknown type).
+    const result = await runCLI(['list', 'print'], vaultDir);
+
+    expect(result.exitCode).toBe(1);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toMatch(/Unknown type|Ambiguous argument/i);
+  });
+
+  it('does not regress plain listing with a single positional filter', async () => {
+    const result = await runCLI(['list', 'idea', '--output', 'paths'], vaultDir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Ideas/Sample Idea.md');
+  });
+});

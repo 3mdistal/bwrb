@@ -24,7 +24,7 @@ import {
 import { getTtyContext } from '../lib/tty/context.js';
 import { renderTable } from '../lib/tty/table.js';
 import { formatFileTimestamp } from '../lib/list-helpers.js';
-import { openNote, resolveAppMode } from './open.js';
+import { openNote, resolveAppMode, parseAppMode } from './open.js';
 import { pickFile, parsePickerMode } from '../lib/picker.js';
 import { createDashboard, updateDashboard, getDashboard } from '../lib/dashboard.js';
 import type { DashboardDefinition } from '../types/schema.js';
@@ -117,6 +117,19 @@ App Modes:
   obsidian    Open in Obsidian via URI scheme
   print       Print the resolved path (for scripting)
 
+App-Mode Precedence (for --open):
+  1. --app flag (explicit)
+  2. [mode] positional argument (the SECOND positional; see note below)
+  3. BWRB_DEFAULT_APP environment variable
+  4. config.open_with in .bwrb/schema.json
+  5. Fallback: system
+
+  Note: [mode] is the second positional, after the smart [positional] filter.
+  A single positional is always the filter (type/path/where), never the mode —
+  so use 'bwrb recent task print --open', not 'bwrb recent print --open'
+  (which would treat 'print' as a type filter). To set the app mode without a
+  filter positional, use the --app flag.
+
 Dashboard Save:
   --save-as <name>   Save this recency query as a reusable dashboard
                      (stored as 'list --sort file.mtime --desc')
@@ -132,8 +145,10 @@ Examples:
   bwrb recent --path "Projects/**"
   bwrb recent --open                              # Open the most recent note
   bwrb recent --type task --open --app editor
+  bwrb recent task print --open                   # Positional filter + app mode
   bwrb recent --type task --save-as "recent-tasks"`)
   .argument('[positional]', 'Smart positional: type, path (contains /), or where expression (contains =<>~)')
+  .argument('[mode]', 'App mode for --open: system, editor, visual, obsidian, print')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path glob (e.g., Projects/**, Ideas/)')
   .option('-b, --body <query>', 'Filter by body content search')
@@ -146,9 +161,17 @@ Examples:
   // Dashboard save options (parity with `list`)
   .option('--save-as <name>', 'Save this recency query as a dashboard')
   .option('--force', 'Overwrite existing dashboard when using --save-as')
-  .action(async (positional: string | undefined, options: RecentCommandOptions, cmd: Command) => {
+  // Reject excess positional args. Only [positional] and [mode] are accepted;
+  // a third+ token is almost certainly a typo, and silently swallowing it
+  // (commander's default) hides the mistake.
+  .allowExcessArguments(false)
+  .action(async (positional: string | undefined, mode: string | undefined, options: RecentCommandOptions, cmd: Command) => {
     const outputFormat = resolveRecentOutputFormat(options.output);
     const jsonMode = outputFormat === 'json';
+
+    // App-mode precedence: an explicit --app flag wins over the positional
+    // [mode] (the convenience form, e.g. `bwrb recent --open print`).
+    const appModeInput = options.app ?? mode;
 
     try {
       const globalOpts = getGlobalOpts(cmd);
@@ -156,6 +179,13 @@ Examples:
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
+
+      // Validate the app mode eagerly (mirrors `open`): an invalid value from
+      // either --app or the positional [mode] errors loudly here rather than
+      // being silently ignored when --open isn't requested.
+      if (appModeInput !== undefined) {
+        parseAppMode(appModeInput);
+      }
 
       // Pre-flight check: if --save-as is provided without --force, error early
       // if the dashboard already exists (mirrors `list`).
@@ -329,7 +359,7 @@ Examples:
         await openNote(
           vaultDir,
           targetPath,
-          resolveAppMode(options.app, schema.config),
+          resolveAppMode(appModeInput, schema.config),
           schema.config,
           jsonMode
         );
