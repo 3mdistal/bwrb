@@ -39,7 +39,7 @@ import {
   type ListOutputFormat,
 } from '../lib/output.js';
 import { UserCancelledError } from '../lib/errors.js';
-import { openNote, resolveAppMode } from './open.js';
+import { openNote, resolveAppMode, parseAppMode } from './open.js';
 import { pickFile, parsePickerMode } from '../lib/picker.js';
 import { formatDisplayValue } from '../lib/value-format.js';
 import type { LoadedSchema, DashboardDefinition } from '../types/schema.js';
@@ -200,6 +200,7 @@ Examples:
   bwrb list --type task --output json
   bwrb list --type task --open                    # Pick from tasks and open
   bwrb list --type task --where "status=inbox" --open
+  bwrb list task print --open                      # Positional filter + app mode
 
 Open Options:
   --open               Open a note from the results (picker if multiple)
@@ -212,8 +213,14 @@ App Modes:
   obsidian    Open in Obsidian via URI scheme
   print       Print the resolved path (for scripting)
 
-Precedence:
-  --app flag > BWRB_DEFAULT_APP env > config.open_with > system
+App-Mode Precedence (for --open):
+  --app flag > [mode] positional > BWRB_DEFAULT_APP env > config.open_with > system
+
+  Note: [mode] is the second positional, after the smart [positional] filter.
+  A single positional is always the filter (type/path/where), never the mode —
+  so use 'bwrb list task print --open', not 'bwrb list print --open' (which
+  would treat 'print' as a type filter). To set the app mode without a filter
+  positional, use the --app flag.
 
 Dashboard Save:
   --save-as <name>   Save the query as a reusable dashboard
@@ -225,6 +232,7 @@ Dashboard Save:
 Note: In zsh, use single quotes for expressions with '!' to avoid history expansion:
   bwrb list --type task --where '!isEmpty(deadline)'`)
   .argument('[positional]', 'Smart positional: type, path (contains /), or where expression (contains =<>~)')
+  .argument('[mode]', 'App mode for --open: system, editor, visual, obsidian, print')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path glob (e.g., Projects/**, Ideas/)')
   .option('-b, --body <query>', 'Filter by body content search')
@@ -251,10 +259,19 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   // Dashboard save options
   .option('--save-as <name>', 'Save this query as a dashboard')
   .option('--force', 'Overwrite existing dashboard when using --save-as')
-  .action(async (positional: string | undefined, options: ListCommandOptions, cmd: Command) => {
+  // Reject excess positional args. Only [positional] and [mode] are accepted;
+  // a third+ token is almost certainly a typo, and silently swallowing it
+  // (commander's default) hides the mistake.
+  .allowExcessArguments(false)
+  .action(async (positional: string | undefined, mode: string | undefined, options: ListCommandOptions, cmd: Command) => {
     // Resolve output format from --output flag and deprecated flags
     const outputFormat = resolveListOutputFormat(options);
     const jsonMode = outputFormat === 'json';
+
+    // App-mode precedence: an explicit --app flag wins over the positional
+    // [mode] (the convenience form). The positional is the SECOND positional;
+    // a single positional is always the smart filter, never the mode.
+    const appModeInput = options.app ?? mode;
 
     try {
       const globalOpts = getGlobalOpts(cmd);
@@ -262,6 +279,13 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
+
+      // Validate the app mode eagerly (mirrors `open`): an invalid value from
+      // either --app or the positional [mode] errors loudly here rather than
+      // being silently ignored when --open isn't requested.
+      if (appModeInput !== undefined) {
+        parseAppMode(appModeInput);
+      }
 
       // Pre-flight check: if --save-as is provided without --force, check if dashboard exists
       if (options.saveAs && !options.force) {
@@ -393,7 +417,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         ...(fields !== undefined && { fields }),
         // Open options
         open: options.open,
-        app: options.app,
+        app: appModeInput,
         pickerMode: resolveGlobalPickerMode(undefined, globalOpts, 'auto'),
         // Hierarchy options
         roots: options.roots,

@@ -10,11 +10,22 @@ common "what did I touch lately?" query.
 ## Synopsis
 
 ```bash
-bwrb recent [options] [positional]
+bwrb recent [options] [positional] [mode]
 ```
 
-The positional argument is auto-detected as type, path (contains `/`), or where
-expression (contains operators) — the same smart detection used by `list`.
+The first positional argument is auto-detected as type, path (contains `/`), or
+where expression (contains operators) — the same smart detection used by `list`.
+
+The optional second positional `[mode]` is the app mode used with `--open`
+(`system`, `editor`, `visual`, `obsidian`, `print`) — parity with
+[`bwrb open`](/reference/commands/open/). Because `[mode]` is the **second**
+positional, a lone positional is always treated as the smart filter, never the
+mode: use `bwrb recent task print --open`, not `bwrb recent print --open` (which
+would treat `print` as a type filter). To set the mode without a filter
+positional, use the `--app` flag. An explicit `--app` flag always takes
+precedence over the positional `[mode]`, and an invalid mode value is rejected
+with a clear error. Excess positional arguments beyond `[positional] [mode]` are
+rejected.
 
 ## Recency source
 
@@ -91,6 +102,9 @@ bwrb recent --output json
 # Open the most recent note (or the most recent task, in your editor)
 bwrb recent --open
 bwrb recent --type task --open --app editor
+
+# Positional app mode (the filter positional comes first, then the mode)
+bwrb recent task print --open
 
 # Save a recency view as a reusable dashboard
 bwrb recent --type task --save-as "recent-tasks"

@@ -473,6 +473,110 @@ describePty('template command PTY tests', () => {
         { files: [DEFAULT_IDEA_TEMPLATE], schema: TEST_SCHEMA }
       );
     }, 15000);
+
+    it('should store multiple relation defaults via multiselect (issue #715)', async () => {
+      await withTempVault(
+        ['template', 'new', 'meeting'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Template name', 10000);
+          await proc.typeAndEnter('multi-people');
+
+          await proc.waitFor('Description', 5000);
+          await proc.typeAndEnter('Meeting with multiple people defaults');
+
+          await proc.waitFor('Set default values', 5000);
+          proc.write('y');
+
+          // people (multi-relation) - pick the first two candidates
+          await proc.waitFor('Default people', 5000);
+          await proc.waitForStable(150, 2000);
+          proc.write(' ');      // select Alice
+          proc.write('\x1b[B'); // down to Bob
+          proc.write(' ');      // select Bob
+          proc.write('\r');     // submit
+
+          await proc.waitFor('Force prompting', 5000);
+          proc.write('n');
+          await proc.waitFor('Custom filename', 5000);
+          proc.write('n');
+          await proc.waitFor('Created:', 10000);
+
+          const templatePath = join(vaultPath, '.bwrb/templates/meeting', 'multi-people.md');
+          const content = await readFile(templatePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          const defaults = frontmatter.defaults as Record<string, unknown>;
+          // Stored as a list of CLEAN relation links (no literal quote characters
+          // around the wikilink). The YAML serializer adds exactly one layer of
+          // quoting for safety, so on disk each item is `- "[[Name]]"` which
+          // parses back to `[[Name]]` — NOT the double-quoted `'"[[Name]]"'`.
+          expect(defaults.people).toEqual(['[[Alice]]', '[[Bob]]']);
+          // Guard against the double-quote regression: no `'"[[` on disk.
+          expect(content).not.toContain(`'"[[`);
+        },
+        {
+          files: [
+            {
+              path: 'People/Alice.md',
+              content: `---\ntype: person\n---\n`,
+            },
+            {
+              path: 'People/Bob.md',
+              content: `---\ntype: person\n---\n`,
+            },
+          ],
+          schema: RELATION_MULTIPLE_SCHEMA,
+        }
+      );
+    }, 30000);
+
+    it('should apply multiple relation defaults when instantiating via new --template (issue #715)', async () => {
+      await withTempVault(
+        ['new', 'meeting', '--template', 'multi-people'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Name', 10000);
+          await proc.typeAndEnter('Standup');
+
+          await proc.waitForStable(200);
+          await proc.waitFor('Created:', 10000);
+
+          const notePath = join(vaultPath, 'Meetings', 'Standup.md');
+          const content = await readFile(notePath, 'utf-8');
+          const frontmatter = parseFrontmatter(content);
+          // All selected relation defaults from the template are applied as CLEAN
+          // wikilinks — no literal quote characters embedded in the value.
+          expect(frontmatter.people).toEqual(['[[Alice]]', '[[Bob]]']);
+          expect(content).not.toContain(`'"[[`);
+        },
+        {
+          files: [
+            {
+              path: '.bwrb/templates/meeting/multi-people.md',
+              content: `---
+type: template
+template-for: meeting
+description: Meeting with multiple people defaults
+defaults:
+  people:
+    - "[[Alice]]"
+    - "[[Bob]]"
+---
+
+# {title}
+`,
+            },
+            {
+              path: 'People/Alice.md',
+              content: `---\ntype: person\n---\n`,
+            },
+            {
+              path: 'People/Bob.md',
+              content: `---\ntype: person\n---\n`,
+            },
+          ],
+          schema: RELATION_MULTIPLE_SCHEMA,
+        }
+      );
+    }, 30000);
   });
 
   describe('template edit (interactive)', () => {
@@ -959,7 +1063,9 @@ describePty('template command PTY tests', () => {
           const content = await readFile(templatePath, 'utf-8');
           const frontmatter = parseFrontmatter(content);
           const defaults = frontmatter.defaults as Record<string, unknown>;
-          expect(defaults.people).toEqual(['"[[Alice]]"', '"[[Bob]]"']);
+          // CLEAN relation links — no double-quoting (matches template new).
+          expect(defaults.people).toEqual(['[[Alice]]', '[[Bob]]']);
+          expect(content).not.toContain(`'"[[`);
         },
         {
           files: [

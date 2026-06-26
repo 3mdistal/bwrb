@@ -14,7 +14,7 @@ import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
 import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
 import { configurePromptMode, printError, printSuccess, printWarning } from '../lib/prompt.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError, warnDeprecated, type SearchOutputFormat } from '../lib/output.js';
-import { openNote, resolveAppMode } from './open.js';
+import { openNote, resolveAppMode, parseAppMode } from './open.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
 import {
   buildNoteIndex,
@@ -135,6 +135,7 @@ function resolveSearchOutputFormat(options: SearchOptions): SearchOutputFormat {
 export const searchCommand = new Command('search')
   .description('Search for notes by name or content')
   .argument('[query]', 'Search pattern (name/path for default mode, content pattern for --body)')
+  .argument('[mode]', 'App mode for --open: system, editor, visual, obsidian, print')
   // Output format (new unified flag)
   .option('--output <format>', 'Output format: text (default), paths, link, content, json')
   // Deprecated output flags (still work but emit warnings)
@@ -229,9 +230,10 @@ App Modes:
 
 Precedence (for default app):
   1. --app flag (explicit)
-  2. BWRB_DEFAULT_APP environment variable
-  3. config.open_with in .bwrb/schema.json
-  4. Fallback: system
+  2. [mode] positional argument (e.g. bwrb search "My Note" --open print)
+  3. BWRB_DEFAULT_APP environment variable
+  4. config.open_with in .bwrb/schema.json
+  5. Fallback: system
 
 Examples:
   # Name search
@@ -239,6 +241,7 @@ Examples:
   bwrb search "My Note" --output link      # Output: [[My Note]]
   bwrb search "My Note" --open             # Find and open in Obsidian
   bwrb search "My Note" --open --app editor  # Find and open in $EDITOR
+  bwrb search "My Note" --open print        # Positional mode (for --open)
   bwrb search "My Note" --edit             # Find and edit frontmatter
   bwrb search "My Note" --edit --json '{"status":"done"}'  # Non-interactive edit
   
@@ -258,10 +261,33 @@ Examples:
   # Piping
   bwrb search "bug" -t --output paths | xargs -I {} code {}`)
   .allowExcessArguments(false)
-  .action(async (query: string | undefined, options: SearchOptions, cmd: Command) => {
+  .action(async (query: string | undefined, mode: string | undefined, options: SearchOptions, cmd: Command) => {
     // Resolve output format from deprecated flags and new --output option
     const outputFormat = resolveSearchOutputFormat(options);
     const jsonMode = outputFormat === 'json';
+
+    // App-mode precedence: an explicit --app flag wins over the positional
+    // [mode] (the convenience form). Fold the resolved value back into
+    // options.app so every downstream resolveAppMode(options.app, ...) call
+    // (name/content/fuzzy paths) honors the positional without further plumbing.
+    if (options.app === undefined && mode !== undefined) {
+      options.app = mode;
+    }
+    // Validate the app mode eagerly (mirrors `open`): an invalid value errors
+    // loudly here rather than being silently ignored when --open isn't used.
+    if (options.app !== undefined) {
+      try {
+        parseAppMode(options.app);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (jsonMode) {
+          printJson(jsonError(message));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        printError(message);
+        process.exit(1);
+      }
+    }
 
     // Handle deprecated --text flag
     if (options.text) {

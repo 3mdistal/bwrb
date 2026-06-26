@@ -8,8 +8,16 @@ Edit the frontmatter of an existing note. This is an alias for `search --edit`.
 ## Synopsis
 
 ```bash
-bwrb edit [options] [query]
+bwrb edit [options] [query] [mode]
 ```
+
+The optional second positional `[mode]` is the app mode used with `--open`
+(`system`, `editor`, `visual`, `obsidian`, `print`) — parity with
+[`bwrb open`](/reference/commands/open/). For example,
+`bwrb edit "My Note" --open print` edits the note and then prints its path. An
+explicit `--app` flag always takes precedence over the positional `[mode]`, an
+invalid mode value is rejected with a clear error (even without `--open`), and a
+third excess positional is rejected.
 
 ## Options
 
@@ -61,6 +69,9 @@ bwrb edit "My Note" --open
 
 # Edit then open in $EDITOR
 bwrb edit "My Note" --open --app editor
+
+# Edit then open with a positional app mode (parity with `open`)
+bwrb edit "My Note" --open print
 ```
 
 ## Targeting

@@ -8,10 +8,21 @@ List notes matching filter criteria with flexible output formats.
 ## Synopsis
 
 ```bash
-bwrb list [options] [positional]
+bwrb list [options] [positional] [mode]
 ```
 
-The positional argument is auto-detected as type, path (contains `/`), or where expression (contains operators).
+The first positional argument is auto-detected as type, path (contains `/`), or where expression (contains operators).
+
+The optional second positional `[mode]` is the app mode used with `--open`
+(`system`, `editor`, `visual`, `obsidian`, `print`) — parity with
+[`bwrb open`](/reference/commands/open/). Because `[mode]` is the **second**
+positional, a lone positional is always treated as the smart filter, never the
+mode: use `bwrb list task print --open`, not `bwrb list print --open` (which
+would treat `print` as a type filter). To set the mode without a filter
+positional, use the `--app` flag. An explicit `--app` flag always takes
+precedence over the positional `[mode]`, an invalid mode value is rejected with
+a clear error, and excess positional arguments beyond `[positional] [mode]` are
+rejected.
 
 ## Options
 
@@ -197,6 +208,7 @@ Missing sort values are always placed at the end, including with `--desc`.
 ```bash
 bwrb list --type task --open                    # Pick from tasks and open
 bwrb list --type task --where "status=inbox" --open
+bwrb list task print --open                      # Positional filter + app mode
 ```
 
 ### Save as Dashboard

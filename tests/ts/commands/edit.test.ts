@@ -1088,3 +1088,73 @@ describe('edit command: recurrence completion atomicity (#107)', () => {
     }
   });
 });
+
+// Positional [mode] parity with `open` (#711). `edit` already takes a [query]
+// positional; [mode] is the trailing second positional and is honored only with
+// --open (after the edit). --app wins over the positional; an invalid mode
+// errors loudly even without --open; a third positional is rejected.
+describe('edit positional app mode (#711)', () => {
+  let vaultDir: string;
+
+  beforeEach(async () => {
+    vaultDir = await createTestVault();
+  });
+
+  afterEach(async () => {
+    await cleanupTestVault(vaultDir);
+  });
+
+  it('honors a positional mode with --open (edit <query> print --open --json {})', async () => {
+    const result = await runCLI(
+      ['edit', 'Sample Idea', 'print', '--open', '--json', '{}'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    // Print mode emits the path after the edit completes.
+    expect(result.stdout + result.stderr).toContain('Sample Idea.md');
+  });
+
+  it('lets --app flag take precedence over positional mode', async () => {
+    const result = await runCLI(
+      ['edit', 'Sample Idea', 'system', '--open', '--app', 'print', '--json', '{}'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout + result.stderr).toContain('Sample Idea.md');
+  });
+
+  it('errors on an invalid positional mode even without --open', async () => {
+    const result = await runCLI(
+      ['edit', 'Sample Idea', 'bogus-mode', '--json', '{}'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(1);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toContain('Invalid app mode');
+  });
+
+  it('rejects excess positional args (edit <query> <mode> <extra>)', async () => {
+    const result = await runCLI(
+      ['edit', 'Sample Idea', 'print', 'bogus', '--json', '{}'],
+      vaultDir
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('too many arguments');
+  });
+
+  it('does not regress single-positional edit', async () => {
+    const result = await runCLI(
+      ['edit', 'Sample Idea', '--json', '{"status":"backlog"}', '--output', 'json'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.success).toBe(true);
+    expect(json.updated).toContain('status');
+  });
+});
