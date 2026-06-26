@@ -3,6 +3,7 @@ import { writeFile, mkdir, rm, readFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { parseFrontmatter } from '../../../src/lib/frontmatter.js';
 
 describe('template command', () => {
   let vaultDir: string;
@@ -163,6 +164,48 @@ defaults:
       // Real number and boolean, not quoted strings.
       expect(content).toMatch(/^effort: 5$/m);
       expect(content).toMatch(/^archived: true$/m);
+
+      const audit = await runCLI(['audit', '--path', output.path], vaultDir);
+      expect(audit.exitCode).toBe(0);
+    });
+  });
+
+  describe('relation defaults downstream (issue #715)', () => {
+    it('instantiates a single-relation default as a CLEAN wikilink that passes audit', async () => {
+      // A template stores a relation default the way `template new` / `template
+      // edit` now do: a CLEAN link (`[[Active Milestone]]`), which the YAML
+      // serializer quotes exactly once on disk. Instantiating it must yield a
+      // note whose `milestone` frontmatter is a clean `[[Active Milestone]]`
+      // wikilink (NO literal quote characters) and passes audit.
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/task', 'with-milestone.md'),
+        `---
+type: template
+template-for: task
+description: Task with a relation default
+defaults:
+  milestone: "[[Active Milestone]]"
+---
+
+# {title}
+`
+      );
+
+      const create = await runCLI(
+        ['new', 'task', '--json', '{"name": "Relation Default Task"}', '--template', 'with-milestone'],
+        vaultDir
+      );
+      expect(create.exitCode).toBe(0);
+      const output = JSON.parse(create.stdout);
+
+      const content = await readFile(join(vaultDir, output.path), 'utf-8');
+      // Clean wikilink on disk: `milestone: "[[Active Milestone]]"`, never the
+      // double-quoted `milestone: '"[[Active Milestone]]"'` regression.
+      expect(content).toMatch(/^milestone: "\[\[Active Milestone\]\]"$/m);
+      expect(content).not.toContain(`'"[[`);
+
+      const fm = parseFrontmatter(content);
+      expect(fm.milestone).toBe('[[Active Milestone]]');
 
       const audit = await runCLI(['audit', '--path', output.path], vaultDir);
       expect(audit.exitCode).toBe(0);

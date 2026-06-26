@@ -300,7 +300,7 @@ async function promptRelationField(
     const selected = await promptSelection(`Default ${label}:`, options);
     if (selected === null) throw new UserCancelledError();
     if (selected === '(skip)') return undefined;
-    return formatValue(selected, schema.config.linkFormat);
+    return cleanRelationLink(selected, schema.config.linkFormat);
   }
 
   // template-edit
@@ -326,7 +326,7 @@ async function promptRelationField(
   if (selected === null) throw new UserCancelledError();
   if (selected === '(keep)') return opts.currentValue;
   if (selected === '(clear)') return CLEAR;
-  return formatValue(selected, schema.config.linkFormat);
+  return cleanRelationLink(selected, schema.config.linkFormat);
 }
 
 async function promptListField(
@@ -490,6 +490,28 @@ async function promptNumberTemplate(
   }
 }
 
+/**
+ * Build a CLEAN relation link for storing in a frontmatter OBJECT (e.g. a
+ * template's `defaults` map) that will subsequently be YAML-serialized.
+ *
+ * `formatValue` (vault.ts) returns a PRE-QUOTED string such as `"[[Alice]]"`,
+ * which is correct for direct TEXT interpolation into raw YAML (where the
+ * surrounding quotes keep `[[` from being read as a flow sequence). But when
+ * that pre-quoted string is placed into an object and handed to the YAML
+ * serializer, the serializer quotes it AGAIN, producing `'"[[Alice]]"'` on disk
+ * — a malformed value that instantiates into notes with literal quote
+ * characters around the wikilink. For object values we need the RAW link
+ * (`[[Alice]]` / `[Alice](Alice.md)`); the serializer then quotes it exactly
+ * once, yielding the canonical `"[[Alice]]"` that parses back to `[[Alice]]`.
+ *
+ * Mirrors `cleanChainLink` in recurrence.ts, which solves the same double-quote
+ * hazard for chain (`next`/`prev`) links.
+ */
+function cleanRelationLink(name: string, linkFormat: 'wikilink' | 'markdown'): string {
+  if (!name) return '';
+  return linkFormat === 'markdown' ? `[${name}](${name}.md)` : `[[${name}]]`;
+}
+
 function formatUniqueRelationValues(
   values: string[],
   linkFormat: 'wikilink' | 'markdown'
@@ -497,7 +519,7 @@ function formatUniqueRelationValues(
   const seen = new Set<string>();
   const result: string[] = [];
   for (const value of values) {
-    const formatted = formatValue(value, linkFormat);
+    const formatted = cleanRelationLink(value, linkFormat);
     if (!seen.has(formatted)) {
       seen.add(formatted);
       result.push(formatted);

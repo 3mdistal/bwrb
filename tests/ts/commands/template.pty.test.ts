@@ -505,8 +505,13 @@ describePty('template command PTY tests', () => {
           const content = await readFile(templatePath, 'utf-8');
           const frontmatter = parseFrontmatter(content);
           const defaults = frontmatter.defaults as Record<string, unknown>;
-          // Stored as a list of formatted relation links (same shape as template edit).
-          expect(defaults.people).toEqual(['"[[Alice]]"', '"[[Bob]]"']);
+          // Stored as a list of CLEAN relation links (no literal quote characters
+          // around the wikilink). The YAML serializer adds exactly one layer of
+          // quoting for safety, so on disk each item is `- "[[Name]]"` which
+          // parses back to `[[Name]]` — NOT the double-quoted `'"[[Name]]"'`.
+          expect(defaults.people).toEqual(['[[Alice]]', '[[Bob]]']);
+          // Guard against the double-quote regression: no `'"[[` on disk.
+          expect(content).not.toContain(`'"[[`);
         },
         {
           files: [
@@ -537,8 +542,10 @@ describePty('template command PTY tests', () => {
           const notePath = join(vaultPath, 'Meetings', 'Standup.md');
           const content = await readFile(notePath, 'utf-8');
           const frontmatter = parseFrontmatter(content);
-          // All selected relation defaults from the template are applied.
+          // All selected relation defaults from the template are applied as CLEAN
+          // wikilinks — no literal quote characters embedded in the value.
           expect(frontmatter.people).toEqual(['[[Alice]]', '[[Bob]]']);
+          expect(content).not.toContain(`'"[[`);
         },
         {
           files: [
@@ -1056,7 +1063,9 @@ defaults:
           const content = await readFile(templatePath, 'utf-8');
           const frontmatter = parseFrontmatter(content);
           const defaults = frontmatter.defaults as Record<string, unknown>;
-          expect(defaults.people).toEqual(['"[[Alice]]"', '"[[Bob]]"']);
+          // CLEAN relation links — no double-quoting (matches template new).
+          expect(defaults.people).toEqual(['[[Alice]]', '[[Bob]]']);
+          expect(content).not.toContain(`'"[[`);
         },
         {
           files: [
