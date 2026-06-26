@@ -245,35 +245,53 @@ export function validateFrontmatter(
   for (const [fieldName, field] of Object.entries(fields)) {
     const value = frontmatter[fieldName];
 
-    // The blank-as-unset shortcut (#707) applies only to genuinely SCALAR fields.
-    // A field is LIST-SHAPED if `field.multiple === true` OR `field.prompt ===
-    // 'list'` — this is the exact predicate audit uses to decide "expects an
-    // array" (see `expectsList` in `src/lib/audit/detection.ts` and
-    // `src/lib/audit/fix.ts`), and it covers the alias role too (the ALIAS schema
-    // pattern declares `aliases` as `prompt: 'list'`). For a list-shaped field a
-    // whitespace-only scalar string is NOT a valid "unset": it is the wrong SHAPE
-    // (a scalar where a list is expected) and has no sensible list interpretation.
-    // Audit flags any non-array scalar on a list field as `wrong-scalar-type`,
-    // including a whitespace blank (it does NOT route list fields through
-    // `isBlankScalar`). If we let `isBlankScalar` treat `dates: "   "` or
-    // `aliases: "   "` as unset here, write would SKIP every shape/type check and
-    // silently PERSIST the blank scalar, while audit still flagged it — the
-    // write↔audit parity break this PR exists to close.
+    // The blank-as-unset handling (#707) splits into two questions, because a
+    // blank value plays a different role in the REQUIRED check vs the TYPE check.
     //
-    // So we do NOT short-circuit blank scalars on list-shaped fields; they fall
-    // through to the type check below, where a blank scalar on (e.g.) a `multiple`
-    // date field or a `prompt: 'list'` alias field is rejected as an invalid value
-    // — keeping write and audit in agreement (both reject). A genuine non-array
-    // scalar that DOES carry a value (e.g. `labels: "urgent"`) is unaffected: it
-    // was never blank, so its long-standing accept-on-write / autofix-on-audit
-    // behavior is preserved. `null`/`undefined`/absent and empty arrays remain
-    // "unset" exactly as before.
+    // A field is LIST-SHAPED if `field.multiple === true` OR `field.prompt ===
+    // 'list'` — the exact predicate audit uses to decide "expects an array" (see
+    // `expectsList` in `src/lib/audit/detection.ts` and `src/lib/audit/fix.ts`).
+    //
+    // (1) Is the value MISSING for the required check? — mirrors audit's
+    //     `isEmptyRequiredValue`: `null`/`undefined`/blank-string for any field,
+    //     PLUS an empty array `[]` for a list-shaped field. So a REQUIRED list
+    //     field given `""`/`"   "`/`[]` is reported as required-missing (audit
+    //     emits `empty-string-required`); an OPTIONAL one is simply skipped here.
+    //     This restores the required-emptiness check that an earlier round
+    //     regressed by routing list fields around `isBlankScalar` entirely.
+    //
+    // (2) Is there a value to TYPE-CHECK? — this is where scalar and list shapes
+    //     diverge:
+    //       - scalar field: a blank scalar string is "unset" and skips the type
+    //         check (the PR's main change — `dates: "   "` on an optional scalar
+    //         is accepted). Only a NON-blank scalar is type-checked.
+    //       - list-shaped field: a blank scalar string is NOT unset — it is the
+    //         wrong SHAPE (a scalar where a list is expected) and must reach
+    //         `validateFieldType`, which rejects it for a `multiple` date field
+    //         (bad date) and for an alias field (`invalid_alias`), matching
+    //         audit's `wrong-scalar-type` flag. Only `null`/`undefined`/`[]` are
+    //         genuinely unset for a list field and skip the type check.
+    //
+    // A non-blank scalar on a non-alias list field (e.g. `labels: 'urgent'`) is
+    // unaffected: it was never blank, so it flows to type validation and keeps its
+    // long-standing soft-coercion (audit autofixes it as `wrong-scalar-type`) —
+    // intentionally out of scope here.
     const isListShapedField = field.multiple === true || field.prompt === 'list';
-    const treatBlankAsUnset = !isListShapedField;
-    const hasValue = treatBlankAsUnset ? !isBlankScalar(value) : value !== undefined && value !== null;
+    const isNullish = value === undefined || value === null;
+    const isEmptyArray = Array.isArray(value) && value.length === 0;
+
+    // (1) Required-check emptiness (audit's `isEmptyRequiredValue` semantics).
+    const isMissingForRequired = isListShapedField
+      ? isBlankScalar(value) || isEmptyArray
+      : isBlankScalar(value);
+
+    // (2) Whether there is a value worth type-/option-checking. A blank scalar
+    // string is unset for SCALAR fields only; for LIST-shaped fields it is the
+    // wrong shape and must be type-checked.
+    const hasValue = isListShapedField ? !(isNullish || isEmptyArray) : !isBlankScalar(value);
 
     // Check required fields
-    if (field.required && !hasValue && field.default === undefined) {
+    if (field.required && isMissingForRequired && field.default === undefined) {
       const expected = getFieldExpected(schema, field);
       errors.push({
         type: 'required_field_missing',
