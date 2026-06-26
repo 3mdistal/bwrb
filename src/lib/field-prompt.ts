@@ -287,6 +287,15 @@ async function promptRelationField(
 
   if (opts.mode === 'template-default') {
     if (dynamicOptions.length === 0) return undefined;
+    // Multi-relation fields use a checkbox multiselect so a template default can
+    // store more than one relation target (mirrors the multiple-relation
+    // template-edit flow). An empty selection skips (returns undefined).
+    if (field.multiple) {
+      const selected = await promptMultiSelect(`Default ${label}:`, dynamicOptions);
+      if (selected === null) throw new UserCancelledError();
+      if (selected.length === 0) return undefined;
+      return formatUniqueRelationValues(selected, schema.config.linkFormat);
+    }
     const { options } = buildRelationOptions(dynamicOptions, field, opts);
     const selected = await promptSelection(`Default ${label}:`, options);
     if (selected === null) throw new UserCancelledError();

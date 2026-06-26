@@ -68,12 +68,10 @@ defaults:
 ```
 
 When you build or edit a template interactively (`bwrb template new` /
-`bwrb template edit`), multi-select fields use a checkbox-style multi-select
-prompt in both modes, so you can choose several values at once. Multi-relation
-fields offer the same checkbox multi-select in `bwrb template edit`, but in
-`bwrb template new` they currently set a single relation default. In `template
-edit`, a multi-select default offers `(keep)`, `(clear)`, `(set empty [])`, and
-`(select values)`.
+`bwrb template edit`), both multi-select and multi-relation fields use a
+checkbox-style multi-select prompt in both modes, so you can choose several
+values at once. In `template edit`, a multi-value default offers `(keep)`,
+`(clear)`, `(set empty [])`, and `(select values)`.
 
 ### Dynamic Defaults (Date Expressions)
 
