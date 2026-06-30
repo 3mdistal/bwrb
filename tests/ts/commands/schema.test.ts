@@ -558,6 +558,19 @@ describe('schema command', () => {
       }
     });
 
+    it('supports -o json as an alias for --output json', async () => {
+      const tempVaultDir = await setupAddedOptionVault();
+      try {
+        const longResult = await runCLI(['schema', 'diff', '--output', 'json'], tempVaultDir);
+        const shortResult = await runCLI(['schema', 'diff', '-o', 'json'], tempVaultDir);
+
+        expect(shortResult.exitCode).toBe(0);
+        expect(JSON.parse(shortResult.stdout)).toEqual(JSON.parse(longResult.stdout));
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
     it('reports a schema-only change (added option) in human output, not "No schema changes"', async () => {
       const tempVaultDir = await setupAddedOptionVault();
       try {
