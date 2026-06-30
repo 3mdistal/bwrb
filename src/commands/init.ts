@@ -82,8 +82,10 @@ Examples:
         throw new Error('bwrb init requires --yes when --non-interactive is set.');
       }
 
-      // Resolve vault path
-      const vaultDir = pathArg ? resolve(pathArg) : process.cwd();
+      // Resolve vault path. For init, a positional path is the most specific
+      // target, then the global --vault/-v option, then the current directory.
+      const vaultTarget = pathArg ?? globalOpts.vault;
+      const vaultDir = vaultTarget ? resolve(vaultTarget) : process.cwd();
       const bwrbDir = join(vaultDir, BWRB_DIR);
 
       // Check if vault directory exists

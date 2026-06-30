@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { writeFile, rm, mkdir, readFile, readdir } from 'fs/promises';
+import { writeFile, rm, mkdir, readFile, readdir, realpath } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { mkdtemp } from 'fs/promises';
@@ -104,6 +104,62 @@ describe('init command', () => {
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('not a directory');
+    });
+  });
+
+  // ============================================================================
+  // Global --vault/-v option
+  // ============================================================================
+
+  describe('global --vault/-v option', () => {
+    it('should initialize the global -v target instead of the current directory', async () => {
+      const targetDir = join(tempDir, 'target-vault');
+      const cwdDir = join(tempDir, 'cwd');
+      await mkdir(targetDir);
+      await mkdir(cwdDir);
+
+      const result = await runCLI(['-v', targetDir, 'init', '--yes'], undefined, undefined, {
+        cwd: cwdDir,
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(join(targetDir, '.bwrb', 'schema.json'))).toBe(true);
+      expect(existsSync(join(cwdDir, '.bwrb'))).toBe(false);
+    });
+
+    it('should resolve a relative global -v init target from the command cwd', async () => {
+      const targetDir = join(tempDir, 'relative-target');
+      const cwdDir = join(tempDir, 'runner');
+      await mkdir(targetDir);
+      await mkdir(cwdDir);
+
+      const result = await runCLI(
+        ['-v', '../relative-target', 'init', '--yes', '--output', 'json'],
+        undefined,
+        undefined,
+        { cwd: cwdDir }
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(join(targetDir, '.bwrb', 'schema.json'))).toBe(true);
+      expect(existsSync(join(cwdDir, '.bwrb'))).toBe(false);
+
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      await expect(realpath(json.data.vault)).resolves.toBe(await realpath(targetDir));
+    });
+
+    it('should let a positional init path take precedence over global -v', async () => {
+      const positionalDir = join(tempDir, 'positional-vault');
+      const vaultOptionDir = join(tempDir, 'vault-option-vault');
+      await mkdir(positionalDir);
+      await mkdir(vaultOptionDir);
+
+      const result = await runCLI(['-v', vaultOptionDir, 'init', positionalDir, '--yes']);
+
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(join(positionalDir, '.bwrb', 'schema.json'))).toBe(true);
+      expect(existsSync(join(vaultOptionDir, '.bwrb'))).toBe(false);
     });
   });
 
