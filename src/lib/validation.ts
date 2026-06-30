@@ -1,10 +1,10 @@
 import type { LoadedSchema, Field } from '../types/schema.js';
 import { getFieldsForType, getDescendants, getType, getFieldOptions, resolveDateGranularity } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
-import { queryByType } from './vault.js';
 import { extractWikilinkTarget } from './links.js';
 import { levenshteinDistance } from './levenshtein.js';
 import { isBlankScalar } from './emptiness.js';
+import { buildVaultNoteIndex, type VaultNoteIndex } from './discovery.js';
 import {
   expandStaticValue,
   parseDate,
@@ -821,6 +821,7 @@ export async function validateContextFields(
 ): Promise<ContextValidationResult> {
   const errors: ContextValidationError[] = [];
   const fields = getFieldsForType(schema, typeName);
+  const noteIndex = await buildVaultNoteIndex(schema, vaultDir);
 
   for (const [fieldName, field] of Object.entries(fields)) {
     // Skip fields without source constraint (not context fields)
@@ -840,10 +841,10 @@ export async function validateContextFields(
       
       const error = await validateSingleContextValue(
         schema,
-        vaultDir,
         fieldName,
         field,
-        v
+        v,
+        noteIndex
       );
       
       if (error) {
@@ -863,10 +864,10 @@ export async function validateContextFields(
  */
 async function validateSingleContextValue(
   schema: LoadedSchema,
-  vaultDir: string,
   fieldName: string,
   field: Field,
-  value: string
+  value: string,
+  noteIndex: VaultNoteIndex
 ): Promise<ContextValidationError | null> {
   const source = field.source!;
   
@@ -877,9 +878,6 @@ async function validateSingleContextValue(
     return null;
   }
 
-  // "any" source accepts any note - we just need to verify it exists
-  // For type-specific sources, we query by type which also verifies existence
-  
   // Build list of valid types based on source constraint
   const validTypes = new Set<string>();
   
@@ -888,15 +886,11 @@ async function validateSingleContextValue(
   
   // Check for "any" in sources
   if (sources.includes('any')) {
-    // Any type is valid, just need to check existence
-    // Query all types to find the note
-    for (const typeName of schema.types.keys()) {
-      const typeNotes = await queryByType(schema, vaultDir, typeName);
-      if (typeNotes.includes(targetName)) {
-        return null; // Found, valid
-      }
+    const candidates = noteIndex.noteTargetIndex.targetToPaths.get(targetName.toLowerCase()) ?? [];
+    if (candidates.length > 0) {
+      return null;
     }
-    
+
     // Note not found in any type
     return {
       type: 'invalid_context_source',
@@ -928,32 +922,33 @@ async function validateSingleContextValue(
     return null;
   }
 
-  // Query notes for each valid type and check if target exists
-  for (const typeName of validTypes) {
-    const typeNotes = await queryByType(schema, vaultDir, typeName);
-    if (typeNotes.includes(targetName)) {
-      return null; // Found and valid type
-    }
+  const candidates = noteIndex.noteTargetIndex.targetToPaths.get(targetName.toLowerCase()) ?? [];
+  const candidateTypes = candidates
+    .map((candidatePath) => {
+      const pathKey = candidatePath.replace(/\.md$/, '');
+      return {
+        path: candidatePath,
+        type: noteIndex.noteTargetIndex.pathNoExtToType.get(pathKey),
+      };
+    })
+    .filter((candidate): candidate is { path: string; type: string } => Boolean(candidate.type));
+
+  if (candidateTypes.some((candidate) => validTypes.has(candidate.type))) {
+    return null;
   }
 
-  // Check if the note exists but has wrong type (for better error messages)
-  for (const [typeName, _type] of schema.types) {
-    if (validTypes.has(typeName)) continue; // Already checked
-    
-    const typeNotes = await queryByType(schema, vaultDir, typeName);
-    if (typeNotes.includes(targetName)) {
-      // Note exists but wrong type
-      return {
-        type: 'invalid_context_source',
-        field: fieldName,
-        value,
-        message: `"${targetName}" is type "${typeName}", expected ${formatExpectedTypes(validTypes)}`,
-        targetName,
-        actualType: typeName,
-        expectedTypes: Array.from(validTypes),
-        expected: Array.from(validTypes),
-      };
-    }
+  const wrongTypeCandidate = candidateTypes[0];
+  if (wrongTypeCandidate) {
+    return {
+      type: 'invalid_context_source',
+      field: fieldName,
+      value,
+      message: `"${targetName}" is type "${wrongTypeCandidate.type}", expected ${formatExpectedTypes(validTypes)}`,
+      targetName,
+      actualType: wrongTypeCandidate.type,
+      expectedTypes: Array.from(validTypes),
+      expected: Array.from(validTypes),
+    };
   }
 
   // Note not found at all
