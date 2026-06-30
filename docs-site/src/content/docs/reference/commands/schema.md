@@ -378,7 +378,7 @@ bwrb schema diff [options]
 
 | Option | Description |
 |--------|-------------|
-| `--output <format>` | Output format: `text`, `json` |
+| `-o, --output <format>` | Output format: `text`, `json` |
 
 ### Description
 
@@ -398,7 +398,7 @@ Compares the current schema.json against the last migration snapshot to show:
 bwrb schema diff
 
 # JSON output for scripting
-bwrb schema diff --output json
+bwrb schema diff -o json
 ```
 
 ### Workflow
@@ -480,7 +480,7 @@ bwrb schema history [options]
 | Option | Description |
 |--------|-------------|
 | `--limit <n>` | Number of entries to show (default: 10) |
-| `--output <format>` | Output format: `text`, `json` |
+| `-o, --output <format>` | Output format: `text`, `json` |
 
 ### Description
 
@@ -500,7 +500,7 @@ bwrb schema history
 bwrb schema history --limit 5
 
 # JSON output
-bwrb schema history --output json
+bwrb schema history -o json
 ```
 
 ---

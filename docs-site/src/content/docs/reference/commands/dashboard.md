@@ -34,6 +34,7 @@ bwrb dashboard inbox --output json   # Override output format
 | `list` | List all saved dashboards |
 | `new <name>` | Create a new dashboard |
 | `edit [name]` | Edit an existing dashboard |
+| `delete [name]` | Delete a dashboard |
 
 ## Creating Dashboards
 
@@ -76,6 +77,10 @@ bwrb dashboard new my-query --type task --where "status=active"
 
 # Edit a dashboard
 bwrb dashboard edit my-tasks
+
+# Delete a dashboard
+bwrb dashboard delete my-tasks --force
+bwrb dashboard delete my-tasks -o json --force
 ```
 
 ## See Also
