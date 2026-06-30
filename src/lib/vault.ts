@@ -143,12 +143,13 @@ export interface ResolveVaultOptions {
  */
 export async function resolveVaultDir(options: ResolveVaultOptions = {}): Promise<string> {
   if (options.vault) {
-    if (!hasVaultSchema(options.vault)) {
+    const resolvedVault = resolve(options.vault);
+    if (!hasVaultSchema(resolvedVault)) {
       throw new Error(
         `Invalid --vault path: "${options.vault}" (expected ${SCHEMA_RELATIVE_PATH})`
       );
     }
-    return options.vault;
+    return resolvedVault;
   }
 
   const cwd = options.cwd ?? process.cwd();
@@ -159,12 +160,13 @@ export async function resolveVaultDir(options: ResolveVaultOptions = {}): Promis
 
   const envVault = process.env['BWRB_VAULT'];
   if (envVault) {
-    if (!hasVaultSchema(envVault)) {
+    const resolvedEnvVault = resolve(envVault);
+    if (!hasVaultSchema(resolvedEnvVault)) {
       throw new Error(
         `Invalid BWRB_VAULT: "${envVault}" (expected ${SCHEMA_RELATIVE_PATH})`
       );
     }
-    return envVault;
+    return resolvedEnvVault;
   }
 
   if (options.allowFindDown === false) {

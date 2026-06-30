@@ -4293,6 +4293,57 @@ Content here
       expect(content).toContain('Content here');
     });
 
+    it('should move to the non-doubled target when --vault is relative', async () => {
+      const parentDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-rel-vault-'));
+      const vaultName = 'collision';
+      const relativeVaultDir = join(parentDir, vaultName);
+
+      try {
+        await mkdir(join(relativeVaultDir, '.bwrb'), { recursive: true });
+        await writeFile(
+          join(relativeVaultDir, '.bwrb', 'schema.json'),
+          JSON.stringify(TEST_SCHEMA, null, 2)
+        );
+        await mkdir(join(relativeVaultDir, 'Ideas'), { recursive: true });
+        await mkdir(join(relativeVaultDir, 'Objectives'), { recursive: true });
+        await writeFile(
+          join(relativeVaultDir, 'Objectives', 'Relative Move.md'),
+          `---
+type: idea
+status: raw
+priority: medium
+---
+relative vault body
+`
+        );
+
+        const result = await runCLI(
+          ['-v', vaultName, 'audit', '--fix', '--auto', '--execute', '--all'],
+          undefined,
+          undefined,
+          { cwd: parentDir }
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Moved to Ideas/');
+
+        const moved = await readFile(
+          join(relativeVaultDir, 'Ideas', 'Relative Move.md'),
+          'utf-8'
+        );
+        expect(moved).toContain('relative vault body');
+
+        await expect(
+          readFile(join(relativeVaultDir, vaultName, 'Ideas', 'Relative Move.md'), 'utf-8')
+        ).rejects.toThrow();
+        await expect(
+          readFile(join(relativeVaultDir, 'Objectives', 'Relative Move.md'), 'utf-8')
+        ).rejects.toThrow();
+      } finally {
+        await rm(parentDir, { recursive: true, force: true });
+      }
+    });
+
     // Defect 1 (DATA LOSS) on the GENERIC wrong-directory path: the same move
     // primitive guard must protect a plain misplaced note whose destination is
     // already occupied. --fix must SKIP it, report a conflict, and overwrite

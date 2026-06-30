@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { join, relative } from 'path';
+import { join, relative, resolve, isAbsolute } from 'path';
 import { writeFile, mkdir, rm, mkdtemp, realpath } from 'fs/promises';
 import { tmpdir } from 'os';
 import {
@@ -57,7 +57,8 @@ describe('vault', () => {
 
         const relativeOptionVault = relative(process.cwd(), optionVaultDir);
         const result = await resolveVaultDir({ vault: relativeOptionVault });
-        expect(result).toBe(relativeOptionVault);
+        expect(result).toBe(resolve(process.cwd(), relativeOptionVault));
+        expect(isAbsolute(result)).toBe(true);
       } finally {
         await cleanupTestVault(optionVaultDir);
       }
@@ -181,7 +182,7 @@ describe('vault', () => {
       }
     });
 
-    it('should preserve relative path from --vault option', async () => {
+    it('should resolve relative path from --vault option to absolute', async () => {
       const baseDir = await mkdtemp(join(tmpdir(), 'bwrb-rel-vault-'));
       try {
         const relativeVault = './my-vault';
@@ -193,13 +194,14 @@ describe('vault', () => {
         delete process.env['BWRB_VAULT'];
 
         const result = await resolveVaultDir({ vault: relativeVault });
-        expect(result).toBe(relativeVault);
+        expect(result).toBe(resolve(process.cwd(), relativeVault));
+        expect(isAbsolute(result)).toBe(true);
       } finally {
         await rm(baseDir, { recursive: true, force: true });
       }
     });
 
-    it('should preserve relative path from env var', async () => {
+    it('should resolve relative path from env var to absolute', async () => {
       const baseDir = await mkdtemp(join(tmpdir(), 'bwrb-rel-env-'));
       try {
         await mkdir(join(baseDir, 'other-vault', '.bwrb'), { recursive: true });
@@ -210,7 +212,8 @@ describe('vault', () => {
         process.env['BWRB_VAULT'] = '../other-vault';
 
         const result = await resolveVaultDir({});
-        expect(result).toBe('../other-vault');
+        expect(result).toBe(resolve(process.cwd(), '../other-vault'));
+        expect(isAbsolute(result)).toBe(true);
       } finally {
         await rm(baseDir, { recursive: true, force: true });
       }
