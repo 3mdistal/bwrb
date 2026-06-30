@@ -1025,7 +1025,7 @@ dashboardCommand
   .command('delete [name]')
   .description('Delete a dashboard')
   .option('-f, --force', 'Skip confirmation prompt')
-  .option('--output <format>', 'Output format: text (default) or json')
+  .option('-o, --output <format>', 'Output format: text (default) or json')
   .addHelpText('after', `
 Delete a saved dashboard. Shows a picker if no name is provided.
 

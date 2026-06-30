@@ -523,7 +523,7 @@ Examples:
   schemaCommand
     .command('history')
     .description('Show migration history')
-    .option('--output <format>', 'Output format: text (default) or json')
+    .option('-o, --output <format>', 'Output format: text (default) or json')
     .option('--limit <n>', 'Number of entries to show (default: 10)')
     .addHelpText('after', `
 Examples:

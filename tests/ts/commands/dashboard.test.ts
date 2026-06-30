@@ -1566,6 +1566,19 @@ describe('dashboard command', () => {
         expect(json.data.wasDefault).toBe(false);
       });
 
+      it('supports -o json as an alias for --output json', async () => {
+        const result = await runCLI(
+          ['dashboard', 'delete', 'to-delete', '-o', 'json', '--force'],
+          vaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const json = JSON.parse(result.stdout);
+        expect(json.success).toBe(true);
+        expect(json.data.name).toBe('to-delete');
+        expect(json.data.wasDefault).toBe(false);
+      });
+
       it('should return error JSON when dashboard does not exist', async () => {
         const result = await runCLI(
           ['dashboard', 'delete', 'nonexistent', '--force', '--output', 'json'],

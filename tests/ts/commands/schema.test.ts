@@ -2214,4 +2214,25 @@ status: paused
       expect(result.stdout).toContain('status');
     });
   });
+
+  describe('schema history', () => {
+    it('supports -o json as an alias for --output json', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-schema-history-output-alias-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({ version: 2, types: { meta: {} } }, null, 2)
+      );
+
+      try {
+        const longResult = await runCLI(['schema', 'history', '--output', 'json'], tempVaultDir);
+        const shortResult = await runCLI(['schema', 'history', '-o', 'json'], tempVaultDir);
+
+        expect(shortResult.exitCode).toBe(0);
+        expect(JSON.parse(shortResult.stdout)).toEqual(JSON.parse(longResult.stdout));
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+  });
 });
