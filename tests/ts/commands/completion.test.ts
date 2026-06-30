@@ -95,6 +95,17 @@ describe('bwrb completion command', () => {
       expect(completions).toContain('idea');
     });
 
+    it('should complete commands after the short -v vault option', async () => {
+      const output = await runCliOutput(
+        ['--completions', 'bwrb', '-v', VAULT_DIR, 'li'],
+        { cwd: '/tmp' }
+      );
+      const completions = output.split('\n').filter((l) => l.trim());
+
+      expect(completions).toContain('list');
+      expect(completions).not.toContain('new');
+    });
+
     it('should filter type completions by prefix', async () => {
       const output = await runCliOutput(['--completions', 'bwrb', 'list', '--type', 'ta'], {
         vault: VAULT_DIR,
