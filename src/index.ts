@@ -27,8 +27,8 @@ if (completionsIndex !== -1) {
   // Extract everything after --completions as the words to complete
   const completionArgs = process.argv.slice(completionsIndex + 1);
   
-  // Extract --vault if present in the completion args
-  const vaultIndex = completionArgs.indexOf('--vault');
+  // Extract the global vault target if present in the completion args
+  const vaultIndex = completionArgs.findIndex(arg => arg === '--vault' || arg === '-v');
   const vault = vaultIndex !== -1 ? completionArgs[vaultIndex + 1] : undefined;
   
   handleCompletionRequest(completionArgs, vault ? { vault } : {})
