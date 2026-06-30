@@ -242,6 +242,94 @@ status: queued
       expect(result.stdout).toContain('Updated: Ideas/Sample Idea.md');
       expect(() => JSON.parse(result.stdout)).toThrow();
     });
+
+    it('accepts path-qualified relation refs that audit accepts when editing an unrelated field (#748)', async () => {
+      await writeFile(
+        join(vaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(
+          {
+            version: 2,
+            types: {
+              context: {
+                output_dir: 'contexts',
+                fields: {
+                  type: { value: 'context' },
+                  status: { prompt: 'select', options: ['active'], default: 'active', required: true },
+                },
+              },
+              draft: {
+                output_dir: 'drafts',
+                fields: {
+                  type: { value: 'draft' },
+                  status: { prompt: 'select', options: ['active'], default: 'active', required: true },
+                },
+              },
+              task: {
+                output_dir: 'tasks',
+                fields: {
+                  type: { value: 'task' },
+                  status: { prompt: 'select', options: ['backlog', 'done'], default: 'backlog', required: true },
+                  context: { prompt: 'relation', source: 'context' },
+                },
+              },
+            },
+          },
+          null,
+          2
+        ),
+        'utf-8'
+      );
+
+      await mkdir(join(vaultDir, 'contexts'), { recursive: true });
+      await mkdir(join(vaultDir, 'drafts'), { recursive: true });
+      await mkdir(join(vaultDir, 'tasks'), { recursive: true });
+
+      await writeFile(
+        join(vaultDir, 'contexts', 'The Molting.md'),
+        `---
+type: context
+status: active
+---
+`,
+        'utf-8'
+      );
+      await writeFile(
+        join(vaultDir, 'drafts', 'The Molting.md'),
+        `---
+type: draft
+status: active
+---
+`,
+        'utf-8'
+      );
+      await writeFile(
+        join(vaultDir, 'tasks', 'Patch Me.md'),
+        `---
+type: task
+status: backlog
+context: "[[contexts/The Molting]]"
+---
+`,
+        'utf-8'
+      );
+
+      const auditBefore = await runCLI(['audit', '--path', 'tasks/Patch Me.md'], vaultDir);
+      expect(auditBefore.exitCode).toBe(0);
+
+      const result = await runCLI(
+        ['edit', 'tasks/Patch Me.md', '--json', '{"status":"done"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.updated).toContain('status');
+
+      const content = await readFile(join(vaultDir, 'tasks', 'Patch Me.md'), 'utf-8');
+      expect(content).toContain('status: done');
+      expect(content).toContain('context: "[[contexts/The Molting]]"');
+    });
   });
 
   describe('stable ids', () => {
