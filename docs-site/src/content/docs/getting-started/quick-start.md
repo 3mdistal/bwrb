@@ -207,9 +207,14 @@ bwrb list objective/task     # Lists only tasks
 
 Bowerbird finds your vault in this order:
 
-1. `--vault=<path>` flag
-2. `BWRB_VAULT` environment variable
-3. Current working directory
+1. `--vault=<path>` / `-v <path>` flag
+2. The nearest parent directory with `.bwrb/schema.json`
+3. `BWRB_VAULT` environment variable
+4. A single vault discovered under the current directory
+
+`bwrb init` creates a vault instead of finding one, so its target precedence is
+different: positional `[path]`, then global `--vault` / `-v`, then the current
+directory.
 
 Set a default vault in your shell profile:
 
