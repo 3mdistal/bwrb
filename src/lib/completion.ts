@@ -424,8 +424,8 @@ export async function handleCompletionRequest(
 ): Promise<string[]> {
   const ctx = parseCompletionRequest(argv);
   
-  // If completing the first word (after 'bwrb'), return commands
-  if (ctx.currentIndex === 0 || (!ctx.command && !ctx.current.startsWith('-'))) {
+  // If completing the first command word, return commands unless it is an option.
+  if (!ctx.current.startsWith('-') && (ctx.currentIndex === 0 || !ctx.command)) {
     return filterByPrefix(getCommandCompletions(), ctx.current);
   }
   

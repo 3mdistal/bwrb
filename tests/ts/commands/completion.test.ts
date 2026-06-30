@@ -106,6 +106,14 @@ describe('bwrb completion command', () => {
       expect(completions).not.toContain('new');
     });
 
+    it('should return top-level option completions for bwrb dash', async () => {
+      const output = await runCliOutput(['--completions', 'bwrb', '-']);
+      const completions = output.split('\n').filter((l) => l.trim());
+
+      expect(completions).toContain('--vault');
+      expect(completions).toContain('-v');
+    });
+
     it('should filter type completions by prefix', async () => {
       const output = await runCliOutput(['--completions', 'bwrb', 'list', '--type', 'ta'], {
         vault: VAULT_DIR,
