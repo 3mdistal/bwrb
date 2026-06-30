@@ -69,7 +69,7 @@ export function registerMigrationCommands(schemaCommand: Command): void {
   schemaCommand
     .command('diff')
     .description('Show pending schema changes since last migration')
-    .option('--output <format>', 'Output format: text (default) or json')
+    .option('-o, --output <format>', 'Output format: text (default) or json')
     .addHelpText('after', `
 Examples:
   bwrb schema diff              # Show what changed
