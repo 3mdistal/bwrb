@@ -142,6 +142,26 @@ describe('unlinked-mention: detectUnlinkedMentions', () => {
     expect(fuzzy!.similarFiles).toContain('Steve Yegge');
   });
 
+  it('does not fuzzy-flag common structural headings like Notes', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/quotes.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('## Notes\n\nSome ordinary task detail.', 'Tasks/Tidy.md', index);
+    expect(issues.some((i) => i.meta?.['tier'] === 'fuzzy')).toBe(false);
+    expect(issues).toHaveLength(0);
+  });
+
+  it('keeps exact mention detection for common heading labels', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Notes.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('## Notes\n\nSome ordinary task detail.', 'Tasks/Tidy.md', index);
+    const exact = issues.find((i) => i.meta?.['tier'] === 'exact');
+    expect(exact).toBeDefined();
+    expect(exact!.autoFixable).toBe(true);
+    expect(exact!.targetName).toBe('Notes');
+  });
+
   it('flags an ambiguous mention as flag-only with multiple candidates', () => {
     // Two distinct entities both expose the surface "Mercury": one by name,
     // one by alias.

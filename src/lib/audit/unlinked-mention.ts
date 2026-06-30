@@ -73,6 +73,21 @@ const FUZZY_MIN_CANDIDATE_LENGTH = 4;
 /** Cap on how many distinct fuzzy "did you mean?" suggestions to list. */
 const FUZZY_MAX_SUGGESTIONS = 3;
 
+const COMMON_STRUCTURAL_HEADING_LABELS = new Set([
+  'backlinks',
+  'context',
+  'ideas',
+  'links',
+  'notes',
+  'references',
+  'related',
+  'resources',
+  'summary',
+  'tasks',
+  'todo',
+  'todos',
+]);
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -483,6 +498,20 @@ function detectFuzzyCandidates(
   const isConsumed = (start: number, end: number): boolean =>
     consumed.some(([s, e]) => start < e && end > s);
 
+  const isCommonStructuralHeading = (phrase: string, start: number): boolean => {
+    const lineStart = body.lastIndexOf('\n', start - 1) + 1;
+    const nextNewline = body.indexOf('\n', start);
+    const lineEnd = nextNewline === -1 ? body.length : nextNewline;
+    const line = body.slice(lineStart, lineEnd);
+    const heading = line.match(/^[ \t]{0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/);
+    if (!heading) return false;
+
+    const headingText = heading[1]!.trim();
+    if (headingText !== phrase) return false;
+
+    return COMMON_STRUCTURAL_HEADING_LABELS.has(headingText.toLowerCase());
+  };
+
   // Candidate phrases: runs of capitalized words (proper-noun-ish), e.g.
   // "Steve Yeg", "Mercry". Conservative to keep the fuzzy tier low-noise.
   const phraseRe = /\b[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)*/g;
@@ -525,6 +554,7 @@ function detectFuzzyCandidates(
       const start = cand.start;
       const end = start + phrase.length;
       if (isConsumed(start, end)) continue;
+      if (isCommonStructuralHeading(phrase, start)) continue;
 
       const lower = phrase.toLowerCase();
       // Skip exact known surfaces (handled by the exact tier).
