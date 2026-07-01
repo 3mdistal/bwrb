@@ -954,6 +954,29 @@ describe("diffSchemas", () => {
       };
     }
 
+    function withHierarchicalParentSource(
+      source: string | string[],
+      schemaVersion = "1.0.0"
+    ): BwrbSchemaType {
+      return {
+        version: 2,
+        schemaVersion,
+        types: {
+          objective: {
+            output_dir: "Objectives",
+            fields: {},
+          },
+          task: {
+            extends: "objective",
+            output_dir: "Tasks",
+            fields: {
+              parent: { prompt: "relation", source },
+            },
+          },
+        },
+      };
+    }
+
     it("does NOT emit review-field when a relation source only widens (new set ⊇ old)", () => {
       // source: "task" → ["task", "project"]. Existing links targeting `task`
       // remain valid; the change merely allows a wider set, so no review op.
@@ -967,6 +990,52 @@ describe("diffSchemas", () => {
           (op) => op.op === "review-field" && op.field === "parent"
         )
       ).toBe(false);
+    });
+
+    it("does NOT emit review-field when a child relation source widens to its ancestor", () => {
+      // Validation accepts a relation source type plus descendants, so
+      // "objective" accepts both objective and task. Existing task links remain
+      // valid when "task" widens to its ancestor.
+      const oldSchema = withHierarchicalParentSource("task", "1.0.0");
+      const newSchema = withHierarchicalParentSource("objective", "1.1.0");
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "parent"
+        )
+      ).toBe(false);
+    });
+
+    it("does NOT emit review-field when dropping a descendant already covered by an ancestor source", () => {
+      // ["objective", "task"] and ["objective"] accept the same effective set
+      // because objective already covers its task descendants.
+      const oldSchema = withHierarchicalParentSource(["objective", "task"], "1.0.0");
+      const newSchema = withHierarchicalParentSource("objective", "1.1.0");
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "parent"
+        )
+      ).toBe(false);
+    });
+
+    it("emits review-field when a relation source truly narrows from ancestor to child", () => {
+      // objective accepted objective notes and task descendants; task accepts
+      // only task descendants, so objective links may now be invalid.
+      const oldSchema = withHierarchicalParentSource("objective", "1.0.0");
+      const newSchema = withHierarchicalParentSource("task", "1.1.0");
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
+
+      expect(
+        plan.nonDeterministic.some(
+          (op) => op.op === "review-field" && op.field === "parent"
+        )
+      ).toBe(true);
     });
 
     it("does NOT emit review-field when a relation source array is merely reordered", () => {
