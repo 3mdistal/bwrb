@@ -100,6 +100,10 @@ export function parseCompletionRequest(argv: string[]): CompletionContext {
   let commandIndex = -1;
   for (let i = 0; i < words.length - 1; i++) {
     const word = words[i];
+    if (word?.startsWith('-') && isValueOption(word)) {
+      i++;
+      continue;
+    }
     if (word && !word.startsWith('-')) {
       command = word;
       commandIndex = i;
@@ -267,13 +271,13 @@ async function resolveVaultDirForCompletion(options: { vault?: string }): Promis
  * Only includes options that make sense to complete.
  */
 const COMMAND_OPTIONS: Record<string, string[]> = {
-  new: ['--type', '-t', '--vault', '--non-interactive', '--template', '--json', '--help'],
-  edit: ['--type', '-t', '--path', '-p', '--where', '-w', '--id', '--body', '-b', '--picker', '--json', '--output', '--open', '--app', '--vault', '--non-interactive', '--help'],
-  list: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--text', '--id', '--fields', '--sort', '--desc', '--limit', '--count', '--output', '-o', '--vault', '--non-interactive', '--json', '--help'],
-  recent: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--limit', '--output', '--vault', '--non-interactive', '--help'],
-  open: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--app', '--vault', '--non-interactive', '--help'],
-  search: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--wikilink', '--vault', '--non-interactive', '--help'],
-  audit: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--text', '--all', '-a', '--strict', '--only', '--ignore', '--output', '--fix', '--auto', '--dry-run', '--execute', '--allow-field', '--vault', '--non-interactive', '--help'],
+  new: ['--type', '-t', '--vault', '-v', '--non-interactive', '--template', '--json', '--help'],
+  edit: ['--type', '-t', '--path', '-p', '--where', '-w', '--id', '--body', '-b', '--picker', '--json', '--output', '--open', '--app', '--vault', '-v', '--non-interactive', '--help'],
+  list: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--text', '--id', '--fields', '--sort', '--desc', '--limit', '--count', '--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
+  recent: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--limit', '--output', '--vault', '-v', '--non-interactive', '--help'],
+  open: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--app', '--vault', '-v', '--non-interactive', '--help'],
+  search: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--wikilink', '--vault', '-v', '--non-interactive', '--help'],
+  audit: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--text', '--all', '-a', '--strict', '--only', '--ignore', '--output', '--fix', '--auto', '--dry-run', '--execute', '--allow-field', '--vault', '-v', '--non-interactive', '--help'],
   bulk: [
     '--type', '-t',
     '--path', '-p',
@@ -296,13 +300,14 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
     '--quiet',
     '--output',
     '--vault',
+    '-v',
     '--non-interactive',
     '--dry-run',
     '--help',
   ],
-  schema: ['--vault', '--non-interactive', '--help'],
-  template: ['--vault', '--non-interactive', '--help'],
-  dashboard: ['--output', '-o', '--vault', '--non-interactive', '--json', '--help'],
+  schema: ['--vault', '-v', '--non-interactive', '--help'],
+  template: ['--vault', '-v', '--non-interactive', '--help'],
+  dashboard: ['--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
   delete: [
     '--type', '-t',
     '--path', '-p',
@@ -317,10 +322,11 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
     '--picker',
     '--output',
     '--vault',
+    '-v',
     '--help',
   ],
   completion: ['--help'],
-  config: ['--output', '-o', '--vault', '--non-interactive', '--json', '--help'],
+  config: ['--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
 };
 
 /**
@@ -363,7 +369,7 @@ function isValueOption(option: string): boolean {
     '--template',
     '--app',
     '--set',
-    '--vault',
+    '--vault', '-v',
     '--text',
     '--picker',
     '--id',
@@ -418,8 +424,8 @@ export async function handleCompletionRequest(
 ): Promise<string[]> {
   const ctx = parseCompletionRequest(argv);
   
-  // If completing the first word (after 'bwrb'), return commands
-  if (ctx.currentIndex === 0 || (!ctx.command && !ctx.current.startsWith('-'))) {
+  // If completing the first command word, return commands unless it is an option.
+  if (!ctx.current.startsWith('-') && (ctx.currentIndex === 0 || !ctx.command)) {
     return filterByPrefix(getCommandCompletions(), ctx.current);
   }
   
@@ -449,7 +455,7 @@ export async function handleCompletionRequest(
   if (ctx.current.startsWith('-')) {
     const opts = ctx.command 
       ? getOptionCompletions(ctx.command)
-      : ['--vault', '--non-interactive', '--help', '--version'];
+      : ['--vault', '-v', '--non-interactive', '--help', '--version'];
     return filterByPrefix(opts, ctx.current);
   }
   
