@@ -4,7 +4,7 @@
  */
 
 import { Schema, Field, getOptionValues } from '../../types/schema.js';
-import { resolveSchema, getConcreteTypeNames } from '../schema.js';
+import { resolveSchema, getConcreteTypeNames, getDescendants } from '../schema.js';
 import type { LoadedSchema } from '../../types/schema.js';
 import {
   MigrationPlan,
@@ -480,6 +480,8 @@ function classifyChanges(
           change,
           oldField,
           newField,
+          resolvedOld,
+          resolvedNew,
           deterministic,
           nonDeterministic
         );
@@ -564,6 +566,8 @@ function classifyFieldChange(
   change: Extract<DetectedChange, { kind: 'field-changed' }>,
   oldField: Field | undefined,
   newField: Field | undefined,
+  resolvedOld: LoadedSchema | undefined,
+  resolvedNew: LoadedSchema,
   deterministic: MigrationOp[],
   nonDeterministic: MigrationOp[]
 ): void {
@@ -693,18 +697,20 @@ function classifyFieldChange(
   }
 
   if (changedProps.includes('source')) {
-    // Normalize both old and new `source` into a SET of allowed source types so
-    // the comparison is order-insensitive and treats a bare string identically to
-    // a one-element array. `source: "task"` and `source: ["task"]` are the same
-    // allowed set; reordering an array changes nothing.
+    // Normalize both old and new `source` into a SET of EFFECTIVELY accepted
+    // source types so the comparison is order-insensitive and treats a bare
+    // string identically to a one-element array. Validation accepts a source type
+    // plus all of its descendants, so the diff must compare that expanded set
+    // rather than the raw source names.
     //
     // CRUCIAL distinction (validation.ts semantics): an ABSENT source — and an
     // explicit `source: "any"` — both mean "any note type is allowed", i.e. the
     // relation is UNCONSTRAINED. That is NOT the same as an empty allowed set that
     // every other set is a superset of; it is the opposite (the universal set).
-    // `normalizeSourceSet` collapses both forms to `null` to mark "unconstrained".
-    const oldSources = normalizeSourceSet(oldField?.source);
-    const newSources = normalizeSourceSet(newField?.source);
+    // `normalizeRelationSourceSet` collapses both forms to `null` to mark
+    // "unconstrained".
+    const oldSources = normalizeRelationSourceSet(oldField?.source, resolvedOld);
+    const newSources = normalizeRelationSourceSet(newField?.source, resolvedNew);
 
     const oldUnconstrained = oldSources === null;
     const newUnconstrained = newSources === null;
@@ -728,11 +734,12 @@ function classifyFieldChange(
           'relation source is now constrained (was unconstrained); existing links may point at a disallowed type and need manual review',
       });
     } else {
-      // Both old and new are constrained (non-empty sets). A change is only risky
-      // for existing links when an allowed source is REMOVED (the field is narrowed
-      // or retargeted so previously-valid links may now point at a type that is no
-      // longer accepted). A pure WIDENING (new ⊇ old) or a reorder (sets equal)
-      // keeps every existing link valid → no op for this aspect.
+      // Both old and new are constrained (non-empty effective sets). A change is
+      // only risky for existing links when an accepted type is REMOVED (the field
+      // is narrowed or retargeted so previously-valid links may now point at a
+      // type that is no longer accepted). A pure WIDENING (new ⊇ old), a reorder,
+      // or dropping an explicitly listed descendant already covered by a listed
+      // ancestor keeps every existing link valid → no op for this aspect.
       const removedSource = [...oldSources].some((s) => !newSources.has(s));
       if (removedSource) {
         nonDeterministic.push({
@@ -807,8 +814,9 @@ function isDateGranularityNarrowing(
  * An empty array (`source: []`) is treated as unconstrained too: it pins no
  * specific type, so it cannot meaningfully narrow existing links.
  */
-function normalizeSourceSet(
-  source: string | string[] | undefined
+function normalizeRelationSourceSet(
+  source: string | string[] | undefined,
+  schema: LoadedSchema | undefined
 ): Set<string> | null {
   if (source === undefined) {
     return null;
@@ -817,7 +825,15 @@ function normalizeSourceSet(
   if (list.length === 0 || list.includes('any')) {
     return null;
   }
-  return new Set(list);
+  const accepted = new Set<string>();
+  for (const sourceName of list) {
+    accepted.add(sourceName);
+    if (!schema) continue;
+    for (const descendant of getDescendants(schema, sourceName)) {
+      accepted.add(descendant);
+    }
+  }
+  return accepted;
 }
 
 /**
