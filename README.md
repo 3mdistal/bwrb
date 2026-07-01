@@ -285,6 +285,18 @@ prompt-fields:
 | `defaults` | No | Default field values (skip prompting) |
 | `prompt-fields` | No | Fields to always prompt for, even with defaults |
 | `filename-pattern` | No | Override default filename |
+| `instances` | No | Related notes/tasks to scaffold with the parent |
+
+### Template Defaults and Dates
+
+Template defaults can use date expressions such as `@today+3d` or
+`today() + '7d'` for fields whose schema prompt is `date`. Those expressions are
+evaluated when the note is created and normalized to the schema's date format.
+Defaults on scaffolded `instances` use the same behavior, so child task fields
+like `scheduled` or `deadline` can be relative to the creation date.
+
+Non-date fields pass date-looking strings through literally. For example, a text
+field default of `@today+3d` is written as `@today+3d`, not evaluated.
 
 ### Template Body
 
@@ -292,6 +304,47 @@ The template body becomes the note body, with variable substitution:
 - `{fieldName}` - Replaced with frontmatter value
 - `{date}` - Today's date (YYYY-MM-DD)
 - `{date:FORMAT}` - Formatted date (e.g., `{date:YYYY-MM}`)
+
+### Instance Scaffolding
+
+Templates can define `instances` to create related notes when the parent is
+created. Instances may use any configured type, including the same type as the
+parent, so a `task` template can scaffold additional `task` notes.
+
+Each instance is filed into the child type's configured `output_dir`, not beside
+the parent unless both types use the same output directory. Existing instance
+files are skipped rather than overwritten.
+
+```yaml
+---
+type: template
+template-for: task
+description: Builder article production checklist
+defaults:
+  status: planned
+  scheduled: "@today+1d"
+  deadline: "@today+7d"
+instances:
+  - type: task
+    defaults:
+      name: "Outline article"
+      scheduled: "@today+1d"
+  - type: task
+    defaults:
+      name: "Draft article"
+      scheduled: "@today+3d"
+  - type: task
+    defaults:
+      name: "Review and publish article"
+      scheduled: "@today+5d"
+---
+```
+
+Instance `defaults` and explicit child `filename` values do not interpolate
+parent placeholders like `{name}`. Use literal child names/filenames, rely on
+the child type's own filename pattern, or generate article-specific child names
+with a wrapper script. Avoid braces in explicit child filenames unless you want
+the braces to be part of the actual filename.
 
 ### CLI Usage
 

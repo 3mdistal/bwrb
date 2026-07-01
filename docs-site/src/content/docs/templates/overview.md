@@ -106,6 +106,13 @@ bwrb template validate
 | **prompt-fields** | Always prompt for these fields, even with defaults |
 | **Date expressions** | Dynamic values like `@today+7d` (or `today() + '7d'`) |
 | **Body variables** | `{fieldName}`, `{date}` replaced at creation |
+| **instances** | Scaffold related notes, including same-type child tasks, into each child type's `output_dir` |
+
+Date expressions evaluate only for date fields in template defaults, including
+defaults on scaffolded instances. Non-date fields keep date-looking strings
+literally. Instance `defaults` and explicit instance `filename` values do not
+interpolate parent placeholders like `{name}`; use literal child values or a
+wrapper script for dynamically named child tasks.
 
 ## Next Steps
 
