@@ -12,6 +12,30 @@ const CLI_SRC_PATH = join(PROJECT_ROOT, 'src/index.ts');
 const TSX_BIN = join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx');
 
 const USE_DIST = process.env.BWRB_TEST_DIST === '1';
+const NODE_DEP0205_SUPPRESSION = '--disable-warning=DEP0205';
+
+export function withTestCliNodeOptions(
+  env: NodeJS.ProcessEnv,
+  { useDist = USE_DIST }: { useDist?: boolean } = {}
+): Record<string, string> {
+  const normalizedEnv: Record<string, string> = Object.fromEntries(
+    Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+  );
+
+  if (useDist) return normalizedEnv;
+
+  const existingNodeOptions = normalizedEnv.NODE_OPTIONS?.trim();
+  if (existingNodeOptions?.split(/\s+/).includes(NODE_DEP0205_SUPPRESSION)) {
+    return normalizedEnv;
+  }
+
+  return {
+    ...normalizedEnv,
+    NODE_OPTIONS: existingNodeOptions
+      ? `${existingNodeOptions} ${NODE_DEP0205_SUPPRESSION}`
+      : NODE_DEP0205_SUPPRESSION,
+  };
+}
 
 /**
  * Get a relative path from the project root to the vault.
@@ -416,7 +440,7 @@ export async function runCLI(
     )
   );
 
-  const mergedEnv: Record<string, string> = {
+  let mergedEnv: Record<string, string> = {
     ...childEnv,
     ...env,
   };
@@ -424,6 +448,8 @@ export async function runCLI(
   if (mergedEnv.NO_COLOR === undefined) {
     mergedEnv.NO_COLOR = '1';
   }
+
+  mergedEnv = withTestCliNodeOptions(mergedEnv);
 
   let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
