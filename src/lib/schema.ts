@@ -298,9 +298,11 @@ function computeAncestors(types: Map<string, ResolvedType>, typeName: string): s
  *     "own wins over traits" guarantee — own's `prompt`/`options`/`label`/etc.
  *     all win).
  *   - colliding field came from **inheritance** (parent chain, no trait
- *     involved) → keep the historical **restricted merge**: only
- *     `default`/`value`/`description`/`granularity` merge onto the inherited
- *     definition; structural keys stay inherited.
+ *     involved) → own fields **merge by explicit key** onto the inherited
+ *     definition. Omitted keys keep the inherited value, while declared keys
+ *     (metadata or structural: `options`, `multiple`, `required`, `source`,
+ *     etc.) override it. This lets a subtype narrow/fork an inherited field
+ *     without re-copying the whole parent definition.
  *   - no collision → it is simply a new field.
  *
  *   Note: when a trait already fully replaced a parent field, that field's
@@ -314,8 +316,8 @@ function computeEffectiveFields(
 ): Record<string, Field> {
   const fields: Record<string, Field> = {};
   // Track the origin of each accumulated field so own-field collisions can
-  // distinguish "came from a trait" (full override) from "came from
-  // inheritance" (restricted merge). Own fields never land here mid-loop.
+  // distinguish "came from a trait" (full replacement) from "came from
+  // inheritance" (explicit-key merge). Own fields never land here mid-loop.
   const origin = new Map<string, 'inherited' | 'trait'>();
 
   // Start from the root and work down (so child fields override)
@@ -354,27 +356,10 @@ function computeEffectiveFields(
       const existingOrigin = fields[fieldName] ? origin.get(fieldName) : undefined;
 
       if (existingOrigin === 'inherited') {
-        // Collision with an INHERITED field → historical restricted merge:
-        // only default/value/description/granularity merge; structural keys
-        // (prompt/options/label/...) stay inherited.
-        if (fieldDef.default !== undefined) {
-          fields[fieldName] = { ...fields[fieldName], default: fieldDef.default };
-        }
-        // Also allow 'value' override - this is needed for type identity fields
-        // where each type has its own fixed value (e.g., type: task vs type: objective)
-        if (fieldDef.value !== undefined) {
-          fields[fieldName] = { ...fields[fieldName], value: fieldDef.value };
-        }
-        // Allow 'description' override - a subtype can document an inherited
-        // field with meaning specific to its context.
-        if (fieldDef.description !== undefined) {
-          fields[fieldName] = { ...fields[fieldName], description: fieldDef.description };
-        }
-        // Allow 'granularity' override - a subtype can loosen or tighten the
-        // precision required for an inherited date field.
-        if (fieldDef.granularity !== undefined) {
-          fields[fieldName] = { ...fields[fieldName], granularity: fieldDef.granularity };
-        }
+        // Collision with an INHERITED field → explicit-key merge. A subtype can
+        // keep inherited keys by omitting them, and override metadata or
+        // structure by declaring those keys locally.
+        fields[fieldName] = { ...fields[fieldName], ...fieldDef };
       } else {
         // Collision with a TRAIT field (existingOrigin === 'trait') → own FULLY
         // replaces it. Also the no-collision case → new own field. Either way
@@ -1085,7 +1070,7 @@ export interface FieldsByOrigin {
  *
  * Attribution priority matches resolution precedence (own > trait > inherited):
  * a field declared on the type itself is always attributed to `own` (even when
- * it restricted-merged onto an inherited field), and the field OBJECT returned
+ * it explicit-key-merges onto an inherited field), and the field OBJECT returned
  * for every group is the resolved *winner's* definition from `type.fields`.
  *
  * @param schema The loaded schema

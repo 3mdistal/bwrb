@@ -837,16 +837,13 @@ parent: "[[Task Two]]"
     });
   });
 
-  // P1 (#728, fourth review) — data-loss guard. A subtype that edits its OWN raw
-  // structural override of an INHERITED field changes nothing EFFECTIVELY (the
-  // resolver drops the child's structural keys for an inherited field). The diff
-  // must emit NO op, so a valid child-note value survives migration. End-to-end:
-  // a stale heuristic here would emit clear-invalid-options from the IGNORED raw
-  // override and silently delete the note's value.
-  describe("subtype raw-override of inherited field does not delete child-note data (P1)", () => {
-    it("keeps a valid child-note value when only the subtype's ignored raw options change", async () => {
+  // #731 — subtype structural overrides are effective. A subtype that narrows
+  // its own inherited-field option fork must clean child notes against the
+  // child's effective option set, while keeping child values that remain valid.
+  describe("subtype structural override of inherited field cleans child-note data", () => {
+    it("clears invalid child-note values when the subtype narrows its own options", async () => {
       // objective declares `phase`; task re-declares it with its OWN options,
-      // which resolution IGNORES — task's effective `phase` == objective's.
+      // so task's effective `phase` uses task's forked option set.
       const oldSchema = {
         version: 2 as const,
         schemaVersion: "1.0.0",
@@ -866,8 +863,6 @@ parent: "[[Task Two]]"
             output_dir: "Tasks",
             fields: {
               name: { prompt: "text", required: true },
-              // Raw structural override DROPPED by the resolver. Editing these
-              // must not touch notes.
               phase: {
                 prompt: "select",
                 options: ["todo", "doing", "done", "wontfix"],
@@ -876,7 +871,8 @@ parent: "[[Task Two]]"
           },
         },
       };
-      // Parent UNCHANGED; only task's ignored raw override narrows (drop "wontfix").
+      // Parent unchanged; task's own effective option fork narrows (drop
+      // "wontfix").
       const newSchema = {
         ...oldSchema,
         schemaVersion: "1.1.0",
@@ -900,19 +896,25 @@ parent: "[[Task Two]]"
         JSON.stringify(newSchema)
       );
       await mkdir(join(testDir, "Tasks"), { recursive: true });
-      // A task note carrying a value valid under the EFFECTIVE (parent) options.
+      // One task note carrying the now-invalid child option, and one still valid.
       await writeFile(
         join(testDir, "Tasks/Task-1.md"),
-        `---\ntype: task\nname: Task One\nphase: abandoned\n---\n# Task One\n`
+        `---\ntype: task\nname: Task One\nphase: wontfix\n---\n# Task One\n`
+      );
+      await writeFile(
+        join(testDir, "Tasks/Task-2.md"),
+        `---\ntype: task\nname: Task Two\nphase: done\n---\n# Task Two\n`
       );
 
       const schema = await loadSchema(testDir);
       const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "1.1.0");
 
-      // No op may be emitted: the effective schema did not change.
-      const allOps = [...plan.deterministic, ...plan.nonDeterministic];
-      expect(allOps.some((op) => op.op === "clear-invalid-options")).toBe(false);
-      expect(plan.hasChanges).toBe(false);
+      expect(plan.nonDeterministic).toContainEqual({
+        op: "clear-invalid-options",
+        targetType: "task",
+        field: "phase",
+        allowedValues: ["todo", "doing", "done"],
+      });
 
       const result = await executeMigration({
         vaultDir: testDir,
@@ -923,10 +925,12 @@ parent: "[[Task Two]]"
       });
 
       expect(result.errors).toHaveLength(0);
-      expect(result.affectedFiles).toBe(0);
-      const content = await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8");
-      // The child note's value SURVIVES — no silent data loss.
-      expect(content).toContain("phase: abandoned");
+      expect(result.affectedFiles).toBe(1);
+      const task1 = await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8");
+      expect(task1).not.toContain("wontfix");
+      expect(task1).not.toContain("phase:");
+      const task2 = await readFile(join(testDir, "Tasks/Task-2.md"), "utf-8");
+      expect(task2).toContain("phase: done");
     });
   });
 
