@@ -499,17 +499,30 @@ function detectFuzzyCandidates(
     consumed.some(([s, e]) => start < e && end > s);
 
   const isCommonStructuralHeading = (phrase: string, start: number): boolean => {
+    if (!COMMON_STRUCTURAL_HEADING_LABELS.has(phrase.toLowerCase())) return false;
+
     const lineStart = body.lastIndexOf('\n', start - 1) + 1;
     const nextNewline = body.indexOf('\n', start);
     const lineEnd = nextNewline === -1 ? body.length : nextNewline;
     const line = body.slice(lineStart, lineEnd);
-    const heading = line.match(/^[ \t]{0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/);
-    if (!heading) return false;
+    const lineRelativeStart = start - lineStart;
+    const candidateStartsLine =
+      start === lineStart || /^[ \t]*$/.test(body.slice(lineStart, start));
 
-    const headingText = heading[1]!.trim();
-    if (headingText !== phrase) return false;
+    const atxHeading = line.match(/^[ \t]{0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/);
+    if (atxHeading) {
+      const headingText = atxHeading[1]!.trim();
+      const headingTextStart = line.indexOf(atxHeading[1]!);
+      const candidateStartsHeadingText = lineRelativeStart === headingTextStart;
+      return headingText === phrase || candidateStartsHeadingText;
+    }
 
-    return COMMON_STRUCTURAL_HEADING_LABELS.has(headingText.toLowerCase());
+    const afterLineStart = nextNewline === -1 ? body.length : nextNewline + 1;
+    const followingNewline = body.indexOf('\n', afterLineStart);
+    const afterLineEnd = followingNewline === -1 ? body.length : followingNewline;
+    const afterLine = body.slice(afterLineStart, afterLineEnd);
+
+    return candidateStartsLine && /^[ \t]{0,3}(?:=+|-+)[ \t]*$/.test(afterLine);
   };
 
   // Candidate phrases: runs of capitalized words (proper-noun-ish), e.g.

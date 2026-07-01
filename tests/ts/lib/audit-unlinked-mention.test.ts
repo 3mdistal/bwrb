@@ -151,6 +151,47 @@ describe('unlinked-mention: detectUnlinkedMentions', () => {
     expect(issues).toHaveLength(0);
   });
 
+  it('does not fuzzy-flag common structural labels in composite ATX headings', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/quotes.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions(
+      '## Notes from yesterday\n\nSome ordinary task detail.',
+      'Tasks/Tidy.md',
+      index
+    );
+    expect(issues.some((i) => i.meta?.['tier'] === 'fuzzy')).toBe(false);
+    expect(issues).toHaveLength(0);
+  });
+
+  it('does not fuzzy-flag common structural labels in setext headings', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/quotes.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions(
+      'Notes from yesterday\n====================\n\nSome ordinary task detail.',
+      'Tasks/Tidy.md',
+      index
+    );
+    expect(issues.some((i) => i.meta?.['tier'] === 'fuzzy')).toBe(false);
+    expect(issues).toHaveLength(0);
+  });
+
+  it('still fuzzy-flags common labels in non-heading prose', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/quotes.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions(
+      'I took Notes from yesterday into today.',
+      'Tasks/Tidy.md',
+      index
+    );
+    const fuzzy = issues.find((i) => i.meta?.['tier'] === 'fuzzy');
+    expect(fuzzy).toBeDefined();
+    expect(fuzzy!.value).toBe('Notes');
+    expect(fuzzy!.similarFiles).toContain('quotes');
+  });
+
   it('keeps exact mention detection for common heading labels', () => {
     const index = indexFor([
       { relativePath: 'Notes/Notes.md', resolvedType: 'note', frontmatter: { type: 'note' } },
