@@ -122,6 +122,20 @@ This will:
 4. Save the new schema snapshot
 5. Record the migration in history
 
+For non-interactive environments such as CI or agent shells, provide the
+version explicitly:
+
+```bash
+bwrb schema migrate --execute --set-version 1.1.0 --output json
+```
+
+If the migration includes non-deterministic changes (for example, removing a
+field that may delete note data), also pass `--yes` to accept that confirmation:
+
+```bash
+bwrb schema migrate --execute --set-version 2.0.0 --yes --output json
+```
+
 Some schema edits change the schema's shape without requiring any note update —
 *adding* a select option is the canonical example. In that case `--execute`
 reports no affected files but still refreshes the snapshot, so that if the option
@@ -214,6 +228,8 @@ When you run `bwrb schema migrate --execute`, Bowerbird suggests a version bump 
 | No structural changes | Patch | 1.0.0 → 1.0.1 |
 
 You can accept the suggestion or enter your own version.
+
+In non-interactive mode, use `--set-version <x.y.z>` instead of the prompt.
 
 ## Storage and Files
 

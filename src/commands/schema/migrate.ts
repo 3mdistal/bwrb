@@ -41,6 +41,16 @@ interface MigrateOptions {
   execute?: boolean;
   backup?: boolean;
   showChanges?: boolean;
+  yes?: boolean;
+  setVersion?: string;
+}
+
+function isSemver(version: string): boolean {
+  return /^\d+\.\d+\.\d+$/.test(version);
+}
+
+function isInteractiveStdin(): boolean {
+  return Boolean(process.stdin.isTTY);
 }
 
 /**
@@ -179,17 +189,23 @@ Examples:
     // NOTE: Commander maps --no-backup to options.backup === false.
     .option('--no-backup', 'Skip backup creation (not recommended)')
     .option('--show-changes', 'Show per-note before→after changes in the dry-run preview')
+    .option('-y, --yes', 'Accept execute confirmations (required for non-deterministic changes in non-interactive mode)')
+    .option('--set-version <version>', 'Set the new schema version for execute mode (semver, e.g. 1.2.3)')
     .addHelpText('after', `
 Examples:
   bwrb schema migrate                  # Preview migration (dry-run)
   bwrb schema migrate --show-changes   # Preview + per-note before→after changes
   bwrb schema migrate --execute        # Apply migration with backup
+  bwrb schema migrate --execute --set-version 1.1.0
+  bwrb schema migrate --execute --set-version 2.0.0 --yes
   bwrb schema migrate --execute --no-backup  # Apply without backup`)
     .action(async (options: MigrateOptions, cmd: Command) => {
       const jsonMode = options.output === 'json';
       const execute = options.execute ?? false;
       const backup = options.backup !== false;
       const showChanges = options.showChanges ?? false;
+      const yes = options.yes ?? false;
+      const setVersion = options.setVersion?.trim();
 
       try {
         const globalOpts = getGlobalOpts(cmd);
@@ -375,36 +391,75 @@ Examples:
           return;
         }
         
-        // Execute mode - prompt for version if schema changed
+        // Execute mode - prompt for version if schema changed, unless a
+        // non-interactive version was supplied.
         let newVersion = currentVersion;
-        if (diff.hasChanges && !jsonMode) {
+        if (diff.hasChanges) {
           // Suggest version bump
           const suggestedVersion = suggestVersionBump(currentVersion, diff);
-          
-          console.log(chalk.bold('\nSchema Migration\n'));
-          console.log(formatDiffForDisplay(diff));
-          
-          const versionResult = await promptInput(
-            `Schema version (current: ${currentVersion})`,
-            suggestedVersion
-          );
-          if (versionResult === null) {
-            process.exit(0); // User cancelled
+
+          if (setVersion !== undefined) {
+            newVersion = setVersion;
+          } else if (jsonMode || !isInteractiveStdin()) {
+            throw new Error(
+              `Non-interactive schema migrations with note changes require --set-version <x.y.z> (suggested: ${suggestedVersion}).`
+            );
+          } else {
+            console.log(chalk.bold('\nSchema Migration\n'));
+            console.log(formatDiffForDisplay(diff));
+
+            const versionResult = await promptInput(
+              `Schema version (current: ${currentVersion})`,
+              suggestedVersion
+            );
+            if (versionResult === null) {
+              process.exit(0); // User cancelled
+            }
+            newVersion = versionResult.trim() || suggestedVersion;
           }
-          newVersion = versionResult.trim() || suggestedVersion;
           
           // Validate version format
-          if (!/^\d+\.\d+\.\d+$/.test(newVersion)) {
+          if (!isSemver(newVersion)) {
             throw new Error('Version must be in semver format (e.g., 1.2.3)');
+          }
+
+          if (!jsonMode && setVersion !== undefined) {
+            console.log(chalk.bold('\nSchema Migration\n'));
+            console.log(formatDiffForDisplay(diff));
           }
           
           // Warn if version didn't change
-          if (newVersion === currentVersion && diff.hasChanges) {
-            const confirmResult = await promptConfirm(
-              `Version unchanged (${currentVersion}). Continue anyway?`
-            );
-            if (confirmResult === null || !confirmResult) {
-              process.exit(0);
+          if (newVersion === currentVersion) {
+            if (yes) {
+              // --yes accepts the unchanged-version confirmation.
+            } else if (jsonMode || !isInteractiveStdin()) {
+              throw new Error(
+                `Schema version is unchanged (${currentVersion}); pass --yes to continue anyway.`
+              );
+            } else {
+              const confirmResult = await promptConfirm(
+                `Version unchanged (${currentVersion}). Continue anyway?`
+              );
+              if (confirmResult === null || !confirmResult) {
+                process.exit(0);
+              }
+            }
+          }
+
+          if (diff.nonDeterministic.length > 0) {
+            if (yes) {
+              // --yes accepts the non-deterministic migration confirmation.
+            } else if (jsonMode || !isInteractiveStdin()) {
+              throw new Error(
+                'Non-deterministic schema changes require --yes in non-interactive mode.'
+              );
+            } else {
+              const confirmResult = await promptConfirm(
+                'Apply non-deterministic schema changes?'
+              );
+              if (confirmResult === null || !confirmResult) {
+                process.exit(0);
+              }
             }
           }
         }

@@ -305,7 +305,20 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
     '--dry-run',
     '--help',
   ],
-  schema: ['--vault', '-v', '--non-interactive', '--help'],
+  schema: [
+    '--vault',
+    '-v',
+    '--non-interactive',
+    '--output',
+    '--execute',
+    '-x',
+    '--yes',
+    '-y',
+    '--set-version',
+    '--no-backup',
+    '--show-changes',
+    '--help',
+  ],
   template: ['--vault', '-v', '--non-interactive', '--help'],
   dashboard: ['--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
   delete: [
@@ -376,6 +389,7 @@ function isValueOption(option: string): boolean {
     '--default-output',
     '--fields',
     '--body',
+    '--set-version',
   ];
   return valueOptions.includes(option);
 }

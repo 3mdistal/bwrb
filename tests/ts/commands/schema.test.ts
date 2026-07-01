@@ -587,6 +587,14 @@ describe('schema command', () => {
   });
 
   describe('schema migrate', () => {
+    it('lists non-interactive execute flags in help output', async () => {
+      const result = await runCLI(['schema', 'migrate', '--help'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('-y, --yes');
+      expect(result.stdout).toContain('--set-version <version>');
+    });
+
     it('should honor --no-backup in execute mode', async () => {
       const tempVaultDir = await createTestVault();
 
@@ -619,7 +627,16 @@ milestone: "[[Active Milestone]]"
         );
 
         const result = await runCLI(
-          ['schema', 'migrate', '--output', 'json', '--execute', '--no-backup'],
+          [
+            'schema',
+            'migrate',
+            '--output',
+            'json',
+            '--execute',
+            '--set-version',
+            '1.1.0',
+            '--no-backup',
+          ],
           tempVaultDir
         );
 
@@ -660,6 +677,37 @@ status: in-flight
         ...(currentSchema.types.task.fields ?? {}),
         priority: { prompt: 'text', default: 'medium' },
       };
+
+      await writeFile(schemaPath, JSON.stringify(currentSchema, null, 2));
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.applied.json'),
+        JSON.stringify(
+          {
+            schemaVersion: '1.0.0',
+            snapshotAt: new Date().toISOString(),
+            schema: snapshotSchema,
+          },
+          null,
+          2
+        )
+      );
+
+      return tempVaultDir;
+    }
+
+    /**
+     * Set up a vault where the current schema removes `priority` from `idea`.
+     * Existing idea notes have that field, so execution would delete data and
+     * must require an explicit non-deterministic confirmation.
+     */
+    async function setupRemoveFieldVault(): Promise<string> {
+      const tempVaultDir = await createTestVault();
+
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+      const currentSchema = JSON.parse(await readFile(schemaPath, 'utf8'));
+      const snapshotSchema = JSON.parse(JSON.stringify(currentSchema));
+
+      delete currentSchema.types.idea.fields.priority;
 
       await writeFile(schemaPath, JSON.stringify(currentSchema, null, 2));
       await writeFile(
@@ -744,6 +792,29 @@ status: in-flight
       }
     });
 
+    it('refuses non-interactive execute with note changes unless --set-version is provided', async () => {
+      const tempVaultDir = await setupAddFieldVault();
+      try {
+        const result = await runCLI(
+          ['schema', 'migrate', '--output', 'json', '--execute', '--no-backup'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).not.toBe(0);
+        const response = JSON.parse(result.stdout);
+        expect(response.success).toBe(false);
+        expect(response.error).toContain('require --set-version');
+
+        const noteContent = await readFile(
+          join(tempVaultDir, 'Objectives', 'Tasks', 'Preview Task.md'),
+          'utf8'
+        );
+        expect(noteContent).not.toContain('priority: medium');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+
     it('execute --output json includes fileChanges and applies the change', async () => {
       const tempVaultDir = await setupAddFieldVault();
       try {
@@ -754,6 +825,8 @@ status: in-flight
             '--output',
             'json',
             '--execute',
+            '--set-version',
+            '1.1.0',
             '--no-backup',
           ],
           tempVaultDir
@@ -771,6 +844,78 @@ status: in-flight
           'utf8'
         );
         expect(noteContent).toContain('priority: medium');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+
+    it('refuses non-interactive non-deterministic execute unless --yes is provided', async () => {
+      const tempVaultDir = await setupRemoveFieldVault();
+      try {
+        const result = await runCLI(
+          [
+            'schema',
+            'migrate',
+            '--output',
+            'json',
+            '--execute',
+            '--set-version',
+            '2.0.0',
+            '--no-backup',
+          ],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).not.toBe(0);
+        const response = JSON.parse(result.stdout);
+        expect(response.success).toBe(false);
+        expect(response.error).toContain('require --yes');
+
+        const noteContent = await readFile(
+          join(tempVaultDir, 'Ideas', 'Sample Idea.md'),
+          'utf8'
+        );
+        expect(noteContent).toContain('priority: medium');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+
+    it('executes non-interactive non-deterministic migrations with --set-version and --yes', async () => {
+      const tempVaultDir = await setupRemoveFieldVault();
+      try {
+        const result = await runCLI(
+          [
+            'schema',
+            'migrate',
+            '--output',
+            'json',
+            '--execute',
+            '--set-version',
+            '2.0.0',
+            '--yes',
+            '--no-backup',
+          ],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        const response = JSON.parse(result.stdout);
+        expect(response.success).toBe(true);
+        expect(response.data.fromVersion).toBe('1.0.0');
+        expect(response.data.toVersion).toBe('2.0.0');
+        expect(response.data.affectedFiles).toBeGreaterThan(0);
+
+        const noteContent = await readFile(
+          join(tempVaultDir, 'Ideas', 'Sample Idea.md'),
+          'utf8'
+        );
+        expect(noteContent).not.toContain('priority: medium');
+
+        const schema = JSON.parse(
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
+        );
+        expect(schema.schemaVersion).toBe('2.0.0');
       } finally {
         await cleanupTestVault(tempVaultDir);
       }
@@ -850,7 +995,17 @@ status: paused
         // Because the snapshot was refreshed, the removal of `paused` is now
         // correctly detected and the orphaned value is cleared.
         const removeResult = await runCLI(
-          ['schema', 'migrate', '--output', 'json', '--execute', '--no-backup'],
+          [
+            'schema',
+            'migrate',
+            '--output',
+            'json',
+            '--execute',
+            '--set-version',
+            '2.0.0',
+            '--yes',
+            '--no-backup',
+          ],
           tempVaultDir
         );
         expect(removeResult.exitCode).toBe(0);
