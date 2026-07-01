@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { join } from 'path';
-import { writeFile, rm } from 'fs/promises';
+import { mkdir, writeFile, rm } from 'fs/promises';
 import {
   validateFieldForType,
   applyFrontmatterFilters,
@@ -611,6 +611,98 @@ describe('query', () => {
           typePath: 'task',
         });
         expect(childResult).toHaveLength(1);
+      });
+    });
+
+    describe('duplicate intermediate ancestor basenames keep path identity (#738)', () => {
+      const builtNotes: string[] = [];
+
+      beforeAll(async () => {
+        const writeNote = async (
+          dir: string,
+          name: string,
+          fm: string
+        ): Promise<void> => {
+          const path = join(vaultDir, dir, `${name}.md`);
+          await mkdir(join(vaultDir, dir), { recursive: true });
+          await writeFile(path, `---\n${fm}\n---\n`);
+          builtNotes.push(path);
+        };
+
+        await writeNote('Objectives/Tasks', 'correct-root', 'type: task\nstatus: backlog');
+        await writeNote('Objectives/Tasks', 'wrong-root', 'type: task\nstatus: backlog');
+        await writeNote(
+          'Archive/Milestones',
+          'Shared Phase',
+          'type: milestone\nstatus: backlog\nparent: "[[wrong-root]]"'
+        );
+        await writeNote(
+          'Objectives/Milestones',
+          'Shared Phase',
+          'type: milestone\nstatus: backlog\nparent: "[[correct-root]]"'
+        );
+      });
+
+      afterAll(async () => {
+        await Promise.all(builtNotes.map(p => rm(p, { force: true })));
+      });
+
+      it('climbs through the path-qualified same-basename parent, not the first basename edge', async () => {
+        const files = makeFiles([
+          {
+            path: 'Objectives/Tasks/Path Keyed Leaf.md',
+            fm: {
+              type: 'task',
+              status: 'backlog',
+              parent: '"[[Objectives/Milestones/Shared Phase]]"',
+            },
+          },
+        ]);
+
+        const correctResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ["isDescendantOf('[[correct-root]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(correctResult).toHaveLength(1);
+
+        const wrongResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ["isDescendantOf('[[wrong-root]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(wrongResult).toHaveLength(0);
+      });
+
+      it('under() also walks the path-qualified relation target through the correct duplicate basename', async () => {
+        const files = makeFiles([
+          {
+            path: 'Objectives/Tasks/Path Keyed Relation.md',
+            fm: {
+              type: 'task',
+              status: 'backlog',
+              milestone: '"[[Objectives/Milestones/Shared Phase]]"',
+            },
+          },
+        ]);
+
+        const correctResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ["under(milestone, '[[correct-root]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(correctResult).toHaveLength(1);
+
+        const wrongResult = await applyFrontmatterFilters(files, {
+          whereExpressions: ["under(milestone, '[[wrong-root]]')"],
+          vaultDir,
+          schema,
+          typePath: 'task',
+        });
+        expect(wrongResult).toHaveLength(0);
       });
     });
 

@@ -1,4 +1,4 @@
-import { basename } from 'path';
+import { basename, relative } from 'path';
 import type { LoadedSchema } from '../types/schema.js';
 import {
   getAllFieldsForType,
@@ -99,19 +99,31 @@ function expressionsNeedVaultAugmentation(expressions: string[]): boolean {
  */
 function buildHierarchyDataFromFiles(
   files: FileWithFrontmatter[],
-  options: Pick<FrontmatterFilterOptions, 'schema' | 'typePath'>
+  options: Pick<FrontmatterFilterOptions, 'schema' | 'typePath' | 'vaultDir'>
 ): HierarchyData {
   const parentMap = new Map<string, string>();
   const childrenMap = new Map<string, Set<string>>();
   const nonRootNames = new Set<string>();
   const reservedNames = new Set<string>();
+  const parentTargetByPath = new Map<string, string>();
+  const pathNameMap = new Map<string, string>();
   const hierarchyFieldCache = new Map<string, string[]>();
 
   for (const file of files) {
+    const notePath = notePathKey(file.path, options.vaultDir);
+    if (notePath) pathNameMap.set(notePath, basename(file.path, '.md'));
     // Candidate pass: reserve every candidate's basename as an authoritative
     // hierarchy identity (with or without a literal `parent`), so the full-vault
     // augmentation cannot fill/overwrite it from a same-basename note elsewhere.
-    addParentRelationship(file, parentMap, childrenMap, reservedNames, true);
+    addParentRelationship(
+      file,
+      parentMap,
+      childrenMap,
+      reservedNames,
+      true,
+      notePath,
+      parentTargetByPath
+    );
     // Separately record whether the candidate carries ANY parent-like link, for
     // `isRoot`. This is broader than the structural `parent` chain (it includes
     // single-valued same-ancestry relations like `task.milestone`), which is why
@@ -121,7 +133,14 @@ function buildHierarchyDataFromFiles(
     }
   }
 
-  return { parentMap, childrenMap, nonRootNames, reservedNames };
+  return {
+    parentMap,
+    childrenMap,
+    nonRootNames,
+    reservedNames,
+    parentTargetByPath,
+    pathNameMap,
+  };
 }
 
 /**
@@ -160,7 +179,9 @@ function addParentRelationship(
   parentMap: Map<string, string>,
   childrenMap: Map<string, Set<string>>,
   reservedNames: Set<string>,
-  reserve: boolean
+  reserve: boolean,
+  notePath?: string,
+  parentTargetByPath?: Map<string, string>
 ): void {
   const noteName = basename(file.path, '.md');
 
@@ -175,10 +196,6 @@ function addParentRelationship(
     return;
   }
 
-  // Don't let a later (less specific, full-vault) pass clobber an entry the
-  // type-aware pass already resolved for the candidate set.
-  if (parentMap.has(noteName)) return;
-
   // The STRUCTURAL parent chain is the literal `parent` field ONLY. Parent-like
   // relations (e.g. `task.milestone`) are NOT folded in here: doing so used to
   // make `isDescendantOf` silently collapse with `under(<relation>, …)` and made
@@ -189,6 +206,16 @@ function addParentRelationship(
 
   const parentTarget = extractLinkTarget(parentValue) ?? parentValue.trim();
   if (!parentTarget) return;
+
+  if (notePath && parentTargetByPath && !parentTargetByPath.has(notePath)) {
+    parentTargetByPath.set(notePath, parentTarget);
+  }
+
+  // Don't let a later (less specific, full-vault) pass clobber an entry the
+  // type-aware pass already resolved for the candidate set. Path-keyed parent
+  // targets were recorded above, so duplicate non-candidate basenames can still
+  // be walked exactly when a chain has a path identity (#738).
+  if (parentMap.has(noteName)) return;
 
   parentMap.set(noteName, parentTarget);
 
@@ -237,6 +264,9 @@ async function augmentHierarchyDataFromVault(
 
   const snapshot =
     options.snapshot ?? (await buildVaultNoteSnapshot(options.schema, options.vaultDir));
+  const uniquePathByName = buildUniquePathByName(snapshot);
+  const parentTargetByPath = hierarchyData.parentTargetByPath ?? new Map<string, string>();
+  const pathNameMap = hierarchyData.pathNameMap ?? new Map<string, string>();
 
   // Candidate basenames are authoritative identities; the vault pass must not
   // fill or overwrite them from a same-basename note elsewhere (see
@@ -245,20 +275,85 @@ async function augmentHierarchyDataFromVault(
   // through filtered-out notes (#709).
   const reservedNames = hierarchyData.reservedNames ?? new Set<string>();
   for (const note of snapshot.notes) {
+    const notePath = notePathKey(note.relativePath);
+    if (notePath) pathNameMap.set(notePath, basename(note.relativePath, '.md'));
     if (!note.frontmatter) continue;
     addParentRelationship(
       { path: note.path, frontmatter: note.frontmatter },
       hierarchyData.parentMap,
       hierarchyData.childrenMap,
       reservedNames,
-      false
+      false,
+      notePath,
+      parentTargetByPath
     );
   }
+  hierarchyData.parentTargetByPath = parentTargetByPath;
+  hierarchyData.pathNameMap = pathNameMap;
+  hierarchyData.uniquePathByName = uniquePathByName;
+  hierarchyData.parentPathMap = buildParentPathMap(parentTargetByPath, pathNameMap, uniquePathByName);
 
   // Build the alias -> canonical-note map from the SAME snapshot so the
   // operators can canonicalize aliased values and query nodes (see
   // HierarchyData.aliasMap) without re-reading the vault.
   hierarchyData.aliasMap = buildVaultAliasMap(options.schema, snapshot);
+}
+
+function buildUniquePathByName(snapshot: VaultNoteSnapshot): Map<string, string> {
+  const pathByName = new Map<string, string | null>();
+
+  for (const note of snapshot.notes) {
+    const notePath = notePathKey(note.relativePath);
+    if (!notePath) continue;
+    const noteName = basename(note.relativePath, '.md');
+    if (pathByName.has(noteName)) {
+      pathByName.set(noteName, null);
+    } else {
+      pathByName.set(noteName, notePath);
+    }
+  }
+
+  const unique = new Map<string, string>();
+  for (const [name, path] of pathByName) {
+    if (path) unique.set(name, path);
+  }
+  return unique;
+}
+
+function buildParentPathMap(
+  parentTargetByPath: Map<string, string>,
+  pathNameMap: Map<string, string>,
+  uniquePathByName: Map<string, string>
+): Map<string, string> {
+  const parentPathMap = new Map<string, string>();
+
+  for (const [notePath, parentTarget] of parentTargetByPath) {
+    const parentPath = resolveParentTargetPath(parentTarget, pathNameMap, uniquePathByName);
+    if (parentPath) {
+      parentPathMap.set(notePath, parentPath);
+    }
+  }
+
+  return parentPathMap;
+}
+
+function resolveParentTargetPath(
+  parentTarget: string,
+  pathNameMap: Map<string, string>,
+  uniquePathByName: Map<string, string>
+): string | undefined {
+  const targetPath = notePathKey(parentTarget);
+  if (!targetPath) return undefined;
+  if (targetPath.includes('/')) {
+    return pathNameMap.has(targetPath) ? targetPath : undefined;
+  }
+  return uniquePathByName.get(targetPath);
+}
+
+function notePathKey(path: string, vaultDir?: string): string | undefined {
+  const relativePath = vaultDir ? relative(vaultDir, path) : path;
+  const normalized = relativePath.replace(/\\/g, '/').replace(/\.md$/i, '').trim();
+  return normalized || undefined;
 }
 
 /**
@@ -444,6 +539,7 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
     expressionsUseHierarchyFunctions(normalizedExpressions)
   ) {
     hierarchyData = buildHierarchyDataFromFiles(files, {
+      vaultDir,
       ...(schema ? { schema } : {}),
       ...(typePath ? { typePath } : {}),
     });

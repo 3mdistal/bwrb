@@ -31,6 +31,32 @@ export interface HierarchyData {
    * notion of "attached".
    */
   parentMap: Map<string, string>;
+  /**
+   * Optional path-keyed structural parent map. Keys and values are vault-relative
+   * note paths without `.md` (for example `Objectives/Tasks/Child`). This lets a
+   * chain climb through the exact note named by a path-qualified parent link,
+   * instead of collapsing duplicate intermediate basenames into one global edge.
+   * The basename `parentMap` above remains the compatibility fallback for bare
+   * links and direct unit-test contexts.
+   */
+  parentPathMap?: Map<string, string>;
+  /**
+   * Vault-relative note path (without `.md`) to basename. Used with
+   * `parentPathMap` so path-keyed walks can still satisfy supported bare-node
+   * queries such as `isDescendantOf('[[Parent]]')`.
+   */
+  pathNameMap?: Map<string, string>;
+  /**
+   * Unambiguous basename -> vault-relative note path (without `.md`). Duplicate
+   * basenames are omitted so a bare link never silently chooses one duplicate.
+   */
+  uniquePathByName?: Map<string, string>;
+  /**
+   * Internal raw structural parent targets by path, populated while query builds
+   * hierarchy data and resolved into `parentPathMap` after the vault snapshot is
+   * available.
+   */
+  parentTargetByPath?: Map<string, string>;
   /** Map from note name to set of child note names (structural `parent` only). */
   childrenMap: Map<string, Set<string>>;
   /**
@@ -421,10 +447,11 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
       aliasMap
     );
     const noteName = context.file?.name;
+    const notePath = normalizeNotePath(context.file?.path);
     if (!noteName || !targetParent || !context.hierarchyData) return false;
-    const rawParent = context.hierarchyData.parentMap.get(noteName);
-    if (rawParent === undefined) return false;
-    return canonicalizeAlias(rawParent, aliasMap) === targetParent;
+    const parent = getHierarchyParent(noteName, notePath, context.hierarchyData, aliasMap);
+    if (!parent) return false;
+    return hierarchyNodeMatches(parent, targetParent, context.hierarchyData);
   },
 
   /**
@@ -445,16 +472,24 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
       aliasMap
     );
     const noteName = context.file?.name;
+    const notePath = normalizeNotePath(context.file?.path);
     if (!noteName || !targetAncestor || !context.hierarchyData) return false;
 
     // Walk up the CURRENT note's own parent chain checking for the target.
-    const startParent = context.hierarchyData.parentMap.get(noteName);
+    const startParent = getHierarchyParent(
+      noteName,
+      notePath,
+      context.hierarchyData,
+      aliasMap
+    );
     if (!startParent) return false;
     return ancestorChainContains(
-      startParent,
+      startParent.name,
       targetAncestor,
       context.hierarchyData.parentMap,
-      aliasMap
+      aliasMap,
+      context.hierarchyData,
+      startParent.path
     );
   },
 
@@ -500,13 +535,31 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
 
     const parentMap = context.hierarchyData.parentMap;
     for (const rawTarget of relationTargets) {
-      const relationTarget = canonicalizeAlias(rawTarget, aliasMap);
+      const relationTarget = canonicalizeAlias(noteNameFromTarget(rawTarget), aliasMap);
       if (!relationTarget) continue;
+      const relationTargetPath = resolveHierarchyPath(rawTarget, context.hierarchyData);
       // Inclusive of the direct target (depth 0).
-      if (relationTarget === targetNode) return true;
+      if (
+        hierarchyNodeMatches(
+          hierarchyNode(relationTarget, relationTargetPath),
+          targetNode,
+          context.hierarchyData
+        )
+      ) {
+        return true;
+      }
       // Otherwise walk the target's own ancestor chain. Pass the alias map so a
       // mid-chain `parent` written as an alias still resolves while walking.
-      if (ancestorChainContains(relationTarget, targetNode, parentMap, aliasMap)) {
+      if (
+        ancestorChainContains(
+          relationTarget,
+          targetNode,
+          parentMap,
+          aliasMap,
+          context.hierarchyData,
+          relationTargetPath
+        )
+      ) {
         return true;
       }
     }
@@ -549,17 +602,93 @@ function ancestorChainContains(
   start: string,
   target: string,
   parentMap: Map<string, string>,
-  aliasMap?: Map<string, string>
+  aliasMap?: Map<string, string>,
+  hierarchyData?: HierarchyData,
+  startPath?: string
 ): boolean {
   const visited = new Set<string>();
-  let current: string | undefined = canonicalizeAlias(start, aliasMap) ?? undefined;
-  while (current && !visited.has(current)) {
-    if (current === target) return true;
-    visited.add(current);
-    const next = parentMap.get(current);
-    current = next === undefined ? undefined : (canonicalizeAlias(next, aliasMap) ?? undefined);
+  const data = hierarchyData ?? { parentMap, childrenMap: new Map<string, Set<string>>() };
+  let current: HierarchyNode | undefined = hierarchyNode(
+    canonicalizeAlias(noteNameFromTarget(start), aliasMap) ?? noteNameFromTarget(start),
+    startPath ?? resolveHierarchyPath(start, hierarchyData)
+  );
+  while (current && !visited.has(hierarchyVisitKey(current))) {
+    if (hierarchyNodeMatches(current, target, hierarchyData)) return true;
+    visited.add(hierarchyVisitKey(current));
+    current = getHierarchyParent(current.name, current.path, data, aliasMap);
   }
   return false;
+}
+
+interface HierarchyNode {
+  name: string;
+  path?: string;
+}
+
+function getHierarchyParent(
+  noteName: string,
+  notePath: string | undefined,
+  hierarchyData: HierarchyData,
+  aliasMap?: Map<string, string>
+): HierarchyNode | undefined {
+  const pathParent = notePath ? hierarchyData.parentPathMap?.get(notePath) : undefined;
+  if (pathParent) {
+    return {
+      name: canonicalizeAlias(
+        hierarchyData.pathNameMap?.get(pathParent) ?? noteNameFromTarget(pathParent),
+        aliasMap
+      ) ?? noteNameFromTarget(pathParent),
+      path: pathParent,
+    };
+  }
+
+  const rawParent = hierarchyData.parentMap.get(noteName);
+  if (rawParent === undefined) return undefined;
+  const parentName = canonicalizeAlias(noteNameFromTarget(rawParent), aliasMap) ?? noteNameFromTarget(rawParent);
+  return hierarchyNode(parentName, resolveHierarchyPath(rawParent, hierarchyData));
+}
+
+function hierarchyNode(name: string, path: string | undefined): HierarchyNode {
+  return path ? { name, path } : { name };
+}
+
+function hierarchyNodeMatches(
+  node: HierarchyNode,
+  target: string,
+  hierarchyData?: HierarchyData
+): boolean {
+  const targetPath = resolveHierarchyPath(target, hierarchyData);
+  if (targetPath && node.path === targetPath) return true;
+  return node.name === noteNameFromTarget(target);
+}
+
+function resolveHierarchyPath(
+  target: string | undefined,
+  hierarchyData: HierarchyData | undefined
+): string | undefined {
+  if (!target || !hierarchyData) return undefined;
+  const normalized = normalizeNotePath(target);
+  if (!normalized) return undefined;
+  if (normalized.includes('/')) {
+    return hierarchyData.pathNameMap?.has(normalized) ? normalized : undefined;
+  }
+  return hierarchyData.uniquePathByName?.get(normalized);
+}
+
+function normalizeNotePath(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const target = value.replace(/\\/g, '/').replace(/\.md$/i, '').trim();
+  return target || undefined;
+}
+
+function noteNameFromTarget(target: string): string {
+  const normalized = normalizeNotePath(target) ?? target;
+  const parts = normalized.split('/');
+  return parts[parts.length - 1] ?? normalized;
+}
+
+function hierarchyVisitKey(node: HierarchyNode): string {
+  return node.path ? `path:${node.path}` : `name:${node.name}`;
 }
 
 /**
