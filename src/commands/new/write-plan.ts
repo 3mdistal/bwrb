@@ -8,7 +8,7 @@ import {
   generateUniqueNoteId,
   registerIssuedNoteId,
 } from '../../lib/note-id.js';
-import { ensureOwnedOutputDir, formatValue } from '../../lib/vault.js';
+import { cleanRelationLink, ensureOwnedOutputDir } from '../../lib/vault.js';
 import { getTypeDefByPath } from '../../lib/schema.js';
 import { normalizeDateFields } from '../../lib/validation.js';
 import { ExitCodes, jsonError } from '../../lib/output.js';
@@ -101,7 +101,7 @@ export async function writeNotePlan(
   const noteId = await generateUniqueNoteId(args.vaultDir);
   args.content.frontmatter.id = noteId;
   if (args.ownership.kind === 'owned') {
-    args.content.frontmatter.owner = formatValue(args.ownership.owner.ownerName, args.schema.config.linkFormat);
+    args.content.frontmatter.owner = cleanRelationLink(args.ownership.owner.ownerName, args.schema.config.linkFormat);
   }
   const orderedFields = ensureIdInFieldOrder(args.content.orderedFields);
 

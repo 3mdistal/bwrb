@@ -7,7 +7,7 @@ import {
   promptConfirm,
   printWarning,
 } from './prompt.js';
-import { queryByType, formatValue } from './vault.js';
+import { queryByType, cleanRelationLink } from './vault.js';
 import { expandStaticValue } from './local-date.js';
 import { UserCancelledError } from './errors.js';
 import {
@@ -282,7 +282,7 @@ async function promptRelationField(
     const selected = await promptSelection(`Select ${fieldName}:`, options);
     if (selected === null) throw new UserCancelledError();
     if (skipLabel && selected === skipLabel) return field.default ?? '';
-    return formatValue(selected, schema.config.linkFormat);
+    return cleanRelationLink(selected, schema.config.linkFormat);
   }
 
   if (opts.mode === 'template-default') {
@@ -488,28 +488,6 @@ async function promptNumberTemplate(
     }
     return parsed;
   }
-}
-
-/**
- * Build a CLEAN relation link for storing in a frontmatter OBJECT (e.g. a
- * template's `defaults` map) that will subsequently be YAML-serialized.
- *
- * `formatValue` (vault.ts) returns a PRE-QUOTED string such as `"[[Alice]]"`,
- * which is correct for direct TEXT interpolation into raw YAML (where the
- * surrounding quotes keep `[[` from being read as a flow sequence). But when
- * that pre-quoted string is placed into an object and handed to the YAML
- * serializer, the serializer quotes it AGAIN, producing `'"[[Alice]]"'` on disk
- * — a malformed value that instantiates into notes with literal quote
- * characters around the wikilink. For object values we need the RAW link
- * (`[[Alice]]` / `[Alice](Alice.md)`); the serializer then quotes it exactly
- * once, yielding the canonical `"[[Alice]]"` that parses back to `[[Alice]]`.
- *
- * Mirrors `cleanChainLink` in recurrence.ts, which solves the same double-quote
- * hazard for chain (`next`/`prev`) links.
- */
-function cleanRelationLink(name: string, linkFormat: 'wikilink' | 'markdown'): string {
-  if (!name) return '';
-  return linkFormat === 'markdown' ? `[${name}](${name}.md)` : `[[${name}]]`;
 }
 
 function formatUniqueRelationValues(

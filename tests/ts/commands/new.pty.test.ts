@@ -179,8 +179,9 @@ status: in-flight
           const content = await readVaultFile(vaultPath, 'Tasks/Full Task Flow.md');
           // In the new inheritance model, we use a single 'type: task' field
           expect(content).toContain('type: task');
-          // YAML quotes the wikilink value
-          expect(content).toContain('[[Active Milestone]]');
+          // YAML quotes the wikilink value once; the parsed value is the raw link.
+          expect(content).toMatch(/^milestone: "\[\[Active Milestone\]\]"$/m);
+          expect(content).not.toContain(`'"[[`);
           expect(content).toContain('## Steps');
           expect(content).toContain('- [ ] Step one');
           expect(content).toContain('- [ ] Step two');
