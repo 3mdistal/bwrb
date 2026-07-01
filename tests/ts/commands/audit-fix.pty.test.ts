@@ -531,7 +531,7 @@ effort: "not-a-number"
   });
 
   describe('missing required field fix', () => {
-    it('should add required field with default value', async () => {
+    it('does not prompt for a missing required field when the field has a default (#743)', async () => {
       const missingField: TempVaultFile = {
         path: 'Ideas/Missing Status.md',
         content: `---
@@ -544,24 +544,15 @@ type: idea
         ['audit', 'idea', '--fix'],
         async (proc, vaultPath) => {
           await proc.waitFor('Auditing vault', 10000);
-          await proc.waitFor('Missing Status.md', 10000);
-
-          // Should offer to add with default value
-          await proc.waitFor('Add with default', 10000);
-
-          // Confirm
-          proc.write('y');
-          proc.write(Keys.ENTER);
-
-          // Should show success
-          await proc.waitFor('Added status', 5000);
+          await proc.waitFor('No issues found', 10000);
 
           // Wait for completion
           await proc.waitForStable(500);
 
-          // Verify field was added
+          // Verify field absence stayed absent: it is satisfied by the default
+          // contract, but audit --fix should not materialize it.
           const content = await readVaultFile(vaultPath, 'Ideas/Missing Status.md');
-          expect(content).toContain('status: raw');
+          expect(content).not.toContain('status: raw');
         },
         { files: [missingField], schema: BASELINE_SCHEMA }
       );

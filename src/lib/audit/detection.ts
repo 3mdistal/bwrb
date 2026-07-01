@@ -500,12 +500,18 @@ export async function auditFile(
       const hasDefault = field.default !== undefined;
 
       if (!hasKey) {
+        // A missing required field with a schema default is satisfied by the
+        // default contract, matching validateFrontmatter and edit's explicit
+        // null-removal semantics. A present-but-blank value is still broken and
+        // remains fixable below.
+        if (hasDefault) continue;
+
         issues.push({
           severity: 'error',
           code: 'missing-required',
           message: `Missing required field: ${fieldName}`,
           field: fieldName,
-          autoFixable: hasDefault,
+          autoFixable: false,
         });
       } else if (isEmptyValue) {
         issues.push({

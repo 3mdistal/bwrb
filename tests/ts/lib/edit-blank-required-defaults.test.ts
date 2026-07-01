@@ -136,7 +136,7 @@ owner: Alice
     expect(fm['owner']).toBe('Alice');
   });
 
-  it('explicit null removal of a defaulted field stays removed (default NOT re-applied)', async () => {
+  it('explicit null removal of a required defaulted field stays removed and audit stays clean (#743)', async () => {
     // Regression: a blanket applyDefaults over the merged frontmatter would write
     // `status`'s default back in immediately after `mergeFrontmatter` deleted it,
     // silently undoing the documented `{"field": null}` removal. The surgical fix
@@ -165,6 +165,11 @@ priority: high
     expect('status' in fm).toBe(false);
     // Untouched field is preserved.
     expect(fm['priority']).toBe('high');
+
+    // Parity: validateFrontmatter accepts missing required-with-default values,
+    // so audit must not report the post-edit file as missing-required.
+    const results = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    expect(auditIssues(results, 'Drop.md')).not.toContain('missing-required');
   });
 
   it('editing one field does NOT materialize an unrelated untouched defaulted field', async () => {
