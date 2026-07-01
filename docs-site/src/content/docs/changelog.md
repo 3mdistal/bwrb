@@ -9,6 +9,14 @@ For the complete changelog with all details, see [CHANGELOG.md](https://github.c
 
 ## Recent Highlights
 
+### 0.2.1
+
+- **Headless migration execution** — `schema migrate --execute` supports non-interactive `--yes` / `--set-version` workflows
+- **Migration diff fixes** — prompt and date-granularity edits, inherited field structural overrides, and safe relation-source widenings are classified correctly
+- **Vault path fixes** — global and relative vault paths now behave consistently across `init`, completion, and command cwd resolution
+- **Write/audit parity** — relation writes, required defaults, and plain list prompts now agree with audit validation
+- **Hierarchy and mention-noise fixes** — duplicate ancestor basenames no longer confuse hierarchy walks, and unlinked-mention audit skips structural headings
+
 ### 0.2.0
 
 - **Traits** — Reusable field bundles you compose into types, instead of repeating fields per type
