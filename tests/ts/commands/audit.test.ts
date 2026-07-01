@@ -813,7 +813,7 @@ priority: medium
       await rm(tempVaultDir, { recursive: true, force: true });
     });
 
-    it('should auto-fix missing required field with default', async () => {
+    it('should not flag a missing required field when the field has a default (#743)', async () => {
       // Create a file missing the 'status' field (which has default: 'raw')
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Missing Status.md'),
@@ -827,14 +827,15 @@ Some content
 
       const result = await runCLI(['audit', 'idea', '--fix', '--auto', '--execute'], tempVaultDir);
 
-      expect(result.stdout).toContain('Auto-fixing');
-      expect(result.stdout).toContain('Added status');
-      expect(result.stdout).toContain('Fixed: 1 issues');
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Fixed: 0 issues');
+      expect(result.stdout).toContain('Remaining: 0 issues');
+      expect(result.stdout).not.toContain('Added status');
+      expect(result.stdout).not.toContain('Fixed: 1 issues');
 
-      // Verify the file was actually fixed
-      const { readFile } = await import('fs/promises');
+      // Verify audit --fix left the satisfied-by-default absence untouched.
       const content = await readFile(join(tempVaultDir, 'Ideas', 'Missing Status.md'), 'utf-8');
-      expect(content).toContain('status: raw');
+      expect(content).not.toContain('status: raw');
     });
 
     it('should report non-fixable issues for manual review', async () => {
@@ -859,11 +860,12 @@ priority: medium
     });
 
     it('should handle mix of fixable and non-fixable issues', async () => {
-      // File with missing status (fixable) and invalid enum (not fixable)
+      // File with blank status (fixable) and invalid enum (not fixable)
       await writeFile(
         join(tempVaultDir, 'Ideas', 'Fixable.md'),
         `---
 type: idea
+status: " "
 priority: medium
 ---
 `
@@ -891,6 +893,7 @@ priority: medium
         join(tempVaultDir, 'Ideas', 'Missing Status.md'),
         `---
 type: idea
+status: " "
 priority: medium
 ---
 `
@@ -975,6 +978,7 @@ status: raw
         join(tempVaultDir, 'Ideas', 'Needs Status.md'),
         `---
 type: idea
+status: " "
 priority: medium
 ---
 `
@@ -1003,7 +1007,8 @@ priority: medium
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Dry run - no changes written');
-      expect(result.stdout).toContain('Would fix: 1 issues');
+      expect(result.stdout).toContain('Would fill status with default "raw"');
+      expect(result.stdout).toContain('Would skip: 1 issues');
       expect(result.stderr).not.toContain('requires a TTY');
     });
 
@@ -1094,6 +1099,7 @@ priority: medium
         join(tempVaultDir, 'Ideas', 'Bad.md'),
         `---
 type: idea
+status: " "
 priority: medium
 ---
 `
@@ -6721,6 +6727,7 @@ tags: later
         join(tempVaultDir, 'Ideas', 'Dry Run.md'),
         `---
 type: idea
+status: " "
 priority: medium
 ---
 `
@@ -6735,7 +6742,7 @@ priority: medium
       expect(result.stdout).toContain("Re-run with '--execute' to apply fixes.");
 
       const content = await readFile(join(tempVaultDir, 'Ideas', 'Dry Run.md'), 'utf-8');
-      expect(content).not.toContain('status:');
+      expect(content).not.toContain('status: raw');
     });
 
     it('should confirm applied fixes when --execute is provided', async () => {
@@ -6743,6 +6750,7 @@ priority: medium
         join(tempVaultDir, 'Ideas', 'Applied Fix.md'),
         `---
 type: idea
+status: " "
 priority: medium
 ---
 `
