@@ -1889,6 +1889,9 @@ unknownField: should warn
         },
         milestone: {
           extends: 'objective',
+          fields: {
+            aliases: { prompt: 'list', alias: true, list_format: 'yaml-array' },
+          },
         },
         task: {
           extends: 'objective',
@@ -1901,11 +1904,16 @@ unknownField: should warn
               prompt: 'relation',
               source: 'objective',  // Accepts objective or any descendant
             },
+            any_ref: {
+              prompt: 'relation',
+              source: 'any',
+            },
           },
         },
         idea: {
           fields: {
             status: { prompt: 'select', options: ['raw', 'backlog', 'in-flight', 'settled'], default: 'raw' },
+            aliases: { prompt: 'list', alias: true, list_format: 'yaml-array' },
           },
         },
       },
@@ -1925,6 +1933,170 @@ unknownField: should warn
 
     afterEach(async () => {
       await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('accepts an alias target when the aliased note satisfies the source type', async () => {
+      await writeFile(
+        join(tempVaultDir, 'objectives/milestones', 'Launch.md'),
+        `---
+type: milestone
+status: raw
+aliases:
+  - Release Alias
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Alias Ref.md'),
+        `---
+type: task
+status: backlog
+milestone: "[[Release Alias]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.files).toEqual([]);
+    });
+
+    it('accepts path-qualified references for source any', async () => {
+      await writeFile(
+        join(tempVaultDir, 'ideas', 'Only Wrong.md'),
+        `---
+type: idea
+status: raw
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Any Ref.md'),
+        `---
+type: task
+status: backlog
+any_ref: "[[ideas/Only Wrong]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.files).toEqual([]);
+    });
+
+    it('reports a clear wrong-type error for a path-qualified reference', async () => {
+      await writeFile(
+        join(tempVaultDir, 'ideas', 'Only Wrong.md'),
+        `---
+type: idea
+status: raw
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Path Wrong Type.md'),
+        `---
+type: task
+status: backlog
+milestone: "[[ideas/Only Wrong]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const taskFile = output.files.find((f: { path: string }) => f.path.includes('Path Wrong Type.md'));
+      const sourceIssue = taskFile.issues.find((i: { code: string }) => i.code === 'invalid-source-type');
+      expect(sourceIssue).toMatchObject({
+        field: 'milestone',
+        value: '[[ideas/Only Wrong]]',
+        expectedType: 'milestone',
+        actualType: 'idea',
+        expected: 'milestone',
+        autoFixable: false,
+      });
+      expect(sourceIssue.message).toContain("'milestone' expects milestone");
+      expect(sourceIssue.message).toContain("'ideas/Only Wrong' is idea");
+    });
+
+    it('accepts a bare ambiguous basename when one candidate has an allowed type', async () => {
+      await writeFile(
+        join(tempVaultDir, 'objectives/milestones', 'Shared.md'),
+        `---
+type: milestone
+status: raw
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'ideas', 'Shared.md'),
+        `---
+type: idea
+status: raw
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Ambiguous Allowed.md'),
+        `---
+type: task
+status: backlog
+milestone: "[[Shared]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.files).toEqual([]);
+    });
+
+    it('reports wrong-type when a bare basename has no allowed-type candidates', async () => {
+      await writeFile(
+        join(tempVaultDir, 'ideas', 'Only Wrong.md'),
+        `---
+type: idea
+status: raw
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Ambiguous None Allowed.md'),
+        `---
+type: task
+status: backlog
+milestone: "[[Only Wrong]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const taskFile = output.files.find((f: { path: string }) => f.path.includes('Ambiguous None Allowed.md'));
+      const sourceIssue = taskFile.issues.find((i: { code: string }) => i.code === 'invalid-source-type');
+      expect(sourceIssue).toMatchObject({
+        field: 'milestone',
+        value: '[[Only Wrong]]',
+        expectedType: 'milestone',
+        actualType: 'idea',
+        expected: 'milestone',
+      });
     });
 
     it('should detect type mismatch when context field references wrong type', async () => {

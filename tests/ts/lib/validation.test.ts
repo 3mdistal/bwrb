@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { mkdtemp, mkdir, rm, writeFile } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import {
   validateFrontmatter,
   validateContextFields,
@@ -781,6 +784,167 @@ describe('validation', () => {
 
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
+    });
+
+    const buildRelationContractVault = async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-validation-context-'));
+      const relationSchema = resolveSchema({
+        version: 2,
+        types: {
+          task: {
+            output_dir: 'Tasks',
+            fields: {
+              milestone: { prompt: 'relation', source: 'milestone' },
+              any_ref: { prompt: 'relation', source: 'any' },
+            },
+          },
+          milestone: {
+            output_dir: 'Milestones',
+            fields: {
+              aliases: { prompt: 'list', alias: true, list_format: 'yaml-array' },
+            },
+          },
+          idea: {
+            output_dir: 'Ideas',
+            fields: {
+              aliases: { prompt: 'list', alias: true, list_format: 'yaml-array' },
+            },
+          },
+        },
+      } as unknown as Schema);
+
+      await mkdir(join(tempVaultDir, 'Tasks'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Milestones'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Milestones', 'Launch.md'),
+        `---
+type: milestone
+aliases:
+  - Release Alias
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Milestones', 'Shared.md'),
+        `---
+type: milestone
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Shared.md'),
+        `---
+type: idea
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Only Wrong.md'),
+        `---
+type: idea
+---
+`
+      );
+
+      return { relationSchema, tempVaultDir };
+    };
+
+    it('accepts an alias target when the aliased note satisfies the source type', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        const result = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          milestone: '[[Release Alias]]',
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('accepts path-qualified references for source any', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        const result = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          any_ref: '[[Ideas/Only Wrong]]',
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('reports a clear wrong-type error for a path-qualified reference', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        const result = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          milestone: '[[Ideas/Only Wrong]]',
+        });
+
+        expect(result.valid).toBe(false);
+        expect(result.errors).toEqual([
+          expect.objectContaining({
+            type: 'invalid_context_source',
+            field: 'milestone',
+            value: '[[Ideas/Only Wrong]]',
+            targetName: 'Ideas/Only Wrong',
+            actualType: 'idea',
+            expectedTypes: ['milestone'],
+            expected: ['milestone'],
+          }),
+        ]);
+        expect(result.errors[0].message).toContain('"Ideas/Only Wrong" is type "idea"');
+        expect(result.errors[0].message).toContain('expected "milestone"');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('allows a bare ambiguous basename when one candidate has an allowed type', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        const result = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          milestone: '[[Shared]]',
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('reports wrong-type when a bare basename has no allowed-type candidates', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        const result = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          milestone: '[[Only Wrong]]',
+        });
+
+        expect(result.valid).toBe(false);
+        expect(result.errors).toEqual([
+          expect.objectContaining({
+            type: 'invalid_context_source',
+            field: 'milestone',
+            value: '[[Only Wrong]]',
+            targetName: 'Only Wrong',
+            actualType: 'idea',
+            expectedTypes: ['milestone'],
+            expected: ['milestone'],
+          }),
+        ]);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
     });
   });
 });
