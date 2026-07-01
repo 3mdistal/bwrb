@@ -424,7 +424,10 @@ bwrb schema migrate [options]
 | Option | Description |
 |--------|-------------|
 | `-x, --execute` | Actually apply the migration (default is dry-run) |
+| `-y, --yes` | Accept execute confirmations |
+| `--set-version <version>` | Set the new schema version for execute mode (semver, e.g. `1.2.3`) |
 | `--no-backup` | Skip backup creation (not recommended) |
+| `--show-changes` | Show per-note before/after changes in the dry-run preview |
 | `--output <format>` | Output format: `text`, `json` |
 
 ### Description
@@ -441,6 +444,7 @@ Migrations update existing notes when the schema changes:
 
 - **Dry-run by default**: Shows what would change without modifying files
 - **Automatic backup**: Creates a backup before applying changes
+- **Explicit headless execution**: Non-interactive runs with note changes require `--set-version`; non-deterministic changes also require `--yes`
 - **Atomic operations**: All changes succeed or none are applied
 
 ### Examples
@@ -451,6 +455,12 @@ bwrb schema migrate
 
 # Apply migration with backup
 bwrb schema migrate --execute
+
+# Apply non-interactively with JSON output
+bwrb schema migrate --execute --set-version 1.1.0 --output json
+
+# Apply a non-deterministic migration non-interactively
+bwrb schema migrate --execute --set-version 2.0.0 --yes --output json
 
 # Apply without backup (not recommended)
 bwrb schema migrate --execute --no-backup

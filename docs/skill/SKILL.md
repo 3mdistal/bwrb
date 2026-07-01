@@ -313,6 +313,14 @@ bwrb audit --output json
 bwrb audit --fix --auto --execute --all
 # Refuse interactive audit fixes without a TTY
 bwrb audit --fix --all
+
+# Non-interactive schema migrations
+# Preview first; JSON includes uncapped per-note fileChanges.
+bwrb schema migrate --output json
+# Execute deterministic note changes with an explicit schema version.
+bwrb schema migrate --execute --set-version 1.1.0 --output json
+# Execute non-deterministic changes (data removal/review) with explicit consent.
+bwrb schema migrate --execute --set-version 2.0.0 --yes --output json
 ```
 
 #### Type Inference and Check Dependencies
