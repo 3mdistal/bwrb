@@ -4,6 +4,26 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-01
+
+Patch release for the post-0.2.0 bugfix sweep.
+
+### Added
+
+- **Headless schema migrations** — `schema migrate --execute` now supports non-interactive execution with `--yes` and `--set-version`, including JSON output and per-note change reporting (#749).
+- **Relation validation coverage** — added coverage for alias targets, `source: any`, path-qualified references, and ambiguous relation refs (#761).
+
+### Fixed
+
+- **Vault path resolution** — global `-v` / `--vault` now honors `init`, completion requests, and relative paths resolved from the command cwd (#730, #735, #752, #754).
+- **Schema migration diffs** — migration planning now detects prompt and date-granularity changes, inherited field structural overrides, and relation-source widenings that are safe because descendants remain covered (#729, #731, #732).
+- **Hierarchy queries** — parent chains are keyed by path when available, preventing duplicate intermediate ancestor basenames from mis-resolving hierarchy walks (#738).
+- **Write/audit parity** — relation writes store clean wikilinks, required fields with defaults align with audit, and plain `prompt: 'list'` fields reject scalar writes (#742, #743, #746).
+- **Relation refs in edit** — `edit` accepts path-qualified wikilink relation references that `audit` already considered valid (#748).
+- **Unlinked mention noise** — fuzzy unlinked-mention audit skips common and structural headings, including composite and setext headings (#750, #759).
+- **Documented output aliases** — documented `-o` output aliases for schema commands now work as shown (#733, #756).
+- **Test output hygiene** — subprocess tests no longer leak Node DEP0205 deprecation warnings into assertions (#765).
+
 ## [0.2.0] - 2026-06-26
 
 Changes since `v0.1.9` — a large release (78 PRs). Headlines: schema **traits**, **hierarchical scope** (contexts as notes + `under()`), **fuzzy search**, the new **`recent`** command, **partial dates**, and a deep audit / migration / ownership hardening wave.
