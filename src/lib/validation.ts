@@ -267,15 +267,14 @@ export function validateFrontmatter(
     //         is accepted). Only a NON-blank scalar is type-checked.
     //       - list-shaped field: a blank scalar string is NOT unset — it is the
     //         wrong SHAPE (a scalar where a list is expected) and must reach
-    //         `validateFieldType`, which rejects it for a `multiple` date field
-    //         (bad date) and for an alias field (`invalid_alias`), matching
-    //         audit's `wrong-scalar-type` flag. Only `null`/`undefined`/`[]` are
-    //         genuinely unset for a list field and skip the type check.
+    //         `validateFieldType`, which rejects it for list-shaped fields,
+    //         matching audit's `wrong-scalar-type` flag. Only
+    //         `null`/`undefined`/`[]` are genuinely unset for a list field and
+    //         skip the type check.
     //
-    // A non-blank scalar on a non-alias list field (e.g. `labels: 'urgent'`) is
-    // unaffected: it was never blank, so it flows to type validation and keeps its
-    // long-standing soft-coercion (audit autofixes it as `wrong-scalar-type`) —
-    // intentionally out of scope here.
+    // A non-blank scalar on a list field (e.g. `tags: 'urgent'`) also reaches
+    // type validation and is rejected, matching audit's existing
+    // `wrong-scalar-type` detection instead of persisting drift.
     const isListShapedField = field.multiple === true || field.prompt === 'list';
     const isNullish = value === undefined || value === null;
     const isEmptyArray = Array.isArray(value) && value.length === 0;
@@ -484,16 +483,16 @@ function validateFieldType(
     return validateAliasValue(fieldName, value);
   }
 
-  // Handle list fields (multi-value arrays or comma-separated strings)
+  // Handle list fields. Write paths store list-shaped fields as arrays; existing
+  // scalar drift is owned by audit's wrong-scalar-type detection/autofix.
   if (field.prompt === 'list' || field.list_format) {
-    // Accept both arrays and strings for list fields
-    if (!Array.isArray(value) && typeof value !== 'string') {
+    if (!Array.isArray(value)) {
       return {
         type: 'invalid_type',
         field: fieldName,
         value,
-        message: `Invalid type for ${fieldName}: expected array or string, got ${typeof value}`,
-        expected: 'array or string',
+        message: `Invalid type for ${fieldName}: expected array, got ${typeof value}`,
+        expected: 'array',
       };
     }
     return null;

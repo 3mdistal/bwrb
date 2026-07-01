@@ -22,11 +22,10 @@ import type { Schema } from '../../../src/types/schema.js';
  * flagged: parity violated.
  *
  * Ground truth: a blank value on a list-shaped field is EMPTY for the required
- * check (required -> required_field_missing; optional -> unset, no error),
- * exactly as audit's `isEmptyRequiredValue` classifies it. A NON-blank scalar on
- * a non-alias list field still flows to type validation (soft-coerce, out of
- * scope). Alias fields keep their stricter array contract (covered separately in
- * edit-blank-list-prompt-parity.test.ts).
+ * check (required -> required_field_missing), exactly as audit's
+ * `isEmptyRequiredValue` classifies it. Optional list-shaped fields still allow
+ * absent/null/empty-array unset values, but scalar strings are type errors so
+ * write no longer persists values audit immediately flags as `wrong-scalar-type`.
  */
 
 const SCHEMA: Schema = {
@@ -121,8 +120,6 @@ describe('required blank list-field emptiness: write↔audit parity (#707)', () 
   });
 
   for (const [label, value] of [
-    ['empty string', ''],
-    ['whitespace-only', '   '],
     ['empty array', [] as unknown],
   ] as const) {
     it(`treats a ${label} value on an OPTIONAL list field as unset (no error)`, async () => {
@@ -134,6 +131,26 @@ describe('required blank list-field emptiness: write↔audit parity (#707)', () 
         optlist: value,
       });
       expect(result.errors.some((e) => e.field === 'optlist')).toBe(false);
+    });
+  }
+
+  for (const [label, value] of [
+    ['empty string', ''],
+    ['whitespace-only', '   '],
+    ['non-blank scalar', 'urgent'],
+  ] as const) {
+    it(`REJECTS a ${label} value on an OPTIONAL prompt:'list' field (wrong shape)`, async () => {
+      const schema = await loadSchema(vaultDir);
+      const result = validateFrontmatter(schema, 'widget', {
+        type: 'widget',
+        reqlist: ['x'],
+        reqmulti: ['a'],
+        optlist: value,
+      });
+      expect(result.valid).toBe(false);
+      expect(
+        result.errors.some((e) => e.field === 'optlist' && e.type === 'invalid_type')
+      ).toBe(true);
     });
   }
 
@@ -180,13 +197,14 @@ describe('required blank list-field emptiness: write↔audit parity (#707)', () 
     expect(codes.some((c) => c.field === 'optlist')).toBe(false);
   });
 
-  it('control: a non-blank scalar on a non-alias list field is still accepted on write (soft-coerce, out of scope)', async () => {
+  it('control: a non-blank scalar on a non-alias list field is rejected on write', async () => {
     const schema = await loadSchema(vaultDir);
     const result = validateFrontmatter(schema, 'widget', {
       type: 'widget',
       reqlist: 'urgent',
       reqmulti: ['a'],
     });
-    expect(result.errors.some((e) => e.field === 'reqlist')).toBe(false);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.field === 'reqlist' && e.type === 'invalid_type')).toBe(true);
   });
 });

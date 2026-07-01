@@ -198,6 +198,22 @@ defaults:
       expect(output.errors[0].field).toBe('totally-extra');
     });
 
+    for (const [label, json] of [
+      ['blank scalar', '{"name":"Bad List Blank","tags":"   "}'],
+      ['non-blank scalar', '{"name":"Bad List Scalar","tags":"urgent"}'],
+    ] as const) {
+      it(`rejects a ${label} for an optional prompt:'list' field`, async () => {
+        const result = await runCLI(['new', 'task', '--json', json, '--no-template'], vaultDir);
+
+        expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
+        const output = JSON.parse(result.stdout);
+        expect(output.success).toBe(false);
+        expect(output.error).toBe('Validation failed');
+        expect(output.errors[0].field).toBe('tags');
+        expect(output.errors[0].expected).toBe('array');
+      });
+    }
+
     it('should reject templates whose defaults are invalid for the target type', async () => {
       await writeFile(
         join(vaultDir, '.bwrb', 'templates', 'task', 'invalid-default.md'),
