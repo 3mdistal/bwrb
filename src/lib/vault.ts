@@ -270,6 +270,24 @@ export function formatValue(value: string, linkFormat: 'wikilink' | 'markdown' =
 }
 
 /**
+ * Build a relation link for storing in a frontmatter object before YAML
+ * serialization. Unlike {@link formatValue}, this returns the raw link so the
+ * serializer can add exactly one layer of YAML-safe quoting.
+ */
+export function cleanRelationLink(value: string, linkFormat: 'wikilink' | 'markdown' = 'wikilink'): string {
+  if (!value) return '';
+
+  switch (linkFormat) {
+    case 'wikilink':
+      return `[[${value}]]`;
+    case 'markdown':
+      return `[${value}](${value}.md)`;
+    default:
+      return value;
+  }
+}
+
+/**
  * Check if a filter condition matches a value.
  */
 function matchesCondition(value: unknown, condition: FilterCondition): boolean {

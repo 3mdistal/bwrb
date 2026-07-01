@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI, waitForFile } from '../fixtures/setup.js';
 import { ExitCodes } from '../../../src/lib/output.js';
@@ -52,7 +52,13 @@ A test project for ownership testing.
     expect(output.success).toBe(true);
     expect(output.path).toContain('Projects/My Project/research/Project Research.md');
 
-    const { frontmatter } = await parseNote(join(vaultDir, output.path));
+    const notePath = join(vaultDir, output.path);
+    const content = await readFile(notePath, 'utf-8');
+    expect(content).toMatch(/^owner: "\[\[My Project\]\]"$/m);
+    expect(content).not.toContain(`'"[[`);
+
+    const { frontmatter } = await parseNote(notePath);
+    expect(frontmatter.owner).toBe('[[My Project]]');
     expect(extractWikilinkTarget(String(frontmatter.owner))).toBe('My Project');
   });
 
@@ -111,6 +117,14 @@ Owned folder placement test.
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(true);
     expect(output.path).toContain('Albums/Best Album/songs/Opening Track.md');
+
+    const notePath = join(vaultDir, output.path);
+    const content = await readFile(notePath, 'utf-8');
+    expect(content).toMatch(/^owner: "\[\[Best Album\]\]"$/m);
+    expect(content).not.toContain(`'"[[`);
+
+    const { frontmatter } = await parseNote(notePath);
+    expect(frontmatter.owner).toBe('[[Best Album]]');
   });
 
   it('should create pooled note with --standalone flag', async () => {
