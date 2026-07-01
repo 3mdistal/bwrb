@@ -3,7 +3,7 @@ import { mkdtemp, rm, mkdir, writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { spawn } from 'child_process';
-import { createTestVault, cleanupTestVault, runCLI, TEST_SCHEMA, CLI_PATH, PROJECT_ROOT } from '../fixtures/setup.js';
+import { createTestVault, cleanupTestVault, runCLI, TEST_SCHEMA, CLI_PATH, PROJECT_ROOT, withTestCliNodeOptions } from '../fixtures/setup.js';
 import { parseNote } from '../../../src/lib/frontmatter.js';
 
 const CLI_SRC_PATH = join(PROJECT_ROOT, 'src/index.ts');
@@ -23,7 +23,7 @@ async function runCLIWithOpenStdin(
   return await new Promise((resolve, reject) => {
     const proc = spawn(cliCommand, cliArgs, {
       cwd: PROJECT_ROOT,
-      env: { ...process.env, FORCE_COLOR: '0' },
+      env: withTestCliNodeOptions({ ...process.env, FORCE_COLOR: '0' }),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 

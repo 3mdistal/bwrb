@@ -18,7 +18,7 @@
     "dev": "sh -c 'shift $([ \"$1\" = \"--\" ] && echo 1 || echo 0); exec tsx src/index.ts \"$@\"' --",
     "build": "tsup --config tsup.config.ts",
     "prepack": "npm run build",
-    "test": "vitest run",
+    "test": "sh -c 'shift $([ \"$1\" = \"--\" ] && echo 1 || echo 0); exec vitest run \"$@\"' --",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:pty": "vitest run --reporter=verbose .pty.test.ts",
