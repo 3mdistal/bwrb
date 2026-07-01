@@ -134,6 +134,9 @@ export interface ResolveVaultOptions {
 
 /**
  * Resolve vault directory.
+ * Relative explicit vault paths are resolved against options.cwd when supplied,
+ * otherwise against the current process cwd. This applies to both --vault and
+ * BWRB_VAULT for consistency with find-up/find-down discovery.
  *
  * Precedence (authoritative):
  * 1) --vault option
@@ -142,8 +145,10 @@ export interface ResolveVaultOptions {
  * 4) find-down under cwd (Phase 2)
  */
 export async function resolveVaultDir(options: ResolveVaultOptions = {}): Promise<string> {
+  const cwd = options.cwd ?? process.cwd();
+
   if (options.vault) {
-    const resolvedVault = resolve(options.vault);
+    const resolvedVault = resolve(cwd, options.vault);
     if (!hasVaultSchema(resolvedVault)) {
       throw new Error(
         `Invalid --vault path: "${options.vault}" (expected ${SCHEMA_RELATIVE_PATH})`
@@ -152,7 +157,6 @@ export async function resolveVaultDir(options: ResolveVaultOptions = {}): Promis
     return resolvedVault;
   }
 
-  const cwd = options.cwd ?? process.cwd();
   const found = findUpVaultDir(cwd);
   if (found) {
     return found;
@@ -160,7 +164,7 @@ export async function resolveVaultDir(options: ResolveVaultOptions = {}): Promis
 
   const envVault = process.env['BWRB_VAULT'];
   if (envVault) {
-    const resolvedEnvVault = resolve(envVault);
+    const resolvedEnvVault = resolve(cwd, envVault);
     if (!hasVaultSchema(resolvedEnvVault)) {
       throw new Error(
         `Invalid BWRB_VAULT: "${envVault}" (expected ${SCHEMA_RELATIVE_PATH})`

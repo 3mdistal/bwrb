@@ -201,6 +201,26 @@ describe('vault', () => {
       }
     });
 
+    it('should resolve relative --vault path against options.cwd when provided', async () => {
+      const baseDir = await mkdtemp(join(tmpdir(), 'bwrb-rel-vault-cwd-'));
+      try {
+        const processCwd = join(baseDir, 'process-cwd');
+        const optionCwd = join(baseDir, 'option-cwd');
+        await mkdir(join(optionCwd, 'my-vault', '.bwrb'), { recursive: true });
+        await mkdir(processCwd, { recursive: true });
+        await writeFile(join(optionCwd, 'my-vault', '.bwrb', 'schema.json'), '{}');
+
+        process.chdir(processCwd);
+        delete process.env['BWRB_VAULT'];
+
+        const result = await resolveVaultDir({ cwd: optionCwd, vault: './my-vault' });
+        expect(result).toBe(resolve(optionCwd, './my-vault'));
+        expect(isAbsolute(result)).toBe(true);
+      } finally {
+        await rm(baseDir, { recursive: true, force: true });
+      }
+    });
+
     it('should resolve relative path from env var to absolute', async () => {
       const baseDir = await mkdtemp(join(tmpdir(), 'bwrb-rel-env-'));
       try {
@@ -213,6 +233,26 @@ describe('vault', () => {
 
         const result = await resolveVaultDir({});
         expect(result).toBe(resolve(process.cwd(), '../other-vault'));
+        expect(isAbsolute(result)).toBe(true);
+      } finally {
+        await rm(baseDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should resolve relative BWRB_VAULT against options.cwd when provided', async () => {
+      const baseDir = await mkdtemp(join(tmpdir(), 'bwrb-rel-env-cwd-'));
+      try {
+        const processCwd = join(baseDir, 'process-cwd');
+        const optionCwd = join(baseDir, 'option-cwd');
+        await mkdir(join(optionCwd, 'env-vault', '.bwrb'), { recursive: true });
+        await mkdir(processCwd, { recursive: true });
+        await writeFile(join(optionCwd, 'env-vault', '.bwrb', 'schema.json'), '{}');
+
+        process.chdir(processCwd);
+        process.env['BWRB_VAULT'] = './env-vault';
+
+        const result = await resolveVaultDir({ cwd: optionCwd });
+        expect(result).toBe(resolve(optionCwd, './env-vault'));
         expect(isAbsolute(result)).toBe(true);
       } finally {
         await rm(baseDir, { recursive: true, force: true });
