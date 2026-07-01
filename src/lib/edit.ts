@@ -181,10 +181,15 @@ export async function editNoteFromJson(
   //
   // Keys the user blanked but whose field has NO default stay blank: optional →
   // unset (trim-everywhere preserved), required → still rejected at validation.
+  const fields = getFieldsForType(schema, typePath);
   const blankPatchKeys = new Set(
-    Object.keys(patchData).filter(
-      (key) => typeof patchData[key] === 'string' && isBlankScalar(patchData[key])
-    )
+    Object.keys(patchData).filter((key) => {
+      if (typeof patchData[key] !== 'string' || !isBlankScalar(patchData[key])) return false;
+      // Plain prompt:list fields must validate as arrays on write (#742). Do
+      // not let a default such as [] hide a user-supplied scalar patch before
+      // validation gets to enforce the same shape audit expects.
+      return fields[key]?.prompt !== 'list';
+    })
   );
   const defaultedFrontmatter = applyDefaults(
     schema,

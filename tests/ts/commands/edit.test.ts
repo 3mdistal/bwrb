@@ -60,6 +60,26 @@ describe('edit command', () => {
       expect(json.errors[0].field).toBe('totally-extra');
     });
 
+    for (const [label, json] of [
+      ['blank scalar', '{"tags":"   "}'],
+      ['non-blank scalar', '{"tags":"urgent"}'],
+    ] as const) {
+      it(`rejects a ${label} for an optional prompt:'list' field`, async () => {
+        const taskPath = join(vaultDir, 'Objectives/Tasks/Sample Task.md');
+        const before = await readFile(taskPath, 'utf-8');
+
+        const result = await runCLI(['edit', 'Objectives/Tasks/Sample Task.md', '--json', json], vaultDir);
+
+        expect(result.exitCode).toBe(1);
+        const output = JSON.parse(result.stdout);
+        expect(output.success).toBe(false);
+        expect(output.error).toBe('Validation failed');
+        expect(output.errors[0].field).toBe('tags');
+        expect(output.errors[0].expected).toBe('array');
+        await expect(readFile(taskPath, 'utf-8')).resolves.toBe(before);
+      });
+    }
+
     it('should detect type from frontmatter type field', async () => {
       const result = await runCLI(
         ['edit', 'Ideas/Sample Idea.md', '--json', '{"status": "backlog"}'],

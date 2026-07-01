@@ -12,15 +12,14 @@ import type { Schema } from '../../../src/types/schema.js';
 
 /**
  * Regression coverage for the #707 write↔audit parity break on `prompt: 'list'`
- * fields that are NOT `multiple: true` (the alias-role shape).
+ * fields that are NOT `multiple: true`.
  *
  * A prior round restricted the blank-as-unset scalar shortcut (`isBlankScalar`)
  * to exclude only `multiple: true` fields. But a field declared as
- * `prompt: 'list'` WITHOUT `multiple` is ALSO list-shaped — this is exactly the
- * ALIAS-role schema pattern (`aliases: { prompt: 'list', alias: true }`). For
- * such a field a whitespace-only scalar like `aliases: '   '` made `hasValue`
- * false, so `validateFieldType` never ran and the non-array scalar string was
- * accepted and PERSISTED on write — while `audit` treats `prompt: 'list'` as
+ * `prompt: 'list'` WITHOUT `multiple` is ALSO list-shaped. For such a field a
+ * whitespace-only scalar like `tags: '   '` made `hasValue` false, so
+ * `validateFieldType` never ran and the non-array scalar string was accepted and
+ * PERSISTED on write — while `audit` treats `prompt: 'list'` as
  * list-shaped (`expectsList = field.prompt === 'list' || field.multiple === true`
  * in `src/lib/audit/detection.ts`) and flagged the SAME value as
  * `wrong-scalar-type`. Write accepted, audit flagged: parity violated.
@@ -28,8 +27,8 @@ import type { Schema } from '../../../src/types/schema.js';
  * Ground truth: the blank-as-unset shortcut must apply ONLY to genuinely SCALAR
  * fields. A field is list-shaped when `field.multiple === true` OR
  * `field.prompt === 'list'`. The fix uses that same predicate, so a blank scalar
- * on a `prompt: 'list'` alias field is rejected at write (alias-array
- * validation), matching audit's `wrong-scalar-type` flag. Both reject/flag.
+ * on a `prompt: 'list'` field is rejected at write, matching audit's
+ * `wrong-scalar-type` flag. Both reject/flag.
  */
 
 const SCHEMA: Schema = {
@@ -39,6 +38,7 @@ const SCHEMA: Schema = {
       output_dir: 'people',
       fields: {
         name: { prompt: 'text', required: true },
+        tags: { prompt: 'list', list_format: 'yaml-array' },
         // The alias role: `prompt: 'list'` WITHOUT `multiple` (list-shaped).
         aliases: { prompt: 'list', alias: true, list_format: 'yaml-array' },
       },
@@ -85,6 +85,68 @@ describe("whitespace scalar on prompt:'list' (alias) field: write↔audit parity
     });
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.field === 'aliases')).toBe(true);
+  });
+
+  it("validateFrontmatter REJECTS blank and non-blank scalars on a plain prompt:'list' field", async () => {
+    const schema = await loadSchema(vaultDir);
+    for (const value of ['   ', 'urgent']) {
+      const result = validateFrontmatter(schema, 'person', {
+        type: 'person',
+        name: 'x',
+        tags: value,
+      });
+      expect(result.valid).toBe(false);
+      expect(
+        result.errors.some((e) => e.field === 'tags' && e.type === 'invalid_type')
+      ).toBe(true);
+    }
+  });
+
+  it("edit --json: blank and non-blank scalars for an optional plain prompt:'list' field are rejected", async () => {
+    const personPath = join(vaultDir, 'people', 'Tagged.md');
+    await writeFile(
+      personPath,
+      `---
+type: person
+name: Tagged
+tags:
+  - old
+---
+
+# Tagged
+`
+    );
+
+    const schema = await loadSchema(vaultDir);
+    for (const value of ['   ', 'urgent']) {
+      await expect(
+        editNoteFromJson(schema, vaultDir, personPath, JSON.stringify({ tags: value }), {
+          jsonMode: false,
+        })
+      ).rejects.toThrow(/tags/);
+    }
+
+    const fm = await readFrontmatter(personPath);
+    expect(fm['tags']).toEqual(['old']);
+  });
+
+  it("parity: persisted blank and non-blank scalars on a plain prompt:'list' field are flagged wrong-scalar-type by audit", async () => {
+    await writeFile(
+      join(vaultDir, 'people', 'BlankTags.md'),
+      `---\ntype: person\nname: BlankTags\ntags: "   "\n---\n`
+    );
+    await writeFile(
+      join(vaultDir, 'people', 'ScalarTags.md'),
+      `---\ntype: person\nname: ScalarTags\ntags: urgent\n---\n`
+    );
+
+    const schema = await loadSchema(vaultDir);
+    const results = await runAudit(schema, vaultDir, { strict: false, vaultDir, schema });
+    const blankIssues = auditIssues(results, 'BlankTags.md');
+    const scalarIssues = auditIssues(results, 'ScalarTags.md');
+
+    expect(blankIssues.some((i) => i.code === 'wrong-scalar-type' && i.field === 'tags')).toBe(true);
+    expect(scalarIssues.some((i) => i.code === 'wrong-scalar-type' && i.field === 'tags')).toBe(true);
   });
 
   it('edit --json: a whitespace scalar for an optional alias list field is rejected; nothing persisted', async () => {
