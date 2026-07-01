@@ -86,11 +86,18 @@ When a template defines instances, the CLI displays what files were created:
 ✓ Created: Projects/My Project.md
 
 Instances created:
-  ✓ Projects/Background Research.md
-  ✓ Projects/Competitor Analysis.md
+  ✓ Research/Background Research.md
+  ✓ Research/Competitor Analysis.md
 
 ✓ Created 3 files (1 parent + 2 instances)
 ```
+
+Instances are written to each child type's configured `output_dir`, not beside
+the parent unless the schema points both types at the same directory. Templates
+may scaffold same-type children, such as a `task` template that creates more
+`task` notes. Date expressions in instance defaults evaluate for date fields;
+non-date fields remain literal. Instance defaults and explicit instance
+filenames do not interpolate parent placeholders like `{name}`.
 
 ### Non-interactive (JSON) Mode
 
@@ -140,7 +147,7 @@ JSON output for templates with instances includes an `instances` object:
   "success": true,
   "path": "Projects/My Project.md",
   "instances": {
-    "created": ["Projects/Background Research.md", "Projects/Competitor Analysis.md"],
+    "created": ["Research/Background Research.md", "Research/Competitor Analysis.md"],
     "skipped": [],
     "errors": []
   }

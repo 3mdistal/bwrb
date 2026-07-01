@@ -76,9 +76,11 @@ values at once. In `template edit`, a multi-value default offers `(keep)`,
 ### Dynamic Defaults (Date Expressions)
 
 Use date expressions for dynamic values that evaluate at note creation time. A
-default value is evaluated as a date expression **only when the entire value
-matches the date-expression grammar** — any other string (links, prose, option
-values, literal dates like `2026-01-07`) is written through unchanged. The
+default value is evaluated as a date expression **only for date fields**, and
+only when the entire value matches the date-expression grammar. Any other string
+(links, prose, option values, literal dates like `2026-01-07`) is written
+through unchanged. Non-date fields also pass date-looking prose through
+literally, so a text field default like `@today+3d` remains `@today+3d`. The
 evaluated date is then normalized to canonical `YYYY-MM-DD` on write (and a
 field's `granularity` is respected), so templated dates pass `bwrb audit`.
 
@@ -126,7 +128,8 @@ defaults:
 
 Date offsets shine with [instance scaffolding](#instance-scaffolding): a parent
 template can spawn several tasks at once, each with a deadline staggered from the
-day the parent is created.
+day the parent is created. Instance defaults use the same date-field evaluation
+as parent template defaults.
 
 ```yaml
 ---
@@ -320,7 +323,7 @@ instances:
 | Property | Required | Description |
 |----------|----------|-------------|
 | `type` | Yes | Type of note to create |
-| `filename` | No | Override filename (default: `{type}.md`) |
+| `filename` | No | Literal filename override (default comes from filename pattern, `title`, `name`, or `{type}.md`) |
 | `template` | No | Template to use for the instance |
 | `defaults` | No | Instance-specific default values |
 
@@ -329,18 +332,70 @@ instances:
 When you run `bwrb new project --template with-research`:
 
 1. The parent project note is created
-2. Each instance file is created in the same directory
-3. Existing instance files are **skipped** (not overwritten)
-4. A summary shows what was created
+2. Each instance file is created in that instance type's configured `output_dir`
+3. Instances may use the same type as the parent, so a `task` template can scaffold more `task` notes
+4. Existing instance files are **skipped** (not overwritten)
+5. A summary shows what was created
+
+Instance `defaults` are applied to the child note's own fields. Date expressions
+such as `@today+3d` or `today() + '7d'` evaluate for child date fields, including
+fields like `scheduled` and `deadline`; non-date fields keep date-looking strings
+literally.
+
+Instance `defaults` and explicit `filename` values do **not** interpolate parent
+placeholders such as `{name}`. For article-specific child task names, write the
+literal child names you want in the template, rely on the child type's own
+`filename` pattern, or wrap `bwrb new` in a script that generates the desired
+instance definitions. Avoid braces in explicit child filenames unless you want
+the braces to be part of the actual filename.
 
 ```
 ✓ Created: Projects/My Project.md
 
 Instances created:
-  ✓ Projects/Background Research.md
-  ✓ Projects/Competitor Analysis.md
+  ✓ Research/Background Research.md
+  ✓ Research/Competitor Analysis.md
 
 ✓ Created 3 files (1 parent + 2 instances)
+```
+
+### Same-Type Task Example
+
+A writing workflow can create a parent task plus predictable same-type task
+follow-ups. The child task notes are placed in the `task` type's `output_dir`,
+which may be the same directory as the parent or a separate task directory
+depending on your schema.
+
+```yaml
+---
+type: template
+template-for: task
+description: Builder article production checklist
+defaults:
+  status: planned
+  scheduled: "@today+1d"
+  deadline: "@today+7d"
+instances:
+  - type: task
+    defaults:
+      name: "Outline article"
+      status: planned
+      scheduled: "@today+1d"
+  - type: task
+    defaults:
+      name: "Draft article"
+      status: planned
+      scheduled: "@today+3d"
+  - type: task
+    defaults:
+      name: "Review and publish article"
+      status: planned
+      scheduled: "@today+5d"
+---
+
+## Brief
+
+## Notes
 ```
 
 ### Skipping Instance Creation
