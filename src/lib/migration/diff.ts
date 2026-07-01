@@ -396,6 +396,12 @@ function detectFieldPropertyChanges(oldField: Field, newField: Field): string[] 
   // Other properties that matter for migration. Note: `description` and `label`
   // are intentionally excluded — they are documentation, never data shape.
   //
+  // `prompt` controls how values are validated/interpreted, so a change can make
+  // existing values invalid even when no other structural property changes.
+  //
+  // `granularity` controls date validation strictness. It matters only for date
+  // fields, and the classifier decides whether the direction is narrowing.
+  //
   // `default` is tracked because it participates in the required-exposure rule:
   // bwrb validation exempts a missing required value only while `default !==
   // undefined`, so REMOVING a default from an already-required field newly
@@ -404,7 +410,14 @@ function detectFieldPropertyChanges(oldField: Field, newField: Field): string[] 
   // `default` here a default-only change would never surface as a `field-changed`
   // detection at all (#728). A default change that does NOT cross the
   // exposure boundary is harmless and produces no op.
-  const props: (keyof Field)[] = ['source', 'required', 'multiple', 'default'];
+  const props: (keyof Field)[] = [
+    'prompt',
+    'source',
+    'required',
+    'multiple',
+    'default',
+    'granularity',
+  ];
 
   for (const prop of props) {
     if (JSON.stringify(oldField[prop]) !== JSON.stringify(newField[prop])) {
@@ -541,6 +554,11 @@ function classifyChanges(
  *   there is no safe deterministic fix → `review-field` (non-deterministic, no note
  *   mutation, surfaced for the user). A pure `source` widening (new allowed set ⊇
  *   old) or reorder keeps existing links valid → no op.
+ * - date `granularity` narrowed (e.g. `year` → `month`/`day`, or `month` →
+ *   `day`): existing partial dates may now be invalid → `review-field`.
+ *   Widening keeps existing values valid and emits no op.
+ * - `prompt` changed without a more specific op already covering the field:
+ *   existing values may now be interpreted by a different validator → `review-field`.
  */
 function classifyFieldChange(
   change: Extract<DetectedChange, { kind: 'field-changed' }>,
@@ -550,6 +568,13 @@ function classifyFieldChange(
   nonDeterministic: MigrationOp[]
 ): void {
   const { type: targetType, field, changes: changedProps } = change;
+  const opCountForField = (): number =>
+    deterministic.filter(
+      (op) => 'targetType' in op && op.targetType === targetType && 'field' in op && op.field === field
+    ).length +
+    nonDeterministic.filter(
+      (op) => 'targetType' in op && op.targetType === targetType && 'field' in op && op.field === field
+    ).length;
 
   if (changedProps.includes('options')) {
     const oldValues = getOptionValues(oldField?.options);
@@ -719,6 +744,51 @@ function classifyFieldChange(
       }
     }
   }
+
+  if (changedProps.includes('granularity')) {
+    const oldPrompt = oldField?.prompt;
+    const newPrompt = newField?.prompt;
+    if (oldPrompt === 'date' && newPrompt === 'date') {
+      const oldGranularity = normalizeDateGranularity(oldField?.granularity);
+      const newGranularity = normalizeDateGranularity(newField?.granularity);
+      if (isDateGranularityNarrowing(oldGranularity, newGranularity)) {
+        nonDeterministic.push({
+          op: 'review-field',
+          targetType,
+          field,
+          reason:
+            'date granularity is stricter; existing partial dates may need manual review',
+        });
+      }
+    }
+  }
+
+  if (changedProps.includes('prompt') && opCountForField() === 0) {
+    nonDeterministic.push({
+      op: 'review-field',
+      targetType,
+      field,
+      reason: 'field prompt type changed; existing values may need manual review',
+    });
+  }
+}
+
+type DateGranularity = NonNullable<Field['granularity']>;
+
+function normalizeDateGranularity(granularity: Field['granularity']): DateGranularity {
+  return granularity ?? 'day';
+}
+
+function isDateGranularityNarrowing(
+  oldGranularity: DateGranularity,
+  newGranularity: DateGranularity
+): boolean {
+  const rank: Record<DateGranularity, number> = {
+    year: 1,
+    month: 2,
+    day: 3,
+  };
+  return rank[newGranularity] > rank[oldGranularity];
 }
 
 /**

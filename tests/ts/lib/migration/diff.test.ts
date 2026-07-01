@@ -412,6 +412,124 @@ describe("diffSchemas", () => {
       ).toBe(false);
     });
 
+    it("emits review-field when date granularity narrows", () => {
+      const yearSchema: BwrbSchemaType = {
+        ...baseSchema,
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              due: { prompt: "date", granularity: "year" },
+            },
+          },
+        },
+      };
+      const monthSchema: BwrbSchemaType = {
+        ...yearSchema,
+        schemaVersion: "2.0.0",
+        types: {
+          ...yearSchema.types,
+          task: {
+            ...yearSchema.types.task,
+            fields: {
+              ...yearSchema.types.task.fields,
+              due: { prompt: "date", granularity: "month" },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(yearSchema, monthSchema, "1.0.0", "2.0.0");
+
+      expect(plan.nonDeterministic).toContainEqual({
+        op: "review-field",
+        targetType: "task",
+        field: "due",
+        reason:
+          "date granularity is stricter; existing partial dates may need manual review",
+      });
+      expect(plan.deterministic).toHaveLength(0);
+    });
+
+    it("does NOT emit an op when date granularity widens", () => {
+      const daySchema: BwrbSchemaType = {
+        ...baseSchema,
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              due: { prompt: "date", granularity: "day" },
+            },
+          },
+        },
+      };
+      const yearSchema: BwrbSchemaType = {
+        ...daySchema,
+        schemaVersion: "1.1.0",
+        types: {
+          ...daySchema.types,
+          task: {
+            ...daySchema.types.task,
+            fields: {
+              ...daySchema.types.task.fields,
+              due: { prompt: "date", granularity: "year" },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(daySchema, yearSchema, "1.0.0", "1.1.0");
+
+      expect(plan.hasChanges).toBe(false);
+      expect(plan.schemaChanged).toBe(true);
+      expect(plan.deterministic).toHaveLength(0);
+      expect(plan.nonDeterministic).toHaveLength(0);
+    });
+
+    it("emits review-field when an existing field prompt type changes", () => {
+      const oldSchema: BwrbSchemaType = {
+        ...baseSchema,
+        types: {
+          ...baseSchema.types,
+          task: {
+            ...baseSchema.types.task,
+            fields: {
+              ...baseSchema.types.task.fields,
+              estimate: { prompt: "number" },
+            },
+          },
+        },
+      };
+      const newSchema: BwrbSchemaType = {
+        ...oldSchema,
+        schemaVersion: "2.0.0",
+        types: {
+          ...oldSchema.types,
+          task: {
+            ...oldSchema.types.task,
+            fields: {
+              ...oldSchema.types.task.fields,
+              estimate: { prompt: "date" },
+            },
+          },
+        },
+      };
+
+      const plan = diffSchemas(oldSchema, newSchema, "1.0.0", "2.0.0");
+
+      expect(plan.nonDeterministic).toContainEqual({
+        op: "review-field",
+        targetType: "task",
+        field: "estimate",
+        reason: "field prompt type changed; existing values may need manual review",
+      });
+      expect(plan.deterministic).toHaveLength(0);
+    });
+
     it("emits review-field when a field becomes required", () => {
       // priority starts not-required → make it required.
       const newSchema: BwrbSchemaType = {
