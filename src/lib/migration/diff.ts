@@ -213,9 +213,9 @@ function detectTypeChanges(
  *     refreshes the snapshot.
  *   - A field merely INHERITED (or trait-contributed) UNCHANGED in both old and
  *     new is present in BOTH effective sets → NOT an addition.
- *   - A raw redeclaration of an already-inherited field whose structural override
- *     the resolver IGNORES leaves the effective field present in BOTH sets → NOT
- *     an addition (round-9 behavior preserved without a special case).
+ *   - A raw redeclaration of an already-inherited field leaves the field present
+ *     in BOTH effective sets → NOT an addition. If the redeclaration changes the
+ *     effective field shape, detectEffectiveFieldChanges handles it as a change.
  *
  * One detection is emitted per CONCRETE type that effectively gains the field,
  * matching how executeMigration groups field ops by exact `expectedType`. Only
@@ -259,25 +259,25 @@ function detectEffectiveFieldAdditions(
 /**
  * Detect field-changed migrations from the EFFECTIVE resolved schemas.
  *
- * The schema resolver applies a RESTRICTED merge for inherited fields: when a
- * child type re-declares a field it inherits, only metadata (`default`/`value`/
- * `description`/`granularity`) merges onto the parent's definition — the child's
- * raw STRUCTURAL keys (`options`/`multiple`/`required`/`source`) are IGNORED and
- * the parent's structure wins (see computeEffectiveFields in src/lib/schema.ts).
+ * The schema resolver applies an explicit-key merge for inherited fields: when a
+ * child type re-declares a field it inherits, omitted keys keep the inherited
+ * value, while declared keys (metadata or structural: `options`/`multiple`/
+ * `required`/`source`) override it (see computeEffectiveFields in
+ * src/lib/schema.ts).
  *
  * Because notes are written against the EFFECTIVE schema, field-changed ops must
  * be derived by comparing each concrete type's effective field definition old →
  * new, NOT its raw entry. Doing so is correct in both directions:
  *
- *   - A child that raw-overrides `options` on an INHERITED field changes nothing
- *     effectively (the resolver drops the override). Its effective field is
- *     unchanged old → new, so NO op is emitted — its valid note values survive
- *     (fixes the data-loss defect, #728 P1).
+ *   - A child that overrides `options` on an INHERITED field now has its own
+ *     effective value set. Editing that child override is a real effective field
+ *     change scoped to the child, so migration emits the same option-cleanup ops
+ *     it would for any other effective select field.
  *   - A parent field change flows into every concrete descendant that inherits it
- *     (including metadata-only-override children and children whose raw
- *     same-name structural override the resolver ignores). Each such descendant's
- *     effective field changes, so it receives its own op and its notes are
- *     cleaned under its exact type (fixes the missed-cleanup defect, #728 P2).
+ *     unchanged or only metadata-overrides it. A child with a structural override
+ *     is governed by its own effective field shape instead, so parent structural
+ *     changes do not force child cleanup when the child's effective field stays
+ *     unchanged.
  *
  * One detection is emitted per CONCRETE type, because `executeMigration` matches
  * ops to notes by the note's exact `expectedType`. The OLD effective definition

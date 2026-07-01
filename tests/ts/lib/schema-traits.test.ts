@@ -281,7 +281,7 @@ describe('schema traits', () => {
       expect(byOrigin.inheritedFields.get('base')).toBeUndefined();
     });
 
-    it('own-vs-parent (no trait) keeps the restricted merge', async () => {
+    it('own-vs-parent (no trait) lets own keys override inherited keys', async () => {
       const loaded = await loadFromSchema({
         version: 2,
         types: {
@@ -291,11 +291,17 @@ describe('schema traits', () => {
                 prompt: 'select',
                 label: 'from-parent',
                 options: ['parent-a', 'parent-b'],
+                required: true,
+                multiple: false,
+              },
+              owner: {
+                prompt: 'relation',
+                source: ['project', 'area'],
               },
             },
           },
-          // Own carries a structural key (options) AND restricted keys; only the
-          // restricted keys should merge — structural stays inherited.
+          // Own carries structural keys (options/label) plus metadata; explicit
+          // own keys merge onto the inherited field.
           task: {
             extends: 'base',
             fields: {
@@ -304,6 +310,11 @@ describe('schema traits', () => {
                 description: 'own-doc',
                 options: ['own-only'],
                 label: 'from-own',
+                required: false,
+                multiple: true,
+              },
+              owner: {
+                source: 'project',
               },
             },
           },
@@ -311,18 +322,24 @@ describe('schema traits', () => {
       });
 
       const status = getFieldsForType(loaded, 'task').status;
-      // Restricted keys merge from own...
+      // Explicit own keys merge from own...
       expect(status?.default).toBe('parent-a');
       expect(status?.description).toBe('own-doc');
-      // ...but structural keys (options/label/prompt) stay inherited.
-      expect(status?.options).toEqual(['parent-a', 'parent-b']);
-      expect(status?.label).toBe('from-parent');
+      expect(status?.options).toEqual(['own-only']);
+      expect(status?.label).toBe('from-own');
+      expect(status?.required).toBe(false);
+      expect(status?.multiple).toBe(true);
+      // ...while omitted keys stay inherited.
       expect(status?.prompt).toBe('select');
 
-      // Validation still uses the inherited options, not own's.
+      const owner = getFieldsForType(loaded, 'task').owner;
+      expect(owner?.prompt).toBe('relation');
+      expect(owner?.source).toBe('project');
+
+      // Validation uses the child's effective option fork.
       const allowed = getOptionsForField(loaded, 'task', 'status');
-      expect(allowed).toEqual(['parent-a', 'parent-b']);
-      expect(validateSelectOptionValue('own-only', allowed)).not.toBeNull();
+      expect(allowed).toEqual(['own-only']);
+      expect(validateSelectOptionValue('own-only', allowed)).toBeNull();
     });
   });
 
