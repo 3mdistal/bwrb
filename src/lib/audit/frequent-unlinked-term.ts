@@ -42,7 +42,9 @@
  *  - A candidate whose lowercased text equals an existing note name OR a
  *    registered alias is dropped — that is `unlinked-mention`'s job, not ours.
  *    We reuse #600's {@link EntityMentionIndex.bySurface} as the known-surface
- *    set so the two detections never overlap.
+ *    set so the two detections never overlap. Config-excluded mention targets
+ *    are also suppressed via {@link EntityMentionIndex.excludedSurfaces}: they
+ *    are not linkable targets, but bwrb still knows those notes exist.
  *  - Terms that are already wikilinked everywhere never reach us: masking blanks
  *    `[[...]]`, so only *prose* occurrences are ever counted. A term that is
  *    always linked has zero prose mentions and cannot meet the threshold.
@@ -309,8 +311,9 @@ export class FrequentTermAccumulator {
   private isEligible(normalized: string, atSentenceStart: boolean): boolean {
     const lower = normalized.toLowerCase();
 
-    // Exclude anything that already has a note or registered alias (#600 owns it).
-    if (this.index.bySurface.has(lower)) return false;
+    // Exclude anything that already has a note or registered alias (#600 owns
+    // it), plus known surfaces that config excluded as mention targets.
+    if (this.index.bySurface.has(lower) || this.index.excludedSurfaces.has(lower)) return false;
 
     const words = normalized.split(' ');
     if (words.length === 1) {

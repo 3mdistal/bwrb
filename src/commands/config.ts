@@ -77,6 +77,18 @@ const CONFIG_OPTIONS: ConfigOptionMeta[] = [
     description: 'Directory prefixes to exclude from discovery/targeting (applies to all commands)',
     default: [],
   },
+  {
+    key: 'mention_exclude_types',
+    label: 'Mention Exclude Types',
+    description: 'Type names to exclude as targets from unlinked-mention and frequent-term audit suggestions',
+    default: [],
+  },
+  {
+    key: 'mention_exclude_paths',
+    label: 'Mention Exclude Paths',
+    description: 'Vault-relative path globs to exclude as targets from unlinked-mention and frequent-term audit suggestions',
+    default: [],
+  },
 ];
 
 export const configCommand = new Command('config')
@@ -218,9 +230,7 @@ configCommand
         
         validateConfigValue(meta, value);
         
-        const storedValue = option === 'excluded_directories'
-          ? normalizeExcludedDirectoriesValue(value)
-          : value;
+        const storedValue = normalizeConfigValue(meta.key, value);
 
         config[option] = storedValue;
         await writeFile(schemaPath, JSON.stringify(schema, null, 2) + '\n');
@@ -338,6 +348,8 @@ function getConfigValue(config: Partial<Config>, key: keyof Config, vaultDir: st
     case 'default_dashboard':
       return undefined; // No auto-detection for default_dashboard
     case 'excluded_directories':
+    case 'mention_exclude_types':
+    case 'mention_exclude_paths':
       return [];
     default:
       return undefined;
@@ -369,6 +381,29 @@ function normalizeExcludedDirectoriesValue(value: unknown): string[] {
   return Array.from(new Set(normalized));
 }
 
+function normalizeStringArrayValue(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const normalized = value
+    .filter((v): v is string => typeof v === 'string')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(normalized));
+}
+
+function normalizeConfigValue(key: keyof Config, value: unknown): unknown {
+  if (key === 'excluded_directories') {
+    return normalizeExcludedDirectoriesValue(value);
+  }
+
+  if (key === 'mention_exclude_types' || key === 'mention_exclude_paths') {
+    return normalizeStringArrayValue(value);
+  }
+
+  return value;
+}
+
 function validateConfigValue(meta: ConfigOptionMeta, value: unknown): void {
   if (meta.options) {
     if (!meta.options.includes(String(value))) {
@@ -377,9 +412,13 @@ function validateConfigValue(meta: ConfigOptionMeta, value: unknown): void {
     return;
   }
 
-  if (meta.key === 'excluded_directories') {
+  if (
+    meta.key === 'excluded_directories' ||
+    meta.key === 'mention_exclude_types' ||
+    meta.key === 'mention_exclude_paths'
+  ) {
     if (!Array.isArray(value) || !value.every(v => typeof v === 'string')) {
-      throw new Error('excluded_directories must be a JSON array of strings');
+      throw new Error(`${String(meta.key)} must be a JSON array of strings`);
     }
   }
 }
@@ -390,6 +429,10 @@ function validateConfigValue(meta: ConfigOptionMeta, value: unknown): void {
 async function promptConfigOption(meta: ConfigOptionMeta, currentValue: unknown): Promise<ConfigEditResult> {
   if (meta.key === 'excluded_directories') {
     return promptExcludedDirectories(currentValue);
+  }
+
+  if (meta.key === 'mention_exclude_types' || meta.key === 'mention_exclude_paths') {
+    return promptStringArray(meta, currentValue);
   }
 
   if (meta.options) {
@@ -419,6 +462,58 @@ async function promptConfigOption(meta: ConfigOptionMeta, currentValue: unknown)
   if (entered === null) return { action: 'keep' };
 
   return { action: 'set', value: entered };
+}
+
+async function promptStringArray(
+  meta: ConfigOptionMeta,
+  currentValue: unknown
+): Promise<ConfigEditResult> {
+  const current = normalizeStringArrayValue(currentValue);
+  let entries = [...current];
+
+  while (true) {
+    const display = entries.length > 0 ? entries.join(', ') : '(none)';
+
+    const choice = await promptSelection(
+      `${meta.label} (current: ${display}):`,
+      ['(keep current)', '(clear)', '(add)', '(remove)', '(done)']
+    );
+
+    if (choice === null || choice === '(keep current)') {
+      return { action: 'keep' };
+    }
+
+    if (choice === '(clear)') {
+      return { action: 'clear' };
+    }
+
+    if (choice === '(done)') {
+      return { action: 'set', value: entries };
+    }
+
+    if (choice === '(add)') {
+      const entered = await promptInput(`Add ${meta.key} entries (comma-separated):`);
+      if (entered === null) continue;
+
+      const toAdd = entered
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+
+      entries = Array.from(new Set([...entries, ...toAdd]));
+      continue;
+    }
+
+    if (choice === '(remove)') {
+      if (entries.length === 0) continue;
+
+      const toRemove = await promptSelection(`Remove which ${meta.key} entry?`, [...entries, '(back)']);
+      if (toRemove === null || toRemove === '(back)') continue;
+
+      entries = entries.filter(e => e !== toRemove);
+      continue;
+    }
+  }
 }
 
 async function promptExcludedDirectories(currentValue: unknown): Promise<ConfigEditResult> {

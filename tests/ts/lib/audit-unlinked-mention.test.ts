@@ -463,6 +463,157 @@ describe('unlinked-mention: parseFuzzyThreshold validation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Mention target exclusion config
+// ---------------------------------------------------------------------------
+
+describe('unlinked-mention: mention target exclusions', () => {
+  const EXCLUSION_SCHEMA: Schema = {
+    version: 2,
+    config: {
+      mention_exclude_types: ['book'],
+      mention_exclude_paths: ['Imports/**'],
+    },
+    types: {
+      meta: { fields: {} },
+      reference: {
+        extends: 'meta',
+        output_dir: 'References',
+        fields: { type: { value: 'reference' } },
+      },
+      book: {
+        extends: 'reference',
+        output_dir: 'Books',
+        fields: {
+          type: { value: 'book' },
+          aliases: { prompt: 'list', alias: true, list_format: 'yaml-array' },
+        },
+      },
+      person: {
+        extends: 'meta',
+        output_dir: 'People',
+        fields: {
+          type: { value: 'person' },
+          aliases: { prompt: 'list', alias: true, list_format: 'yaml-array' },
+        },
+      },
+      note: {
+        extends: 'meta',
+        output_dir: 'Notes',
+        fields: { type: { value: 'note' } },
+      },
+    },
+  };
+
+  const exclusionSchema = resolveSchema(EXCLUSION_SCHEMA);
+
+  function exclusionIndexFor(
+    notes: Array<{ relativePath: string; frontmatter?: Record<string, unknown>; resolvedType?: string }>
+  ) {
+    return buildEntityMentionIndex(
+      {
+        notes: notes.map((n) => ({
+          path: n.relativePath,
+          relativePath: n.relativePath,
+          ...(n.frontmatter ? { frontmatter: n.frontmatter } : {}),
+          ...(n.resolvedType ? { resolvedType: n.resolvedType } : {}),
+        })),
+      },
+      exclusionSchema
+    );
+  }
+
+  it('excludes a configured type from name and alias mention surfaces', () => {
+    const index = exclusionIndexFor([
+      {
+        relativePath: 'Books/The Great Gatsby.md',
+        resolvedType: 'book',
+        frontmatter: { type: 'book', aliases: ['Jay Gatsby'] },
+      },
+    ]);
+
+    expect(index.bySurface.has('the great gatsby')).toBe(false);
+    expect(index.bySurface.has('jay gatsby')).toBe(false);
+    expect(index.allNames).not.toContain('The Great Gatsby');
+    expect(index.excludedSurfaces.has('the great gatsby')).toBe(true);
+    expect(index.excludedSurfaces.has('jay gatsby')).toBe(true);
+
+    const issues = detectUnlinkedMentions(
+      'The Great Gatsby introduces Jay Gatsby.',
+      'Notes/Daily.md',
+      index
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it('excludes descendants of a configured type', () => {
+    const schema = resolveSchema({
+      ...EXCLUSION_SCHEMA,
+      config: { mention_exclude_types: ['reference'] },
+    });
+    const index = buildEntityMentionIndex(
+      {
+        notes: [
+          {
+            path: 'Books/The Left Hand of Darkness.md',
+            relativePath: 'Books/The Left Hand of Darkness.md',
+            resolvedType: 'book',
+            frontmatter: { type: 'book', aliases: ['Left Hand'] },
+          },
+        ],
+      },
+      schema
+    );
+
+    expect(index.bySurface.has('the left hand of darkness')).toBe(false);
+    expect(index.bySurface.has('left hand')).toBe(false);
+    expect(index.excludedSurfaces.has('the left hand of darkness')).toBe(true);
+  });
+
+  it('excludes notes matching configured vault-relative path globs', () => {
+    const index = exclusionIndexFor([
+      {
+        relativePath: 'Imports/Imported Person.md',
+        resolvedType: 'person',
+        frontmatter: { type: 'person', aliases: ['Imported Alias'] },
+      },
+      {
+        relativePath: 'People/Handmade Person.md',
+        resolvedType: 'person',
+        frontmatter: { type: 'person' },
+      },
+    ]);
+
+    expect(index.bySurface.has('imported person')).toBe(false);
+    expect(index.bySurface.has('imported alias')).toBe(false);
+    expect(index.bySurface.has('handmade person')).toBe(true);
+  });
+
+  it('does not use excluded names for fuzzy did-you-mean suggestions', () => {
+    const index = exclusionIndexFor([
+      {
+        relativePath: 'Books/Neuromancer.md',
+        resolvedType: 'book',
+        frontmatter: { type: 'book' },
+      },
+    ]);
+
+    const issues = detectUnlinkedMentions('Reading Neuromansir today.', 'Notes/Daily.md', index, {
+      fuzzyThreshold: 5,
+    });
+    expect(issues.some((i) => i.meta?.['tier'] === 'fuzzy')).toBe(false);
+  });
+
+  it('throws a clear config error for unknown mention_exclude_types entries', () => {
+    expect(() =>
+      resolveSchema({
+        ...SCHEMA,
+        config: { mention_exclude_types: ['persno'] },
+      })
+    ).toThrow(/config\.mention_exclude_types includes unknown type "persno".*person/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Integration tests through runAudit / runAutoFix on a real vault
 // ---------------------------------------------------------------------------
 
@@ -561,5 +712,38 @@ describe('unlinked-mention: end-to-end audit + fix', () => {
     const results = await runAudit(schema, vaultDir, { strict: false, ignoreIssue: 'unlinked-mention' });
     const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
     expect(daily?.issues.some((i) => i.code === 'unlinked-mention')).toBeFalsy();
+  });
+
+  it('still scans excluded target notes as source documents', async () => {
+    const schemaWithExcludedBooks: Schema = {
+      version: 2,
+      config: { mention_exclude_types: ['book'] },
+      types: {
+        ...SCHEMA.types,
+        book: {
+          extends: 'meta',
+          output_dir: 'Books',
+          fields: { type: { value: 'book' } },
+        },
+      },
+    };
+    await writeFile(
+      join(vaultDir, '.bwrb', 'schema.json'),
+      JSON.stringify(schemaWithExcludedBooks, null, 2)
+    );
+    await mkdir(join(vaultDir, 'Books'), { recursive: true });
+    await writeFile(
+      join(vaultDir, 'Books', 'Imported Book.md'),
+      `---\ntype: book\n---\nThis imported note mentions Steve Yegge in prose.\n`
+    );
+
+    const schema = await loadSchema(vaultDir);
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const imported = results.find((r) => r.relativePath === 'Books/Imported Book.md');
+    expect(imported?.issues.some((i) => i.code === 'unlinked-mention')).toBe(true);
+    expect(imported?.issues[0]?.targetName).toBe('Steve Yegge');
   });
 });
