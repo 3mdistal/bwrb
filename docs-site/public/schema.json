@@ -105,7 +105,7 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 5,
-          "description": "Max Levenshtein distance for the `unlinked-mention` audit fuzzy (\"did you mean?\") tier (#622). Integer 0-5; default 2. 0 disables the fuzzy tier. Overridden per run by `--mention-fuzzy-threshold` / `--no-mention-fuzzy`."
+          "description": "Max Levenshtein distance cap for the `unlinked-mention` audit fuzzy (\"did you mean?\") tier (#622). Integer 0-5; default 2. The effective distance is also length-scaled. 0 disables the fuzzy tier. Overridden per run by `--mention-fuzzy-threshold` / `--no-mention-fuzzy`."
         }
       },
       "additionalProperties": false

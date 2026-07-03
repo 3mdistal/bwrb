@@ -106,6 +106,50 @@ describe('unlinked-mention: detectUnlinkedMentions', () => {
     expect(issues[0]!.meta?.['replacement']).toBe('[[Steve Yegge|steve yegge]]');
   });
 
+  it('requires exact casing for single-word note-name mentions', () => {
+    const index = indexFor([
+      { relativePath: 'People/Orion.md', resolvedType: 'person', frontmatter: { type: 'person' } },
+    ]);
+
+    const lower = detectUnlinkedMentions('orion is bright tonight.', 'Notes/Daily.md', index);
+    expect(lower).toHaveLength(0);
+
+    const canonical = detectUnlinkedMentions('Orion is bright tonight.', 'Notes/Daily.md', index);
+    expect(canonical).toHaveLength(1);
+    expect(canonical[0]!.autoFixable).toBe(true);
+    expect(canonical[0]!.targetName).toBe('Orion');
+  });
+
+  it('keeps multi-word note-name mentions case-insensitive', () => {
+    const index = indexFor(personNotes);
+    const issues = detectUnlinkedMentions('saw steve yegge yesterday', 'Notes/Daily.md', index);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.meta?.['replacement']).toBe('[[Steve Yegge|steve yegge]]');
+  });
+
+  it('keeps declared aliases case-insensitive, including common words', () => {
+    const index = indexFor([
+      {
+        relativePath: 'People/Chronos.md',
+        resolvedType: 'person',
+        frontmatter: { type: 'person', aliases: ['Time'] },
+      },
+    ]);
+    const issues = detectUnlinkedMentions('time keeps moving.', 'Notes/Daily.md', index);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.autoFixable).toBe(true);
+    expect(issues[0]!.meta?.['matchedKind']).toBe('alias');
+    expect(issues[0]!.meta?.['replacement']).toBe('[[Chronos|time]]');
+  });
+
+  it('skips common single-word note names even when prose casing matches', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Time.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('Time moved strangely today.', 'Notes/Daily.md', index);
+    expect(issues).toHaveLength(0);
+  });
+
   it('does not flag a mention already inside a wikilink', () => {
     const index = indexFor(personNotes);
     const issues = detectUnlinkedMentions('I talked to [[Steve Yegge]] today.', 'Notes/Daily.md', index);
@@ -177,7 +221,7 @@ describe('unlinked-mention: detectUnlinkedMentions', () => {
     expect(issues).toHaveLength(0);
   });
 
-  it('still fuzzy-flags common labels in non-heading prose', () => {
+  it('skips common single-word fuzzy candidates in non-heading prose', () => {
     const index = indexFor([
       { relativePath: 'Notes/quotes.md', resolvedType: 'note', frontmatter: { type: 'note' } },
     ]);
@@ -187,20 +231,55 @@ describe('unlinked-mention: detectUnlinkedMentions', () => {
       index
     );
     const fuzzy = issues.find((i) => i.meta?.['tier'] === 'fuzzy');
-    expect(fuzzy).toBeDefined();
-    expect(fuzzy!.value).toBe('Notes');
-    expect(fuzzy!.similarFiles).toContain('quotes');
+    expect(fuzzy).toBeUndefined();
+    expect(issues).toHaveLength(0);
   });
 
-  it('keeps exact mention detection for common heading labels', () => {
+  it('skips exact mention detection for common single-word note names', () => {
     const index = indexFor([
       { relativePath: 'Notes/Notes.md', resolvedType: 'note', frontmatter: { type: 'note' } },
     ]);
     const issues = detectUnlinkedMentions('## Notes\n\nSome ordinary task detail.', 'Tasks/Tidy.md', index);
     const exact = issues.find((i) => i.meta?.['tier'] === 'exact');
-    expect(exact).toBeDefined();
-    expect(exact!.autoFixable).toBe(true);
-    expect(exact!.targetName).toBe('Notes');
+    expect(exact).toBeUndefined();
+    expect(issues).toHaveLength(0);
+  });
+
+  it('skips common single-word fuzzy candidates', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Thiss.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('This should not be a suggestion.', 'Notes/Daily.md', index);
+    expect(issues.some((i) => i.meta?.['tier'] === 'fuzzy')).toBe(false);
+    expect(issues).toHaveLength(0);
+  });
+
+  it('does not fuzzy-suggest common single-word note names', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Time.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('Tyme moved strangely today.', 'Notes/Daily.md', index);
+    expect(issues.some((i) => i.meta?.['tier'] === 'fuzzy')).toBe(false);
+    expect(issues).toHaveLength(0);
+  });
+
+  it('still fuzzy-suggests uncommon single-word note names', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Orion.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('Oreon was visible tonight.', 'Notes/Daily.md', index);
+    const fuzzy = issues.find((i) => i.meta?.['tier'] === 'fuzzy');
+    expect(fuzzy).toBeDefined();
+    expect(fuzzy!.similarFiles).toContain('Orion');
+  });
+
+  it('still finds a fuzzy suffix when a multi-word candidate starts with a common word', () => {
+    const index = indexFor(personNotes);
+    const issues = detectUnlinkedMentions('Also Steve Yeg wrote about it.', 'Notes/Daily.md', index);
+    const fuzzy = issues.find((i) => i.meta?.['tier'] === 'fuzzy');
+    expect(fuzzy).toBeDefined();
+    expect(fuzzy!.value).toBe('Steve Yeg');
+    expect(fuzzy!.similarFiles).toContain('Steve Yegge');
   });
 
   it('flags an ambiguous mention as flag-only with multiple candidates', () => {
@@ -276,7 +355,7 @@ describe('unlinked-mention: configurable fuzzy threshold', () => {
     expect(fuzzy).toHaveLength(0);
   });
 
-  it('flags the same near-match when the threshold is raised', () => {
+  it('still caps raised thresholds by candidate length', () => {
     const index = indexFor(notes);
     const issues = detectUnlinkedMentions(
       'Visiting Canadians today.',
@@ -285,8 +364,41 @@ describe('unlinked-mention: configurable fuzzy threshold', () => {
       { fuzzyThreshold: 3 }
     );
     const fuzzy = issues.find((i) => i.meta?.['tier'] === 'fuzzy');
+    expect(fuzzy).toBeUndefined();
+  });
+
+  it('allows distance 1 for candidates 4-7 characters long', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Falcon.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('Falkon appeared in the margin.', 'Notes/Daily.md', index, {
+      fuzzyThreshold: 5,
+    });
+    const fuzzy = issues.find((i) => i.meta?.['tier'] === 'fuzzy');
     expect(fuzzy).toBeDefined();
-    expect(fuzzy!.similarFiles).toContain('Canada');
+    expect(fuzzy!.similarFiles).toContain('Falcon');
+  });
+
+  it('does not allow distance 2 for candidates 4-7 characters long', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Falcon.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('Falken appeared in the margin.', 'Notes/Daily.md', index, {
+      fuzzyThreshold: 5,
+    });
+    expect(issues.some((i) => i.meta?.['tier'] === 'fuzzy')).toBe(false);
+  });
+
+  it('allows distance 2 for candidates 8-11 characters long', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Falconer.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('Falkener appeared in the margin.', 'Notes/Daily.md', index, {
+      fuzzyThreshold: 5,
+    });
+    const fuzzy = issues.find((i) => i.meta?.['tier'] === 'fuzzy');
+    expect(fuzzy).toBeDefined();
+    expect(fuzzy!.similarFiles).toContain('Falconer');
   });
 
   it('lowering the threshold reduces fuzzy flags (distance-2 match suppressed at threshold 1)', () => {

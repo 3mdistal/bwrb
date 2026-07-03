@@ -33,7 +33,7 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `--ignore <issue-type>` | Ignore specific issue type |
 | `--strict` | Treat unknown fields as errors instead of warnings |
 | `--allow-field <fields>` | Allow additional fields beyond schema (repeatable) |
-| `--mention-fuzzy-threshold <n>` | Max edit distance (0–5) for the `unlinked-mention` fuzzy "did you mean?" tier (default: `config.mention_fuzzy_threshold` or `2`) |
+| `--mention-fuzzy-threshold <n>` | Max edit-distance cap (0–5) for the `unlinked-mention` fuzzy "did you mean?" tier (default: `config.mention_fuzzy_threshold` or `2`; candidate length also caps the effective distance) |
 | `--no-mention-fuzzy` | Disable the `unlinked-mention` fuzzy "did you mean?" tier entirely |
 | `--check-schema-docs` | Also report schema types/fields that have no `description` |
 
@@ -226,8 +226,8 @@ It enforces a strict **trust line** — only matches bwrb can be certain about a
 
 | Tier | What it matches | Behavior |
 |------|-----------------|----------|
-| **Exact / alias** | The literal note name, or a registered alias, present as unlinked plain text and resolving to exactly **one** entity | **Trusted → auto-fixable.** `--fix --auto --execute` converts it to a wikilink (`--fix --auto` alone previews). |
-| **Fuzzy** | A capitalized phrase that is a near (small Levenshtein distance) match to a known name, e.g. `Steve Yeg` ≈ `Steve Yegge` | **Review item ("did you mean?") — never auto-linked.** Distance threshold is [configurable](#tuning-the-fuzzy-tier-622). |
+| **Exact / alias** | The literal note name, or a registered alias, present as unlinked plain text and resolving to exactly **one** entity. Single-word note names must match canonical casing exactly, and common English single-word note names are skipped; aliases are explicit and stay case-insensitive. | **Trusted → auto-fixable.** `--fix --auto --execute` converts it to a wikilink (`--fix --auto` alone previews). |
+| **Fuzzy** | A capitalized phrase that is a near (small Levenshtein distance) match to a known name, e.g. `Steve Yeg` ≈ `Steve Yegge`. Single capitalized common words are skipped. | **Review item ("did you mean?") — never auto-linked.** Distance threshold is [configurable](#tuning-the-fuzzy-tier-622). |
 | **Ambiguous** | A surface that matches **multiple** distinct entities/aliases, e.g. `Mercury` | **Never auto-resolved by `--auto`.** Listed as a review item with all candidates; interactive `--fix` offers a [pick-a-candidate prompt](#resolving-ambiguous-mentions-interactively-622). |
 
 Auto-fix output format:
@@ -249,7 +249,7 @@ False-positive guards (none of these are scanned or rewritten):
 
 - Text already inside `[[wikilinks]]`, markdown links/images, fenced code blocks, inline code spans, and bare URLs.
 - A note never flags a mention of **its own** name or alias.
-- Matching is word-boundary aware (`Ada` does not match inside `Adafruit` or `Canada`) and case-insensitive, but the original surface casing is preserved in the fix.
+- Matching is word-boundary aware (`Ada` does not match inside `Adafruit` or `Canada`). Multi-word names and aliases are case-insensitive, but single-word note names are case-exact (`Time` can match the `Time` note; `time` cannot). Common English single-word note names such as `Time`, `Push`, or `Current` are not exact-matched at all, because sentence-initial capitalization makes them noisy.
 
 Only frontmatter is exempt from scanning — this detection looks at body prose only. Surfaces shorter than three characters are ignored to avoid noise. The entity index is built once per run and each body is scanned in a single pass, so cost scales with body size rather than notes × entities.
 
@@ -265,13 +265,13 @@ Fuzzy and ambiguous mentions are **never** modified by `--fix --auto`. Fuzzy mat
 
 #### Tuning the fuzzy tier (#622)
 
-The fuzzy "did you mean?" tier is deliberately conservative (max Levenshtein distance **2** by default), so only genuine near-misses surface. You can tune how aggressive it is:
+The fuzzy "did you mean?" tier is deliberately conservative. The configured threshold is a **cap** (default **2**), and bwrb also scales the effective distance by candidate length: `min(configured threshold, floor(candidate length / 4))`. In practice, 4–7 character candidates allow distance 1, 8–11 allow distance 2, and short sentence-initial words like `This` or `What` do not get a loose edit budget.
 
-- **Per run (flag):** `--mention-fuzzy-threshold <n>` sets the max edit distance, where `n` is an integer in `0`–`5`. Raising it surfaces looser matches (more "did you mean?" suggestions); lowering it surfaces fewer. `0` (or `--no-mention-fuzzy`) disables the fuzzy tier entirely. Out-of-range or non-integer values produce a clear validation error.
+- **Per run (flag):** `--mention-fuzzy-threshold <n>` sets the max edit-distance cap, where `n` is an integer in `0`–`5`. Raising it can surface looser matches only when candidate length also permits that distance; lowering it surfaces fewer. `0` (or `--no-mention-fuzzy`) disables the fuzzy tier entirely. Out-of-range or non-integer values produce a clear validation error.
 - **Persistent (config):** set `mention_fuzzy_threshold` in your vault `config` (integer `0`–`5`). The flag, when present, overrides the config value for that run.
 
 ```bash
-# Loosen the fuzzy tier for one run (more "did you mean?" suggestions)
+# Raise the fuzzy cap for one run (candidate length still applies)
 bwrb audit --only unlinked-mention --mention-fuzzy-threshold 3
 
 # Turn off fuzzy suggestions entirely
@@ -279,7 +279,7 @@ bwrb audit --only unlinked-mention --no-mention-fuzzy
 ```
 
 ```json
-// .bwrb/schema.json — persist a looser threshold for every run
+// .bwrb/schema.json — persist a higher cap for every run
 {
   "config": { "mention_fuzzy_threshold": 3 }
 }

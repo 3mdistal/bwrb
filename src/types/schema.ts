@@ -419,9 +419,10 @@ export const ConfigSchema = z.object({
     .describe(
       'Default coarsest date precision allowed for all date fields (day = full YYYY-MM-DD, month = YYYY-MM or finer, year = YYYY or finer). Per-field `granularity` overrides this default.'
     ),
-  // Max Levenshtein distance for the `unlinked-mention` audit fuzzy ("did you
-  // mean?") tier (#622). Integer 0-5; default 2. 0 disables the fuzzy tier.
-  // Overridden per run by `--mention-fuzzy-threshold` / `--no-mention-fuzzy`.
+  // Max Levenshtein distance cap for the `unlinked-mention` audit fuzzy ("did
+  // you mean?") tier (#622). Integer 0-5; default 2. The effective distance is
+  // also length-scaled. 0 disables the fuzzy tier. Overridden per run by
+  // `--mention-fuzzy-threshold` / `--no-mention-fuzzy`.
   mention_fuzzy_threshold: z
     .number()
     .int()
@@ -429,7 +430,7 @@ export const ConfigSchema = z.object({
     .max(5)
     .optional()
     .describe(
-      'Max Levenshtein distance for the `unlinked-mention` audit fuzzy ("did you mean?") tier (#622). Integer 0-5; default 2. 0 disables the fuzzy tier. Overridden per run by `--mention-fuzzy-threshold` / `--no-mention-fuzzy`.'
+      'Max Levenshtein distance cap for the `unlinked-mention` audit fuzzy ("did you mean?") tier (#622). Integer 0-5; default 2. The effective distance is also length-scaled. 0 disables the fuzzy tier. Overridden per run by `--mention-fuzzy-threshold` / `--no-mention-fuzzy`.'
     ),
 });
 
@@ -593,8 +594,9 @@ export interface ResolvedConfig {
   /** Default coarsest date precision allowed for date fields (defaults to 'day') */
   dateGranularity: 'day' | 'month' | 'year';
   /**
-   * Max Levenshtein distance for the `unlinked-mention` audit fuzzy tier (#622).
-   * Defaults to 2. A CLI flag (`--mention-fuzzy-threshold`) overrides this.
+   * Max Levenshtein distance cap for the `unlinked-mention` audit fuzzy tier
+   * (#622). Defaults to 2. A CLI flag (`--mention-fuzzy-threshold`) overrides
+   * this; candidate length also caps the effective distance.
    */
   mentionFuzzyThreshold: number;
 }

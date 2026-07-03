@@ -169,7 +169,7 @@ Examples:
   bwrb audit --ignore unknown-field
   bwrb audit --output json        # JSON output for CI
   bwrb audit --allow-field custom # Allow specific extra field
-  bwrb audit --only unlinked-mention --mention-fuzzy-threshold 3 # Looser fuzzy "did you mean?"
+  bwrb audit --only unlinked-mention --mention-fuzzy-threshold 3 # Raise fuzzy "did you mean?" cap
   bwrb audit --only unlinked-mention --no-mention-fuzzy          # Disable fuzzy tier
   bwrb audit --all --fix                  # Interactive guided fixes across vault (writes)
   bwrb audit --fix --path "Ideas/**"      # Interactive guided fixes (writes)
@@ -195,7 +195,7 @@ Examples:
   .option('--allow-field <fields...>', 'Allow additional fields beyond schema (repeatable)')
   .option(
     '--mention-fuzzy-threshold <n>',
-    'unlinked-mention fuzzy "did you mean?" max edit distance (0-5; default from config or 2)'
+    'unlinked-mention fuzzy "did you mean?" max edit-distance cap (0-5; default from config or 2)'
   )
   .option('--no-mention-fuzzy', 'Disable the unlinked-mention fuzzy "did you mean?" tier')
   .option('--check-schema-docs', 'Also report schema types/fields that have no description')

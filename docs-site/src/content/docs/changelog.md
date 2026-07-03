@@ -9,6 +9,10 @@ For the complete changelog with all details, see [CHANGELOG.md](https://github.c
 
 ## Recent Highlights
 
+### Unreleased
+
+- **Unlinked mention noise** — single-word note names now require exact casing, common English single-word note names are skipped, aliases remain case-insensitive, and fuzzy suggestions use a length-scaled cap
+
 ### 0.2.1
 
 - **Headless migration execution** — `schema migrate --execute` supports non-interactive `--yes` / `--set-version` workflows

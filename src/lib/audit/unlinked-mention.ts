@@ -19,8 +19,15 @@
  *
  * False-positive guards: text already inside `[[...]]`, markdown links, fenced
  * code blocks, inline code, and bare URLs is masked before scanning. Matching
- * is word-boundary aware and case-insensitive, but the original surface casing
- * is preserved in the fix. A note never flags a mention of its own name/alias.
+ * is word-boundary aware. Multi-word names and aliases match
+ * case-insensitively, but single-word note names must match the note's
+ * canonical casing exactly. Single-word note names that are common English
+ * words are skipped entirely; explicit aliases are exempt because aliases are
+ * user-declared intent. A note never flags a mention of its own name/alias.
+ *
+ * Fuzzy matching is also conservative: the configured threshold is a cap, and
+ * the actual allowed distance scales with candidate length so short capitalized
+ * words do not get a 50% edit budget.
  *
  * Performance: the entity index is built once per audit run (not per file), and
  * each body is scanned with a single combined alternation regex over all known
@@ -34,6 +41,7 @@ import type { VaultNoteSnapshot } from '../discovery.js';
 import { getEntityAliases } from '../schema.js';
 import { levenshteinDistance } from '../levenshtein.js';
 import type { AuditIssue } from './types.js';
+import { isCommonEnglishWord } from './common-english-words.js';
 
 // ============================================================================
 // Constants
@@ -49,6 +57,8 @@ const MIN_SURFACE_LENGTH = 3;
  * Fuzzy tier: default maximum Levenshtein distance (case-insensitive) between an
  * unmatched candidate phrase and a known entity surface for it to be offered as
  * a "did you mean?" review item. Kept small so only genuine near-misses surface.
+ * The effective distance is also capped by candidate length:
+ * `min(configuredThreshold, floor(candidateLength / 4))`.
  *
  * This is the *default*; it is configurable per run via
  * {@link UnlinkedMentionOptions.fuzzyThreshold} (CLI `--mention-fuzzy-threshold`
@@ -181,7 +191,10 @@ export interface EntityMentionIndex {
  *
  * Registers each note's basename as a `name` surface and every declared alias
  * (via {@link getEntityAliases}) as an `alias` surface. Surfaces shorter than
- * {@link MIN_SURFACE_LENGTH} are skipped to avoid noise.
+ * {@link MIN_SURFACE_LENGTH} are skipped to avoid noise. Single-word common
+ * English note names remain in the index for cross-detector known-entity checks
+ * but are excluded from the exact-match regex and fuzzy name suggestions;
+ * declared aliases are not.
  */
 export function buildEntityMentionIndex(
   snapshot: VaultNoteSnapshot,
@@ -189,7 +202,7 @@ export function buildEntityMentionIndex(
 ): EntityMentionIndex {
   const bySurface = new Map<string, EntitySurface[]>();
   const allNames: string[] = [];
-  const surfaceSet = new Set<string>();
+  const exactMatchSurfaceSet = new Set<string>();
 
   const register = (surface: EntitySurface): void => {
     const trimmed = surface.surface.trim();
@@ -212,19 +225,24 @@ export function buildEntityMentionIndex(
     } else {
       bySurface.set(key, [entry]);
     }
-    surfaceSet.add(trimmed);
+    if (!isSkippedCommonNameSurface(entry)) {
+      exactMatchSurfaceSet.add(trimmed);
+    }
   };
 
   for (const note of snapshot.notes) {
     const name = basename(note.relativePath, '.md');
     if (name) {
-      allNames.push(name);
-      register({
+      const nameSurface: EntitySurface = {
         surface: name,
         canonicalName: name,
         sourcePath: note.relativePath,
         kind: 'name',
-      });
+      };
+      if (!isSkippedCommonNameSurface(nameSurface)) {
+        allNames.push(name);
+      }
+      register(nameSurface);
     }
 
     if (note.resolvedType && note.frontmatter) {
@@ -242,7 +260,7 @@ export function buildEntityMentionIndex(
 
   // Sort surfaces longest-first so the combined alternation prefers the longest
   // match (e.g. "Steve Yegge" wins over "Steve" at the same position).
-  const surfaces = Array.from(surfaceSet).sort((a, b) => b.length - a.length);
+  const surfaces = Array.from(exactMatchSurfaceSet).sort((a, b) => b.length - a.length);
   const surfacePattern =
     surfaces.length > 0
       ? surfaces.map((s) => escapeRegExp(s)).join('|')
@@ -393,8 +411,11 @@ export function detectUnlinkedMentions(
     const entities = index.bySurface.get(hit.surface.toLowerCase());
     if (!entities || entities.length === 0) continue;
 
+    const casingEligible = entities.filter((e) => surfaceAllowsOccurrence(e, hit.surface));
+    if (casingEligible.length === 0) continue;
+
     // A note never flags a mention that points back to itself.
-    const others = entities.filter((e) => e.sourcePath !== selfPath);
+    const others = casingEligible.filter((e) => e.sourcePath !== selfPath);
     if (others.length === 0) continue;
 
     consumed.push([hit.start, hit.end]);
@@ -568,17 +589,20 @@ function detectFuzzyCandidates(
       const end = start + phrase.length;
       if (isConsumed(start, end)) continue;
       if (isCommonStructuralHeading(phrase, start)) continue;
+      if (isSingleWordSurface(phrase) && isCommonEnglishWord(phrase)) continue;
 
       const lower = phrase.toLowerCase();
       // Skip exact known surfaces (handled by the exact tier).
       if (knownSurfaces.has(lower)) continue;
 
       const suggestions: Array<{ name: string; distance: number }> = [];
+      const allowedDistance = allowedFuzzyDistance(phrase.length, fuzzyMaxDistance);
+      if (allowedDistance <= 0) continue;
       for (const name of index.allNames) {
         if (name.length < FUZZY_MIN_CANDIDATE_LENGTH) continue;
         const dist = levenshteinDistance(lower, name.toLowerCase());
         if (dist === 0) continue;
-        if (dist <= fuzzyMaxDistance) {
+        if (dist <= allowedDistance) {
           suggestions.push({ name, distance: dist });
         }
       }
@@ -640,4 +664,27 @@ function detectFuzzyCandidates(
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isSingleWordSurface(surface: string): boolean {
+  return !/\s/.test(surface.trim());
+}
+
+function surfaceAllowsOccurrence(surface: EntitySurface, occurrence: string): boolean {
+  if (surface.kind === 'alias') return true;
+  if (isSkippedCommonNameSurface(surface)) return false;
+  if (!isSingleWordSurface(surface.surface)) return true;
+  return occurrence === surface.surface;
+}
+
+function allowedFuzzyDistance(candidateLength: number, configuredCap: number): number {
+  return Math.min(configuredCap, Math.floor(candidateLength / 4));
+}
+
+function isSkippedCommonNameSurface(surface: EntitySurface): boolean {
+  return (
+    surface.kind === 'name' &&
+    isSingleWordSurface(surface.surface) &&
+    isCommonEnglishWord(surface.surface)
+  );
 }
