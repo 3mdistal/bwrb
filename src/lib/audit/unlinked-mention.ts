@@ -23,7 +23,14 @@
  * case-insensitively, but single-word note names must match the note's
  * canonical casing exactly. Single-word note names that are common English
  * words are skipped entirely; explicit aliases are exempt because aliases are
- * user-declared intent. A note never flags a mention of its own name/alias.
+ * user-declared intent. In addition, the audit can calibrate single-word note
+ * names against the vault's own prose: a name that appears in several notes
+ * mostly without the canonical proper-noun casing is treated like a local
+ * common word and removed from exact matching, fuzzy suggestions, and
+ * frequent-term nudges for that run. Exact single-word name matches with
+ * capitalized canonical casing are also skipped where capitalization carries no
+ * signal (sentence/list/heading starts). A note never flags a mention of its own
+ * name/alias.
  *
  * Fuzzy matching is also conservative: the configured threshold is a cap, and
  * the actual allowed distance scales with candidate length so short capitalized
@@ -39,6 +46,7 @@ import { basename } from 'path';
 import type { LoadedSchema } from '../../types/schema.js';
 import type { VaultNoteSnapshot } from '../discovery.js';
 import { matchesPathPattern } from '../discovery.js';
+import { parseNote } from '../frontmatter.js';
 import { getEntityAliases } from '../schema.js';
 import { levenshteinDistance } from '../levenshtein.js';
 import type { AuditIssue } from './types.js';
@@ -74,6 +82,20 @@ const DEFAULT_FUZZY_MAX_DISTANCE = 2;
  */
 const MIN_FUZZY_THRESHOLD = 0;
 const MAX_FUZZY_THRESHOLD = 5;
+
+/**
+ * Corpus calibration (#783): minimum number of distinct non-self notes whose
+ * prose must contain a single-word name before local-commonness damping can
+ * apply. Kept conservative and exposed through schema config.
+ */
+export const DEFAULT_CORPUS_CALIBRATION_MIN_NOTES = 3;
+
+/**
+ * Corpus calibration (#783): non-canonical-case occurrence share must be
+ * strictly greater than this ratio before a name is damped. The strict boundary
+ * means a 50/50 split keeps the surface.
+ */
+export const DEFAULT_CORPUS_CALIBRATION_NON_CANONICAL_RATIO = 0.5;
 
 /**
  * Fuzzy tier: a candidate must be at least this long to be eligible, so short
@@ -127,6 +149,31 @@ export interface UnlinkedMentionOptions {
   fuzzyEnabled?: boolean;
 }
 
+/** Per-run corpus tallies used to damp vault-common single-word note names. */
+export interface MentionCorpusStats {
+  words: Map<string, MentionCorpusWordStats>;
+}
+
+interface MentionCorpusWordStats {
+  totalOccurrences: number;
+  notes: Set<string>;
+  exactOccurrencesByForm: Map<string, number>;
+  perNote: Map<string, MentionCorpusNoteWordStats>;
+}
+
+interface MentionCorpusNoteWordStats {
+  totalOccurrences: number;
+  exactOccurrencesByForm: Map<string, number>;
+}
+
+/** Tunables for index-time corpus calibration of common single-word names. */
+export interface MentionCorpusCalibrationOptions {
+  enabled?: boolean;
+  minNotes?: number;
+  nonCanonicalRatio?: number;
+  stats?: MentionCorpusStats;
+}
+
 /**
  * Validate a user-supplied fuzzy threshold, returning the parsed integer or a
  * descriptive error. Accepts string (CLI) or number (config) input. Rejects
@@ -164,6 +211,8 @@ interface EntitySurface {
   sourcePath: string;
   /** Whether this surface is the note name or one of its aliases. */
   kind: SurfaceKind;
+  /** True when a name surface is known but excluded from linkable mention tiers. */
+  excludedFromMentionIndex?: boolean;
 }
 
 /**
@@ -205,19 +254,35 @@ export interface EntityMentionIndex {
  */
 export function buildEntityMentionIndex(
   snapshot: VaultNoteSnapshot,
-  schema: LoadedSchema
+  schema: LoadedSchema,
+  corpusCalibration?: MentionCorpusCalibrationOptions
 ): EntityMentionIndex {
   const bySurface = new Map<string, EntitySurface[]>();
   const allNames: string[] = [];
   const excludedSurfaces = new Set<string>();
   const exactMatchSurfaceSet = new Set<string>();
+  const corpusOptions: Required<Omit<MentionCorpusCalibrationOptions, 'stats'>> & {
+    stats?: MentionCorpusStats;
+  } = {
+    enabled: corpusCalibration?.enabled ?? true,
+    minNotes: corpusCalibration?.minNotes ?? DEFAULT_CORPUS_CALIBRATION_MIN_NOTES,
+    nonCanonicalRatio:
+      corpusCalibration?.nonCanonicalRatio ??
+      DEFAULT_CORPUS_CALIBRATION_NON_CANONICAL_RATIO,
+    ...(corpusCalibration?.stats ? { stats: corpusCalibration.stats } : {}),
+  };
 
   const register = (surface: EntitySurface): void => {
     const trimmed = surface.surface.trim();
     if (trimmed.length < MIN_SURFACE_LENGTH) return;
     const key = trimmed.toLowerCase();
     const existing = bySurface.get(key);
-    const entry: EntitySurface = { ...surface, surface: trimmed };
+    const skippedNameSurface = isSkippedCommonNameSurface(surface, corpusOptions);
+    const entry: EntitySurface = {
+      ...surface,
+      surface: trimmed,
+      ...(skippedNameSurface ? { excludedFromMentionIndex: true } : {}),
+    };
     if (existing) {
       // De-dup identical (surface, canonicalName, kind) pairs from the same note.
       if (
@@ -233,7 +298,9 @@ export function buildEntityMentionIndex(
     } else {
       bySurface.set(key, [entry]);
     }
-    if (!isSkippedCommonNameSurface(entry)) {
+    if (skippedNameSurface) {
+      registerExcludedSurface(trimmed);
+    } else {
       exactMatchSurfaceSet.add(trimmed);
     }
   };
@@ -266,7 +333,7 @@ export function buildEntityMentionIndex(
         sourcePath: note.relativePath,
         kind: 'name',
       };
-      if (!isSkippedCommonNameSurface(nameSurface)) {
+      if (!isSkippedCommonNameSurface(nameSurface, corpusOptions)) {
         allNames.push(name);
       }
       register(nameSurface);
@@ -294,6 +361,70 @@ export function buildEntityMentionIndex(
       : null;
 
   return { bySurface, allNames, excludedSurfaces, surfacePattern };
+}
+
+/**
+ * Build run-scoped word casing stats from the full vault snapshot in one body
+ * pass. Non-prose regions are masked before tokenization, and parse failures are
+ * skipped. The caller consults these stats per surface while excluding that
+ * surface's own note body from the decision.
+ */
+export async function buildMentionCorpusStats(
+  snapshot: VaultNoteSnapshot
+): Promise<MentionCorpusStats> {
+  const stats: MentionCorpusStats = { words: new Map() };
+
+  for (const note of snapshot.notes) {
+    try {
+      const { body } = await parseNote(note.path);
+      if (!body || body.trim().length === 0) continue;
+      addBodyToMentionCorpusStats(stats, body, note.relativePath);
+    } catch {
+      // Missing/unparseable note bodies simply do not contribute corpus evidence.
+    }
+  }
+
+  return stats;
+}
+
+function addBodyToMentionCorpusStats(
+  stats: MentionCorpusStats,
+  body: string,
+  notePath: string
+): void {
+  const masked = maskNonProse(body);
+  const wordRe = /[\p{L}\p{N}][\p{L}\p{N}_'-]*/gu;
+  let match: RegExpExecArray | null;
+
+  while ((match = wordRe.exec(masked)) !== null) {
+    const word = match[0];
+    const lower = word.toLowerCase();
+    let wordStats = stats.words.get(lower);
+    if (!wordStats) {
+      wordStats = {
+        totalOccurrences: 0,
+        notes: new Set<string>(),
+        exactOccurrencesByForm: new Map<string, number>(),
+        perNote: new Map<string, MentionCorpusNoteWordStats>(),
+      };
+      stats.words.set(lower, wordStats);
+    }
+
+    wordStats.totalOccurrences++;
+    wordStats.notes.add(notePath);
+    incrementCount(wordStats.exactOccurrencesByForm, word);
+
+    let noteStats = wordStats.perNote.get(notePath);
+    if (!noteStats) {
+      noteStats = {
+        totalOccurrences: 0,
+        exactOccurrencesByForm: new Map<string, number>(),
+      };
+      wordStats.perNote.set(notePath, noteStats);
+    }
+    noteStats.totalOccurrences++;
+    incrementCount(noteStats.exactOccurrencesByForm, word);
+  }
 }
 
 function isExcludedMentionTarget(
@@ -465,8 +596,13 @@ export function detectUnlinkedMentions(
     const casingEligible = entities.filter((e) => surfaceAllowsOccurrence(e, hit.surface));
     if (casingEligible.length === 0) continue;
 
+    const positionEligible = casingEligible.filter(
+      (e) => !shouldSkipNoCasingSignalOccurrence(e, body, hit.start)
+    );
+    if (positionEligible.length === 0) continue;
+
     // A note never flags a mention that points back to itself.
-    const others = casingEligible.filter((e) => e.sourcePath !== selfPath);
+    const others = positionEligible.filter((e) => e.sourcePath !== selfPath);
     if (others.length === 0) continue;
 
     consumed.push([hit.start, hit.end]);
@@ -722,8 +858,8 @@ function isSingleWordSurface(surface: string): boolean {
 }
 
 function surfaceAllowsOccurrence(surface: EntitySurface, occurrence: string): boolean {
+  if (surface.excludedFromMentionIndex) return false;
   if (surface.kind === 'alias') return true;
-  if (isSkippedCommonNameSurface(surface)) return false;
   if (!isSingleWordSurface(surface.surface)) return true;
   return occurrence === surface.surface;
 }
@@ -732,10 +868,107 @@ function allowedFuzzyDistance(candidateLength: number, configuredCap: number): n
   return Math.min(configuredCap, Math.floor(candidateLength / 4));
 }
 
-function isSkippedCommonNameSurface(surface: EntitySurface): boolean {
+function isSkippedCommonNameSurface(
+  surface: EntitySurface,
+  corpusOptions?: Required<Omit<MentionCorpusCalibrationOptions, 'stats'>> & {
+    stats?: MentionCorpusStats;
+  }
+): boolean {
+  if (surface.kind !== 'name' || !isSingleWordSurface(surface.surface)) return false;
+  if (isCommonEnglishWord(surface.surface)) return true;
+  return isCorpusDampedNameSurface(surface, corpusOptions);
+}
+
+function isCorpusDampedNameSurface(
+  surface: EntitySurface,
+  corpusOptions?: Required<Omit<MentionCorpusCalibrationOptions, 'stats'>> & {
+    stats?: MentionCorpusStats;
+  }
+): boolean {
+  if (!corpusOptions?.enabled || !corpusOptions.stats) return false;
+  if (!isCorpusWordSurface(surface.surface)) return false;
+
+  const wordStats = corpusOptions.stats.words.get(surface.surface.toLowerCase());
+  if (!wordStats) return false;
+
+  const selfStats = wordStats.perNote.get(surface.sourcePath);
+  const distinctNotes =
+    wordStats.notes.size - (selfStats && wordStats.notes.has(surface.sourcePath) ? 1 : 0);
+  if (distinctNotes < corpusOptions.minNotes) return false;
+
+  const totalOccurrences =
+    wordStats.totalOccurrences - (selfStats?.totalOccurrences ?? 0);
+  if (totalOccurrences <= 0) return false;
+
+  const canonicalOccurrences = countCanonicalCaseOccurrences(
+    surface.surface,
+    wordStats,
+    selfStats
+  );
+  const nonCanonicalShare =
+    (totalOccurrences - canonicalOccurrences) / totalOccurrences;
+
+  return nonCanonicalShare > corpusOptions.nonCanonicalRatio;
+}
+
+function countCanonicalCaseOccurrences(
+  surface: string,
+  wordStats: MentionCorpusWordStats,
+  selfStats: MentionCorpusNoteWordStats | undefined
+): number {
+  // Lowercase canonical names carry no proper-noun capitalization signal, so
+  // lowercase prose should count as common usage rather than protective evidence.
+  if (!startsWithUppercase(surface)) return 0;
+  return (
+    (wordStats.exactOccurrencesByForm.get(surface) ?? 0) -
+    (selfStats?.exactOccurrencesByForm.get(surface) ?? 0)
+  );
+}
+
+function startsWithUppercase(value: string): boolean {
+  const first = Array.from(value.trim())[0];
+  return Boolean(first && first.toLocaleUpperCase() === first && first.toLocaleLowerCase() !== first);
+}
+
+function isCorpusWordSurface(surface: string): boolean {
+  return /^[\p{L}\p{N}][\p{L}\p{N}_'-]*$/u.test(surface);
+}
+
+function incrementCount(map: Map<string, number>, key: string): void {
+  map.set(key, (map.get(key) ?? 0) + 1);
+}
+
+function shouldSkipNoCasingSignalOccurrence(
+  surface: EntitySurface,
+  body: string,
+  start: number
+): boolean {
   return (
     surface.kind === 'name' &&
     isSingleWordSurface(surface.surface) &&
-    isCommonEnglishWord(surface.surface)
+    startsWithUppercase(surface.surface) &&
+    isNoCasingSignalPosition(body, start)
   );
+}
+
+function isNoCasingSignalPosition(body: string, start: number): boolean {
+  if (start <= 0) return true;
+
+  const lineStart = body.lastIndexOf('\n', start - 1) + 1;
+  const beforeOnLine = body.slice(lineStart, start);
+  if (/^[ \t]*$/.test(beforeOnLine)) return true;
+  if (isAfterMarkdownLineMarker(beforeOnLine)) return true;
+
+  const before = body.slice(0, start);
+  return /[.!?][\])}"'’”»]*[ \t\r\n]*$/.test(before);
+}
+
+function isAfterMarkdownLineMarker(beforeOnLine: string): boolean {
+  const blockquotePrefix = String.raw`(?:>[ \t]*)*`;
+  const listMarker = String.raw`(?:[-*+]|[0-9]{1,9}[.)])[ \t]+`;
+  const headingMarker = String.raw`#{1,6}[ \t]+`;
+  const markerRe = new RegExp(
+    String.raw`^[ \t]{0,3}${blockquotePrefix}(?:${listMarker}|${headingMarker})?$`
+  );
+  return markerRe.test(beforeOnLine);
 }

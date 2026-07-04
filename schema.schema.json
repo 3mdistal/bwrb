@@ -107,6 +107,21 @@
           "maximum": 5,
           "description": "Max Levenshtein distance cap for the `unlinked-mention` audit fuzzy (\"did you mean?\") tier (#622). Integer 0-5; default 2. The effective distance is also length-scaled. 0 disables the fuzzy tier. Overridden per run by `--mention-fuzzy-threshold` / `--no-mention-fuzzy`."
         },
+        "mention_corpus_calibration": {
+          "type": "boolean",
+          "description": "Enable corpus-calibrated commonness damping for single-word `unlinked-mention` note names (#783). Defaults to true. When enabled, audit uses full-vault prose casing stats to drop vault-common name surfaces while leaving declared aliases exempt."
+        },
+        "mention_corpus_min_notes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Minimum distinct non-self notes whose prose must contain a single-word note name before corpus-calibrated commonness damping can apply (#783). Defaults to 3."
+        },
+        "mention_corpus_noncanonical_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Strict non-canonical-case occurrence share threshold for corpus-calibrated commonness damping (#783). Defaults to 0.5, so exactly half non-canonical keeps the surface."
+        },
         "mention_exclude_types": {
           "type": "array",
           "items": {

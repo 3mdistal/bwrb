@@ -432,6 +432,32 @@ export const ConfigSchema = z.object({
     .describe(
       'Max Levenshtein distance cap for the `unlinked-mention` audit fuzzy ("did you mean?") tier (#622). Integer 0-5; default 2. The effective distance is also length-scaled. 0 disables the fuzzy tier. Overridden per run by `--mention-fuzzy-threshold` / `--no-mention-fuzzy`.'
     ),
+  // Corpus-calibrated commonness for single-word note names (#783). Enabled by
+  // default: during audit, bwrb counts each word's prose casing across the full
+  // vault snapshot and drops single-word name surfaces that are common in this
+  // vault mostly without proper-noun casing. Aliases remain exempt.
+  mention_corpus_calibration: z
+    .boolean()
+    .optional()
+    .describe(
+      'Enable corpus-calibrated commonness damping for single-word `unlinked-mention` note names (#783). Defaults to true. When enabled, audit uses full-vault prose casing stats to drop vault-common name surfaces while leaving declared aliases exempt.'
+    ),
+  mention_corpus_min_notes: z
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .describe(
+      'Minimum distinct non-self notes whose prose must contain a single-word note name before corpus-calibrated commonness damping can apply (#783). Defaults to 3.'
+    ),
+  mention_corpus_noncanonical_ratio: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe(
+      'Strict non-canonical-case occurrence share threshold for corpus-calibrated commonness damping (#783). Defaults to 0.5, so exactly half non-canonical keeps the surface.'
+    ),
   // Type names to exclude as targets from the mention safety-net index. Notes
   // whose resolved type is listed, or extends a listed type, are still scanned
   // as source documents, but their names and aliases are not link targets,
@@ -619,6 +645,21 @@ export interface ResolvedConfig {
    * this; candidate length also caps the effective distance.
    */
   mentionFuzzyThreshold: number;
+  /**
+   * Enable corpus-calibrated commonness damping for single-word
+   * `unlinked-mention` note names (#783). Defaults to true.
+   */
+  mentionCorpusCalibration: boolean;
+  /**
+   * Minimum distinct non-self notes containing a word before corpus damping can
+   * apply. Defaults to 3.
+   */
+  mentionCorpusMinNotes: number;
+  /**
+   * Strict non-canonical-case share threshold for corpus damping. Defaults to
+   * 0.5, so exactly half non-canonical keeps the surface.
+   */
+  mentionCorpusNonCanonicalRatio: number;
   /**
    * Canonical type names excluded as mention targets. Descendants of these
    * types are excluded by the mention index builder.

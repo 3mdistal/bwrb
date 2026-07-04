@@ -303,6 +303,11 @@ bwrb audit --path "Ideas/**" --fix --auto
 #       overwrite an existing file. If a different file already occupies the
 #       destination, the move is SKIPPED and reported as a conflict (counted as
 #       Failed, not Fixed) so no data is lost; resolve the collision manually.
+# Note: unlinked-mention single-word note names are conservative: exact casing
+#       is required, common/static and vault-common corpus words are skipped,
+#       and capitalized single-word names are ignored at sentence/list/heading
+#       starts where capitalization carries no signal. Declared aliases remain
+#       explicit link intent.
 
 # Fix a specific issue code (auto-fix; safe to script)
 bwrb audit --path "Ideas/**" --only trailing-whitespace --fix --auto --execute

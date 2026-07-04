@@ -91,6 +91,7 @@ import {
 
 // Import unlinked-mention detection (ingest safety net, #600)
 import {
+  buildMentionCorpusStats,
   buildEntityMentionIndex,
   detectUnlinkedMentions,
   type EntityMentionIndex,
@@ -201,9 +202,18 @@ export async function runAudit(
   const parentMap = await buildParentMap(schema, filteredFiles, noteIndex);
 
   // Build the entity-mention index once for the whole run (#600). The full
-  // vault snapshot (not just the filtered set) is the source of known names so
-  // that, e.g., auditing one daily note still detects mentions of every entity.
-  const entityMentionIndex = buildEntityMentionIndex(noteIndex.snapshot, schema);
+  // vault snapshot (not just the filtered set) is the source of known names and
+  // corpus-calibrated casing stats (#783), so auditing one daily note still
+  // detects mentions of every entity while damping vault-common prose words.
+  const mentionCorpusStats = schema.config.mentionCorpusCalibration
+    ? await buildMentionCorpusStats(noteIndex.snapshot)
+    : undefined;
+  const entityMentionIndex = buildEntityMentionIndex(noteIndex.snapshot, schema, {
+    enabled: schema.config.mentionCorpusCalibration,
+    minNotes: schema.config.mentionCorpusMinNotes,
+    nonCanonicalRatio: schema.config.mentionCorpusNonCanonicalRatio,
+    ...(mentionCorpusStats ? { stats: mentionCorpusStats } : {}),
+  });
 
   // Audit each file
   const results: FileAuditResult[] = [];

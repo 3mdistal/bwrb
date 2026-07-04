@@ -250,8 +250,10 @@ False-positive guards (none of these are scanned or rewritten):
 - Text already inside `[[wikilinks]]`, markdown links/images, fenced code blocks, inline code spans, and bare URLs.
 - A note never flags a mention of **its own** name or alias.
 - Matching is word-boundary aware (`Ada` does not match inside `Adafruit` or `Canada`). Multi-word names and aliases are case-insensitive, but single-word note names are case-exact (`Time` can match the `Time` note; `time` cannot). Common English single-word note names such as `Time`, `Push`, or `Current` are not exact-matched at all, because sentence-initial capitalization makes them noisy.
+- Single-word note-name matches with capitalized canonical casing are skipped at positions where capitalization carries no signal: the start of the body, sentence starts after `.`, `!`, or `?`, line starts, markdown list starts, headings, and blockquotes. Multi-word names, aliases, and lowercase canonical names are unaffected.
+- Corpus calibration catches vault-local common words that the static list cannot know. During an audit run, bwrb counts single-token word casing across the full vault snapshot's prose (with code, links, URLs, and wikilinks masked). A single-word note name is dropped for that run when it appears in at least `mention_corpus_min_notes` distinct non-self notes and the non-canonical-case occurrence share is strictly greater than `mention_corpus_noncanonical_ratio`. Dropped names are also removed from fuzzy suggestions and `frequent-unlinked-term` nudges; declared aliases remain linkable.
 
-Only frontmatter is exempt from scanning — this detection looks at body prose only. Surfaces shorter than three characters are ignored to avoid noise. The entity index is built once per run and each body is scanned in a single pass, so cost scales with body size rather than notes × entities.
+Only frontmatter is exempt from scanning — this detection looks at body prose only. Surfaces shorter than three characters are ignored to avoid noise. The entity index is built once per run and each body is scanned in a single pass, so cost scales with body size rather than notes × entities. Scoped audits such as `--path` still build the mention index and corpus calibration from the full vault snapshot, then scan only the targeted files for issues.
 
 ```bash
 # Report unlinked mentions only
@@ -286,6 +288,26 @@ bwrb audit --only unlinked-mention --no-mention-fuzzy
 ```
 
 The threshold affects **only** the fuzzy tier. Exact/alias auto-fix and ambiguous flagging are unchanged.
+
+#### Tuning corpus calibration (#783)
+
+Corpus calibration is enabled by default and is intentionally conservative:
+
+- `mention_corpus_calibration`: `true` by default. Set to `false` to restore static-list-only single-word name behavior.
+- `mention_corpus_min_notes`: default `3`. The word must appear in at least this many distinct non-self notes' prose before damping can apply.
+- `mention_corpus_noncanonical_ratio`: default `0.5`. The non-canonical-case share must be **strictly greater** than this value, so exactly `0.5` keeps the surface.
+
+For capitalized names such as `Builder`, exact canonical-case occurrences count as proper-noun evidence. For lowercase canonical names, casing provides no proper-noun signal, so frequent lowercase prose counts as common usage. Aliases are exempt either way.
+
+```json
+// .bwrb/schema.json — make corpus damping more conservative
+{
+  "config": {
+    "mention_corpus_min_notes": 5,
+    "mention_corpus_noncanonical_ratio": 0.75
+  }
+}
+```
 
 #### Excluding mention targets
 
