@@ -2070,6 +2070,62 @@ milestone: "[[Shared]]"
       expect(output.files).toEqual([]);
     });
 
+    it('reports ambiguous-link-target when multiple allowed-type candidates share a bare name', async () => {
+      await mkdir(join(tempVaultDir, 'objectives/milestones/archive'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'objectives/milestones', 'Shared.md'),
+        `---
+type: milestone
+status: raw
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'objectives/milestones/archive', 'Shared.md'),
+        `---
+type: milestone
+status: raw
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'ideas', 'Shared.md'),
+        `---
+type: idea
+status: raw
+---
+`
+      );
+
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Ambiguous Same Type.md'),
+        `---
+type: task
+status: backlog
+milestone: "[[Shared]]"
+---
+`
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      const taskFile = output.files.find((f: { path: string }) => f.path.includes('Ambiguous Same Type.md'));
+      const ambiguousIssue = taskFile.issues.find((i: { code: string }) => i.code === 'ambiguous-link-target');
+      expect(ambiguousIssue).toMatchObject({
+        field: 'milestone',
+        value: '[[Shared]]',
+      });
+      expect(ambiguousIssue.candidates).toEqual(
+        expect.arrayContaining([
+          'objectives/milestones/Shared.md',
+          'objectives/milestones/archive/Shared.md',
+        ])
+      );
+      expect(ambiguousIssue.candidates).toHaveLength(2);
+    });
+
     it('reports wrong-type when a bare basename has no allowed-type candidates', async () => {
       await writeFile(
         join(tempVaultDir, 'ideas', 'Only Wrong.md'),

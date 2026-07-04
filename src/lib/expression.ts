@@ -3,6 +3,8 @@ import type { Expression, BinaryExpression, UnaryExpression, CallExpression, Ide
 import { formatLocalDate } from './local-date.js';
 import { FRONTMATTER_IDENTIFIER } from './where-constants.js';
 import { extractLinkTargets } from './links.js';
+import { resolveRelationTarget, type NoteTargetIndex } from './discovery.js';
+import type { LoadedSchema } from '../types/schema.js';
 
 // Configure jsep for our expression language
 jsep.addBinaryOp('&&', 2);
@@ -83,6 +85,10 @@ export interface HierarchyData {
    * silently picking one note's subtree.
    */
   aliasMap?: Map<string, string>;
+  /** Full-vault relation target index, shared with audit/validation. */
+  noteTargetIndex?: NoteTargetIndex;
+  /** Schema needed for source-aware relation target resolution. */
+  schema?: LoadedSchema;
   /**
    * Basenames of the CANDIDATE notes being filtered/evaluated. A candidate's own
    * hierarchy identity is authoritative: the full-vault augmentation pass must
@@ -114,6 +120,8 @@ export interface EvalContext {
   };
   /** Optional hierarchy data for hierarchy functions (isRoot, isChildOf, isDescendantOf, under) */
   hierarchyData?: HierarchyData;
+  /** Source constraints for relation fields on the current note's resolved type. */
+  relationSourcesByField?: Map<string, string | string[] | undefined>;
 }
 
 /**
@@ -278,7 +286,7 @@ function evaluateCall(expr: CallExpression, context: EvalContext): unknown {
     throw new Error(`Unknown function: ${fnName}`);
   }
 
-  return fn(args, context);
+  return fn(args, context, expr);
 }
 
 function evaluateIdentifier(expr: Identifier, context: EvalContext): unknown {
@@ -323,7 +331,7 @@ function evaluateMember(expr: MemberExpression, context: EvalContext): unknown {
 // Built-in functions
 // ============================================================================
 
-type FunctionImpl = (args: unknown[], context: EvalContext) => unknown;
+type FunctionImpl = (args: unknown[], context: EvalContext, call?: CallExpression) => unknown;
 
 const FUNCTIONS: Record<string, FunctionImpl> = {
   // String functions
@@ -520,12 +528,22 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
    * (claimed by no note) or an ambiguous alias (claimed by several) is left
    * as-is, so it simply fails to match rather than crashing or guessing.
    */
-  under: (args, context) => {
+  under: (args, context, call) => {
+    const relationField = call?.arguments[0]
+      ? getRelationFieldNameFromExpression(call.arguments[0])
+      : null;
+    const relationSource = relationField
+      ? context.relationSourcesByField?.get(relationField)
+      : undefined;
     const aliasMap = context.hierarchyData?.aliasMap;
-    const targetNode = canonicalizeAlias(
+    const queryTarget = resolveHierarchyQueryTarget(
       extractNoteNameFromArg(String(args[1] ?? '')),
-      aliasMap
+      context,
+      relationSource
     );
+    const targetNode = queryTarget
+      ? canonicalizeAlias(noteNameFromTarget(queryTarget.target), aliasMap)
+      : null;
     if (!targetNode || !context.hierarchyData) return false;
 
     // Resolve the relation field value(s) to note names. extractLinkTargets
@@ -535,14 +553,15 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
 
     const parentMap = context.hierarchyData.parentMap;
     for (const rawTarget of relationTargets) {
-      const relationTarget = canonicalizeAlias(noteNameFromTarget(rawTarget), aliasMap);
+      const resolved = resolveHierarchyRelationTarget(rawTarget, context, relationSource);
+      const relationTarget = canonicalizeAlias(noteNameFromTarget(resolved.target), aliasMap);
       if (!relationTarget) continue;
-      const relationTargetPath = resolveHierarchyPath(rawTarget, context.hierarchyData);
+      const relationTargetPath = resolved.path ?? resolveHierarchyPath(rawTarget, context.hierarchyData);
       // Inclusive of the direct target (depth 0).
       if (
         hierarchyNodeMatches(
           hierarchyNode(relationTarget, relationTargetPath),
-          targetNode,
+          queryTarget?.path ?? targetNode,
           context.hierarchyData
         )
       ) {
@@ -553,7 +572,7 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
       if (
         ancestorChainContains(
           relationTarget,
-          targetNode,
+          queryTarget?.path ?? targetNode,
           parentMap,
           aliasMap,
           context.hierarchyData,
@@ -566,6 +585,83 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
     return false;
   },
 };
+
+function resolveHierarchyQueryTarget(
+  rawTarget: string | null,
+  context: EvalContext,
+  source: string | string[] | undefined
+): { target: string; path?: string } | null {
+  if (!rawTarget) return null;
+
+  const index = context.hierarchyData?.noteTargetIndex;
+  const schema = context.hierarchyData?.schema;
+  if (!index || !schema) {
+    return { target: rawTarget };
+  }
+
+  const resolved = resolveRelationTarget(index, rawTarget, { schema, source });
+  if (!resolved.resolvedPath) {
+    return null;
+  }
+
+  const path = resolved.resolvedPath.replace(/\.md$/, '');
+  return {
+    target: path,
+    path,
+  };
+}
+
+function resolveHierarchyRelationTarget(
+  rawTarget: string,
+  context: EvalContext,
+  source: string | string[] | undefined
+): { target: string; path?: string } {
+  const index = context.hierarchyData?.noteTargetIndex;
+  const schema = context.hierarchyData?.schema;
+  if (!index || !schema) {
+    return { target: rawTarget };
+  }
+
+  const resolved = resolveRelationTarget(index, rawTarget, { schema, source });
+  if (!resolved.resolvedPath) {
+    return { target: rawTarget };
+  }
+
+  const path = resolved.resolvedPath.replace(/\.md$/, '');
+  return {
+    target: path,
+    path,
+  };
+}
+
+function getRelationFieldNameFromExpression(expr: Expression): string | null {
+  if (expr.type === 'Identifier') {
+    return (expr as Identifier).name;
+  }
+
+  if (expr.type !== 'MemberExpression') {
+    return null;
+  }
+
+  const member = expr as MemberExpression;
+  if (member.object.type !== 'Identifier') {
+    return null;
+  }
+  if ((member.object as Identifier).name !== FRONTMATTER_IDENTIFIER) {
+    return null;
+  }
+
+  if (member.computed && member.property.type === 'Literal') {
+    const value = (member.property as Literal).value;
+    return typeof value === 'string' ? value : null;
+  }
+
+  if (!member.computed && member.property.type === 'Identifier') {
+    return (member.property as Identifier).name;
+  }
+
+  return null;
+}
 
 /**
  * Resolve a note name through the alias map, if present.

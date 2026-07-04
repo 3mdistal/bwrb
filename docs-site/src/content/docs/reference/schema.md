@@ -450,10 +450,14 @@ Link to other notes in the vault. Shows a picker filtered by type.
 - Type branch: `"source": "objective"` — objectives and all descendants (task, milestone, project, etc.)
 - Any note: `"source": "any"` — entire vault
 
-**Name collisions:** when two notes share a name, a relation value is stored in
-its shortest unambiguous form — path-qualified (e.g. `[[contexts/Betson]]`) so it
-resolves to the right note. See the [`search` command](/reference/commands/search/)
-for the full link-resolution rule.
+**Name collisions:** relation fields resolve bare note names through the field's
+`source` type when possible. If `context` has `"source": "context"`, then
+`context: [[Poetry]]` resolves to the `context` note named `Poetry` even when a
+different note type also has that name. If more than one matching source-type
+note shares the name, path-qualify the link (for example `[[contexts/Betson]]`).
+Path-qualified links keep exact path behavior. See the
+[`search` command](/reference/commands/search/) for the full link-resolution
+rule.
 
 **Filtering results:**
 

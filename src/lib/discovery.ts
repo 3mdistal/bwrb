@@ -398,6 +398,165 @@ export type NoteTargetIndex = {
   pathNoExtToType: Map<string, string>;
 };
 
+export type ResolvedRelationTarget = {
+  rawTarget: string;
+  candidates: string[];
+  sourceCandidates: string[];
+  resolvedPath?: string | undefined;
+  resolution: 'none' | 'unique' | 'ambiguous' | 'no-source-match';
+};
+
+/**
+ * Return every concrete type accepted by a relation source constraint.
+ *
+ * A source type accepts itself and all descendants; `any` and absent sources are
+ * unconstrained. Unknown source names produce an empty set so callers can keep
+ * legacy "schema validation owns this" behavior.
+ */
+export function getRelationSourceTypes(
+  schema: LoadedSchema,
+  source: string | string[] | undefined
+): Set<string> {
+  const sources = Array.isArray(source) ? source : source ? [source] : [];
+  const validTypes = new Set<string>();
+
+  if (sources.length === 0 || sources.includes('any')) {
+    return validTypes;
+  }
+
+  for (const src of sources) {
+    const sourceType = getType(schema, src);
+    if (!sourceType) continue;
+
+    validTypes.add(src);
+    for (const descendant of getDescendants(schema, src)) {
+      validTypes.add(descendant);
+    }
+  }
+
+  return validTypes;
+}
+
+export function relationCandidateMatchesSource(
+  schema: LoadedSchema,
+  noteTargetIndex: NoteTargetIndex,
+  relativePath: string,
+  source: string | string[] | undefined
+): boolean {
+  const sources = Array.isArray(source) ? source : source ? [source] : [];
+  if (sources.length === 0 || sources.includes('any')) return true;
+
+  const validTypes = getRelationSourceTypes(schema, source);
+  if (validTypes.size === 0) return false;
+
+  const pathKey = relativePath.replace(/\.md$/, '');
+  const resolvedType =
+    noteTargetIndex.pathNoExtToType.get(pathKey) ??
+    noteTargetIndex.pathToType.get(relativePath);
+  return resolvedType ? validTypes.has(resolvedType) : false;
+}
+
+/**
+ * Resolve a relation target through the alias-aware, case-insensitive note
+ * index. Bare name collisions are source-aware when the caller supplies a
+ * relation `source`: a unique candidate whose resolved type satisfies the
+ * source wins over same-named notes of other types. Path-qualified targets keep
+ * exact path semantics and are not rewritten by source preference.
+ */
+export function resolveRelationTarget(
+  noteTargetIndex: NoteTargetIndex | undefined,
+  rawTarget: string,
+  options: {
+    schema?: LoadedSchema | undefined;
+    source?: string | string[] | undefined;
+  } = {}
+): ResolvedRelationTarget {
+  if (!noteTargetIndex) {
+    return {
+      rawTarget,
+      candidates: [],
+      sourceCandidates: [],
+      resolvedPath: undefined,
+      resolution: 'none',
+    };
+  }
+
+  const candidates = noteTargetIndex.targetToPaths.get(rawTarget.toLowerCase()) ?? [];
+  if (candidates.length === 0) {
+    return {
+      rawTarget,
+      candidates,
+      sourceCandidates: [],
+      resolvedPath: undefined,
+      resolution: 'none',
+    };
+  }
+
+  const sources = Array.isArray(options.source)
+    ? options.source
+    : options.source
+      ? [options.source]
+      : [];
+  const isPathQualified = rawTarget.includes('/');
+  const useSourcePreference =
+    Boolean(options.schema) &&
+    sources.length > 0 &&
+    !sources.includes('any') &&
+    !isPathQualified;
+
+  if (useSourcePreference && options.schema) {
+    const sourceCandidates = candidates.filter((candidate) =>
+      relationCandidateMatchesSource(options.schema!, noteTargetIndex, candidate, options.source)
+    );
+
+    if (sourceCandidates.length === 1) {
+      return {
+        rawTarget,
+        candidates,
+        sourceCandidates,
+        resolvedPath: sourceCandidates[0],
+        resolution: 'unique',
+      };
+    }
+
+    if (sourceCandidates.length > 1) {
+      return {
+        rawTarget,
+        candidates,
+        sourceCandidates,
+        resolvedPath: undefined,
+        resolution: 'ambiguous',
+      };
+    }
+
+    return {
+      rawTarget,
+      candidates,
+      sourceCandidates,
+      resolvedPath: candidates.length === 1 ? candidates[0] : undefined,
+      resolution: 'no-source-match',
+    };
+  }
+
+  if (candidates.length === 1) {
+    return {
+      rawTarget,
+      candidates,
+      sourceCandidates: candidates,
+      resolvedPath: candidates[0],
+      resolution: 'unique',
+    };
+  }
+
+  return {
+    rawTarget,
+    candidates,
+    sourceCandidates: candidates,
+    resolvedPath: undefined,
+    resolution: 'ambiguous',
+  };
+}
+
 /**
  * Build target indexes for resolving note references.
  */

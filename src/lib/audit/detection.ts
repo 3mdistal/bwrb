@@ -74,6 +74,9 @@ import {
   discoverManagedFiles,
   buildVaultNoteIndex,
   findSimilarFiles,
+  getRelationSourceTypes,
+  resolveRelationTarget,
+  type NoteTargetIndex,
 } from '../discovery.js';
 
 // Import ownership tracking
@@ -958,64 +961,6 @@ export async function auditFile(
   return issues;
 }
 
-type ResolvedRelationTarget = {
-  rawTarget: string;
-  candidates: string[];
-  resolvedPath?: string | undefined;
-};
-
-function resolveRelationTarget(
-  noteTargetIndex: import('../discovery.js').NoteTargetIndex | undefined,
-  rawTarget: string
-): ResolvedRelationTarget {
-  if (!noteTargetIndex) {
-    return { rawTarget, candidates: [], resolvedPath: undefined };
-  }
-
-  // Case-insensitive lookup, consistent with `open`/navigation resolution
-  // (`resolveNoteQuery`). `targetToPaths` is keyed by the lowercased target name,
-  // with a real note name still winning over an alias of the same string. A
-  // unique match resolves (no stale); multiple matches stay ambiguous and are
-  // never auto-resolved; zero matches surface as a stale reference.
-  const candidates = noteTargetIndex.targetToPaths.get(rawTarget.toLowerCase()) ?? [];
-  if (candidates.length === 1) {
-    return { rawTarget, candidates, resolvedPath: candidates[0] };
-  }
-
-  return { rawTarget, candidates, resolvedPath: undefined };
-}
-
-function filterCandidatesBySource(
-  schema: LoadedSchema,
-  source: string | string[] | undefined,
-  candidates: string[],
-  noteTargetIndex: import('../discovery.js').NoteTargetIndex | undefined
-): string[] {
-  if (!source || !noteTargetIndex) return candidates;
-
-  const sources = Array.isArray(source) ? source : [source];
-  if (sources.includes('any')) return candidates;
-
-  const validTypes = new Set<string>();
-  for (const src of sources) {
-    const sourceType = schema.types.get(src);
-    if (sourceType) {
-      validTypes.add(src);
-      for (const descendant of getDescendants(schema, src)) {
-        validTypes.add(descendant);
-      }
-    }
-  }
-
-  if (validTypes.size === 0) return candidates;
-
-  return candidates.filter((relativePath) => {
-    const pathKey = relativePath.replace(/\.md$/, '');
-    const resolvedType = noteTargetIndex.pathNoExtToType.get(pathKey);
-    return resolvedType ? validTypes.has(resolvedType) : false;
-  });
-}
-
 function toArrayValue(value: unknown): unknown[] {
   const values: unknown[] = [];
   const visit = (item: unknown) => {
@@ -1055,7 +1000,7 @@ function checkRelationFieldIssues(
   fieldName: string,
   value: unknown,
   field: Field,
-  noteTargetIndex: import('../discovery.js').NoteTargetIndex | undefined,
+  noteTargetIndex: NoteTargetIndex | undefined,
   noteTypeMap: Map<string, string> | undefined,
   file: ManagedFile
 ): AuditIssue[] {
@@ -1077,7 +1022,10 @@ function checkRelationFieldIssues(
     const rawTarget = extractLinkTarget(rawString) ?? rawString.trim();
     if (!rawTarget) continue;
 
-    const resolvedTarget = resolveRelationTarget(noteTargetIndex, rawTarget);
+    const resolvedTarget = resolveRelationTarget(noteTargetIndex, rawTarget, {
+      schema,
+      source: field.source,
+    });
 
     if (resolvedTarget.candidates.length === 0 && noteTargetIndex) {
       if (field.prompt === 'relation') {
@@ -1094,12 +1042,27 @@ function checkRelationFieldIssues(
       continue;
     }
 
-    const filteredCandidates = filterCandidatesBySource(
-      schema,
-      field.source,
-      resolvedTarget.candidates,
+    if (
+      resolvedTarget.resolution === 'no-source-match' &&
+      field.source &&
       noteTargetIndex
-    );
+    ) {
+      const wrongTypeIssue = checkResolvedContextSource(
+        schema,
+        fieldName,
+        rawString,
+        rawTarget,
+        field.source,
+        resolvedTarget.candidates[0],
+        noteTargetIndex
+      );
+      if (wrongTypeIssue) {
+        issues.push(wrongTypeIssue);
+      }
+      continue;
+    }
+
+    const filteredCandidates = resolvedTarget.sourceCandidates;
 
     const selfMatchCandidates = filteredCandidates.filter((candidate) => {
       const candidateKey = candidate.replace(/\.md$/, '');
@@ -1142,16 +1105,21 @@ function checkRelationFieldIssues(
       continue;
     }
 
-    const resolvedPath =
-      filteredCandidates.length === 1 ? filteredCandidates[0] : resolvedTarget.resolvedPath;
+    const resolvedPath = resolvedTarget.resolvedPath;
 
 
     if (resolvedPath && noteTypeMap && field.source) {
-      const pathKey = resolvedPath.replace(/\.md$/, '');
-      const resolvedType = noteTypeMap.get(pathKey) ?? noteTypeMap.get(rawTarget);
-      if (resolvedType) {
-        const sourceIssues = checkContextFieldSource(schema, fieldName, rawString, field.source, noteTypeMap);
-        issues.push(...sourceIssues);
+      const sourceIssue = checkResolvedContextSource(
+        schema,
+        fieldName,
+        rawString,
+        rawTarget,
+        field.source,
+        resolvedPath,
+        noteTargetIndex
+      );
+      if (sourceIssue) {
+        issues.push(sourceIssue);
       }
     }
 
@@ -1602,70 +1570,34 @@ function checkStaleReference(
  * 
  * Handles both single values and arrays (for multiple: true fields).
  */
-function checkContextFieldSource(
+function checkResolvedContextSource(
   schema: LoadedSchema,
   fieldName: string,
-  value: unknown,
+  value: string,
+  target: string,
   source: string | string[],
-  noteTypeMap: Map<string, string>
-): AuditIssue[] {
-  const issues: AuditIssue[] = [];
-  
+  resolvedPath: string | undefined,
+  noteTargetIndex: NoteTargetIndex | undefined
+): AuditIssue | null {
+  if (!resolvedPath || !noteTargetIndex) return null;
+
   // Normalize source to array
   const sources = Array.isArray(source) ? source : [source];
   
   // Handle "any" source - no type restriction
-  if (sources.includes('any')) return issues;
+  if (sources.includes('any')) return null;
   
-  // Get all valid types (each source type + all their descendants)
-  const validTypes = new Set<string>();
-  for (const src of sources) {
-    const sourceType = schema.types.get(src);
-    if (sourceType) {
-      validTypes.add(src);
-      for (const descendant of getDescendants(schema, src)) {
-        validTypes.add(descendant);
-      }
-    }
-  }
+  const validTypes = getRelationSourceTypes(schema, source);
   
   if (validTypes.size === 0) {
     // No valid source types found - schema validation should catch this
-    return issues;
+    return null;
   }
-  
-  // Handle array values (multiple: true fields)
-  const values = Array.isArray(value) ? value : [value];
-  
-  for (const v of values) {
-    const issue = checkSingleContextValue(
-      fieldName, v, sources, validTypes, noteTypeMap
-    );
-    if (issue) {
-      issues.push(issue);
-    }
-  }
-  
-  return issues;
-}
 
-/**
- * Check a single context field value against the source type constraint.
- */
-function checkSingleContextValue(
-  fieldName: string,
-  value: unknown,
-  sources: string[],
-  validTypes: Set<string>,
-  noteTypeMap: Map<string, string>
-): AuditIssue | null {
-  const strValue = String(value);
-  const target = extractWikilinkTarget(strValue);
-  
-  if (!target) return null;
-  
-  // Look up the referenced note's type
-  const actualType = noteTypeMap.get(target);
+  const pathKey = resolvedPath.replace(/\.md$/, '');
+  const actualType =
+    noteTargetIndex.pathNoExtToType.get(pathKey) ??
+    noteTargetIndex.pathToType.get(resolvedPath);
   if (!actualType) {
     // Note doesn't exist or has no type - stale reference check handles this
     return null;
@@ -1686,7 +1618,7 @@ function checkSingleContextValue(
     code: 'invalid-source-type',
     message: `Type mismatch: '${fieldName}' expects ${sourceDisplay}${validTypesArray.length > sources.length ? ' (or descendant)' : ''}, but '${target}' is ${actualType}`,
     field: fieldName,
-    value: strValue,
+    value,
     expectedType: sources[0],
     actualType: actualType,
     expected: validTypesArray.length > 1 ? validTypesArray : sources[0],
