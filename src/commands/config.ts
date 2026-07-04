@@ -14,13 +14,13 @@ import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import chalk from 'chalk';
 
-import { loadCurrentSchema, detectObsidianVault } from '../lib/schema.js';
+import { loadCurrentSchema, detectObsidianVault, resolveSchema } from '../lib/schema.js';
 import { SCHEMA_RELATIVE_PATH } from '../lib/bwrb-paths.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { configurePromptMode, promptInput, promptSelection } from '../lib/prompt.js';
 import { getGlobalOpts } from '../lib/command.js';
 import { ExitCodes } from '../lib/output.js';
-import type { Config } from '../types/schema.js';
+import { BwrbSchema, type Config } from '../types/schema.js';
 import { UserCancelledError } from '../lib/errors.js';
 
 // Config option metadata
@@ -233,7 +233,7 @@ configCommand
         const storedValue = normalizeConfigValue(meta.key, value);
 
         config[option] = storedValue;
-        await writeFile(schemaPath, JSON.stringify(schema, null, 2) + '\n');
+        await writeValidatedSchema(schemaPath, schema);
 
         if (jsonMode) {
           console.log(JSON.stringify({ success: true, data: { key: option, value: storedValue } }));
@@ -256,7 +256,7 @@ configCommand
             } else {
               config[option] = result.value;
             }
-            await writeFile(schemaPath, JSON.stringify(schema, null, 2) + '\n');
+            await writeValidatedSchema(schemaPath, schema);
 
             const outputValue = result.action === 'clear' ? null : result.value;
 
@@ -284,7 +284,7 @@ configCommand
               } else {
                 config[selected] = result.value;
               }
-              await writeFile(schemaPath, JSON.stringify(schema, null, 2) + '\n');
+              await writeValidatedSchema(schemaPath, schema);
 
               const outputValue = result.action === 'clear' ? null : result.value;
 
@@ -421,6 +421,15 @@ function validateConfigValue(meta: ConfigOptionMeta, value: unknown): void {
       throw new Error(`${String(meta.key)} must be a JSON array of strings`);
     }
   }
+}
+
+async function writeValidatedSchema(
+  schemaPath: string,
+  schema: Record<string, unknown>
+): Promise<void> {
+  const parsed = BwrbSchema.parse(schema);
+  resolveSchema(parsed);
+  await writeFile(schemaPath, JSON.stringify(schema, null, 2) + '\n');
 }
 
 /**

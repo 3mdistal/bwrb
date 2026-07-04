@@ -588,6 +588,35 @@ describe('unlinked-mention: mention target exclusions', () => {
     expect(index.bySurface.has('handmade person')).toBe(true);
   });
 
+  it('excludes typeless notes discovered in an excluded type output_dir', async () => {
+    const vaultDir = await mkdtemp(join(tmpdir(), 'bwrb-mention-exclude-typeless-'));
+    try {
+      await mkdir(join(vaultDir, '.bwrb'), { recursive: true });
+      await mkdir(join(vaultDir, 'Books'), { recursive: true });
+      await writeFile(
+        join(vaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(EXCLUSION_SCHEMA, null, 2)
+      );
+      await writeFile(
+        join(vaultDir, 'Books', 'Typeless Tome.md'),
+        `---\ntitle: Imported without type\n---\n`
+      );
+
+      const loadedSchema = await loadSchema(vaultDir);
+      const snapshot = await buildVaultNoteSnapshot(loadedSchema, vaultDir);
+      const index = buildEntityMentionIndex(snapshot, loadedSchema);
+
+      expect(index.bySurface.has('typeless tome')).toBe(false);
+      expect(index.allNames).not.toContain('Typeless Tome');
+      expect(index.excludedSurfaces.has('typeless tome')).toBe(true);
+
+      const issues = detectUnlinkedMentions('Typeless Tome is imported.', 'Notes/Daily.md', index);
+      expect(issues).toHaveLength(0);
+    } finally {
+      await rm(vaultDir, { recursive: true, force: true });
+    }
+  });
+
   it('does not use excluded names for fuzzy did-you-mean suggestions', () => {
     const index = exclusionIndexFor([
       {

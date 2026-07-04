@@ -7,6 +7,7 @@
 
 import ignore, { type Ignore } from 'ignore';
 import { minimatch } from 'minimatch';
+import { parseDocument } from 'yaml';
 import { readdir, readFile, realpath } from 'fs/promises';
 import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
@@ -409,9 +410,7 @@ export async function buildVaultNoteSnapshot(
   schema: LoadedSchema,
   vaultDir: string
 ): Promise<VaultNoteSnapshot> {
-  const excluded = getExcludedDirectories(schema);
-  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
-  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
+  const allFiles = await discoverFilesForQueryResolution(schema, vaultDir);
 
   const notes: VaultNoteSnapshotEntry[] = [];
 
@@ -422,11 +421,16 @@ export async function buildVaultNoteSnapshot(
     };
 
     try {
+      if (await hasMalformedTopFrontmatter(file.path)) {
+        throw new Error('Malformed frontmatter');
+      }
       const { frontmatter } = await parseNote(file.path);
       entry.frontmatter = frontmatter;
       const resolvedType = resolveTypeFromFrontmatter(schema, frontmatter);
-      if (resolvedType) {
-        entry.resolvedType = resolvedType;
+      const fallbackType = file.expectedType;
+      const snapshotType = resolvedType ?? fallbackType;
+      if (snapshotType) {
+        entry.resolvedType = snapshotType;
       }
     } catch {
       // Skip parse metadata for files that can't be parsed.
@@ -436,6 +440,15 @@ export async function buildVaultNoteSnapshot(
   }
 
   return { notes };
+}
+
+async function hasMalformedTopFrontmatter(filePath: string): Promise<boolean> {
+  const raw = await readFile(filePath, 'utf-8');
+  const match = raw.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/);
+  if (!match) return false;
+
+  const doc = parseDocument(match[1]!);
+  return doc.errors.length > 0;
 }
 
 /**
