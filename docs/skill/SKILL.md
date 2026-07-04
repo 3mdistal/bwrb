@@ -308,6 +308,11 @@ bwrb audit --path "Ideas/**" --fix --auto
 #       and capitalized single-word names are ignored at sentence/list/heading
 #       starts where capitalization carries no signal. Declared aliases remain
 #       explicit link intent.
+# Note: to link each mention target at most once per note (dense repeats read
+#       poorly), enable link-once: pass --mention-link-once (or set config
+#       mention_link_once: true; --no-mention-link-once overrides it off).
+#       Notes already containing a prose/frontmatter wikilink to the target get
+#       no new links; detection/reporting still lists every occurrence.
 
 # Fix a specific issue code (auto-fix; safe to script)
 bwrb audit --path "Ideas/**" --only trailing-whitespace --fix --auto --execute
