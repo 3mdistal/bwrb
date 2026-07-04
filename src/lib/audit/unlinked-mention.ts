@@ -88,14 +88,14 @@ const MAX_FUZZY_THRESHOLD = 5;
  * prose must contain a single-word name before local-commonness damping can
  * apply. Kept conservative and exposed through schema config.
  */
-export const DEFAULT_CORPUS_CALIBRATION_MIN_NOTES = 3;
+const DEFAULT_CORPUS_CALIBRATION_MIN_NOTES = 3;
 
 /**
  * Corpus calibration (#783): non-canonical-case occurrence share must be
  * strictly greater than this ratio before a name is damped. The strict boundary
  * means a 50/50 split keeps the surface.
  */
-export const DEFAULT_CORPUS_CALIBRATION_NON_CANONICAL_RATIO = 0.5;
+const DEFAULT_CORPUS_CALIBRATION_NON_CANONICAL_RATIO = 0.5;
 
 /**
  * Fuzzy tier: a candidate must be at least this long to be eligible, so short
