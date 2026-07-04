@@ -59,6 +59,7 @@ import {
 import { toMarkdownLink, toWikilink, wikilinkTargetBasename } from '../links.js';
 import { spawnSuccessor, needsSuccessor, CHAIN_NEXT_FIELD } from '../recurrence.js';
 import {
+  maskCodeSpans,
   maskNonProse,
   shouldSkipNoCasingSignalNameOccurrence,
 } from './unlinked-mention.js';
@@ -242,11 +243,16 @@ function getUnlinkedMentionTargetKey(issue: AuditIssue): string | undefined {
 
 async function readExistingWikilinkTargetKeys(filePath: string): Promise<Set<string>> {
   const raw = await readFile(filePath, 'utf-8');
+  // Link-once coverage follows the detector's prose philosophy for code:
+  // wikilinks inside fenced or inline code are examples, not real graph edges.
+  // Frontmatter is intentionally left visible; relation fields are genuine
+  // note-to-target links, so they count as existing coverage for the target.
+  const linkCoverageSource = maskCodeSpans(raw);
   const keys = new Set<string>();
   const wikilinkRe = /\[\[([^\]]+)\]\]/g;
   let match: RegExpExecArray | null;
 
-  while ((match = wikilinkRe.exec(raw)) !== null) {
+  while ((match = wikilinkRe.exec(linkCoverageSource)) !== null) {
     const inner = match[1];
     if (!inner) continue;
     const basenameTarget = wikilinkTargetBasename(inner);
