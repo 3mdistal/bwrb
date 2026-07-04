@@ -9,9 +9,13 @@ For the complete changelog with all details, see [CHANGELOG.md](https://github.c
 
 ## Recent Highlights
 
-### Unreleased
+### 0.2.2
 
-- **Unlinked mention noise** — single-word note names now require exact casing, common English single-word note names are skipped, aliases remain case-insensitive, and fuzzy suggestions use a length-scaled cap
+- **Mention target exclusions** — `mention_exclude_types` and `mention_exclude_paths` keep imported/reference notes out of unlinked-mention target pools while still scanning them as source documents
+- **First-occurrence mention linking** — `mention_link_once` and `audit --fix --auto --mention-link-once` can limit auto-fixes to one new wikilink per note/target pair
+- **Type-aware relation resolution** — bare wikilink relation refs now resolve against the field source type before treating same-name notes as ambiguous
+- **Unlinked mention noise** — single-word note names require exact casing, common English single-word note names are skipped, aliases remain case-insensitive, and fuzzy suggestions use a length-scaled cap
+- **Unlinked mention precision** — single-word names use full-vault corpus commonness damping and sentence-position guards to avoid casing-only false positives
 
 ### 0.2.1
 
