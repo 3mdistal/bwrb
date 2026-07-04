@@ -862,6 +862,59 @@ describe('unlinked-mention: end-to-end audit + fix', () => {
     expect(daily?.issues.some((i) => i.targetName === 'Lumen')).toBe(true);
   });
 
+  it('counts wikilinked canonical occurrences as corpus evidence so linked entities are kept', async () => {
+    await writeNote('Notes/Sigil.md', '');
+    await writeNote('Notes/Lower A.md', 'the sigil appears as casual prose.');
+    await writeNote('Notes/Lower B.md', 'another sigil appears as casual prose.');
+    await writeNote('Notes/Lower C.md', 'this vault says sigil casually.');
+    await writeNote('Notes/Linked A.md', 'I already linked [[Sigil]].');
+    await writeNote('Notes/Linked B.md', 'Another proper link to [[Sigil]].');
+    await writeNote('Notes/Linked C.md', 'A third proper link to [[Sigil]].');
+    await writeNote('Notes/Daily.md', 'I mentioned Sigil in the middle of a sentence.');
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues.some((i) => i.targetName === 'Sigil')).toBe(true);
+  });
+
+  it('auto-fixes the flagged position-eligible occurrence and leaves guarded occurrences untouched', async () => {
+    await writeNote('Notes/Pass.md', '');
+    await writeNote(
+      'Notes/Daily.md',
+      'Pass site around.\n- Pass it on\n...\nI used Pass today.'
+    );
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues).toHaveLength(1);
+    expect(daily?.issues[0]?.lineNumber).toBe(4);
+
+    await runAutoFix(results, schema, vaultDir, { dryRun: false });
+    const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(after).toContain('Pass site around.');
+    expect(after).toContain('- Pass it on');
+    expect(after).toContain('I used [[Pass]] today.');
+
+    const secondResults = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const secondDaily = secondResults.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(secondDaily?.issues.some((i) => i.targetName === 'Pass')).toBeFalsy();
+
+    await runAutoFix(secondResults, schema, vaultDir, { dryRun: false });
+    const afterSecondRun = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(afterSecondRun).toBe(after);
+  });
+
   it('detects and auto-fixes an exact unlinked mention to a wikilink', async () => {
     await writeFile(
       join(vaultDir, 'Notes', 'Daily.md'),

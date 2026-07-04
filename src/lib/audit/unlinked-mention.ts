@@ -365,8 +365,9 @@ export function buildEntityMentionIndex(
 
 /**
  * Build run-scoped word casing stats from the full vault snapshot in one body
- * pass. Non-prose regions are masked before tokenization, and parse failures are
- * skipped. The caller consults these stats per surface while excluding that
+ * pass. Non-prose regions are masked before prose tokenization, but wikilink
+ * targets/display text are counted separately as entity evidence. Parse failures
+ * are skipped. The caller consults these stats per surface while excluding that
  * surface's own note body from the decision.
  */
 export async function buildMentionCorpusStats(
@@ -392,39 +393,87 @@ function addBodyToMentionCorpusStats(
   body: string,
   notePath: string
 ): void {
+  addWikilinkEvidenceToMentionCorpusStats(stats, body, notePath);
+
   const masked = maskNonProse(body);
   const wordRe = /[\p{L}\p{N}][\p{L}\p{N}_'-]*/gu;
   let match: RegExpExecArray | null;
 
   while ((match = wordRe.exec(masked)) !== null) {
-    const word = match[0];
-    const lower = word.toLowerCase();
-    let wordStats = stats.words.get(lower);
-    if (!wordStats) {
-      wordStats = {
-        totalOccurrences: 0,
-        notes: new Set<string>(),
-        exactOccurrencesByForm: new Map<string, number>(),
-        perNote: new Map<string, MentionCorpusNoteWordStats>(),
-      };
-      stats.words.set(lower, wordStats);
-    }
-
-    wordStats.totalOccurrences++;
-    wordStats.notes.add(notePath);
-    incrementCount(wordStats.exactOccurrencesByForm, word);
-
-    let noteStats = wordStats.perNote.get(notePath);
-    if (!noteStats) {
-      noteStats = {
-        totalOccurrences: 0,
-        exactOccurrencesByForm: new Map<string, number>(),
-      };
-      wordStats.perNote.set(notePath, noteStats);
-    }
-    noteStats.totalOccurrences++;
-    incrementCount(noteStats.exactOccurrencesByForm, word);
+    addCorpusWordOccurrence(stats, match[0], notePath);
   }
+}
+
+function addWikilinkEvidenceToMentionCorpusStats(
+  stats: MentionCorpusStats,
+  body: string,
+  notePath: string
+): void {
+  const wikilinkRe = /\[\[([^\]]*)\]\]/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = wikilinkRe.exec(body)) !== null) {
+    const inner = match[1]?.trim();
+    if (!inner) continue;
+
+    const [rawTarget, ...displayParts] = inner.split('|');
+    const target = normalizeWikilinkEvidenceText(rawTarget ?? '');
+    if (target) addCorpusWordsFromText(stats, target, notePath);
+
+    const display = displayParts.join('|').trim();
+    if (display) addCorpusWordsFromText(stats, display, notePath);
+  }
+}
+
+function normalizeWikilinkEvidenceText(value: string): string {
+  const withoutHeading = value.split('#')[0]?.trim() ?? '';
+  if (!withoutHeading) return '';
+  return basename(withoutHeading, '.md');
+}
+
+function addCorpusWordsFromText(
+  stats: MentionCorpusStats,
+  text: string,
+  notePath: string
+): void {
+  const wordRe = /[\p{L}\p{N}][\p{L}\p{N}_'-]*/gu;
+  let match: RegExpExecArray | null;
+  while ((match = wordRe.exec(text)) !== null) {
+    addCorpusWordOccurrence(stats, match[0], notePath);
+  }
+}
+
+function addCorpusWordOccurrence(
+  stats: MentionCorpusStats,
+  word: string,
+  notePath: string
+): void {
+  const lower = word.toLowerCase();
+  let wordStats = stats.words.get(lower);
+  if (!wordStats) {
+    wordStats = {
+      totalOccurrences: 0,
+      notes: new Set<string>(),
+      exactOccurrencesByForm: new Map<string, number>(),
+      perNote: new Map<string, MentionCorpusNoteWordStats>(),
+    };
+    stats.words.set(lower, wordStats);
+  }
+
+  wordStats.totalOccurrences++;
+  wordStats.notes.add(notePath);
+  incrementCount(wordStats.exactOccurrencesByForm, word);
+
+  let noteStats = wordStats.perNote.get(notePath);
+  if (!noteStats) {
+    noteStats = {
+      totalOccurrences: 0,
+      exactOccurrencesByForm: new Map<string, number>(),
+    };
+    wordStats.perNote.set(notePath, noteStats);
+  }
+  noteStats.totalOccurrences++;
+  incrementCount(noteStats.exactOccurrencesByForm, word);
 }
 
 function isExcludedMentionTarget(
@@ -943,10 +992,29 @@ function shouldSkipNoCasingSignalOccurrence(
   body: string,
   start: number
 ): boolean {
+  return shouldSkipNoCasingSignalNameOccurrence(
+    surface.surface,
+    surface.kind,
+    body,
+    start
+  );
+}
+
+/**
+ * Shared exact-tier position guard (#784). Capitalized single-word name
+ * surfaces are skipped where sentence/list/heading position erases the casing
+ * signal. Aliases, lowercase names, and multi-word names are unaffected.
+ */
+export function shouldSkipNoCasingSignalNameOccurrence(
+  surface: string,
+  kind: SurfaceKind | undefined,
+  body: string,
+  start: number
+): boolean {
   return (
-    surface.kind === 'name' &&
-    isSingleWordSurface(surface.surface) &&
-    startsWithUppercase(surface.surface) &&
+    kind === 'name' &&
+    isSingleWordSurface(surface) &&
+    startsWithUppercase(surface) &&
     isNoCasingSignalPosition(body, start)
   );
 }

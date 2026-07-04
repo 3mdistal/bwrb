@@ -201,19 +201,30 @@ export async function runAudit(
   // Build parent map for cycle detection on recursive types
   const parentMap = await buildParentMap(schema, filteredFiles, noteIndex);
 
-  // Build the entity-mention index once for the whole run (#600). The full
-  // vault snapshot (not just the filtered set) is the source of known names and
-  // corpus-calibrated casing stats (#783), so auditing one daily note still
-  // detects mentions of every entity while damping vault-common prose words.
-  const mentionCorpusStats = schema.config.mentionCorpusCalibration
+  const wantUnlinkedMention =
+    options.ignoreIssue !== 'unlinked-mention' &&
+    (options.onlyIssue === undefined || options.onlyIssue === 'unlinked-mention');
+  const wantFrequentTerm =
+    options.ignoreIssue !== 'frequent-unlinked-term' &&
+    (options.onlyIssue === undefined || options.onlyIssue === 'frequent-unlinked-term');
+  const wantsMentionSafetyNet = wantUnlinkedMention || wantFrequentTerm;
+
+  // Build the entity-mention index once for the whole run (#600), but only when
+  // a mention-safety-net detector is in scope. The full vault snapshot (not just
+  // the filtered set) is the source of known names and corpus-calibrated casing
+  // stats (#783), so auditing one daily note still detects mentions of every
+  // entity while damping vault-common prose words.
+  const mentionCorpusStats = wantsMentionSafetyNet && schema.config.mentionCorpusCalibration
     ? await buildMentionCorpusStats(noteIndex.snapshot)
     : undefined;
-  const entityMentionIndex = buildEntityMentionIndex(noteIndex.snapshot, schema, {
-    enabled: schema.config.mentionCorpusCalibration,
-    minNotes: schema.config.mentionCorpusMinNotes,
-    nonCanonicalRatio: schema.config.mentionCorpusNonCanonicalRatio,
-    ...(mentionCorpusStats ? { stats: mentionCorpusStats } : {}),
-  });
+  const entityMentionIndex = wantsMentionSafetyNet
+    ? buildEntityMentionIndex(noteIndex.snapshot, schema, {
+        enabled: schema.config.mentionCorpusCalibration,
+        minNotes: schema.config.mentionCorpusMinNotes,
+        nonCanonicalRatio: schema.config.mentionCorpusNonCanonicalRatio,
+        ...(mentionCorpusStats ? { stats: mentionCorpusStats } : {}),
+      })
+    : undefined;
 
   // Audit each file
   const results: FileAuditResult[] = [];
@@ -245,10 +256,6 @@ export async function runAudit(
   // have no note yet. Aggregation cannot happen per file (the threshold is
   // vault-wide), so it runs here after the per-file loop. Skipped entirely when
   // the caller filtered this issue out, to avoid the extra body reads.
-  const wantFrequentTerm =
-    options.ignoreIssue !== 'frequent-unlinked-term' &&
-    (options.onlyIssue === undefined || options.onlyIssue === 'frequent-unlinked-term');
-
   if (wantFrequentTerm && entityMentionIndex) {
     const accumulator = new FrequentTermAccumulator(entityMentionIndex);
     for (const file of filteredFiles) {

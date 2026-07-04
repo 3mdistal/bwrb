@@ -58,7 +58,10 @@ import {
 } from './types.js';
 import { toMarkdownLink, toWikilink } from '../links.js';
 import { spawnSuccessor, needsSuccessor, CHAIN_NEXT_FIELD } from '../recurrence.js';
-import { maskNonProse } from './unlinked-mention.js';
+import {
+  maskNonProse,
+  shouldSkipNoCasingSignalNameOccurrence,
+} from './unlinked-mention.js';
 import { isBodySectionPresent } from './body-sections.js';
 import {
   readStructuralFrontmatterFromRaw,
@@ -139,14 +142,16 @@ function registerManualReview(
 
 
 /**
- * Apply an `unlinked-mention` auto-fix: rewrite the first unlinked, word-bounded
- * occurrence of the mention surface in the body to a wikilink.
+ * Apply an `unlinked-mention` auto-fix: rewrite the flagged unlinked,
+ * word-bounded occurrence of the mention surface in the body to a wikilink.
  *
- * The fix re-derives the target position from the live body (rather than a
- * stored offset) so it stays correct when multiple mentions in the same file are
- * fixed sequentially — each call re-reads and converges on the next occurrence.
- * Only exact/alias (auto-fixable) mentions reach here; fuzzy/ambiguous mentions
- * are flag-only and never dispatched to a fix.
+ * The detector records the occurrence offset in issue metadata. Prefer that
+ * offset so guarded sentence/list-start occurrences do not get rewritten before
+ * the actual flagged match. If the live body has shifted because another fix in
+ * the same file ran first, fall back to a live search that still applies the
+ * same single-word name position guard (#784). Only exact/alias (auto-fixable)
+ * mentions reach here; fuzzy/ambiguous mentions are flag-only and never
+ * dispatched to a fix.
  */
 async function applyUnlinkedMentionFix(
   schema: LoadedSchema,
@@ -155,6 +160,8 @@ async function applyUnlinkedMentionFix(
 ): Promise<FixResult> {
   const surface = (issue.meta?.['surface'] as string | undefined) ?? (typeof issue.value === 'string' ? issue.value : undefined);
   const replacement = issue.meta?.['replacement'] as string | undefined;
+  const originalOffset = issue.meta?.['offset'];
+  const matchedKind = issue.meta?.['matchedKind'] as 'name' | 'alias' | undefined;
   if (!surface || !replacement) {
     return { file: filePath, issue, action: 'failed', message: 'Missing mention surface/replacement' };
   }
@@ -163,25 +170,36 @@ async function applyUnlinkedMentionFix(
   const body = parsed.body;
 
   // Mask non-prose regions so we never relink inside code/links/existing
-  // wikilinks, then find the first word-bounded occurrence of the surface.
+  // wikilinks.
   const masked = maskNonProse(body);
+  const isEligibleAt = (start: number): boolean =>
+    body.slice(start, start + surface.length) === surface &&
+    masked.slice(start, start + surface.length) === surface &&
+    !shouldSkipNoCasingSignalNameOccurrence(surface, matchedKind, body, start) &&
+    isWordBounded(body, start, surface.length);
+
+  let matchIndex: number | undefined;
+  if (typeof originalOffset === 'number' && isEligibleAt(originalOffset)) {
+    matchIndex = originalOffset;
+  }
+
   const re = new RegExp(`(?<![\\w'])${escapeRegExp(surface)}(?![\\w'])`, 'g');
-  let match: RegExpExecArray | null = null;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(masked)) !== null) {
-    // Confirm the original (unmasked) text at this position is the exact surface.
-    if (body.slice(m.index, m.index + surface.length) === surface) {
-      match = m;
-      break;
+  if (matchIndex === undefined) {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(masked)) !== null) {
+      if (isEligibleAt(m.index)) {
+        matchIndex = m.index;
+        break;
+      }
     }
   }
 
-  if (!match) {
+  if (matchIndex === undefined) {
     return { file: filePath, issue, action: 'skipped', message: `Mention '${surface}' no longer present as plain text` };
   }
 
   const newBody =
-    body.slice(0, match.index) + replacement + body.slice(match.index + surface.length);
+    body.slice(0, matchIndex) + replacement + body.slice(matchIndex + surface.length);
 
   const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
   const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
@@ -192,6 +210,16 @@ async function applyUnlinkedMentionFix(
   }
 
   return { file: filePath, issue, action: 'fixed' };
+}
+
+function isWordBounded(body: string, start: number, length: number): boolean {
+  const before = start > 0 ? body[start - 1] : undefined;
+  const after = body[start + length];
+  return !isMentionWordBoundaryChar(before) && !isMentionWordBoundaryChar(after);
+}
+
+function isMentionWordBoundaryChar(char: string | undefined): boolean {
+  return char !== undefined && /[\w']/.test(char);
 }
 
 /**
