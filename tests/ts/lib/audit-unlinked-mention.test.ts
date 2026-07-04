@@ -152,12 +152,25 @@ describe('unlinked-mention: detectUnlinkedMentions', () => {
       '* Pass site around.',
       '+ Pass site around.',
       '1. Pass site around.',
+      '- [ ] Pass site around.',
+      '- [x] Pass site around.',
+      '* [X] Pass site around.',
+      '1. [ ] Pass site around.',
       '# Pass site around',
       '> Pass site around.',
     ]) {
       const issues = detectUnlinkedMentions(body, 'Notes/Daily.md', index);
       expect(issues, body).toHaveLength(0);
     }
+  });
+
+  it('keeps capitalized single-word name matches mid-sentence inside task-list items', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Pass.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('- [ ] ask Pass for help.', 'Notes/Daily.md', index);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.targetName).toBe('Pass');
   });
 
   it('keeps capitalized single-word name matches mid-sentence', () => {
@@ -913,6 +926,29 @@ describe('unlinked-mention: end-to-end audit + fix', () => {
     await runAutoFix(secondResults, schema, vaultDir, { dryRun: false });
     const afterSecondRun = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
     expect(afterSecondRun).toBe(after);
+  });
+
+  it('auto-fix leaves task-list-start occurrences untouched and links mid-task occurrences', async () => {
+    await writeNote('Notes/Pass.md', '');
+    await writeNote(
+      'Notes/Daily.md',
+      '- [ ] Pass site around.\n- [x] Pass it on\n- [ ] ask Pass for help.'
+    );
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues).toHaveLength(1);
+    expect(daily?.issues[0]?.lineNumber).toBe(3);
+
+    await runAutoFix(results, schema, vaultDir, { dryRun: false });
+    const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(after).toContain('- [ ] Pass site around.');
+    expect(after).toContain('- [x] Pass it on');
+    expect(after).toContain('- [ ] ask [[Pass]] for help.');
   });
 
   it('detects and auto-fixes an exact unlinked mention to a wikilink', async () => {

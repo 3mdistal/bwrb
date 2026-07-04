@@ -1033,7 +1033,8 @@ function isNoCasingSignalPosition(body: string, start: number): boolean {
 
 function isAfterMarkdownLineMarker(beforeOnLine: string): boolean {
   const blockquotePrefix = String.raw`(?:>[ \t]*)*`;
-  const listMarker = String.raw`(?:[-*+]|[0-9]{1,9}[.)])[ \t]+`;
+  const taskCheckbox = String.raw`(?:\[[ xX]\][ \t]+)?`;
+  const listMarker = String.raw`(?:[-*+]|[0-9]{1,9}[.)])[ \t]+${taskCheckbox}`;
   const headingMarker = String.raw`#{1,6}[ \t]+`;
   const markerRe = new RegExp(
     String.raw`^[ \t]{0,3}${blockquotePrefix}(?:${listMarker}|${headingMarker})?$`
