@@ -536,10 +536,14 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
       ? context.relationSourcesByField?.get(relationField)
       : undefined;
     const aliasMap = context.hierarchyData?.aliasMap;
-    const targetNode = canonicalizeAlias(
+    const queryTarget = resolveHierarchyQueryTarget(
       extractNoteNameFromArg(String(args[1] ?? '')),
-      aliasMap
+      context,
+      relationSource
     );
+    const targetNode = queryTarget
+      ? canonicalizeAlias(noteNameFromTarget(queryTarget.target), aliasMap)
+      : null;
     if (!targetNode || !context.hierarchyData) return false;
 
     // Resolve the relation field value(s) to note names. extractLinkTargets
@@ -557,7 +561,7 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
       if (
         hierarchyNodeMatches(
           hierarchyNode(relationTarget, relationTargetPath),
-          targetNode,
+          queryTarget?.path ?? targetNode,
           context.hierarchyData
         )
       ) {
@@ -568,7 +572,7 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
       if (
         ancestorChainContains(
           relationTarget,
-          targetNode,
+          queryTarget?.path ?? targetNode,
           parentMap,
           aliasMap,
           context.hierarchyData,
@@ -581,6 +585,31 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
     return false;
   },
 };
+
+function resolveHierarchyQueryTarget(
+  rawTarget: string | null,
+  context: EvalContext,
+  source: string | string[] | undefined
+): { target: string; path?: string } | null {
+  if (!rawTarget) return null;
+
+  const index = context.hierarchyData?.noteTargetIndex;
+  const schema = context.hierarchyData?.schema;
+  if (!index || !schema) {
+    return { target: rawTarget };
+  }
+
+  const resolved = resolveRelationTarget(index, rawTarget, { schema, source });
+  if (!resolved.resolvedPath) {
+    return null;
+  }
+
+  const path = resolved.resolvedPath.replace(/\.md$/, '');
+  return {
+    target: path,
+    path,
+  };
+}
 
 function resolveHierarchyRelationTarget(
   rawTarget: string,

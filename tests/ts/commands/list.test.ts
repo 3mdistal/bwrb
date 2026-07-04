@@ -1187,6 +1187,99 @@ milestone: "[[Poetry]]"
         expect(result.stdout).toContain('Tasks/Poetry Work.md');
       });
 
+      it('should resolve under() query targets case-insensitively by source type', async () => {
+        const { writeFile } = await import('fs/promises');
+        const { join } = await import('path');
+
+        await writeFile(
+          join(tempVaultDir, 'Milestones', 'Poetry.md'),
+          `---
+type: milestone
+status: raw
+parent: "[[Parent Task]]"
+---
+`
+        );
+        await writeFile(
+          join(tempVaultDir, 'Tasks', 'Canonical Case.md'),
+          `---
+type: task
+status: backlog
+milestone: "[[Poetry]]"
+---
+`
+        );
+        await writeFile(
+          join(tempVaultDir, 'Tasks', 'Lower Case.md'),
+          `---
+type: task
+status: backlog
+milestone: "[[poetry]]"
+---
+`
+        );
+
+        const lowercaseQuery = await runCLI(
+          ['list', 'task', '--where', "under(milestone, '[[poetry]]')", '--output', 'paths'],
+          tempVaultDir
+        );
+
+        expect(lowercaseQuery.exitCode).toBe(0);
+        expect(lowercaseQuery.stdout).toContain('Tasks/Canonical Case.md');
+        expect(lowercaseQuery.stdout).toContain('Tasks/Lower Case.md');
+
+        const exactCaseQuery = await runCLI(
+          ['list', 'task', '--where', "under(milestone, '[[Poetry]]')", '--output', 'paths'],
+          tempVaultDir
+        );
+
+        expect(exactCaseQuery.exitCode).toBe(0);
+        expect(exactCaseQuery.stdout).toContain('Tasks/Canonical Case.md');
+        expect(exactCaseQuery.stdout).toContain('Tasks/Lower Case.md');
+      });
+
+      it('should not guess under() query targets that are ambiguous within the source type', async () => {
+        const { mkdir, writeFile } = await import('fs/promises');
+        const { join } = await import('path');
+
+        await mkdir(join(tempVaultDir, 'Milestones', 'Archive'), { recursive: true });
+        await writeFile(
+          join(tempVaultDir, 'Milestones', 'Poetry.md'),
+          `---
+type: milestone
+status: raw
+parent: "[[Parent Task]]"
+---
+`
+        );
+        await writeFile(
+          join(tempVaultDir, 'Milestones', 'Archive', 'Poetry.md'),
+          `---
+type: milestone
+status: raw
+parent: "[[Standalone Task]]"
+---
+`
+        );
+        await writeFile(
+          join(tempVaultDir, 'Tasks', 'Path Qualified Poetry.md'),
+          `---
+type: task
+status: backlog
+milestone: "[[Milestones/Poetry]]"
+---
+`
+        );
+
+        const result = await runCLI(
+          ['list', 'task', '--where', "under(milestone, '[[poetry]]')", '--output', 'paths'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).not.toContain('Tasks/Path Qualified Poetry.md');
+      });
+
       it('should combine isRoot() with status filter in single expression', async () => {
         const result = await runCLI(
           ['list', 'task', '--where', "isRoot() && status == 'raw'"],
