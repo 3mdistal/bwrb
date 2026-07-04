@@ -7,6 +7,7 @@
 
 import ignore, { type Ignore } from 'ignore';
 import { minimatch } from 'minimatch';
+import { parseDocument } from 'yaml';
 import { readdir, readFile, realpath } from 'fs/promises';
 import { join, basename, relative } from 'path';
 import { existsSync } from 'fs';
@@ -56,6 +57,12 @@ export interface VaultNoteSnapshotEntry {
   path: string;
   relativePath: string;
   frontmatter?: Record<string, unknown>;
+  /**
+   * Type inferred from schema directory ownership. This is intentionally
+   * separate from resolvedType, which remains frontmatter-only for validation
+   * indexes that must not bless typeless notes as typed relation targets.
+   */
+  directoryType?: string;
   resolvedType?: string;
 }
 
@@ -568,9 +575,7 @@ export async function buildVaultNoteSnapshot(
   schema: LoadedSchema,
   vaultDir: string
 ): Promise<VaultNoteSnapshot> {
-  const excluded = getExcludedDirectories(schema);
-  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
-  const allFiles = await collectAllMarkdownFiles(vaultDir, vaultDir, excluded, ignoreMatcher);
+  const allFiles = await discoverFilesForQueryResolution(schema, vaultDir);
 
   const notes: VaultNoteSnapshotEntry[] = [];
 
@@ -578,9 +583,13 @@ export async function buildVaultNoteSnapshot(
     const entry: VaultNoteSnapshotEntry = {
       path: file.path,
       relativePath: file.relativePath,
+      ...(file.expectedType ? { directoryType: file.expectedType } : {}),
     };
 
     try {
+      if (await hasMalformedTopFrontmatter(file.path)) {
+        throw new Error('Malformed frontmatter');
+      }
       const { frontmatter } = await parseNote(file.path);
       entry.frontmatter = frontmatter;
       const resolvedType = resolveTypeFromFrontmatter(schema, frontmatter);
@@ -595,6 +604,15 @@ export async function buildVaultNoteSnapshot(
   }
 
   return { notes };
+}
+
+async function hasMalformedTopFrontmatter(filePath: string): Promise<boolean> {
+  const raw = await readFile(filePath, 'utf-8');
+  const match = raw.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/);
+  if (!match) return false;
+
+  const doc = parseDocument(match[1]!);
+  return doc.errors.length > 0;
 }
 
 /**
@@ -880,6 +898,17 @@ export function filterByPath(
   files: ManagedFile[],
   pathPattern: string
 ): ManagedFile[] {
+  const pattern = normalizePathPattern(pathPattern);
+
+  return files.filter(file => matchesPathPattern(file.relativePath, pattern));
+}
+
+/**
+ * Normalize directory-like path patterns to the glob form used by vault path
+ * filters. Exported so config-driven path filters can share the exact same
+ * matching semantics as `--path`.
+ */
+export function normalizePathPattern(pathPattern: string): string {
   let pattern = pathPattern;
 
   // Normalize directory-like patterns to match .md files
@@ -896,12 +925,17 @@ export function filterByPath(
     pattern = pattern + '/**/*.md';
   }
 
-  return files.filter(file => {
-    // Match against relative path
-    return minimatch(file.relativePath, pattern, {
-      matchBase: true,
-      nocase: true,
-    });
+  return pattern;
+}
+
+/**
+ * Match a vault-relative path against a path pattern normalized by
+ * {@link normalizePathPattern}, or a raw pattern accepted by `--path`.
+ */
+export function matchesPathPattern(relativePath: string, pathPattern: string): boolean {
+  return minimatch(relativePath, normalizePathPattern(pathPattern), {
+    matchBase: true,
+    nocase: true,
   });
 }
 

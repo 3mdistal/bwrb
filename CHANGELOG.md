@@ -4,6 +4,10 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Mention target exclusions** — `config.mention_exclude_types` and `config.mention_exclude_paths` keep imported/reference notes out of the unlinked-mention target, fuzzy suggestion, and frequent-term nudge pools while still scanning those notes as source documents.
+
 ### Fixed
 
 - **Unlinked mention noise** — single-word note names now require exact casing, common English single-word note names are skipped, explicit aliases remain case-insensitive, and fuzzy suggestions use a length-scaled edit-distance cap.
