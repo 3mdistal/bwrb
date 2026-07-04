@@ -57,6 +57,12 @@ export interface VaultNoteSnapshotEntry {
   path: string;
   relativePath: string;
   frontmatter?: Record<string, unknown>;
+  /**
+   * Type inferred from schema directory ownership. This is intentionally
+   * separate from resolvedType, which remains frontmatter-only for validation
+   * indexes that must not bless typeless notes as typed relation targets.
+   */
+  directoryType?: string;
   resolvedType?: string;
 }
 
@@ -418,6 +424,7 @@ export async function buildVaultNoteSnapshot(
     const entry: VaultNoteSnapshotEntry = {
       path: file.path,
       relativePath: file.relativePath,
+      ...(file.expectedType ? { directoryType: file.expectedType } : {}),
     };
 
     try {
@@ -427,10 +434,8 @@ export async function buildVaultNoteSnapshot(
       const { frontmatter } = await parseNote(file.path);
       entry.frontmatter = frontmatter;
       const resolvedType = resolveTypeFromFrontmatter(schema, frontmatter);
-      const fallbackType = file.expectedType;
-      const snapshotType = resolvedType ?? fallbackType;
-      if (snapshotType) {
-        entry.resolvedType = snapshotType;
+      if (resolvedType) {
+        entry.resolvedType = resolvedType;
       }
     } catch {
       // Skip parse metadata for files that can't be parsed.

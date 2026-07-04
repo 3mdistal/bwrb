@@ -605,7 +605,10 @@ describe('unlinked-mention: mention target exclusions', () => {
       const loadedSchema = await loadSchema(vaultDir);
       const snapshot = await buildVaultNoteSnapshot(loadedSchema, vaultDir);
       const index = buildEntityMentionIndex(snapshot, loadedSchema);
+      const typelessNote = snapshot.notes.find((note) => note.relativePath === 'Books/Typeless Tome.md');
 
+      expect(typelessNote?.resolvedType).toBeUndefined();
+      expect(typelessNote?.directoryType).toBe('book');
       expect(index.bySurface.has('typeless tome')).toBe(false);
       expect(index.allNames).not.toContain('Typeless Tome');
       expect(index.excludedSurfaces.has('typeless tome')).toBe(true);

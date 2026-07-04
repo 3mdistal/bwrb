@@ -795,6 +795,7 @@ describe('validation', () => {
             output_dir: 'Tasks',
             fields: {
               milestone: { prompt: 'relation', source: 'milestone' },
+              idea_ref: { prompt: 'relation', source: 'idea' },
               any_ref: { prompt: 'relation', source: 'any' },
             },
           },
@@ -843,6 +844,13 @@ type: idea
         join(tempVaultDir, 'Ideas', 'Only Wrong.md'),
         `---
 type: idea
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Untyped.md'),
+        `---
+title: Directory-owned but typeless
 ---
 `
       );
@@ -942,6 +950,32 @@ type: idea
             expected: ['milestone'],
           }),
         ]);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('does not accept a typeless note as a typed relation target based on directory', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        const result = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          idea_ref: '[[Untyped]]',
+        });
+
+        expect(result.valid).toBe(false);
+        expect(result.errors).toEqual([
+          expect.objectContaining({
+            type: 'invalid_context_source',
+            field: 'idea_ref',
+            value: '[[Untyped]]',
+            targetName: 'Untyped',
+            expectedTypes: ['idea'],
+            expected: ['idea'],
+          }),
+        ]);
+        expect(result.errors[0]).not.toHaveProperty('actualType');
+        expect(result.errors[0].message).toContain('Referenced note not found');
       } finally {
         await rm(tempVaultDir, { recursive: true, force: true });
       }

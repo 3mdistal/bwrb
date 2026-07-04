@@ -246,11 +246,12 @@ export function buildEntityMentionIndex(
 
   for (const note of snapshot.notes) {
     const name = basename(note.relativePath, '.md');
+    const mentionTargetType = getMentionTargetType(note);
 
     if (isExcludedMentionTarget(note, schema)) {
       if (name) registerExcludedSurface(name);
-      if (note.resolvedType && note.frontmatter) {
-        const aliases = getEntityAliases(schema, note.resolvedType, note.frontmatter);
+      if (mentionTargetType && note.frontmatter) {
+        const aliases = getEntityAliases(schema, mentionTargetType, note.frontmatter);
         for (const alias of aliases) {
           registerExcludedSurface(alias);
         }
@@ -303,15 +304,20 @@ function isExcludedMentionTarget(
     return true;
   }
 
-  if (!note.resolvedType || schema.config.mentionExcludeTypes.length === 0) {
+  const mentionTargetType = getMentionTargetType(note);
+  if (!mentionTargetType || schema.config.mentionExcludeTypes.length === 0) {
     return false;
   }
 
-  const resolvedType = schema.types.get(note.resolvedType);
+  const resolvedType = schema.types.get(mentionTargetType);
   if (!resolvedType) return false;
 
   const excludedTypes = new Set(schema.config.mentionExcludeTypes);
   return excludedTypes.has(resolvedType.name) || resolvedType.ancestors.some((ancestor) => excludedTypes.has(ancestor));
+}
+
+function getMentionTargetType(note: VaultNoteSnapshot['notes'][number]): string | undefined {
+  return note.resolvedType ?? note.directoryType;
 }
 
 // ============================================================================
