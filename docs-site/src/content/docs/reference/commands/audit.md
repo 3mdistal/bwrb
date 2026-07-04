@@ -287,6 +287,34 @@ bwrb audit --only unlinked-mention --no-mention-fuzzy
 
 The threshold affects **only** the fuzzy tier. Exact/alias auto-fix and ambiguous flagging are unchanged.
 
+#### Excluding mention targets
+
+Use config exclusions when whole classes of notes should not become
+`unlinked-mention` targets, such as imported books or contacts. Excluded notes
+are still audited as source documents — their bodies can still flag mentions of
+non-excluded entities. Exclusion only controls whether a note contributes its
+own name and aliases to the target index.
+
+- `mention_exclude_types`: type names to exclude. Descendant types are excluded
+  too, so excluding `reference` also excludes a `book` type that extends it.
+- `mention_exclude_paths`: vault-relative path globs to exclude with the same
+  path matching used by `--path`, such as `Imports/**` or `Books/`.
+
+Excluded names and aliases are also left out of fuzzy "did you mean?"
+suggestions. Their known surfaces suppress `frequent-unlinked-term` nudges, so
+bwrb will not suggest creating a new note for an excluded note that already
+exists.
+
+```json
+// .bwrb/schema.json — keep imported references out of mention targets
+{
+  "config": {
+    "mention_exclude_types": ["book", "contact"],
+    "mention_exclude_paths": ["Imports/**"]
+  }
+}
+```
+
 #### Resolving ambiguous mentions interactively (#622)
 
 When a surface matches more than one entity (for example `Mercury` resolving to both a `[[Mercury]]` note and a person aliased `Mercury`), bwrb never guesses. In an interactive `--fix` session (a real TTY), an ambiguous mention now prompts you to **pick a candidate** (or skip / quit):

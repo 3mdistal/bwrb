@@ -203,6 +203,30 @@ describe('config command', () => {
       expect(json.data.value).toEqual(['Archive', 'Templates']);
     });
 
+    it('should reject unknown mention_exclude_types without writing', async () => {
+      const before = await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8');
+      const result = await runCLI(
+        [
+          'config',
+          'edit',
+          'mention_exclude_types',
+          '--json',
+          '["zzz-not-a-type"]',
+          '--output',
+          'json',
+        ],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('config.mention_exclude_types includes unknown type "zzz-not-a-type"');
+
+      const after = await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8');
+      expect(after).toBe(before);
+    });
+
     it('should reject invalid enum value', async () => {
       const result = await runCLI(
         ['config', 'edit', 'link_format', '--json', '"invalid"'],

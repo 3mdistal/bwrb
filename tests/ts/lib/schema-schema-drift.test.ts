@@ -173,6 +173,14 @@ describe('published JSON Schema is generated from Zod (no drift, #666)', () => {
     // schema. Generating from Zod fixes that drift.
     expect(configProps.mention_fuzzy_threshold).toBeDefined();
     expect(configProps.mention_fuzzy_threshold.type).toBe('integer');
+
+    expect(configProps.mention_exclude_types).toBeDefined();
+    expect(configProps.mention_exclude_types.type).toBe('array');
+    expect(configProps.mention_exclude_types.items.type).toBe('string');
+
+    expect(configProps.mention_exclude_paths).toBeDefined();
+    expect(configProps.mention_exclude_paths.type).toBe('array');
+    expect(configProps.mention_exclude_paths.items.type).toBe('string');
   });
 
   // --- #626: config.date_granularity must exist (Zod ConfigSchema.date_granularity) ---

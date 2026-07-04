@@ -52,6 +52,23 @@ function indexFor(
   );
 }
 
+function indexForSchema(
+  loadedSchema: ReturnType<typeof resolveSchema>,
+  notes: Array<{ relativePath: string; frontmatter?: Record<string, unknown>; resolvedType?: string }>
+) {
+  return buildEntityMentionIndex(
+    {
+      notes: notes.map((n) => ({
+        path: n.relativePath,
+        relativePath: n.relativePath,
+        ...(n.frontmatter ? { frontmatter: n.frontmatter } : {}),
+        ...(n.resolvedType ? { resolvedType: n.resolvedType } : {}),
+      })),
+    },
+    loadedSchema
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Candidate extraction (unit)
 // ---------------------------------------------------------------------------
@@ -164,6 +181,37 @@ describe('frequent-unlinked-term: FrequentTermAccumulator', () => {
     const acc = new FrequentTermAccumulator(index, { minMentions: 2, minNotes: 1 });
     acc.addBody('Stevey said this. Stevey said that.', 'a.md');
     expect(acc.finish().find((i) => i.value?.toString().toLowerCase() === 'stevey')).toBeUndefined();
+  });
+
+  it('suppresses terms that match config-excluded mention targets', () => {
+    const loadedSchema = resolveSchema({
+      ...SCHEMA,
+      config: { mention_exclude_types: ['book'] },
+      types: {
+        ...SCHEMA.types,
+        book: {
+          extends: 'meta',
+          output_dir: 'Books',
+          fields: {
+            type: { value: 'book' },
+            aliases: { prompt: 'list', alias: true, list_format: 'yaml-array' },
+          },
+        },
+      },
+    });
+    const index = indexForSchema(loadedSchema, [
+      {
+        relativePath: 'Books/Rust Foundation.md',
+        resolvedType: 'book',
+        frontmatter: { type: 'book', aliases: ['Rust Org'] },
+      },
+    ]);
+
+    const acc = new FrequentTermAccumulator(index, { minMentions: 2, minNotes: 1 });
+    acc.addBody('Rust Foundation appears here. Rust Foundation appears again. Rust Org too. Rust Org twice.', 'a.md');
+    const issues = acc.finish();
+    expect(issues.find((i) => i.value === 'Rust Foundation')).toBeUndefined();
+    expect(issues.find((i) => i.value === 'Rust Org')).toBeUndefined();
   });
 
   it('does not count text inside code/links/wikilinks (reuses #600 masking)', () => {

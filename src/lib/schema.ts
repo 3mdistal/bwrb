@@ -143,6 +143,8 @@ export function resolveSchema(schema: Schema): LoadedSchema {
     type.fields = computeEffectiveFields(types, type, traits);
     type.fieldOrder = computeFieldOrder(types, type, traits);
   }
+
+  validateMentionExcludeTypes(types, schema.config?.mention_exclude_types);
   
   // Fourth pass: add implied parent field for recursive types
   for (const type of types.values()) {
@@ -175,7 +177,7 @@ export function resolveSchema(schema: Schema): LoadedSchema {
   const ownership = buildOwnershipMap(types);
   
   // Sixth pass: resolve configuration with defaults
-  const config = resolveConfig(schema.config);
+  const config = resolveConfig(schema.config, types);
   
   return { raw: schema, types, ownership, config };
 }
@@ -260,6 +262,49 @@ function validateTraits(
         );
       }
     }
+  }
+}
+
+function resolveConfiguredTypeName(
+  types: Map<string, ResolvedType>,
+  typeName: string
+): string | undefined {
+  const direct = types.get(typeName);
+  if (direct) return direct.name;
+
+  // Match the public type lookup behavior for legacy slash notation, e.g.
+  // "objective/task" resolving to the "task" type when its ancestors include
+  // "objective".
+  if (typeName.includes('/')) {
+    const segments = typeName.split('/');
+    const leafName = segments[segments.length - 1]!;
+    const resolved = types.get(leafName);
+    if (resolved) {
+      const ancestors = new Set(resolved.ancestors);
+      const parentSegments = segments.slice(0, -1);
+      if (parentSegments.every(seg => ancestors.has(seg))) return resolved.name;
+    }
+  }
+
+  return undefined;
+}
+
+function validateMentionExcludeTypes(
+  types: Map<string, ResolvedType>,
+  excludeTypes: string[] | undefined
+): void {
+  if (!excludeTypes) return;
+
+  for (const typeName of excludeTypes) {
+    if (resolveConfiguredTypeName(types, typeName)) continue;
+
+    const available = Array.from(types.keys()).join(', ');
+    const suggestion = closeMatchValues(typeName, Array.from(types.keys()), { maxDistance: 3 })[0];
+    throw new Error(
+      `config.mention_exclude_types includes unknown type "${typeName}". ` +
+      `Available types: ${available}` +
+      (suggestion ? `. Did you mean "${suggestion}"?` : '')
+    );
   }
 }
 
@@ -501,7 +546,10 @@ function buildOwnershipMap(types: Map<string, ResolvedType>): OwnershipMap {
  * Resolve configuration with defaults.
  * Falls back to environment variables and sensible defaults.
  */
-function resolveConfig(config: Schema['config']): ResolvedConfig {
+function resolveConfig(
+  config: Schema['config'],
+  types: Map<string, ResolvedType>
+): ResolvedConfig {
   return {
     linkFormat: config?.link_format ?? 'wikilink',
     editor: config?.editor ?? process.env.EDITOR,
@@ -514,6 +562,14 @@ function resolveConfig(config: Schema['config']): ResolvedConfig {
     // Default mirrors DEFAULT_FUZZY_MAX_DISTANCE in audit/unlinked-mention.ts.
     // Inlined to avoid importing the audit module into the schema loader (#622).
     mentionFuzzyThreshold: config?.mention_fuzzy_threshold ?? 2,
+    mentionExcludeTypes: Array.from(
+      new Set(
+        (config?.mention_exclude_types ?? [])
+          .map((typeName) => resolveConfiguredTypeName(types, typeName))
+          .filter((typeName): typeName is string => Boolean(typeName))
+      )
+    ),
+    mentionExcludePaths: config?.mention_exclude_paths ?? [],
   };
 }
 

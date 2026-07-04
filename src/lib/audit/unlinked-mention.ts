@@ -38,6 +38,7 @@
 import { basename } from 'path';
 import type { LoadedSchema } from '../../types/schema.js';
 import type { VaultNoteSnapshot } from '../discovery.js';
+import { matchesPathPattern } from '../discovery.js';
 import { getEntityAliases } from '../schema.js';
 import { levenshteinDistance } from '../levenshtein.js';
 import type { AuditIssue } from './types.js';
@@ -175,6 +176,12 @@ export interface EntityMentionIndex {
   /** All distinct entity names (for the fuzzy "did you mean?" tier). */
   allNames: string[];
   /**
+   * Known-but-excluded surfaces that must not be link targets or fuzzy
+   * suggestions, but should still suppress `frequent-unlinked-term` "create a
+   * note" nudges.
+   */
+  excludedSurfaces: Set<string>;
+  /**
    * Combined word-boundary alternation regex over all known surfaces, or null
    * when the vault exposes no surfaces. Created fresh per scan by the caller via
    * {@link matchSurfaces} (regex carries `lastIndex` state, so it is not reused).
@@ -202,6 +209,7 @@ export function buildEntityMentionIndex(
 ): EntityMentionIndex {
   const bySurface = new Map<string, EntitySurface[]>();
   const allNames: string[] = [];
+  const excludedSurfaces = new Set<string>();
   const exactMatchSurfaceSet = new Set<string>();
 
   const register = (surface: EntitySurface): void => {
@@ -230,8 +238,27 @@ export function buildEntityMentionIndex(
     }
   };
 
+  const registerExcludedSurface = (surface: string): void => {
+    const trimmed = surface.trim();
+    if (trimmed.length < MIN_SURFACE_LENGTH) return;
+    excludedSurfaces.add(trimmed.toLowerCase());
+  };
+
   for (const note of snapshot.notes) {
     const name = basename(note.relativePath, '.md');
+    const mentionTargetType = getMentionTargetType(note);
+
+    if (isExcludedMentionTarget(note, schema)) {
+      if (name) registerExcludedSurface(name);
+      if (mentionTargetType && note.frontmatter) {
+        const aliases = getEntityAliases(schema, mentionTargetType, note.frontmatter);
+        for (const alias of aliases) {
+          registerExcludedSurface(alias);
+        }
+      }
+      continue;
+    }
+
     if (name) {
       const nameSurface: EntitySurface = {
         surface: name,
@@ -266,7 +293,31 @@ export function buildEntityMentionIndex(
       ? surfaces.map((s) => escapeRegExp(s)).join('|')
       : null;
 
-  return { bySurface, allNames, surfacePattern };
+  return { bySurface, allNames, excludedSurfaces, surfacePattern };
+}
+
+function isExcludedMentionTarget(
+  note: VaultNoteSnapshot['notes'][number],
+  schema: LoadedSchema
+): boolean {
+  if (schema.config.mentionExcludePaths.some((pattern) => matchesPathPattern(note.relativePath, pattern))) {
+    return true;
+  }
+
+  const mentionTargetType = getMentionTargetType(note);
+  if (!mentionTargetType || schema.config.mentionExcludeTypes.length === 0) {
+    return false;
+  }
+
+  const resolvedType = schema.types.get(mentionTargetType);
+  if (!resolvedType) return false;
+
+  const excludedTypes = new Set(schema.config.mentionExcludeTypes);
+  return excludedTypes.has(resolvedType.name) || resolvedType.ancestors.some((ancestor) => excludedTypes.has(ancestor));
+}
+
+function getMentionTargetType(note: VaultNoteSnapshot['notes'][number]): string | undefined {
+  return note.resolvedType ?? note.directoryType;
 }
 
 // ============================================================================

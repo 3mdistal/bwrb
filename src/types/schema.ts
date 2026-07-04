@@ -432,6 +432,26 @@ export const ConfigSchema = z.object({
     .describe(
       'Max Levenshtein distance cap for the `unlinked-mention` audit fuzzy ("did you mean?") tier (#622). Integer 0-5; default 2. The effective distance is also length-scaled. 0 disables the fuzzy tier. Overridden per run by `--mention-fuzzy-threshold` / `--no-mention-fuzzy`.'
     ),
+  // Type names to exclude as targets from the mention safety-net index. Notes
+  // whose resolved type is listed, or extends a listed type, are still scanned
+  // as source documents, but their names and aliases are not link targets,
+  // fuzzy suggestions, or frequent-unlinked-term nudges.
+  mention_exclude_types: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Type names to exclude as targets from the mention safety-net index. Notes whose resolved type is listed, or extends a listed type, are still scanned as source documents, but their names and aliases are not link targets, fuzzy suggestions, or frequent-unlinked-term nudges.'
+    ),
+  // Vault-relative glob patterns to exclude as targets from the mention
+  // safety-net index. Matching notes are still scanned as source documents, but
+  // their names and aliases are not link targets, fuzzy suggestions, or
+  // frequent-unlinked-term nudges.
+  mention_exclude_paths: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Vault-relative glob patterns to exclude as targets from the mention safety-net index. Matching notes are still scanned as source documents, but their names and aliases are not link targets, fuzzy suggestions, or frequent-unlinked-term nudges.'
+    ),
 });
 
 // ============================================================================
@@ -599,6 +619,15 @@ export interface ResolvedConfig {
    * this; candidate length also caps the effective distance.
    */
   mentionFuzzyThreshold: number;
+  /**
+   * Canonical type names excluded as mention targets. Descendants of these
+   * types are excluded by the mention index builder.
+   */
+  mentionExcludeTypes: string[];
+  /**
+   * Vault-relative path globs excluded as mention targets.
+   */
+  mentionExcludePaths: string[];
 }
 
 /**
