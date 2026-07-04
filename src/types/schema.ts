@@ -458,6 +458,14 @@ export const ConfigSchema = z.object({
     .describe(
       'Strict non-canonical-case occurrence share threshold for corpus-calibrated commonness damping (#783). Defaults to 0.5, so exactly half non-canonical keeps the surface.'
     ),
+  // First-occurrence-only auto-link mode for `unlinked-mention` fixes (#785).
+  // Detection remains exhaustive; this only limits `audit --fix --auto` writes.
+  mention_link_once: z
+    .boolean()
+    .optional()
+    .describe(
+      'When true, `audit --fix --auto` writes at most one new `unlinked-mention` wikilink per note/target pair, and writes none when the note already contains a wikilink to that target. Defaults to false; overridden per run by `--mention-link-once` / `--no-mention-link-once`.'
+    ),
   // Type names to exclude as targets from the mention safety-net index. Notes
   // whose resolved type is listed, or extends a listed type, are still scanned
   // as source documents, but their names and aliases are not link targets,
@@ -660,6 +668,13 @@ export interface ResolvedConfig {
    * 0.5, so exactly half non-canonical keeps the surface.
    */
   mentionCorpusNonCanonicalRatio: number;
+  /**
+   * When true, `audit --fix --auto` writes at most one new unlinked-mention
+   * wikilink per note/target pair and treats pre-existing wikilinks as covered.
+   * Defaults to false to preserve historical "link every eligible occurrence"
+   * behavior.
+   */
+  mentionLinkOnce: boolean;
   /**
    * Canonical type names excluded as mention targets. Descendants of these
    * types are excluded by the mention index builder.

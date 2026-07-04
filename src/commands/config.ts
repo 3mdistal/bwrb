@@ -89,6 +89,12 @@ const CONFIG_OPTIONS: ConfigOptionMeta[] = [
     description: 'Vault-relative path globs to exclude as targets from unlinked-mention and frequent-term audit suggestions',
     default: [],
   },
+  {
+    key: 'mention_link_once',
+    label: 'Mention Link Once',
+    description: 'Limit audit --fix --auto unlinked-mention writes to one wikilink per note/target pair',
+    default: false,
+  },
 ];
 
 export const configCommand = new Command('config')
@@ -351,6 +357,8 @@ function getConfigValue(config: Partial<Config>, key: keyof Config, vaultDir: st
     case 'mention_exclude_types':
     case 'mention_exclude_paths':
       return [];
+    case 'mention_link_once':
+      return false;
     default:
       return undefined;
   }
@@ -421,6 +429,10 @@ function validateConfigValue(meta: ConfigOptionMeta, value: unknown): void {
       throw new Error(`${String(meta.key)} must be a JSON array of strings`);
     }
   }
+
+  if (meta.key === 'mention_link_once' && typeof value !== 'boolean') {
+    throw new Error(`${String(meta.key)} must be a boolean`);
+  }
 }
 
 async function writeValidatedSchema(
@@ -442,6 +454,10 @@ async function promptConfigOption(meta: ConfigOptionMeta, currentValue: unknown)
 
   if (meta.key === 'mention_exclude_types' || meta.key === 'mention_exclude_paths') {
     return promptStringArray(meta, currentValue);
+  }
+
+  if (meta.key === 'mention_link_once') {
+    return promptBoolean(meta, currentValue);
   }
 
   if (meta.options) {
@@ -471,6 +487,25 @@ async function promptConfigOption(meta: ConfigOptionMeta, currentValue: unknown)
   if (entered === null) return { action: 'keep' };
 
   return { action: 'set', value: entered };
+}
+
+async function promptBoolean(
+  meta: ConfigOptionMeta,
+  currentValue: unknown
+): Promise<ConfigEditResult> {
+  const current = typeof currentValue === 'boolean' ? currentValue : meta.default;
+  const choice = await promptSelection(
+    `${meta.label} (current: ${String(current)}):`,
+    ['(keep current)', 'true', 'false', '(clear)']
+  );
+
+  if (choice === null || choice === '(keep current)') {
+    return { action: 'keep' };
+  }
+  if (choice === '(clear)') {
+    return { action: 'clear' };
+  }
+  return { action: 'set', value: choice === 'true' };
 }
 
 async function promptStringArray(

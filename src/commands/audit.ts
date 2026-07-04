@@ -198,6 +198,14 @@ Examples:
     'unlinked-mention fuzzy "did you mean?" max edit-distance cap (0-5; default from config or 2)'
   )
   .option('--no-mention-fuzzy', 'Disable the unlinked-mention fuzzy "did you mean?" tier')
+  .option(
+    '--mention-link-once',
+    'With --fix --auto: link at most one unlinked mention per note/target pair'
+  )
+  .option(
+    '--no-mention-link-once',
+    'With --fix --auto: link every eligible unlinked mention (overrides config.mention_link_once)'
+  )
   .option('--check-schema-docs', 'Also report schema types/fields that have no description')
   .action(async (target: string | undefined, options: AuditOptions & {
     type?: string;
@@ -280,6 +288,7 @@ Examples:
           mentionFuzzyThreshold = parsed.value;
         }
       }
+      const mentionLinkOnce = options.mentionLinkOnce ?? schema.config.mentionLinkOnce;
 
       if (globalOpts.nonInteractive && fixMode && !autoMode) {
         exitWithValidationError('bwrb audit --fix requires --auto when --non-interactive is set.');
@@ -390,9 +399,17 @@ Examples:
           : undefined;
 
         const fixSummary = autoMode
-          ? await runAutoFix(results, schema, vaultDir, { dryRun: autoFixDryRun, dryRunReason: autoFixDryRunReason })
+          ? await runAutoFix(results, schema, vaultDir, {
+              dryRun: autoFixDryRun,
+              ...(autoFixDryRunReason ? { dryRunReason: autoFixDryRunReason } : {}),
+              mentionLinkOnce,
+            })
           : headlessDryRunPreview
-            ? await runAutoFix(results, schema, vaultDir, { dryRun: true, dryRunReason: 'explicit' })
+            ? await runAutoFix(results, schema, vaultDir, {
+                dryRun: true,
+                dryRunReason: 'explicit',
+                mentionLinkOnce,
+              })
           : await runInteractiveFix(results, schema, vaultDir, { dryRun: dryRunMode });
 
         outputFixResults(fixSummary, autoMode);

@@ -759,6 +759,10 @@ describe('unlinked-mention: end-to-end audit + fix', () => {
     await writeNote('Notes/Source C.md', 'this vault says lumen this way.');
   }
 
+  function countInText(text: string, needle: string): number {
+    return text.split(needle).length - 1;
+  }
+
   it('drops a vault-common lowercase single-word name surface via corpus damping', async () => {
     await writeNote('Notes/Lumen.md', '');
     await seedLowercaseLumenCorpus();
@@ -949,6 +953,280 @@ describe('unlinked-mention: end-to-end audit + fix', () => {
     expect(after).toContain('- [ ] Pass site around.');
     expect(after).toContain('- [x] Pass it on');
     expect(after).toContain('- [ ] ask [[Pass]] for help.');
+  });
+
+  it('link-once auto-fix links only the first eligible occurrence per note and target', async () => {
+    await writeNote('Notes/Builder.md', '');
+    await writeNote(
+      'Notes/Daily.md',
+      'I tested Builder today.\nWe saw Builder still needs polish.\nI think Builder shipped anyway.'
+    );
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues.filter((i) => i.targetName === 'Builder')).toHaveLength(3);
+
+    const summary = await runAutoFix(results, schema, vaultDir, {
+      dryRun: false,
+      mentionLinkOnce: true,
+    });
+    const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(summary.fixed).toBe(1);
+    expect(summary.skipped).toBe(2);
+    expect(summary.linkOnceSkipped).toBe(2);
+    expect(after).toContain('I tested [[Builder]] today.');
+    expect(countInText(after, '[[Builder]]')).toBe(1);
+    expect(after).toContain('We saw Builder still needs polish.');
+    expect(after).toContain('I think Builder shipped anyway.');
+  });
+
+  it('link-once treats a pre-existing wikilink to the target as covered', async () => {
+    await writeNote('Notes/Builder.md', '');
+    await writeNote(
+      'Notes/Daily.md',
+      'Context: [[Builder|the Builder system]].\nLater Builder appears again.\nThen Builder appears twice.'
+    );
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues.filter((i) => i.targetName === 'Builder')).toHaveLength(2);
+
+    const summary = await runAutoFix(results, schema, vaultDir, {
+      dryRun: false,
+      mentionLinkOnce: true,
+    });
+    const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(summary.fixed).toBe(0);
+    expect(summary.skipped).toBe(2);
+    expect(summary.linkOnceSkipped).toBe(2);
+    expect(after).toContain('Context: [[Builder|the Builder system]].');
+    expect(after).toContain('Later Builder appears again.');
+    expect(after).toContain('Then Builder appears twice.');
+  });
+
+  it('link-once treats a pre-existing prose wikilink to the target as covered', async () => {
+    await writeNote('Notes/Builder.md', '');
+    await writeNote(
+      'Notes/Daily.md',
+      'Context: [[Builder]].\nLater Builder appears again.\nThen Builder appears twice.'
+    );
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues.filter((i) => i.targetName === 'Builder')).toHaveLength(2);
+
+    const summary = await runAutoFix(results, schema, vaultDir, {
+      dryRun: false,
+      mentionLinkOnce: true,
+    });
+    const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(summary.fixed).toBe(0);
+    expect(summary.skipped).toBe(2);
+    expect(summary.linkOnceSkipped).toBe(2);
+    expect(countInText(after, '[[Builder]]')).toBe(1);
+    expect(after).toContain('Later Builder appears again.');
+    expect(after).toContain('Then Builder appears twice.');
+  });
+
+  it('link-once ignores wikilinks inside fenced code when deciding existing coverage', async () => {
+    await writeNote('Notes/Builder.md', '');
+    await writeNote(
+      'Notes/Daily.md',
+      '```md\n[[Builder]]\n```\nLater Builder appears again.\nThen Builder appears twice.'
+    );
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues.filter((i) => i.targetName === 'Builder')).toHaveLength(2);
+
+    const summary = await runAutoFix(results, schema, vaultDir, {
+      dryRun: false,
+      mentionLinkOnce: true,
+    });
+    const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(summary.fixed).toBe(1);
+    expect(summary.skipped).toBe(1);
+    expect(summary.linkOnceSkipped).toBe(1);
+    expect(after).toContain('```md\n[[Builder]]\n```');
+    expect(after).toContain('Later [[Builder]] appears again.');
+    expect(after).toContain('Then Builder appears twice.');
+  });
+
+  it('link-once ignores wikilinks inside inline code when deciding existing coverage', async () => {
+    await writeNote('Notes/Builder.md', '');
+    await writeNote(
+      'Notes/Daily.md',
+      'Example: `[[Builder]]`.\nLater Builder appears again.\nThen Builder appears twice.'
+    );
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues.filter((i) => i.targetName === 'Builder')).toHaveLength(2);
+
+    const summary = await runAutoFix(results, schema, vaultDir, {
+      dryRun: false,
+      mentionLinkOnce: true,
+    });
+    const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(summary.fixed).toBe(1);
+    expect(summary.skipped).toBe(1);
+    expect(summary.linkOnceSkipped).toBe(1);
+    expect(after).toContain('Example: `[[Builder]]`.');
+    expect(after).toContain('Later [[Builder]] appears again.');
+    expect(after).toContain('Then Builder appears twice.');
+  });
+
+  it('link-once gives each distinct target one link in the same note', async () => {
+    await writeNote('Notes/Builder.md', '');
+    await writeFile(
+      join(vaultDir, 'People', 'Grace Hopper.md'),
+      `---\ntype: person\n---\n`
+    );
+    await writeNote(
+      'Notes/Daily.md',
+      'Today Builder met Grace Hopper.\nThen Builder followed up.\nLater Grace Hopper replied.'
+    );
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const summary = await runAutoFix(results, schema, vaultDir, {
+      dryRun: false,
+      mentionLinkOnce: true,
+    });
+    const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(summary.fixed).toBe(2);
+    expect(summary.skipped).toBe(2);
+    expect(summary.linkOnceSkipped).toBe(2);
+    expect(after).toContain('Today [[Builder]] met [[Grace Hopper]].');
+    expect(countInText(after, '[[Builder]]')).toBe(1);
+    expect(countInText(after, '[[Grace Hopper]]')).toBe(1);
+  });
+
+  it('link-once does not choose guarded sentence/list-start occurrences before the first eligible occurrence', async () => {
+    await writeNote('Notes/Pass.md', '');
+    await writeNote(
+      'Notes/Daily.md',
+      'Pass site around.\n- Pass it on\n...\nI used Pass today.\nThen Pass was useful again.'
+    );
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues.map((i) => i.lineNumber)).toEqual([4, 5]);
+
+    const summary = await runAutoFix(results, schema, vaultDir, {
+      dryRun: false,
+      mentionLinkOnce: true,
+    });
+    const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(summary.fixed).toBe(1);
+    expect(summary.linkOnceSkipped).toBe(1);
+    expect(after).toContain('Pass site around.');
+    expect(after).toContain('- Pass it on');
+    expect(after).toContain('I used [[Pass]] today.');
+    expect(after).toContain('Then Pass was useful again.');
+  });
+
+  it('link-once is idempotent on re-run', async () => {
+    await writeNote('Notes/Builder.md', '');
+    await writeNote('Notes/Daily.md', 'First Builder one.\nSecond Builder two.');
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    await runAutoFix(results, schema, vaultDir, {
+      dryRun: false,
+      mentionLinkOnce: true,
+    });
+    const afterFirst = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+
+    const secondResults = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const secondSummary = await runAutoFix(secondResults, schema, vaultDir, {
+      dryRun: false,
+      mentionLinkOnce: true,
+    });
+    const afterSecond = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(secondSummary.fixed).toBe(0);
+    expect(secondSummary.linkOnceSkipped).toBe(1);
+    expect(afterSecond).toBe(afterFirst);
+  });
+
+  it('default auto-fix behavior still links every eligible occurrence', async () => {
+    await writeNote('Notes/Builder.md', '');
+    await writeNote('Notes/Daily.md', 'First Builder one.\nSecond Builder two.\nThird Builder three.');
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const summary = await runAutoFix(results, schema, vaultDir, { dryRun: false });
+    const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(summary.fixed).toBe(3);
+    expect(summary.linkOnceSkipped).toBeUndefined();
+    expect(countInText(after, '[[Builder]]')).toBe(3);
+  });
+
+  it('link-once dry-run reports the same fix/skip counts as execute without writing', async () => {
+    await writeNote('Notes/Builder.md', '');
+    await writeNote('Notes/Daily.md', 'First Builder one.\nSecond Builder two.\nThird Builder three.');
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const dryRunSummary = await runAutoFix(results, schema, vaultDir, {
+      dryRun: true,
+      mentionLinkOnce: true,
+    });
+    const afterDryRun = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(dryRunSummary.fixed).toBe(1);
+    expect(dryRunSummary.skipped).toBe(2);
+    expect(dryRunSummary.linkOnceSkipped).toBe(2);
+    expect(afterDryRun).toContain('First Builder one.');
+    expect(afterDryRun).not.toContain('[[Builder]]');
+
+    const executeSummary = await runAutoFix(results, schema, vaultDir, {
+      dryRun: false,
+      mentionLinkOnce: true,
+    });
+    const afterExecute = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(executeSummary.fixed).toBe(dryRunSummary.fixed);
+    expect(executeSummary.skipped).toBe(dryRunSummary.skipped);
+    expect(executeSummary.linkOnceSkipped).toBe(dryRunSummary.linkOnceSkipped);
+    expect(countInText(afterExecute, '[[Builder]]')).toBe(1);
   });
 
   it('detects and auto-fixes an exact unlinked mention to a wikilink', async () => {

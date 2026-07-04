@@ -56,9 +56,10 @@ import {
   type FixSummary,
   type FixContext,
 } from './types.js';
-import { toMarkdownLink, toWikilink } from '../links.js';
+import { toMarkdownLink, toWikilink, wikilinkTargetBasename } from '../links.js';
 import { spawnSuccessor, needsSuccessor, CHAIN_NEXT_FIELD } from '../recurrence.js';
 import {
+  maskCodeSpans,
   maskNonProse,
   shouldSkipNoCasingSignalNameOccurrence,
 } from './unlinked-mention.js';
@@ -220,6 +221,47 @@ function isWordBounded(body: string, start: number, length: number): boolean {
 
 function isMentionWordBoundaryChar(char: string | undefined): boolean {
   return char !== undefined && /[\w']/.test(char);
+}
+
+function normalizeMentionTargetKey(target: string): string {
+  return target.trim().toLowerCase();
+}
+
+function getUnlinkedMentionTargetKey(issue: AuditIssue): string | undefined {
+  if (typeof issue.targetName === 'string' && issue.targetName.trim().length > 0) {
+    return normalizeMentionTargetKey(issue.targetName);
+  }
+
+  const replacement = issue.meta?.['replacement'];
+  if (typeof replacement === 'string') {
+    const basenameTarget = wikilinkTargetBasename(replacement);
+    if (basenameTarget.length > 0) return normalizeMentionTargetKey(basenameTarget);
+  }
+
+  return undefined;
+}
+
+async function readExistingWikilinkTargetKeys(filePath: string): Promise<Set<string>> {
+  const raw = await readFile(filePath, 'utf-8');
+  // Link-once coverage follows the detector's prose philosophy for code:
+  // wikilinks inside fenced or inline code are examples, not real graph edges.
+  // Frontmatter is intentionally left visible; relation fields are genuine
+  // note-to-target links, so they count as existing coverage for the target.
+  const linkCoverageSource = maskCodeSpans(raw);
+  const keys = new Set<string>();
+  const wikilinkRe = /\[\[([^\]]+)\]\]/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = wikilinkRe.exec(linkCoverageSource)) !== null) {
+    const inner = match[1];
+    if (!inner) continue;
+    const basenameTarget = wikilinkTargetBasename(inner);
+    if (basenameTarget.length > 0) {
+      keys.add(normalizeMentionTargetKey(basenameTarget));
+    }
+  }
+
+  return keys;
 }
 
 /**
@@ -1062,10 +1104,15 @@ export async function runAutoFix(
   results: FileAuditResult[],
   schema: LoadedSchema,
   vaultDir: string,
-  options?: { dryRun?: boolean; dryRunReason?: FixSummary['dryRunReason'] }
+  options?: {
+    dryRun?: boolean;
+    dryRunReason?: FixSummary['dryRunReason'];
+    mentionLinkOnce?: boolean;
+  }
 ): Promise<FixSummary> {
   const dryRun = options?.dryRun ?? false;
   const dryRunReason = dryRun ? options?.dryRunReason : undefined;
+  const mentionLinkOnce = options?.mentionLinkOnce ?? false;
   dryRunStorage.enterWith(dryRun);
   
   console.log(chalk.bold('Auditing vault...\n'));
@@ -1073,6 +1120,7 @@ export async function runAutoFix(
 
   let fixed = 0;
   let skipped = 0;
+  let linkOnceSkipped = 0;
   let failed = 0;
   const manualReviewNeeded: { file: string; issue: AuditIssue }[] = [];
   const resolvedNonFixable = new Set<AuditIssue>();
@@ -1084,6 +1132,9 @@ export async function runAutoFix(
   for (const result of results) {
     const fixableIssues = result.issues.filter(i => i.autoFixable);
     const nonFixableIssues = result.issues.filter(i => !i.autoFixable);
+    const linkOnceCoveredTargets = mentionLinkOnce
+      ? await readExistingWikilinkTargetKeys(result.path)
+      : undefined;
 
 
     // Handle wrong-directory issues
@@ -1720,12 +1771,24 @@ export async function runAutoFix(
       } else if (issue.code === 'unlinked-mention') {
         // Only exact/alias mentions are auto-fixable (fuzzy/ambiguous are
         // flag-only and never reach here, since autoFixable is false on them).
+        const linkOnceTargetKey = linkOnceCoveredTargets
+          ? getUnlinkedMentionTargetKey(issue)
+          : undefined;
+        if (linkOnceCoveredTargets && linkOnceTargetKey && linkOnceCoveredTargets.has(linkOnceTargetKey)) {
+          skipped++;
+          linkOnceSkipped++;
+          continue;
+        }
+
         const fixResult = await applyFix(schema, result.path, issue);
         if (fixResult.action === 'fixed') {
           const replacement = (issue.meta?.['replacement'] as string | undefined) ?? '';
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.green(`    ✓ Linked '${String(issue.value)}' → ${replacement}`));
           fixed++;
+          if (linkOnceCoveredTargets && linkOnceTargetKey) {
+            linkOnceCoveredTargets.add(linkOnceTargetKey);
+          }
         } else if (fixResult.action === 'skipped') {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
@@ -1818,6 +1881,7 @@ export async function runAutoFix(
     ...(dryRunReason ? { dryRunReason } : {}),
     fixed,
     skipped,
+    ...(linkOnceSkipped > 0 ? { linkOnceSkipped } : {}),
     failed,
     remaining: manualReviewNeeded.length,
   };

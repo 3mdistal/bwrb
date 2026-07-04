@@ -174,6 +174,9 @@ describe('published JSON Schema is generated from Zod (no drift, #666)', () => {
     expect(configProps.mention_fuzzy_threshold).toBeDefined();
     expect(configProps.mention_fuzzy_threshold.type).toBe('integer');
 
+    expect(configProps.mention_link_once).toBeDefined();
+    expect(configProps.mention_link_once.type).toBe('boolean');
+
     expect(configProps.mention_exclude_types).toBeDefined();
     expect(configProps.mention_exclude_types.type).toBe('array');
     expect(configProps.mention_exclude_types.items.type).toBe('string');
