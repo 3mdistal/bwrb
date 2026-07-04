@@ -326,6 +326,48 @@ describe('query', () => {
 
         expect(result).toHaveLength(0);
       });
+
+      it('resolves same-name relation targets by the field source type', async () => {
+        const created: string[] = [];
+        const writeNote = async (
+          dir: string,
+          name: string,
+          fm: string
+        ): Promise<void> => {
+          const path = join(vaultDir, dir, `${name}.md`);
+          await mkdir(join(vaultDir, dir), { recursive: true });
+          await writeFile(path, `---\n${fm}\n---\n`);
+          created.push(path);
+        };
+
+        try {
+          await writeNote('Ideas', 'wrong-root', 'type: idea\nstatus: raw');
+          await writeNote('Ideas', 'Poetry', 'type: idea\nstatus: raw\nparent: "[[wrong-root]]"');
+          await writeNote(
+            'Objectives/Milestones',
+            'Poetry',
+            'type: milestone\nstatus: backlog\nparent: "[[career]]"'
+          );
+
+          const files = makeFiles([
+            {
+              path: 'Objectives/Tasks/Poetry Task.md',
+              fm: { type: 'task', status: 'backlog', milestone: '"[[Poetry]]"' },
+            },
+          ]);
+
+          const result = await applyFrontmatterFilters(files, {
+            whereExpressions: ["under(milestone, '[[career]]')"],
+            vaultDir,
+            schema,
+            typePath: 'task',
+          });
+
+          expect(result).toHaveLength(1);
+        } finally {
+          await Promise.all(created.map(p => rm(p, { force: true })));
+        }
+      });
     });
 
     describe('isChildOf / isDescendantOf full-vault ancestor resolution (#709)', () => {

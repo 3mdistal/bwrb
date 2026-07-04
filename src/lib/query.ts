@@ -3,13 +3,18 @@ import type { LoadedSchema } from '../types/schema.js';
 import {
   getAllFieldsForType,
   getEntityAliases,
+  getFieldsForType,
   getType,
   resolveTypeFromFrontmatter,
 } from './schema.js';
 import { matchesExpression, buildEvalContext, type HierarchyData } from './expression.js';
 import { collectFrontmatterKeys, normalizeWhereExpressions } from './where-normalize.js';
 import { extractLinkTarget } from './links.js';
-import { buildVaultNoteSnapshot, type VaultNoteSnapshot } from './discovery.js';
+import {
+  buildVaultNoteSnapshot,
+  deriveNoteTargetIndex,
+  type VaultNoteSnapshot,
+} from './discovery.js';
 
 /**
  * Validate that a field name is valid for a type.
@@ -297,6 +302,30 @@ async function augmentHierarchyDataFromVault(
   // operators can canonicalize aliased values and query nodes (see
   // HierarchyData.aliasMap) without re-reading the vault.
   hierarchyData.aliasMap = buildVaultAliasMap(options.schema, snapshot);
+  hierarchyData.noteTargetIndex = deriveNoteTargetIndex(snapshot, options.schema);
+  hierarchyData.schema = options.schema;
+}
+
+function getRelationSourcesForType(
+  schema: LoadedSchema | undefined,
+  typeName: string | undefined,
+  cache: Map<string, Map<string, string | string[] | undefined>>
+): Map<string, string | string[] | undefined> | undefined {
+  if (!schema || !typeName) return undefined;
+
+  const cached = cache.get(typeName);
+  if (cached) return cached;
+
+  const relationSources = new Map<string, string | string[] | undefined>();
+  const fields = getFieldsForType(schema, typeName);
+  for (const [fieldName, field] of Object.entries(fields)) {
+    if (field.prompt === 'relation') {
+      relationSources.set(fieldName, field.source);
+    }
+  }
+
+  cache.set(typeName, relationSources);
+  return relationSources;
 }
 
 function buildUniquePathByName(snapshot: VaultNoteSnapshot): Map<string, string> {
@@ -558,10 +587,19 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
     }
   }
 
+  const relationSourceCache = new Map<string, Map<string, string | string[] | undefined>>();
   for (const file of files) {
     // Apply expression filters (--where style)
     if (expressionPairs.length > 0) {
       const context = await buildEvalContext(file.path, vaultDir, file.frontmatter);
+      const relationType = resolveHierarchyType(file.frontmatter, {
+        ...(schema ? { schema } : {}),
+        ...(typePath ? { typePath } : {}),
+      });
+      const relationSources = getRelationSourcesForType(schema, relationType, relationSourceCache);
+      if (relationSources) {
+        context.relationSourcesByField = relationSources;
+      }
       // Add hierarchy data to context if available
       if (hierarchyData) {
         context.hierarchyData = hierarchyData;

@@ -795,8 +795,18 @@ describe('validation', () => {
             output_dir: 'Tasks',
             fields: {
               milestone: { prompt: 'relation', source: 'milestone' },
+              subject: { prompt: 'relation', source: 'entity' },
               any_ref: { prompt: 'relation', source: 'any' },
             },
+          },
+          entity: {
+            output_dir: 'Entities',
+            fields: {},
+          },
+          person: {
+            extends: 'entity',
+            output_dir: 'People',
+            fields: {},
           },
           milestone: {
             output_dir: 'Milestones',
@@ -814,6 +824,8 @@ describe('validation', () => {
       } as unknown as Schema);
 
       await mkdir(join(tempVaultDir, 'Tasks'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Entities'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'People'), { recursive: true });
       await mkdir(join(tempVaultDir, 'Milestones'), { recursive: true });
       await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
       await writeFile(
@@ -829,6 +841,13 @@ aliases:
         join(tempVaultDir, 'Milestones', 'Shared.md'),
         `---
 type: milestone
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'People', 'Ada.md'),
+        `---
+type: person
 ---
 `
       );
@@ -913,6 +932,55 @@ type: idea
         const result = await validateContextFields(relationSchema, tempVaultDir, 'task', {
           type: 'task',
           milestone: '[[Shared]]',
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('reports ambiguity when multiple same-source candidates share a bare name', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        await mkdir(join(tempVaultDir, 'Milestones', 'Archive'), { recursive: true });
+        await writeFile(
+          join(tempVaultDir, 'Milestones', 'Archive', 'Shared.md'),
+          `---
+type: milestone
+---
+`
+        );
+
+        const result = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          milestone: '[[Shared]]',
+        });
+
+        expect(result.valid).toBe(false);
+        expect(result.errors).toEqual([
+          expect.objectContaining({
+            type: 'invalid_context_source',
+            field: 'milestone',
+            value: '[[Shared]]',
+            targetName: 'Shared',
+            expectedTypes: ['milestone'],
+          }),
+        ]);
+        expect(result.errors[0].message).toContain('Ambiguous relation target');
+        expect(result.errors[0].message).toContain('path-qualify');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('accepts descendant candidates when the source is a base type', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        const result = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          subject: '[[Ada]]',
         });
 
         expect(result.valid).toBe(true);

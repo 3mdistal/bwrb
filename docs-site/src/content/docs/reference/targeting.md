@@ -174,7 +174,11 @@ Notes:
   **any** target is under the node.
 - **Resolution scope.** `under` resolves relation targets and their ancestors
   across the **whole vault**, so the target notes do not need to share the
-  filtered type.
+  filtered type. When the relation field has a `source` constraint, bare
+  same-name targets are resolved by that source type before walking the target's
+  ancestor chain; cross-type name collisions are ignored when exactly one target
+  matches the source type. Multiple matching source-type notes remain ambiguous
+  and should be path-qualified.
 - **Alias-aware.** `under` canonicalizes aliases (see
   [Schema](/concepts/schema/)) on **both sides** — an aliased relation value (`context: "[[BuilderProject]]"` where
   `BuilderProject` is an alias of `Builder`) and an aliased query node

@@ -1,10 +1,16 @@
 import type { LoadedSchema, Field } from '../types/schema.js';
-import { getFieldsForType, getDescendants, getType, getFieldOptions, resolveDateGranularity } from './schema.js';
+import { getFieldsForType, getFieldOptions, resolveDateGranularity } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { extractWikilinkTarget } from './links.js';
 import { levenshteinDistance } from './levenshtein.js';
 import { isBlankScalar } from './emptiness.js';
-import { buildVaultNoteIndex, type VaultNoteIndex } from './discovery.js';
+import {
+  buildVaultNoteIndex,
+  getRelationSourceTypes,
+  relationCandidateMatchesSource,
+  resolveRelationTarget,
+  type VaultNoteIndex,
+} from './discovery.js';
 import {
   expandStaticValue,
   parseDate,
@@ -877,16 +883,12 @@ async function validateSingleContextValue(
     return null;
   }
 
-  // Build list of valid types based on source constraint
-  const validTypes = new Set<string>();
-  
-  // Handle array sources (e.g., ["chapter", "scene"] for recursive + extends)
   const sources = Array.isArray(source) ? source : [source];
   
   // Check for "any" in sources
   if (sources.includes('any')) {
-    const candidates = noteIndex.noteTargetIndex.targetToPaths.get(targetName.toLowerCase()) ?? [];
-    if (candidates.length > 0) {
+    const resolved = resolveRelationTarget(noteIndex.noteTargetIndex, targetName);
+    if (resolved.candidates.length > 0) {
       return null;
     }
 
@@ -900,29 +902,39 @@ async function validateSingleContextValue(
     };
   }
 
-  // Build set of valid types from all sources + their descendants
-  for (const src of sources) {
-    // Check if source type exists
-    const sourceType = getType(schema, src);
-    if (!sourceType) {
-      // Invalid source type in schema - skip this source
-      continue;
-    }
-
-    // Add source + all descendants
-    validTypes.add(src);
-    for (const descendant of getDescendants(schema, src)) {
-      validTypes.add(descendant);
-    }
-  }
+  const validTypes = getRelationSourceTypes(schema, source);
   
   // If no valid source types were found, skip validation
   if (validTypes.size === 0) {
     return null;
   }
 
-  const candidates = noteIndex.noteTargetIndex.targetToPaths.get(targetName.toLowerCase()) ?? [];
-  const candidateTypes = candidates
+  const resolved = resolveRelationTarget(noteIndex.noteTargetIndex, targetName, {
+    schema,
+    source,
+  });
+
+  if (
+    resolved.resolution === 'unique' &&
+    resolved.resolvedPath &&
+    relationCandidateMatchesSource(schema, noteIndex.noteTargetIndex, resolved.resolvedPath, source)
+  ) {
+    return null;
+  }
+
+  if (resolved.resolution === 'ambiguous' && resolved.sourceCandidates.length > 1) {
+    return {
+      type: 'invalid_context_source',
+      field: fieldName,
+      value,
+      message: `Ambiguous relation target "${targetName}" for "${fieldName}"; path-qualify one of ${resolved.sourceCandidates.join(', ')}`,
+      targetName,
+      expectedTypes: Array.from(validTypes),
+      expected: Array.from(validTypes),
+    };
+  }
+
+  const candidateTypes = resolved.candidates
     .map((candidatePath) => {
       const pathKey = candidatePath.replace(/\.md$/, '');
       return {
@@ -931,10 +943,6 @@ async function validateSingleContextValue(
       };
     })
     .filter((candidate): candidate is { path: string; type: string } => Boolean(candidate.type));
-
-  if (candidateTypes.some((candidate) => validTypes.has(candidate.type))) {
-    return null;
-  }
 
   const wrongTypeCandidate = candidateTypes[0];
   if (wrongTypeCandidate) {
