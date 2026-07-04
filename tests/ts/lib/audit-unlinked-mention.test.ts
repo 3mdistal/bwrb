@@ -114,10 +114,90 @@ describe('unlinked-mention: detectUnlinkedMentions', () => {
     const lower = detectUnlinkedMentions('orion is bright tonight.', 'Notes/Daily.md', index);
     expect(lower).toHaveLength(0);
 
-    const canonical = detectUnlinkedMentions('Orion is bright tonight.', 'Notes/Daily.md', index);
+    const canonical = detectUnlinkedMentions('I saw Orion tonight.', 'Notes/Daily.md', index);
     expect(canonical).toHaveLength(1);
     expect(canonical[0]!.autoFixable).toBe(true);
     expect(canonical[0]!.targetName).toBe('Orion');
+  });
+
+  it('skips capitalized single-word name matches at the start of a body', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Pass.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('Pass site around in soft launch.', 'Notes/Daily.md', index);
+    expect(issues).toHaveLength(0);
+  });
+
+  it('skips capitalized single-word name matches after sentence punctuation', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Pass.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    for (const body of [
+      'Soft launch is ready. Pass site around.',
+      'Soft launch is ready! Pass site around.',
+      'Soft launch is ready? Pass site around.',
+      'Soft launch is ready." Pass site around.',
+    ]) {
+      const issues = detectUnlinkedMentions(body, 'Notes/Daily.md', index);
+      expect(issues, body).toHaveLength(0);
+    }
+  });
+
+  it('skips capitalized single-word name matches at markdown list and heading starts', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Pass.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    for (const body of [
+      '- Pass site around.',
+      '* Pass site around.',
+      '+ Pass site around.',
+      '1. Pass site around.',
+      '- [ ] Pass site around.',
+      '- [x] Pass site around.',
+      '* [X] Pass site around.',
+      '1. [ ] Pass site around.',
+      '# Pass site around',
+      '> Pass site around.',
+    ]) {
+      const issues = detectUnlinkedMentions(body, 'Notes/Daily.md', index);
+      expect(issues, body).toHaveLength(0);
+    }
+  });
+
+  it('keeps capitalized single-word name matches mid-sentence inside task-list items', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Pass.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('- [ ] ask Pass for help.', 'Notes/Daily.md', index);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.targetName).toBe('Pass');
+  });
+
+  it('keeps capitalized single-word name matches mid-sentence', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Pass.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('We should use Pass for soft launch.', 'Notes/Daily.md', index);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.targetName).toBe('Pass');
+  });
+
+  it('does not position-skip lowercase-named single-word surfaces', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/quartz.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('quartz starts the line.', 'Notes/Daily.md', index);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.targetName).toBe('quartz');
+  });
+
+  it('does not position-skip multi-word name surfaces', () => {
+    const index = indexFor([
+      { relativePath: 'Notes/Pass Site.md', resolvedType: 'note', frontmatter: { type: 'note' } },
+    ]);
+    const issues = detectUnlinkedMentions('Pass Site starts the line.', 'Notes/Daily.md', index);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.targetName).toBe('Pass Site');
   });
 
   it('keeps multi-word note-name mentions case-insensitive', () => {
@@ -667,6 +747,208 @@ describe('unlinked-mention: end-to-end audit + fix', () => {
 
   afterEach(async () => {
     await rm(vaultDir, { recursive: true, force: true });
+  });
+
+  async function writeNote(relativePath: string, body: string, type = 'note'): Promise<void> {
+    await writeFile(join(vaultDir, relativePath), `---\ntype: ${type}\n---\n${body}\n`);
+  }
+
+  async function seedLowercaseLumenCorpus(): Promise<void> {
+    await writeNote('Notes/Source A.md', 'the lumen count is ordinary prose.');
+    await writeNote('Notes/Source B.md', 'another lumen appears in a sentence.');
+    await writeNote('Notes/Source C.md', 'this vault says lumen this way.');
+  }
+
+  it('drops a vault-common lowercase single-word name surface via corpus damping', async () => {
+    await writeNote('Notes/Lumen.md', '');
+    await seedLowercaseLumenCorpus();
+    await writeNote('Notes/Daily.md', 'I mentioned Lumen in the middle of a sentence.');
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues.some((i) => i.targetName === 'Lumen')).toBeFalsy();
+  });
+
+  it('keeps a Builder-like single-word name when the vault uses canonical casing', async () => {
+    await writeNote('Notes/Builder.md', '');
+    await writeNote('Notes/Source A.md', 'Builder shipped the page.');
+    await writeNote('Notes/Source B.md', 'I tested Builder again.');
+    await writeNote('Notes/Source C.md', 'The Builder flow is stable.');
+    await writeNote('Notes/Daily.md', 'I mentioned Builder in the middle of a sentence.');
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues.some((i) => i.targetName === 'Builder')).toBe(true);
+  });
+
+  it('keeps declared aliases linkable even when the matching name surface is corpus-damped', async () => {
+    await writeFile(
+      join(vaultDir, 'People', 'Lumen.md'),
+      `---\ntype: person\naliases:\n  - lumen\n---\n`
+    );
+    await seedLowercaseLumenCorpus();
+    await writeNote('Notes/Daily.md', 'I mentioned lumen in the middle of a sentence.');
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    const issue = daily?.issues.find((i) => i.targetName === 'Lumen');
+    expect(issue).toBeDefined();
+    expect(issue?.meta?.['matchedKind']).toBe('alias');
+    expect(issue?.meta?.['replacement']).toBe('[[Lumen|lumen]]');
+  });
+
+  it('keeps a surface at the configured non-canonical ratio boundary', async () => {
+    const schemaWithBoundaryRatio: Schema = {
+      ...SCHEMA,
+      config: { mention_corpus_noncanonical_ratio: 0.75 },
+    };
+    await writeFile(
+      join(vaultDir, '.bwrb', 'schema.json'),
+      JSON.stringify(schemaWithBoundaryRatio, null, 2)
+    );
+    await writeNote('Notes/Lumen.md', '');
+    await seedLowercaseLumenCorpus();
+    await writeNote('Notes/Daily.md', 'I mentioned Lumen in the middle of a sentence.');
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues.some((i) => i.targetName === 'Lumen')).toBe(true);
+  });
+
+  it('keeps a surface below the configured distinct-note threshold', async () => {
+    const schemaWithHigherMinNotes: Schema = {
+      ...SCHEMA,
+      config: { mention_corpus_min_notes: 5 },
+    };
+    await writeFile(
+      join(vaultDir, '.bwrb', 'schema.json'),
+      JSON.stringify(schemaWithHigherMinNotes, null, 2)
+    );
+    await writeNote('Notes/Lumen.md', '');
+    await seedLowercaseLumenCorpus();
+    await writeNote('Notes/Daily.md', 'I mentioned Lumen in the middle of a sentence.');
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues.some((i) => i.targetName === 'Lumen')).toBe(true);
+  });
+
+  it('config off restores pre-calibration exact name behavior', async () => {
+    const schemaWithoutCalibration: Schema = {
+      ...SCHEMA,
+      config: { mention_corpus_calibration: false },
+    };
+    await writeFile(
+      join(vaultDir, '.bwrb', 'schema.json'),
+      JSON.stringify(schemaWithoutCalibration, null, 2)
+    );
+    await writeNote('Notes/Lumen.md', '');
+    await seedLowercaseLumenCorpus();
+    await writeNote('Notes/Daily.md', 'I mentioned Lumen in the middle of a sentence.');
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues.some((i) => i.targetName === 'Lumen')).toBe(true);
+  });
+
+  it('counts wikilinked canonical occurrences as corpus evidence so linked entities are kept', async () => {
+    await writeNote('Notes/Sigil.md', '');
+    await writeNote('Notes/Lower A.md', 'the sigil appears as casual prose.');
+    await writeNote('Notes/Lower B.md', 'another sigil appears as casual prose.');
+    await writeNote('Notes/Lower C.md', 'this vault says sigil casually.');
+    await writeNote('Notes/Linked A.md', 'I already linked [[Sigil]].');
+    await writeNote('Notes/Linked B.md', 'Another proper link to [[Sigil]].');
+    await writeNote('Notes/Linked C.md', 'A third proper link to [[Sigil]].');
+    await writeNote('Notes/Daily.md', 'I mentioned Sigil in the middle of a sentence.');
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues.some((i) => i.targetName === 'Sigil')).toBe(true);
+  });
+
+  it('auto-fixes the flagged position-eligible occurrence and leaves guarded occurrences untouched', async () => {
+    await writeNote('Notes/Pass.md', '');
+    await writeNote(
+      'Notes/Daily.md',
+      'Pass site around.\n- Pass it on\n...\nI used Pass today.'
+    );
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues).toHaveLength(1);
+    expect(daily?.issues[0]?.lineNumber).toBe(4);
+
+    await runAutoFix(results, schema, vaultDir, { dryRun: false });
+    const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(after).toContain('Pass site around.');
+    expect(after).toContain('- Pass it on');
+    expect(after).toContain('I used [[Pass]] today.');
+
+    const secondResults = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const secondDaily = secondResults.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(secondDaily?.issues.some((i) => i.targetName === 'Pass')).toBeFalsy();
+
+    await runAutoFix(secondResults, schema, vaultDir, { dryRun: false });
+    const afterSecondRun = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(afterSecondRun).toBe(after);
+  });
+
+  it('auto-fix leaves task-list-start occurrences untouched and links mid-task occurrences', async () => {
+    await writeNote('Notes/Pass.md', '');
+    await writeNote(
+      'Notes/Daily.md',
+      '- [ ] Pass site around.\n- [x] Pass it on\n- [ ] ask Pass for help.'
+    );
+    const schema = await loadSchema(vaultDir);
+
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      onlyIssue: 'unlinked-mention',
+    });
+    const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
+    expect(daily?.issues).toHaveLength(1);
+    expect(daily?.issues[0]?.lineNumber).toBe(3);
+
+    await runAutoFix(results, schema, vaultDir, { dryRun: false });
+    const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
+    expect(after).toContain('- [ ] Pass site around.');
+    expect(after).toContain('- [x] Pass it on');
+    expect(after).toContain('- [ ] ask [[Pass]] for help.');
   });
 
   it('detects and auto-fixes an exact unlinked mention to a wikilink', async () => {

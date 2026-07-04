@@ -562,6 +562,12 @@ function resolveConfig(
     // Default mirrors DEFAULT_FUZZY_MAX_DISTANCE in audit/unlinked-mention.ts.
     // Inlined to avoid importing the audit module into the schema loader (#622).
     mentionFuzzyThreshold: config?.mention_fuzzy_threshold ?? 2,
+    // Defaults mirror audit/unlinked-mention.ts corpus calibration constants.
+    // Inlined to avoid importing the audit module into the schema loader (#783).
+    mentionCorpusCalibration: config?.mention_corpus_calibration ?? true,
+    mentionCorpusMinNotes: config?.mention_corpus_min_notes ?? 3,
+    mentionCorpusNonCanonicalRatio:
+      config?.mention_corpus_noncanonical_ratio ?? 0.5,
     mentionExcludeTypes: Array.from(
       new Set(
         (config?.mention_exclude_types ?? [])

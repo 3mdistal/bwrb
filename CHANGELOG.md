@@ -11,6 +11,7 @@ All notable changes to Bowerbird are documented in this file.
 ### Fixed
 
 - **Unlinked mention noise** — single-word note names now require exact casing, common English single-word note names are skipped, explicit aliases remain case-insensitive, and fuzzy suggestions use a length-scaled edit-distance cap.
+- **Unlinked mention precision** — single-word note names now get full-vault corpus commonness damping, and capitalized single-word names are skipped at sentence/list/heading starts where casing carries no signal (#783, #784).
 
 ## [0.2.1] - 2026-07-01
 
