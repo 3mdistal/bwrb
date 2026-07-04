@@ -4,15 +4,20 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-07-04
+
+Patch release for unlinked-mention precision, mention-linking controls, and relation-resolution fixes.
+
 ### Added
 
-- **Mention target exclusions** — `config.mention_exclude_types` and `config.mention_exclude_paths` keep imported/reference notes out of the unlinked-mention target, fuzzy suggestion, and frequent-term nudge pools while still scanning those notes as source documents.
-- **First-occurrence mention linking** — `config.mention_link_once` plus `audit --fix --auto --mention-link-once` limit unlinked-mention auto-fixes to one new wikilink per note/target pair, with existing wikilinks counting as covered (#785).
+- **Mention target exclusions** — `config.mention_exclude_types` and `config.mention_exclude_paths` keep imported/reference notes out of the unlinked-mention target, fuzzy suggestion, and frequent-term nudge pools while still scanning those notes as source documents (#779).
+- **First-occurrence mention linking** — `config.mention_link_once` plus `audit --fix --auto --mention-link-once` limit unlinked-mention auto-fixes to one new wikilink per note/target pair, with existing wikilinks counting as covered (#785, #787).
 
 ### Fixed
 
-- **Unlinked mention noise** — single-word note names now require exact casing, common English single-word note names are skipped, explicit aliases remain case-insensitive, and fuzzy suggestions use a length-scaled edit-distance cap.
-- **Unlinked mention precision** — single-word note names now get full-vault corpus commonness damping, and capitalized single-word names are skipped at sentence/list/heading starts where casing carries no signal (#783, #784).
+- **Unlinked mention noise** — single-word note names now require exact casing, common English single-word note names are skipped, explicit aliases remain case-insensitive, and fuzzy suggestions use a length-scaled edit-distance cap (#778).
+- **Type-aware relation resolution** — relation fields now resolve bare wikilinks against the field source type, avoiding same-name collisions with other note types while preserving path-qualified disambiguation (#781).
+- **Unlinked mention precision** — single-word note names now get full-vault corpus commonness damping, and capitalized single-word names are skipped at sentence/list/heading starts where casing carries no signal (#783, #784, #786).
 
 ## [0.2.1] - 2026-07-01
 
