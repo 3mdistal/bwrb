@@ -122,6 +122,10 @@
           "maximum": 1,
           "description": "Strict non-canonical-case occurrence share threshold for corpus-calibrated commonness damping (#783). Defaults to 0.5, so exactly half non-canonical keeps the surface."
         },
+        "mention_link_once": {
+          "type": "boolean",
+          "description": "When true, `audit --fix --auto` writes at most one new `unlinked-mention` wikilink per note/target pair, and writes none when the note already contains a wikilink to that target. Defaults to false; overridden per run by `--mention-link-once` / `--no-mention-link-once`."
+        },
         "mention_exclude_types": {
           "type": "array",
           "items": {

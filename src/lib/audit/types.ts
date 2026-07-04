@@ -197,6 +197,8 @@ export interface FixSummary {
   dryRunReason?: 'explicit' | 'execute-required';
   fixed: number;
   skipped: number;
+  /** Subset of skipped issues intentionally covered by mention link-once mode. */
+  linkOnceSkipped?: number;
   failed: number;
   remaining: number;
 }
@@ -235,6 +237,11 @@ export interface AuditOptions {
    * mean?" tier. Commander stores the negatable boolean here.
    */
   mentionFuzzy?: boolean;
+  /**
+   * Commander stores both `--mention-link-once` and `--no-mention-link-once`
+   * on this positive key. Undefined means use schema config.
+   */
+  mentionLinkOnce?: boolean;
 }
 
 /**

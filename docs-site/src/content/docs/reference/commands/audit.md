@@ -35,6 +35,8 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `--allow-field <fields>` | Allow additional fields beyond schema (repeatable) |
 | `--mention-fuzzy-threshold <n>` | Max edit-distance cap (0–5) for the `unlinked-mention` fuzzy "did you mean?" tier (default: `config.mention_fuzzy_threshold` or `2`; candidate length also caps the effective distance) |
 | `--no-mention-fuzzy` | Disable the `unlinked-mention` fuzzy "did you mean?" tier entirely |
+| `--mention-link-once` | With `--fix --auto`: link at most one `unlinked-mention` occurrence per note/target pair, overriding `config.mention_link_once` |
+| `--no-mention-link-once` | With `--fix --auto`: link every eligible `unlinked-mention` occurrence, overriding `config.mention_link_once` |
 | `--check-schema-docs` | Also report schema types/fields that have no `description` |
 
 ### Repair
@@ -48,6 +50,13 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 
 Repair mode writes by default and requires explicit targeting (selectors or `--all`).
 Use `--dry-run` to preview fixes without writing.
+
+`unlinked-mention` auto-fixes normally link every eligible exact/alias occurrence. Set
+`config.mention_link_once: true` or pass `--mention-link-once` to make
+`--fix --auto` write at most one new wikilink per note/target pair. Existing
+wikilinks to that target in the note, including display forms like
+`[[Target|display]]`, count as covered, so no new link is written for that target.
+Detection and reporting remain exhaustive; only fix application is limited.
 
 Delete semantics in repair mode:
 
@@ -174,6 +183,9 @@ bwrb audit --path "Ideas/**" --fix --auto --execute
 
 # Preview auto-fixes
 bwrb audit --path "Ideas/**" --fix --auto
+
+# Auto-link only the first eligible unlinked mention per note/target pair
+bwrb audit --path "Ideas/**" --fix --auto --execute --mention-link-once
 ```
 
 ### Trailing whitespace hygiene semantics

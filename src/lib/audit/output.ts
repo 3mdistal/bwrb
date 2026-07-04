@@ -191,6 +191,9 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
   const skippedLabel = summary.dryRun ? 'Would skip' : 'Skipped';
   console.log(`  ${fixedLabel}: ${summary.fixed} issues`);
   console.log(`  ${skippedLabel}: ${summary.skipped} issues`);
+  if (summary.linkOnceSkipped && summary.linkOnceSkipped > 0) {
+    console.log(`  ${skippedLabel} by mention link-once: ${summary.linkOnceSkipped} issues`);
+  }
   if (summary.failed > 0) {
     console.log(`  Failed: ${summary.failed} issues`);
   }

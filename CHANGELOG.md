@@ -7,6 +7,7 @@ All notable changes to Bowerbird are documented in this file.
 ### Added
 
 - **Mention target exclusions** — `config.mention_exclude_types` and `config.mention_exclude_paths` keep imported/reference notes out of the unlinked-mention target, fuzzy suggestion, and frequent-term nudge pools while still scanning those notes as source documents.
+- **First-occurrence mention linking** — `config.mention_link_once` plus `audit --fix --auto --mention-link-once` limit unlinked-mention auto-fixes to one new wikilink per note/target pair, with existing wikilinks counting as covered (#785).
 
 ### Fixed
 

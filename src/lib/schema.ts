@@ -568,6 +568,7 @@ function resolveConfig(
     mentionCorpusMinNotes: config?.mention_corpus_min_notes ?? 3,
     mentionCorpusNonCanonicalRatio:
       config?.mention_corpus_noncanonical_ratio ?? 0.5,
+    mentionLinkOnce: config?.mention_link_once ?? false,
     mentionExcludeTypes: Array.from(
       new Set(
         (config?.mention_exclude_types ?? [])
