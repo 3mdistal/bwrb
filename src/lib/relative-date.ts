@@ -1,8 +1,10 @@
-import { relative } from 'path';
+import { join, relative } from 'path';
 import type { Calendar, LoadedSchema, Field } from '../types/schema.js';
 import { getFieldsForType, resolveDateCalendar, resolveTypeFromFrontmatter } from './schema.js';
 import { extractLinkTarget } from './links.js';
 import {
+  buildVaultNoteIndex,
+  deriveNoteTargetIndex,
   resolveRelationTarget,
   type NoteTargetIndex,
   type VaultNoteSnapshot,
@@ -12,7 +14,7 @@ import { formatLinearCalendarDate, parseCalendarDate } from './calendar-date.js'
 
 export type RelativeDateKind = 'equal' | 'after' | 'before';
 export type RelativeDateUnit = 'min' | 'h' | 'd' | 'w';
-export type RelativeDateResolution = 'ok' | 'cycle' | 'unanchored' | 'contradiction';
+export type RelativeDateResolution = 'ok' | 'cycle' | 'unanchored' | 'contradiction' | 'invalid-offset';
 
 export interface RelativeDateOffset {
   amount: number;
@@ -91,6 +93,11 @@ interface ResolvedPosition {
 }
 
 export type RelativeDateFieldMap = Map<string, Map<string, RelativeDateFieldOutput>>;
+
+interface OffsetApplication {
+  resolved: ResolvedPosition | null;
+  resolution?: Extract<RelativeDateResolution, 'invalid-offset'>;
+}
 
 const DEFAULT_OFFSET: RelativeDateOffset = { amount: 0, unit: 'h', mode: 'linear' };
 const MS_PER_UNIT: Record<RelativeDateUnit, number> = {
@@ -235,6 +242,49 @@ export function buildRelativeDateFieldMap(
   return { fields: output, diagnostics };
 }
 
+export async function validateRelativeDateCalendarOffsetsForWrite(
+  schema: LoadedSchema,
+  vaultDir: string,
+  typePath: string,
+  frontmatter: Record<string, unknown>,
+  relativePath = `.__bwrb_pending__/${typePath.replace(/\//g, '-')}.md`
+): Promise<RelativeDateDiagnostic[]> {
+  const fields = getFieldsForType(schema, typePath);
+  const relativeDateFieldNames = Object.entries(fields)
+    .filter(([, field]) => field.prompt === 'relative-date')
+    .map(([fieldName]) => fieldName)
+    .filter((fieldName) => frontmatter[fieldName] !== undefined);
+  if (relativeDateFieldNames.length === 0) return [];
+
+  const index = await buildVaultNoteIndex(schema, vaultDir);
+  const path = join(vaultDir, relativePath);
+  const snapshot: VaultNoteSnapshot = {
+    notes: [
+      ...index.snapshot.notes.filter((note) => note.relativePath !== relativePath),
+      {
+        path,
+        relativePath,
+        frontmatter: { ...frontmatter, type: frontmatter['type'] ?? typePath },
+        resolvedType: typePath,
+      },
+    ],
+  };
+  const result = buildRelativeDateFieldMap(
+    schema,
+    vaultDir,
+    snapshot,
+    deriveNoteTargetIndex(snapshot, schema)
+  );
+
+  const relativeDateFieldSet = new Set(relativeDateFieldNames);
+  return result.diagnostics.filter(
+    (diagnostic) =>
+      diagnostic.code === 'relative-date-invalid-offset' &&
+      diagnostic.path === path &&
+      relativeDateFieldSet.has(diagnostic.field)
+  );
+}
+
 function resolveRelativeDateField(
   ctx: {
     schema: LoadedSchema;
@@ -329,12 +379,14 @@ function resolveRelativeDateField(
     const targetResult = target && targetField
       ? resolveRelativeDateField(ctx, { path: targetPath, field: targetField }, [...stack, key])
       : emptyResult(undefined, 'unanchored');
-    const resolved = targetResult.resolved === null
+    const offsetResult = targetResult.resolved === null
       ? null
       : applyOffsetToPosition(ctx, note, key.field, targetResult.resolved, constraint.offset ?? DEFAULT_OFFSET);
+    const resolved = offsetResult?.resolved ?? null;
+    const resolution = offsetResult?.resolution ?? targetResult.resolution;
 
     if (constraint.kind === 'equal') {
-      equalResults.push({ constraint, resolved, resolution: targetResult.resolution, path: targetPath });
+      equalResults.push({ constraint, resolved, resolution, path: targetPath });
     } else {
       const offset = resolvedOffsetForPosition(targetResult.resolved, constraint.offset ?? DEFAULT_OFFSET);
       const bound: RelativeDateBoundOutput = {
@@ -479,7 +531,7 @@ function applyOffsetToPosition(
   fieldName: string,
   position: ResolvedPosition,
   offset: RelativeDateOffset
-): ResolvedPosition | null {
+): OffsetApplication {
   if (position.calendar && offset.unit === 'w') {
     emitDiagnostic(ctx, {
       code: 'relative-date-invalid-offset',
@@ -488,7 +540,7 @@ function applyOffsetToPosition(
       field: fieldName,
       message: `Relative date ${fieldName} uses unsupported calendar offset unit "w"; use h or d for calendar chains`,
     });
-    return null;
+    return { resolved: null, resolution: 'invalid-offset' };
   }
 
   const amount = offsetAmount(position, offset);
@@ -503,19 +555,23 @@ function applyOffsetToPosition(
         field: fieldName,
         message: `Relative date ${fieldName} offset cannot be formatted in calendar "${position.calendar}": ${formatted.error}`,
       });
-      return null;
+      return { resolved: null, resolution: 'invalid-offset' };
     }
     return {
-      value: nextValue,
-      display: formatted.date.value,
-      calendar: position.calendar,
-      calendarDef: position.calendarDef,
+      resolved: {
+        value: nextValue,
+        display: formatted.date.value,
+        calendar: position.calendar,
+        calendarDef: position.calendarDef,
+      },
     };
   }
 
   return {
-    value: nextValue,
-    display: new Date(nextValue).toISOString(),
+    resolved: {
+      value: nextValue,
+      display: new Date(nextValue).toISOString(),
+    },
   };
 }
 

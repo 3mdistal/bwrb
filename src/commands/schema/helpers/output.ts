@@ -192,6 +192,7 @@ function formatFieldForJson(field: Field): Record<string, unknown> {
   if (field.source) result.source = field.source;
   if (field.list_format) result.list_format = field.list_format;
   if (field.granularity) result.granularity = field.granularity;
+  if (field.calendar) result.calendar = field.calendar;
 
   return result;
 }
@@ -456,7 +457,10 @@ function printFieldDetails(
     details.push(`granularity=${field.granularity}`);
   }
 
-  const prefix = `${indent}${chalk.yellow(name)}: ${type}`;
+  const calendarSuffix = field.prompt === 'date' && field.calendar
+    ? ` ${chalk.gray(`(calendar: ${field.calendar})`)}`
+    : '';
+  const prefix = `${indent}${chalk.yellow(name)}: ${type}${calendarSuffix}`;
   const suffix = details.length > 0 ? ` ${chalk.gray(details.join(' '))}` : '';
 
   const content = details.join(' ');

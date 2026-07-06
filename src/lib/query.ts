@@ -655,12 +655,6 @@ async function resolveRelativeDateFieldsForQuery(
     index.snapshot,
     index.noteTargetIndex
   );
-  const invalidOffset = result.diagnostics.find(
-    (diagnostic) => diagnostic.code === 'relative-date-invalid-offset'
-  );
-  if (invalidOffset) {
-    throw new Error(invalidOffset.message);
-  }
   return result.fields;
 }
 

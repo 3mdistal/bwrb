@@ -104,7 +104,7 @@ describe('custom calendars', () => {
     });
   });
 
-  it('uses calendar day length for relative-date d offsets and rejects w offsets', async () => {
+  it('uses calendar day length for relative-date d offsets and degrades w offsets during list', async () => {
     await writeEvent('Anchor', { when: 'AR 1-01-01' });
     await writeEvent('Plus Hours', {
       position: [{ kind: 'equal', ref: '[[Anchor]]', field: 'when', offset: '340h' }],
@@ -135,9 +135,75 @@ describe('custom calendars', () => {
     await writeEvent('Bad Week', {
       position: [{ kind: 'equal', ref: '[[Anchor]]', field: 'when', offset: '1w' }],
     });
-    const rejected = await runCLI(['list', 'event', '--sort', 'position'], vaultDir);
-    expect(rejected.exitCode).not.toBe(0);
-    expect(rejected.stderr + rejected.stdout).toContain('unsupported calendar offset unit "w"');
+    const listed = await runCLI(['list', 'event', '--fields', 'position', '--output', 'json'], vaultDir);
+    expect(listed.exitCode).toBe(0);
+    const listedRows = JSON.parse(listed.stdout) as Array<{
+      _name: string;
+      position?: { resolved: string | null; resolution: string };
+    }>;
+    expect(listedRows.map((row) => row._name)).toEqual(
+      expect.arrayContaining(['Anchor', 'Plus Hours', 'Plus Days', 'Bad Week'])
+    );
+    expect(listedRows.find((row) => row._name === 'Bad Week')!.position).toMatchObject({
+      resolved: null,
+      resolution: 'invalid-offset',
+    });
+
+    const textListed = await runCLI(['list', 'event', '--fields', 'position'], vaultDir);
+    expect(textListed.exitCode).toBe(0);
+    expect(textListed.stdout).toContain('Bad Week');
+  });
+
+  it('rejects JSON writes when a relative-date w offset resolves to a calendar chain', async () => {
+    await writeEvent('Anchor', { when: 'AR 1-01-01' });
+
+    const created = await runCLI(
+      [
+        'new',
+        'event',
+        '--no-template',
+        '--json',
+        JSON.stringify({
+          name: 'Bad Week',
+          position: [{ kind: 'equal', ref: '[[Anchor]]', field: 'when', offset: '1w' }],
+        }),
+      ],
+      vaultDir
+    );
+    expect(created.exitCode).not.toBe(0);
+    const createdOutput = JSON.parse(created.stdout) as { errors: Array<{ message: string }> };
+    expect(createdOutput.errors[0]!.message).toContain('unsupported calendar offset unit "w"');
+
+    await writeEvent('Editable', { position: [{ kind: 'equal', ref: '[[Anchor]]', field: 'when', offset: '1d' }] });
+    const edited = await runCLI(
+      [
+        'edit',
+        'Editable',
+        '--json',
+        JSON.stringify({
+          position: [{ kind: 'equal', ref: '[[Anchor]]', field: 'when', offset: '1w' }],
+        }),
+      ],
+      vaultDir
+    );
+    expect(edited.exitCode).not.toBe(0);
+    const editedOutput = JSON.parse(edited.stdout) as { errors: Array<{ message: string }> };
+    expect(editedOutput.errors[0]!.message).toContain('unsupported calendar offset unit "w"');
+
+    const unresolved = await runCLI(
+      [
+        'new',
+        'event',
+        '--no-template',
+        '--json',
+        JSON.stringify({
+          name: 'Lazy Bad Week',
+          position: [{ kind: 'equal', ref: '[[Missing Anchor]]', field: 'when', offset: '1w' }],
+        }),
+      ],
+      vaultDir
+    );
+    expect(unresolved.exitCode).toBe(0);
   });
 
   it('carries rounded calendar minutes across the day boundary', async () => {
