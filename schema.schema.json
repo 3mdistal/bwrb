@@ -101,6 +101,86 @@
           ],
           "description": "Default coarsest date precision allowed for all date fields (day = full YYYY-MM-DD, month = YYYY-MM or finer, year = YYYY or finer). Per-field `granularity` overrides this default."
         },
+        "calendars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "description": "Human-readable calendar label"
+              },
+              "hoursInDay": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Number of hours in a calendar day; defaults to 24"
+              },
+              "eras": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Era name"
+                    },
+                    "shortName": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Short era token used in date strings"
+                    },
+                    "backwards": {
+                      "type": "boolean",
+                      "description": "Whether years count down toward the era boundary"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "shortName"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "description": "Calendar eras"
+              },
+              "months": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Month name"
+                    },
+                    "shortName": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Short month label"
+                    },
+                    "days": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "description": "Number of days in this month"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "days"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "description": "Calendar months"
+              }
+            },
+            "required": [
+              "eras",
+              "months"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Named custom calendars available to date fields"
+        },
         "mention_fuzzy_threshold": {
           "type": "integer",
           "minimum": 0,
@@ -216,6 +296,10 @@
           },
           "description": "Field definitions, merged with ancestors and traits at load time"
         },
+        "calendar_default": {
+          "type": "string",
+          "description": "Default calendar id for date fields on this type"
+        },
         "field_order": {
           "type": "array",
           "items": {
@@ -274,6 +358,10 @@
             "year"
           ],
           "description": "Coarsest date precision allowed for this `date` field, finer is always allowed (day = full YYYY-MM-DD, month = YYYY-MM or finer, year = YYYY or finer). Overrides the global config.date_granularity for this field."
+        },
+        "calendar": {
+          "type": "string",
+          "description": "Calendar id for date fields using config.calendars"
         },
         "value": {
           "type": "string",

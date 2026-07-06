@@ -5,6 +5,7 @@ import { FRONTMATTER_IDENTIFIER } from './where-constants.js';
 import { extractLinkTargets } from './links.js';
 import { resolveRelationTarget, type NoteTargetIndex } from './discovery.js';
 import type { LoadedSchema } from '../types/schema.js';
+import { compareCalendarDateValues, isCalendarDateValue, parseCalendarDate } from './calendar-date.js';
 
 // Configure jsep for our expression language
 jsep.addBinaryOp('&&', 2);
@@ -830,6 +831,21 @@ function compareValues(a: unknown, b: unknown): number {
   }
   if (b === null || b === undefined) {
     return 1;
+  }
+
+  if (isCalendarDateValue(a) || isCalendarDateValue(b)) {
+    if (isCalendarDateValue(a) && isCalendarDateValue(b)) {
+      return compareCalendarDateValues(a, b) ?? Number.NaN;
+    }
+    if (isCalendarDateValue(a) && typeof b === 'string' && a.calendarDef) {
+      const parsed = parseCalendarDate(b, a.calendar, a.calendarDef);
+      return parsed.valid ? a.linear - parsed.date.linear : Number.NaN;
+    }
+    if (isCalendarDateValue(b) && typeof a === 'string' && b.calendarDef) {
+      const parsed = parseCalendarDate(a, b.calendar, b.calendarDef);
+      return parsed.valid ? parsed.date.linear - b.linear : Number.NaN;
+    }
+    return Number.NaN;
   }
 
   // Handle dates

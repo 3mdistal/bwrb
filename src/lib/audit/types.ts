@@ -91,7 +91,8 @@ export type IssueCode =
   | 'relative-date-contradiction'
   | 'relative-date-bound-violation'
   | 'relative-date-unanchored'
-  | 'relative-date-invalid-ref';
+  | 'relative-date-invalid-ref'
+  | 'relative-date-invalid-offset';
 
 /**
  * A single audit issue.

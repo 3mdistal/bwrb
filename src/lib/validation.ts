@@ -1,5 +1,5 @@
-import type { LoadedSchema, Field } from '../types/schema.js';
-import { getFieldsForType, getFieldOptions, resolveDateGranularity } from './schema.js';
+import type { LoadedSchema, Field, Calendar } from '../types/schema.js';
+import { getFieldsForType, getFieldOptions, resolveDateCalendar, resolveDateGranularity } from './schema.js';
 import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
 import { extractWikilinkTarget } from './links.js';
 import { levenshteinDistance } from './levenshtein.js';
@@ -19,6 +19,7 @@ import {
   type DatePrecision,
 } from './local-date.js';
 import { validateRelativeDateValue } from './relative-date.js';
+import { parseCalendarDate } from './calendar-date.js';
 
 export type NormalizedDateResult =
   | { valid: true; value: string }
@@ -139,6 +140,18 @@ export function normalizeDateFields(
     if (!(fieldName in normalized)) continue;
 
     const value = normalized[fieldName];
+    const calendarId = resolveDateCalendar(schema, typePath, fieldName, field);
+    if (calendarId) {
+      const calendar = schema.config.calendars[calendarId]!;
+      if (field.multiple && Array.isArray(value)) {
+        normalized[fieldName] = value.map((element) =>
+          normalizeCalendarDateValue(element, calendarId, calendar)
+        );
+      } else {
+        normalized[fieldName] = normalizeCalendarDateValue(value, calendarId, calendar);
+      }
+      continue;
+    }
     const granularity = resolveDateGranularity(field, schema.config);
 
     // A `multiple: true` date field holds an array; canonicalize each element
@@ -186,6 +199,13 @@ function normalizeDateValue(value: unknown, granularity: DatePrecision): unknown
 
   const result = normalizeToIsoDate(dateValue, granularity);
   return result.valid ? result.value : value;
+}
+
+function normalizeCalendarDateValue(value: unknown, calendarId: string, calendar: Calendar): unknown {
+  if (isBlankScalar(value)) return value;
+  if (typeof value !== 'string') return value;
+  const result = parseCalendarDate(value, calendarId, calendar);
+  return result.valid ? result.date.value : value;
 }
 
 
@@ -348,7 +368,14 @@ export function validateFrontmatter(
     // Type checking
     if (hasValue) {
       const granularity = resolveDateGranularity(field, schema.config);
-      const typeError = validateFieldType(fieldName, value, field, granularity);
+      const calendarId = resolveDateCalendar(schema, typeName, fieldName, field);
+      const typeError = validateFieldType(
+        fieldName,
+        value,
+        field,
+        granularity,
+        calendarId ? { id: calendarId, calendar: schema.config.calendars[calendarId]! } : undefined
+      );
       if (typeError) {
         errors.push(typeError);
       }
@@ -442,10 +469,11 @@ function validateDateValue(
   fieldName: string,
   value: unknown,
   granularity: DatePrecision,
+  calendarContext?: { id: string; calendar: Calendar },
   listIndex?: number
 ): ValidationError | null {
-  // Accept Date objects surfaced by YAML parsing, normalize elsewhere.
-  if (value instanceof Date) {
+  // Accept Date objects surfaced by YAML parsing for Gregorian dates, normalize elsewhere.
+  if (value instanceof Date && !calendarContext) {
     return null;
   }
 
@@ -463,6 +491,20 @@ function validateDateValue(
       message: `Invalid type for ${location}: expected date string, got ${typeof value}`,
       expected: 'date string (YYYY-MM-DD)',
     };
+  }
+
+  if (calendarContext) {
+    const parsed = parseCalendarDate(dateValue, calendarContext.id, calendarContext.calendar);
+    if (!parsed.valid) {
+      return {
+        type: 'invalid_date',
+        field: fieldName,
+        value,
+        message: `Invalid calendar date for ${location}: ${parsed.error}`,
+        expected: '<eraShort> <year>-<month>-<day> [<hour>:<minute>]',
+      };
+    }
+    return null;
   }
 
   const normalized = normalizeToIsoDate(dateValue, granularity);
@@ -483,7 +525,8 @@ function validateFieldType(
   fieldName: string,
   value: unknown,
   field: Field,
-  granularity: DatePrecision = 'day'
+  granularity: DatePrecision = 'day',
+  calendarContext?: { id: string; calendar: Calendar }
 ): ValidationError | null {
   // Alias-role fields: enforce Obsidian `aliases` format regardless of prompt
   // type — an array of non-empty, unique strings.
@@ -517,13 +560,13 @@ function validateFieldType(
         // reported separately. Shared `isBlankScalar` rule keeps this in step
         // with the scalar paths (#707).
         if (isBlankScalar(element)) continue;
-        const elementError = validateDateValue(fieldName, element, granularity, index);
+        const elementError = validateDateValue(fieldName, element, granularity, calendarContext, index);
         if (elementError) return elementError;
       }
       return null;
     }
 
-    return validateDateValue(fieldName, value, granularity);
+    return validateDateValue(fieldName, value, granularity, calendarContext);
   }
 
   if (field.prompt === 'relative-date') {

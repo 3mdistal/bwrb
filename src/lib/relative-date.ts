@@ -1,6 +1,6 @@
 import { relative } from 'path';
-import type { LoadedSchema, Field } from '../types/schema.js';
-import { getFieldsForType, resolveTypeFromFrontmatter } from './schema.js';
+import type { Calendar, LoadedSchema, Field } from '../types/schema.js';
+import { getFieldsForType, resolveDateCalendar, resolveTypeFromFrontmatter } from './schema.js';
 import { extractLinkTarget } from './links.js';
 import {
   resolveRelationTarget,
@@ -8,6 +8,7 @@ import {
   type VaultNoteSnapshot,
 } from './discovery.js';
 import { parseDate } from './local-date.js';
+import { formatLinearCalendarDate, parseCalendarDate } from './calendar-date.js';
 
 export type RelativeDateKind = 'equal' | 'after' | 'before';
 export type RelativeDateUnit = 'min' | 'h' | 'd' | 'w';
@@ -16,7 +17,7 @@ export type RelativeDateResolution = 'ok' | 'cycle' | 'unanchored' | 'contradict
 export interface RelativeDateOffset {
   amount: number;
   unit: RelativeDateUnit;
-  mode: 'linear';
+  mode: 'linear' | 'calendar';
 }
 
 export interface RelativeDateConstraint {
@@ -30,6 +31,8 @@ export interface RelativeDateFieldOutput {
   source: unknown;
   resolved: string | null;
   resolution: RelativeDateResolution;
+  calendar?: string;
+  linear?: number;
   bounds?: RelativeDateBoundOutput[];
 }
 
@@ -46,7 +49,8 @@ export type RelativeDateDiagnosticCode =
   | 'relative-date-contradiction'
   | 'relative-date-bound-violation'
   | 'relative-date-unanchored'
-  | 'relative-date-invalid-ref';
+  | 'relative-date-invalid-ref'
+  | 'relative-date-invalid-offset';
 
 export interface RelativeDateDiagnostic {
   code: RelativeDateDiagnosticCode;
@@ -71,12 +75,19 @@ interface ResolveKey {
 }
 
 interface ResolveResult {
-  resolvedMs: number | null;
+  resolved: ResolvedPosition | null;
   resolution: RelativeDateResolution;
   source: unknown;
   constraints: RelativeDateConstraint[];
   diagnostics: RelativeDateDiagnostic[];
   bounds: RelativeDateBoundOutput[];
+}
+
+interface ResolvedPosition {
+  value: number;
+  display: string;
+  calendar?: string;
+  calendarDef?: Calendar;
 }
 
 export type RelativeDateFieldMap = Map<string, Map<string, RelativeDateFieldOutput>>;
@@ -97,9 +108,9 @@ function parseRelativeDateOffset(value: unknown): RelativeDateOffset | null {
       typeof raw.amount === 'number' &&
       Number.isFinite(raw.amount) &&
       isRelativeDateUnit(raw.unit) &&
-      (raw.mode === undefined || raw.mode === 'linear')
+      (raw.mode === undefined || raw.mode === 'linear' || raw.mode === 'calendar')
     ) {
-      return { amount: raw.amount, unit: raw.unit, mode: 'linear' };
+      return { amount: raw.amount, unit: raw.unit, mode: raw.mode === 'calendar' ? 'calendar' : 'linear' };
     }
     return null;
   }
@@ -207,8 +218,9 @@ export function buildRelativeDateFieldMap(
       const result = resolveRelativeDateField(ctx, { path: note.relativePath, field: fieldName }, []);
       setRelativeDateOutput(output, note.path, fieldName, {
         source: result.source ?? null,
-        resolved: result.resolvedMs === null ? null : new Date(result.resolvedMs).toISOString(),
+        resolved: result.resolved?.display ?? null,
         resolution: result.resolution,
+        ...(result.resolved?.calendar ? { calendar: result.resolved.calendar, linear: result.resolved.value } : {}),
         ...(result.bounds.length > 0 ? { bounds: result.bounds } : {}),
       });
     }
@@ -266,9 +278,9 @@ function resolveRelativeDateField(
 
   const field = note.fields[key.field];
   if (!field || field.prompt !== 'relative-date') {
-    const absolute = parseAbsoluteDateValue(note.frontmatter[key.field]);
+    const absolute = parseAbsoluteDateValue(ctx.schema, note, key.field, field);
     return {
-      resolvedMs: absolute,
+      resolved: absolute,
       resolution: absolute === null ? 'unanchored' : 'ok',
       source: note.frontmatter[key.field],
       constraints: [],
@@ -280,11 +292,11 @@ function resolveRelativeDateField(
   const source = note.frontmatter[key.field];
   const constraints = parseRelativeDateConstraints(source);
   if (!constraints || constraints.length === 0) {
-    const ownAnchorMs = resolveOwnAbsoluteAnchor(note);
-    const result: ResolveResult = ownAnchorMs === null
+    const ownAnchor = resolveOwnAbsoluteAnchor(ctx.schema, note);
+    const result: ResolveResult = ownAnchor === null
       ? emptyResult(source, 'unanchored')
       : {
-          resolvedMs: ownAnchorMs,
+          resolved: ownAnchor,
           resolution: 'ok',
           source,
           constraints: [],
@@ -295,8 +307,9 @@ function resolveRelativeDateField(
     return result;
   }
 
-  const equalResults: Array<{ constraint: RelativeDateConstraint; resolvedMs: number | null; resolution: RelativeDateResolution; path?: string }> = [];
+  const equalResults: Array<{ constraint: RelativeDateConstraint; resolved: ResolvedPosition | null; resolution: RelativeDateResolution; path?: string }> = [];
   const bounds: RelativeDateBoundOutput[] = [];
+  const boundResults: Array<{ bound: RelativeDateBoundOutput; resolved: ResolvedPosition | null }> = [];
 
   for (const constraint of constraints) {
     const targetPath = resolveConstraintTarget(ctx, constraint, field);
@@ -316,35 +329,37 @@ function resolveRelativeDateField(
     const targetResult = target && targetField
       ? resolveRelativeDateField(ctx, { path: targetPath, field: targetField }, [...stack, key])
       : emptyResult(undefined, 'unanchored');
-    const resolvedMs = targetResult.resolvedMs === null
+    const resolved = targetResult.resolved === null
       ? null
-      : targetResult.resolvedMs + offsetToMilliseconds(constraint.offset ?? DEFAULT_OFFSET);
+      : applyOffsetToPosition(ctx, note, key.field, targetResult.resolved, constraint.offset ?? DEFAULT_OFFSET);
 
     if (constraint.kind === 'equal') {
-      equalResults.push({ constraint, resolvedMs, resolution: targetResult.resolution, path: targetPath });
+      equalResults.push({ constraint, resolved, resolution: targetResult.resolution, path: targetPath });
     } else {
+      const offset = resolvedOffsetForPosition(targetResult.resolved, constraint.offset ?? DEFAULT_OFFSET);
       const bound: RelativeDateBoundOutput = {
         kind: constraint.kind,
         ref: constraint.ref,
         ...(constraint.field ? { field: constraint.field } : {}),
-        offset: constraint.offset ?? DEFAULT_OFFSET,
-        resolved: resolvedMs === null ? null : new Date(resolvedMs).toISOString(),
+        offset,
+        resolved: resolved?.display ?? null,
       };
       bounds.push(bound);
+      boundResults.push({ bound, resolved });
     }
   }
 
   const firstEqual = equalResults[0];
   let resolution: RelativeDateResolution = 'unanchored';
-  let resolvedMs: number | null = null;
+  let resolved: ResolvedPosition | null = null;
 
   if (firstEqual) {
-    resolvedMs = firstEqual.resolvedMs;
+    resolved = firstEqual.resolved;
     resolution = firstEqual.resolution === 'ok' ? 'ok' : firstEqual.resolution;
     const disagreeing = equalResults.slice(1).filter(result =>
-      result.resolvedMs !== null &&
-      firstEqual.resolvedMs !== null &&
-      result.resolvedMs !== firstEqual.resolvedMs
+      result.resolved !== null &&
+      firstEqual.resolved !== null &&
+      !positionsEqual(result.resolved, firstEqual.resolved)
     );
     if (disagreeing.length > 0) {
       resolution = 'contradiction';
@@ -363,11 +378,11 @@ function resolveRelativeDateField(
     resolution = 'unanchored';
   }
 
-  if (resolvedMs !== null) {
-    for (const bound of bounds) {
+  if (resolved !== null) {
+    for (const { bound, resolved: boundResult } of boundResults) {
       if (!bound.resolved) continue;
-      const boundMs = Date.parse(bound.resolved);
-      const violates = bound.kind === 'after' ? resolvedMs < boundMs : resolvedMs > boundMs;
+      if (!boundResult || !positionsComparable(resolved, boundResult)) continue;
+      const violates = bound.kind === 'after' ? resolved.value < boundResult.value : resolved.value > boundResult.value;
       if (violates) {
         emitDiagnostic(ctx, {
           code: 'relative-date-bound-violation',
@@ -381,7 +396,7 @@ function resolveRelativeDateField(
   }
 
   const result: ResolveResult = {
-    resolvedMs,
+    resolved,
     resolution,
     source,
     constraints,
@@ -403,10 +418,10 @@ function resolveTargetField(note: IndexedNote, explicitField: string | undefined
   return undefined;
 }
 
-function resolveOwnAbsoluteAnchor(note: IndexedNote): number | null {
+function resolveOwnAbsoluteAnchor(schema: LoadedSchema, note: IndexedNote): ResolvedPosition | null {
   for (const [fieldName, field] of Object.entries(note.fields)) {
     if (field.prompt !== 'date') continue;
-    const resolved = parseAbsoluteDateValue(note.frontmatter[fieldName]);
+    const resolved = parseAbsoluteDateValue(schema, note, fieldName, field);
     if (resolved !== null) return resolved;
   }
   return null;
@@ -426,16 +441,105 @@ function resolveConstraintTarget(
   return resolved.resolvedPath ?? null;
 }
 
-function parseAbsoluteDateValue(value: unknown): number | null {
-  if (value instanceof Date) return value.getTime();
+function parseAbsoluteDateValue(
+  schema: LoadedSchema,
+  note: IndexedNote,
+  fieldName: string,
+  field: Field | undefined
+): ResolvedPosition | null {
+  let value = note.frontmatter[fieldName];
+  const calendarId = field
+    ? resolveDateCalendar(schema, note.typePath, fieldName, field)
+    : undefined;
+  if (calendarId) {
+    const parsed = parseCalendarDate(value, calendarId, schema.config.calendars[calendarId]!);
+    return parsed.valid
+      ? {
+          value: parsed.date.linear,
+          display: parsed.date.value,
+          calendar: calendarId,
+          calendarDef: schema.config.calendars[calendarId]!,
+        }
+      : null;
+  }
+  if (value instanceof Date) {
+    return { value: value.getTime(), display: value.toISOString() };
+  }
   if (typeof value === 'number') value = String(value);
   if (typeof value !== 'string') return null;
   const parsed = parseDate(value);
-  return parsed.valid && parsed.date ? parsed.date.getTime() : null;
+  return parsed.valid && parsed.date
+    ? { value: parsed.date.getTime(), display: parsed.date.toISOString() }
+    : null;
 }
 
-function offsetToMilliseconds(offset: RelativeDateOffset): number {
+function applyOffsetToPosition(
+  ctx: { diagnostics: RelativeDateDiagnostic[]; emitted: Set<string> },
+  note: IndexedNote,
+  fieldName: string,
+  position: ResolvedPosition,
+  offset: RelativeDateOffset
+): ResolvedPosition | null {
+  if (position.calendar && offset.unit === 'w') {
+    emitDiagnostic(ctx, {
+      code: 'relative-date-invalid-offset',
+      severity: 'warning',
+      path: note.path,
+      field: fieldName,
+      message: `Relative date ${fieldName} uses unsupported calendar offset unit "w"; use h or d for calendar chains`,
+    });
+    return null;
+  }
+
+  const amount = offsetAmount(position, offset);
+  const nextValue = position.value + amount;
+  if (position.calendar && position.calendarDef) {
+    const formatted = formatLinearCalendarDate(nextValue, position.calendar, position.calendarDef);
+    if (!formatted.valid) {
+      emitDiagnostic(ctx, {
+        code: 'relative-date-invalid-offset',
+        severity: 'warning',
+        path: note.path,
+        field: fieldName,
+        message: `Relative date ${fieldName} offset cannot be formatted in calendar "${position.calendar}": ${formatted.error}`,
+      });
+      return null;
+    }
+    return {
+      value: nextValue,
+      display: formatted.date.value,
+      calendar: position.calendar,
+      calendarDef: position.calendarDef,
+    };
+  }
+
+  return {
+    value: nextValue,
+    display: new Date(nextValue).toISOString(),
+  };
+}
+
+function resolvedOffsetForPosition(
+  position: ResolvedPosition | null,
+  offset: RelativeDateOffset
+): RelativeDateOffset {
+  return position?.calendar ? { ...offset, mode: 'calendar' } : offset;
+}
+
+function offsetAmount(position: ResolvedPosition, offset: RelativeDateOffset): number {
+  if (!position.calendar) return offset.amount * MS_PER_UNIT[offset.unit];
+  if (offset.unit === 'min') return offset.amount / 60;
+  if (offset.unit === 'h') return offset.amount;
+  if (offset.unit === 'd') return offset.amount * (position.calendarDef?.hoursInDay ?? 24);
   return offset.amount * MS_PER_UNIT[offset.unit];
+}
+
+function positionsEqual(left: ResolvedPosition, right: ResolvedPosition): boolean {
+  return positionsComparable(left, right) && left.value === right.value;
+}
+
+function positionsComparable(left: ResolvedPosition, right: ResolvedPosition): boolean {
+  return left.calendar === right.calendar;
 }
 
 function setRelativeDateOutput(
@@ -451,7 +555,7 @@ function setRelativeDateOutput(
 
 function emptyResult(source: unknown, resolution: RelativeDateResolution): ResolveResult {
   return {
-    resolvedMs: null,
+    resolved: null,
     resolution,
     source,
     constraints: [],

@@ -92,6 +92,7 @@ bwrb supports vault-wide configuration in `.bwrb/schema.json` under the `config`
 |--------|--------|---------|-------------|
 | `link_format` | `wikilink`, `markdown` | `wikilink` | Format for relation field links |
 | `date_format` | Pattern string | `YYYY-MM-DD` | Format for date fields |
+| `calendars` | Object | `{}` | Custom calendar registry for non-Gregorian date fields |
 | `open_with` | `system`, `editor`, `visual`, `obsidian` | `system` | Default --open behavior |
 | `editor` | Command string | `$EDITOR` | Terminal editor command |
 | `visual` | Command string | `$VISUAL` | GUI editor command |
@@ -108,6 +109,34 @@ The `date_format` option controls how dates are written to frontmatter:
 
 **Validation is format-agnostic**: bwrb accepts any unambiguous date format during audit/validation.
 Ambiguous dates like `01/02/2026` (where both parts are ≤12) are rejected.
+
+### Custom Calendars
+
+Vaults can define custom calendars in `config.calendars` and opt date fields in
+with `calendar` or type-level `calendar_default`:
+
+```json
+{
+  "config": {
+    "calendars": {
+      "tmi": {
+        "hoursInDay": 336,
+        "eras": [
+          { "name": "Before Humans", "shortName": "BH", "backwards": true },
+          { "name": "After Humans", "shortName": "AR" }
+        ],
+        "months": [{ "name": "Month One", "days": 2 }]
+      }
+    }
+  }
+}
+```
+
+Calendar date strings use `<eraShort> <year>-<month>-<day> [<hour>:<minute>]`,
+for example `AR 3019-09-02 266:50`. JSON list output expands these fields as
+`{ value, calendar, linear }`; sort and `--where` compare the linear value.
+For calendar-anchored relative-date chains, `d` means the calendar's
+`hoursInDay`; `w` is rejected.
 
 ```bash
 # View current config
@@ -151,6 +180,10 @@ bwrb list task --sort priority --desc --output json
 # Relative-date fields sort/filter by their resolved query-time value
 bwrb list event --sort position --output json
 bwrb list event --where "position < date('2026-01-03T00:00:00Z')" --output json
+
+# Calendar date fields sort/filter by their linear calendar value
+bwrb list event --sort when --output json
+bwrb list event --where "when > 'AR 1000-01-01'" --output json
 
 # Limit or count matches
 bwrb list task --limit 5 --output json

@@ -13,6 +13,7 @@
 
 import { basename, relative } from 'path';
 import { extractWikilinkTarget } from './links.js';
+import { compareCalendarDateValues, isCalendarDateValue } from './calendar-date.js';
 
 // ============================================================================
 // Types
@@ -189,6 +190,9 @@ export function normalizeSortValue(value: unknown): string | number | boolean {
   if (Array.isArray(value)) {
     return value.map(item => String(item)).join(', ');
   }
+  if (isCalendarDateValue(value)) {
+    return value.linear;
+  }
   if (typeof value === 'number' || typeof value === 'boolean') {
     return value;
   }
@@ -201,6 +205,13 @@ export function normalizeSortValue(value: unknown): string | number | boolean {
  * comparison (so "2" sorts before "10").
  */
 export function compareSortValues(a: unknown, b: unknown): number {
+  if (isCalendarDateValue(a) || isCalendarDateValue(b)) {
+    if (isCalendarDateValue(a) && isCalendarDateValue(b)) {
+      return compareCalendarDateValues(a, b) ?? Number.NaN;
+    }
+    return Number.NaN;
+  }
+
   const normalizedA = normalizeSortValue(a);
   const normalizedB = normalizeSortValue(b);
 
@@ -247,6 +258,9 @@ export function createFileComparator(
     if (missingB) return -1;
 
     const comparison = compareSortValues(valueA, valueB);
+    if (Number.isNaN(comparison)) {
+      return compareByName(a, b);
+    }
     if (comparison !== 0) {
       return descending ? -comparison : comparison;
     }

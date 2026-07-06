@@ -7,6 +7,9 @@ import {
   getTypeDefByPath,
   getAllFieldsForType,
   formatUnknownTypeError,
+  getFieldsForType,
+  resolveDateCalendar,
+  resolveTypeFromFrontmatter,
 } from '../lib/schema.js';
 import {
   buildParentMapFromFiles,
@@ -59,6 +62,12 @@ import {
   buildRelativeDateFieldMap,
   type RelativeDateFieldMap,
 } from '../lib/relative-date.js';
+import {
+  calendarDateJsonValue,
+  calendarDateValue,
+  isCalendarDateValue,
+  parseCalendarDate,
+} from '../lib/calendar-date.js';
 
 /**
  * Resolve the output format from --output flag and deprecated flags.
@@ -600,10 +609,16 @@ export async function listObjects(
         file.path,
         {
           ...file,
-          frontmatter: frontmatterForRelativeDateSort(file, options.sortField!, relativeDateFields),
+          frontmatter: frontmatterForCalendarDateSort(
+            schema,
+            file,
+            options.sortField!,
+            frontmatterForRelativeDateSort(file, options.sortField!, relativeDateFields)
+          ),
         },
       ]))
     : undefined;
+  warnOnCrossCalendarSort(options.sortField, sortFrontmatterFiles);
   filteredFiles.sort((a, b) => fileComparator(
     sortFrontmatterFiles?.get(a.path) ?? a,
     sortFrontmatterFiles?.get(b.path) ?? b
@@ -682,7 +697,10 @@ export async function listObjects(
         if (!options.fields || options.fields.length === 0) {
           return {
             ...base,
-            ...frontmatterWithRelativeDates(path, frontmatter, relativeDateFields),
+            ...frontmatterWithCalendarDateJson(
+              schema,
+              frontmatterWithRelativeDates(path, frontmatter, relativeDateFields)
+            ),
           };
         }
 
@@ -707,7 +725,7 @@ export async function listObjects(
             continue;
           }
           if (Object.prototype.hasOwnProperty.call(frontmatter, field)) {
-            selected[field] = frontmatter[field];
+            selected[field] = calendarDateJsonFieldValue(schema, frontmatter, field) ?? frontmatter[field];
           }
         }
 
@@ -759,6 +777,53 @@ export async function listObjects(
       console.log(basename(path, '.md'));
     }
   }
+}
+
+function frontmatterWithCalendarDateJson(
+  schema: LoadedSchema,
+  frontmatter: Record<string, unknown>
+): Record<string, unknown> {
+  const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
+  if (!typePath) return frontmatter;
+
+  const fields = getFieldsForType(schema, typePath);
+  let result: Record<string, unknown> | undefined;
+  for (const [fieldName, field] of Object.entries(fields)) {
+    const calendarId = resolveDateCalendar(schema, typePath, fieldName, field);
+    if (!calendarId || !(fieldName in frontmatter)) continue;
+    const parsed = parseCalendarDate(
+      frontmatter[fieldName],
+      calendarId,
+      schema.config.calendars[calendarId]!
+    );
+    if (!parsed.valid) continue;
+    result ??= { ...frontmatter };
+    result[fieldName] = calendarDateJsonValue(
+      calendarDateValue(parsed.date, schema.config.calendars[calendarId]!)
+    );
+  }
+  return result ?? frontmatter;
+}
+
+function calendarDateJsonFieldValue(
+  schema: LoadedSchema,
+  frontmatter: Record<string, unknown>,
+  fieldName: string
+): unknown {
+  const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
+  if (!typePath) return undefined;
+  const field = getFieldsForType(schema, typePath)[fieldName];
+  if (!field) return undefined;
+  const calendarId = resolveDateCalendar(schema, typePath, fieldName, field);
+  if (!calendarId) return undefined;
+  const parsed = parseCalendarDate(
+    frontmatter[fieldName],
+    calendarId,
+    schema.config.calendars[calendarId]!
+  );
+  return parsed.valid
+    ? calendarDateJsonValue(calendarDateValue(parsed.date, schema.config.calendars[calendarId]!))
+    : undefined;
 }
 
 function frontmatterWithRelativeDates(
@@ -849,12 +914,19 @@ async function resolveRelativeDateFieldsForList(
   if (!schemaHasRelativeDateFields(schema)) return new Map();
 
   const index = await buildVaultNoteIndex(schema, vaultDir);
-  return buildRelativeDateFieldMap(
+  const result = buildRelativeDateFieldMap(
     schema,
     vaultDir,
     index.snapshot,
     index.noteTargetIndex
-  ).fields;
+  );
+  const invalidOffset = result.diagnostics.find(
+    (diagnostic) => diagnostic.code === 'relative-date-invalid-offset'
+  );
+  if (invalidOffset) {
+    throw new Error(invalidOffset.message);
+  }
+  return result.fields;
 }
 
 function schemaHasRelativeDateFields(schema: LoadedSchema): boolean {
@@ -884,8 +956,56 @@ function frontmatterForRelativeDateSort(
   if (!resolved) return file.frontmatter;
   return {
     ...file.frontmatter,
-    [sortField]: resolved.resolved,
+    [sortField]: resolved.calendar && resolved.linear !== undefined && resolved.resolved
+      ? {
+          __bwrbCalendarDate: true,
+          value: resolved.resolved,
+          calendar: resolved.calendar,
+          linear: resolved.linear,
+        }
+      : resolved.resolved,
   };
+}
+
+function frontmatterForCalendarDateSort(
+  schema: LoadedSchema,
+  file: { path: string; frontmatter: Record<string, unknown> },
+  sortField: string,
+  frontmatter: Record<string, unknown>
+): Record<string, unknown> {
+  const typePath = resolveTypeFromFrontmatter(schema, file.frontmatter);
+  if (!typePath) return frontmatter;
+  const field = getFieldsForType(schema, typePath)[sortField];
+  if (!field) return frontmatter;
+  const calendarId = resolveDateCalendar(schema, typePath, sortField, field);
+  if (!calendarId) return frontmatter;
+  const parsed = parseCalendarDate(
+    frontmatter[sortField],
+    calendarId,
+    schema.config.calendars[calendarId]!
+  );
+  if (!parsed.valid) return frontmatter;
+  return {
+    ...frontmatter,
+    [sortField]: calendarDateValue(parsed.date, schema.config.calendars[calendarId]!),
+  };
+}
+
+function warnOnCrossCalendarSort(
+  sortField: string | undefined,
+  files: Map<string, { frontmatter: Record<string, unknown> }> | undefined
+): void {
+  if (!sortField || !files) return;
+  const calendars = new Set<string>();
+  for (const file of files.values()) {
+    const value = file.frontmatter[sortField];
+    if (isCalendarDateValue(value)) calendars.add(value.calendar);
+  }
+  if (calendars.size > 1) {
+    console.error(
+      `Warning: cannot compare ${sortField} across different calendars (${Array.from(calendars).join(', ')}); cross-calendar ties use name order.`
+    );
+  }
 }
 
 // ============================================================================

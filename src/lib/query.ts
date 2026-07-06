@@ -5,6 +5,7 @@ import {
   getEntityAliases,
   getFieldsForType,
   getType,
+  resolveDateCalendar,
   resolveTypeFromFrontmatter,
 } from './schema.js';
 import { matchesExpression, buildEvalContext, type HierarchyData } from './expression.js';
@@ -20,6 +21,7 @@ import {
   buildRelativeDateFieldMap,
   type RelativeDateFieldMap,
 } from './relative-date.js';
+import { calendarDateValue, parseCalendarDate } from './calendar-date.js';
 
 /**
  * Validate that a field name is valid for a type.
@@ -600,7 +602,11 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
   for (const file of files) {
     // Apply expression filters (--where style)
     if (expressionPairs.length > 0) {
-      const evalFrontmatter = frontmatterWithResolvedRelativeDates(file, relativeDateFields);
+      const evalFrontmatter = frontmatterWithCalendarDates(
+        schema,
+        file,
+        frontmatterWithResolvedRelativeDates(schema, file, relativeDateFields)
+      );
       const context = await buildEvalContext(file.path, vaultDir, evalFrontmatter);
       const relationType = resolveHierarchyType(file.frontmatter, {
         ...(schema ? { schema } : {}),
@@ -643,15 +649,23 @@ async function resolveRelativeDateFieldsForQuery(
   vaultDir: string
 ): Promise<RelativeDateFieldMap> {
   const index = await buildVaultNoteIndex(schema, vaultDir);
-  return buildRelativeDateFieldMap(
+  const result = buildRelativeDateFieldMap(
     schema,
     vaultDir,
     index.snapshot,
     index.noteTargetIndex
-  ).fields;
+  );
+  const invalidOffset = result.diagnostics.find(
+    (diagnostic) => diagnostic.code === 'relative-date-invalid-offset'
+  );
+  if (invalidOffset) {
+    throw new Error(invalidOffset.message);
+  }
+  return result.fields;
 }
 
 function frontmatterWithResolvedRelativeDates<T extends FileWithFrontmatter>(
+  schema: LoadedSchema | undefined,
   file: T,
   relativeDateFields: RelativeDateFieldMap | undefined
 ): Record<string, unknown> {
@@ -660,7 +674,42 @@ function frontmatterWithResolvedRelativeDates<T extends FileWithFrontmatter>(
 
   const frontmatter = { ...file.frontmatter };
   for (const [fieldName, output] of fields) {
-    frontmatter[fieldName] = output.resolved;
+    frontmatter[fieldName] = output.calendar && output.linear !== undefined && output.resolved
+      ? {
+          __bwrbCalendarDate: true,
+          value: output.resolved,
+          calendar: output.calendar,
+          linear: output.linear,
+          calendarDef: schema?.config.calendars[output.calendar],
+        }
+      : output.resolved;
   }
   return frontmatter;
+}
+
+function frontmatterWithCalendarDates<T extends FileWithFrontmatter>(
+  schema: LoadedSchema | undefined,
+  file: T,
+  frontmatter: Record<string, unknown>
+): Record<string, unknown> {
+  if (!schema) return frontmatter;
+  const typePath = resolveTypeFromFrontmatter(schema, file.frontmatter);
+  if (!typePath) return frontmatter;
+
+  const fields = getFieldsForType(schema, typePath);
+  let result: Record<string, unknown> | undefined;
+  for (const [fieldName, field] of Object.entries(fields)) {
+    const calendarId = resolveDateCalendar(schema, typePath, fieldName, field);
+    if (!calendarId) continue;
+    const parsed = parseCalendarDate(
+      frontmatter[fieldName],
+      calendarId,
+      schema.config.calendars[calendarId]!
+    );
+    if (!parsed.valid) continue;
+    result ??= { ...frontmatter };
+    result[fieldName] = calendarDateValue(parsed.date, schema.config.calendars[calendarId]!);
+  }
+
+  return result ?? frontmatter;
 }

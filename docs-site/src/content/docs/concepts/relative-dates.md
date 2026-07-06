@@ -49,6 +49,8 @@ position:
 
 Offsets are parsed internally as `{ amount, unit, mode }` so future calendar-aware resolvers can preserve the unit instead of inheriting a millisecond-only value.
 
+For fictional or alternative timekeeping, define a [custom calendar](/concepts/custom-calendars/) and anchor relative-date chains on calendar date fields.
+
 ## Resolution
 
 A relative-date field resolves to:
@@ -58,6 +60,8 @@ A relative-date field resolves to:
 - `null` when it only has `after`/`before` bounds or the chain has no absolute anchor
 
 Plain `YYYY-MM-DD` dates are interpreted at local midnight in the machine's timezone before being converted to UTC.
+
+Calendar anchors resolve in their calendar's linear hours instead. On those chains, `d` uses the calendar's configured `hoursInDay`, and `w` is rejected in v1.
 
 Multiple `equal` constraints are allowed, but only the first one provides the resolved value. If later equal constraints resolve to a different position, Bowerbird reports a contradiction.
 
