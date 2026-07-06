@@ -34,20 +34,26 @@ describe('relative-date fields', () => {
       position: [{ kind: 'after', ref: '[[A]]', field: 'start', offset: '1w' }],
     });
 
+    // Plain YYYY-MM-DD anchors resolve at local midnight, so expected instants
+    // must be derived the same way to stay timezone-independent (local vs CI).
+    const HOUR = 60 * 60 * 1000;
+    const baseMs = new Date(2026, 0, 1).getTime();
+    const iso = (ms: number) => new Date(ms).toISOString();
+
     const sorted = await runCLI(['list', 'moment', '--sort', 'position', '--output', 'json'], vaultDir);
     expect(sorted.exitCode).toBe(0);
     const rows = JSON.parse(sorted.stdout) as Array<Record<string, unknown>>;
     expect(rows.map(row => row._name)).toEqual(['A', 'C', 'B', 'D']);
     expect(rows[0]!.position).toMatchObject({
-      resolved: '2026-01-01T05:00:00.000Z',
+      resolved: iso(baseMs),
       resolution: 'ok',
     });
     expect(rows[1]!.position).toMatchObject({
-      resolved: '2026-01-02T13:00:00.000Z',
+      resolved: iso(baseMs + 32 * HOUR),
       resolution: 'ok',
     });
     expect(rows[2]!.position).toMatchObject({
-      resolved: '2026-01-02T15:00:00.000Z',
+      resolved: iso(baseMs + 34 * HOUR),
       resolution: 'ok',
     });
     expect(rows[3]!.position).toMatchObject({
@@ -56,7 +62,7 @@ describe('relative-date fields', () => {
     });
 
     const filtered = await runCLI(
-      ['list', 'moment', '--where', "position < date('2026-01-02T14:00:00Z')", '--output', 'json'],
+      ['list', 'moment', '--where', `position < date('${iso(baseMs + 33 * HOUR)}')`, '--output', 'json'],
       vaultDir
     );
     expect(filtered.exitCode).toBe(0);
