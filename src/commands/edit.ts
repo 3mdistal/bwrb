@@ -6,7 +6,7 @@
  */
 
 import { Command } from 'commander';
-import { basename, isAbsolute, relative } from 'path';
+import { basename, isAbsolute, join, relative } from 'path';
 import fs from 'fs/promises';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
@@ -16,9 +16,10 @@ import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError }
 import { buildNoteIndex, type ManagedFile } from '../lib/navigation.js';
 import { parsePickerMode, resolveAndPick, type PickerMode } from '../lib/picker.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
-import { openNote, resolveAppMode, parseAppMode } from './open.js';
+import { openNote, resolveAppMode, parseAppMode, type AppMode } from './open.js';
 import { resolveTargets, hasAnyTargeting, type TargetingOptions } from '../lib/targeting.js';
 import { UserCancelledError } from '../lib/errors.js';
+import type { ResolvedConfig } from '../types/schema.js';
 
 // ============================================================================
 // Types
@@ -45,9 +46,60 @@ function resolveEditJsonMode(options: EditOptions, globalOutput?: string): boole
   return requested === 'json';
 }
 
-function printEditSuccess(path: string, updatedFields: string[], jsonMode: boolean): void {
+interface EditOpenJsonData {
+  open: {
+    relativePath: string;
+    fullPath: string;
+  };
+}
+
+class EditValidationError extends Error {}
+
+function getOpenPrintJsonData(vaultDir: string, notePath: string): EditOpenJsonData {
+  const fullPath = isAbsolute(notePath) ? notePath : join(vaultDir, notePath);
+  const relativePath = isAbsolute(notePath)
+    ? notePath.replace(`${vaultDir}/`, '')
+    : notePath;
+
+  return {
+    open: {
+      relativePath,
+      fullPath,
+    },
+  };
+}
+
+async function openAfterEdit(
+  vaultDir: string,
+  notePath: string,
+  appMode: AppMode,
+  config: ResolvedConfig,
+  jsonMode: boolean
+): Promise<EditOpenJsonData | undefined> {
+  if (jsonMode && appMode === 'print') {
+    return getOpenPrintJsonData(vaultDir, notePath);
+  }
+
+  if (jsonMode && appMode === 'editor' && !config.editor) {
+    throw new EditValidationError('No terminal editor configured. Set $EDITOR or config.editor.');
+  }
+
+  if (jsonMode && appMode === 'visual' && !config.visual) {
+    throw new EditValidationError('No GUI editor configured. Set $VISUAL or config.visual.');
+  }
+
+  await openNote(vaultDir, notePath, appMode, config, false);
+  return undefined;
+}
+
+function printEditSuccess(
+  path: string,
+  updatedFields: string[],
+  jsonMode: boolean,
+  data?: EditOpenJsonData
+): void {
   if (jsonMode) {
-    printJson(jsonSuccess({ path, updated: updatedFields }));
+    printJson(jsonSuccess({ path, updated: updatedFields, ...(data ? { data } : {}) }));
     return;
   }
 
@@ -200,11 +252,17 @@ Precedence (for --open app mode):
           // It's a valid absolute path - use it directly.
           if (patchMode) {
             const editResult = await editNoteFromJson(schema, vaultDir, query, options.json!, { jsonMode });
-            printEditSuccess(relative(vaultDir, query), editResult.updatedFields, jsonMode);
+            let openData: EditOpenJsonData | undefined;
             if (options.open) {
               const appMode = resolveAppMode(appModeInput, schema.config);
-              await openNote(vaultDir, query, appMode, schema.config, true);
+              if (!jsonMode) {
+                printEditSuccess(relative(vaultDir, query), editResult.updatedFields, jsonMode);
+                await openAfterEdit(vaultDir, query, appMode, schema.config, jsonMode);
+                return;
+              }
+              openData = await openAfterEdit(vaultDir, query, appMode, schema.config, jsonMode);
             }
+            printEditSuccess(relative(vaultDir, query), editResult.updatedFields, jsonMode, openData);
           } else {
             await editNoteInteractive(schema, vaultDir, query, {});
             printSuccess(`Updated ${basename(query, '.md')}`);
@@ -304,13 +362,19 @@ Precedence (for --open app mode):
       if (patchMode) {
         // JSON patch mode: non-interactive patch with selectable output format
         const editResult = await editNoteFromJson(schema, vaultDir, targetFile.path, options.json!, { jsonMode });
-        printEditSuccess(targetFile.relativePath, editResult.updatedFields, jsonMode);
+        let openData: EditOpenJsonData | undefined;
 
         // Open after edit if requested
         if (options.open) {
           const appMode = resolveAppMode(appModeInput, schema.config);
-          await openNote(vaultDir, targetFile.path, appMode, schema.config, true);
+          if (!jsonMode) {
+            printEditSuccess(targetFile.relativePath, editResult.updatedFields, jsonMode);
+            await openAfterEdit(vaultDir, targetFile.path, appMode, schema.config, jsonMode);
+            return;
+          }
+          openData = await openAfterEdit(vaultDir, targetFile.path, appMode, schema.config, jsonMode);
         }
+        printEditSuccess(targetFile.relativePath, editResult.updatedFields, jsonMode, openData);
         return;
       } else {
         // Interactive mode
@@ -334,6 +398,14 @@ Precedence (for --open app mode):
         process.exit(1);
       }
       const message = err instanceof Error ? err.message : String(err);
+      if (err instanceof EditValidationError) {
+        if (jsonMode) {
+          printJson(jsonError(message));
+          process.exit(ExitCodes.VALIDATION_ERROR);
+        }
+        printError(message);
+        process.exit(1);
+      }
       if (jsonMode) {
         printJson(jsonError(message));
         process.exit(ExitCodes.IO_ERROR);
