@@ -54,6 +54,11 @@ import { createDashboard, updateDashboard, getDashboard } from '../lib/dashboard
 import { suggestFieldName } from '../lib/validation.js';
 import { getTtyContext } from '../lib/tty/context.js';
 import { renderTable } from '../lib/tty/table.js';
+import { buildVaultNoteIndex } from '../lib/discovery.js';
+import {
+  buildRelativeDateFieldMap,
+  type RelativeDateFieldMap,
+} from '../lib/relative-date.js';
 
 /**
  * Resolve the output format from --output flag and deprecated flags.
@@ -583,13 +588,26 @@ export async function listObjects(
     ? await collectFileStats(filteredFiles.map(f => f.path))
     : undefined;
 
+  const relativeDateFields = await resolveRelativeDateFieldsForList(schema, vaultDir);
   const fileComparator = createFileComparator(
     vaultDir,
     options.sortField,
     options.sortDesc,
     fileStats
   );
-  filteredFiles.sort(fileComparator);
+  const sortFrontmatterFiles = options.sortField
+    ? new Map(filteredFiles.map(file => [
+        file.path,
+        {
+          ...file,
+          frontmatter: frontmatterForRelativeDateSort(file, options.sortField!, relativeDateFields),
+        },
+      ]))
+    : undefined;
+  filteredFiles.sort((a, b) => fileComparator(
+    sortFrontmatterFiles?.get(a.path) ?? a,
+    sortFrontmatterFiles?.get(b.path) ?? b
+  ));
 
   const matchCount = filteredFiles.length;
 
@@ -664,7 +682,7 @@ export async function listObjects(
         if (!options.fields || options.fields.length === 0) {
           return {
             ...base,
-            ...frontmatter,
+            ...frontmatterWithRelativeDates(path, frontmatter, relativeDateFields),
           };
         }
 
@@ -681,6 +699,11 @@ export async function listObjects(
             // JSON consumers see the same data the table shows (#689).
             const value = fileStatJsonValue(field, fileStats?.get(path));
             if (value !== undefined) selected[field] = value;
+            continue;
+          }
+          const relativeValue = relativeDateFields.get(path)?.get(field);
+          if (relativeValue !== undefined) {
+            selected[field] = relativeValue;
             continue;
           }
           if (Object.prototype.hasOwnProperty.call(frontmatter, field)) {
@@ -730,12 +753,26 @@ export async function listObjects(
 
   // Default output (table with fields or simple names)
   if (options.fields && options.fields.length > 0) {
-    printTable(filteredFiles, vaultDir, showPaths, options.fields, fileStats);
+    printTable(filteredFiles, vaultDir, showPaths, options.fields, fileStats, relativeDateFields);
   } else {
     for (const { path } of filteredFiles) {
       console.log(basename(path, '.md'));
     }
   }
+}
+
+function frontmatterWithRelativeDates(
+  path: string,
+  frontmatter: Record<string, unknown>,
+  relativeDateFields: RelativeDateFieldMap | undefined
+): Record<string, unknown> {
+  const relativeFields = relativeDateFields?.get(path);
+  if (!relativeFields || relativeFields.size === 0) return frontmatter;
+  const result = { ...frontmatter };
+  for (const [field, value] of relativeFields) {
+    result[field] = value;
+  }
+  return result;
 }
 
 /**
@@ -746,7 +783,8 @@ function printTable(
   vaultDir: string,
   showPaths: boolean,
   fields: string[],
-  fileStats?: FileStatMap
+  fileStats?: FileStatMap,
+  relativeDateFields?: RelativeDateFieldMap
 ): void {
   const context = getTtyContext();
   const headerStyle = context.colorEnabled ? (text: string) => chalk.gray(text) : null;
@@ -791,7 +829,7 @@ function printTable(
         ? basename(path, '.md')
         : field === '_path'
           ? relative(vaultDir, path)
-          : frontmatter[field];
+          : getListJsonFieldValue(path, field, frontmatter, relativeDateFields);
       row[field] = formatDisplayValue(value, { empty: '—' });
     }
 
@@ -802,6 +840,52 @@ function printTable(
   for (const line of lines) {
     console.log(line);
   }
+}
+
+async function resolveRelativeDateFieldsForList(
+  schema: LoadedSchema,
+  vaultDir: string
+): Promise<RelativeDateFieldMap> {
+  if (!schemaHasRelativeDateFields(schema)) return new Map();
+
+  const index = await buildVaultNoteIndex(schema, vaultDir);
+  return buildRelativeDateFieldMap(
+    schema,
+    vaultDir,
+    index.snapshot,
+    index.noteTargetIndex
+  ).fields;
+}
+
+function schemaHasRelativeDateFields(schema: LoadedSchema): boolean {
+  for (const type of schema.types.values()) {
+    for (const field of Object.values(type.fields)) {
+      if (field.prompt === 'relative-date') return true;
+    }
+  }
+  return false;
+}
+
+function getListJsonFieldValue(
+  path: string,
+  field: string,
+  frontmatter: Record<string, unknown>,
+  relativeDateFields: RelativeDateFieldMap | undefined
+): unknown {
+  return relativeDateFields?.get(path)?.get(field) ?? frontmatter[field];
+}
+
+function frontmatterForRelativeDateSort(
+  file: { path: string; frontmatter: Record<string, unknown> },
+  sortField: string,
+  relativeDateFields: RelativeDateFieldMap
+): Record<string, unknown> {
+  const resolved = relativeDateFields.get(file.path)?.get(sortField);
+  if (!resolved) return file.frontmatter;
+  return {
+    ...file.frontmatter,
+    [sortField]: resolved.resolved,
+  };
 }
 
 // ============================================================================

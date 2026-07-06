@@ -146,6 +146,10 @@ export async function promptField(
       if (opts.mode === 'create') return promptDateFieldCreate(label, field);
       return promptTextOrDateTemplate(label, opts);
 
+    case 'relative-date':
+      if (opts.mode === 'create') return promptRelativeDateFieldCreate(label, field);
+      return promptRelativeDateTemplate(label, opts);
+
     case 'boolean':
       if (opts.mode === 'create') return promptBooleanFieldCreate(label);
       return promptBooleanTemplate(label, opts);
@@ -379,6 +383,39 @@ async function promptDateFieldCreate(label: string, field: Field): Promise<unkno
   const value = await promptInput(label, defaultVal);
   if (value === null) throw new UserCancelledError();
   return value;
+}
+
+async function promptRelativeDateFieldCreate(label: string, field: Field): Promise<unknown> {
+  const defaultVal = typeof field.default === 'string' ? field.default : undefined;
+  const value = await promptInput(label, defaultVal);
+  if (value === null) throw new UserCancelledError();
+  if (!value.trim()) return field.default ?? '';
+  return parseRelativeDatePromptInput(value);
+}
+
+async function promptRelativeDateTemplate(
+  label: string,
+  opts: Extract<FieldPromptOptions, { mode: 'template-default' } | { mode: 'template-edit' }>
+): Promise<unknown> {
+  if (opts.mode === 'template-default') {
+    const input = await promptInput(`Default ${label} as JSON (or Enter to skip)`);
+    if (input === null) throw new UserCancelledError();
+    if (!input.trim()) return undefined;
+    return parseRelativeDatePromptInput(input);
+  }
+  const input = await promptInput(`New ${label} as JSON (Enter to keep, "clear" to remove)`);
+  if (input === null) throw new UserCancelledError();
+  if (!input.trim()) return opts.currentValue;
+  if (input.toLowerCase() === 'clear') return CLEAR;
+  return parseRelativeDatePromptInput(input);
+}
+
+function parseRelativeDatePromptInput(input: string): unknown {
+  try {
+    return JSON.parse(input);
+  } catch (error) {
+    throw new Error(`Invalid relative-date JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 async function promptBooleanFieldCreate(label: string): Promise<unknown> {

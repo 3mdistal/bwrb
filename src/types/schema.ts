@@ -34,10 +34,10 @@ export const FieldOptionSchema = z.union([
 export const FieldSchema = z.object({
   // Prompt type (how the field is collected)
   prompt: z
-    .enum(['text', 'select', 'list', 'date', 'relation', 'boolean', 'number'])
+    .enum(['text', 'select', 'list', 'date', 'relative-date', 'relation', 'boolean', 'number'])
     .optional()
     .describe(
-      'Type of prompt: text (free text), select (from options), relation (from vault query), list (comma-separated list), date (date picker), boolean (yes/no), number (numeric input)'
+      'Type of prompt: text (free text), select (from options), relation (from vault query), list (comma-separated list), date (date picker), relative-date (constraints relative to another note date), boolean (yes/no), number (numeric input)'
     ),
   // Coarsest date precision allowed for `date` fields (finer is always allowed).
   // - day (default): full YYYY-MM-DD only
@@ -79,7 +79,7 @@ export const FieldSchema = z.object({
     .union([z.string(), z.array(z.string())])
     .optional()
     .describe(
-      'Type name(s) for relation prompts. When a relation\'s value is ambiguous because two notes share a name, path-qualify the link (e.g. `[[contexts/Betson]]`); see the search command docs for the shortest-unambiguous-form rule.'
+      'Type name(s) for relation and relative-date prompts. When a relation\'s value is ambiguous because two notes share a name, path-qualify the link (e.g. `[[contexts/Betson]]`); see the search command docs for the shortest-unambiguous-form rule.'
     ),
   // Filter conditions for type-based source queries
   // Applies frontmatter conditions to filter results (e.g., { status: { not_in: ["settled"] } })

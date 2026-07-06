@@ -136,6 +136,10 @@ Issue Types:
                         unclosed [[) (flag-only)
   broken-body-file-link A relative [text](path)/![alt](img) link in the body
                         whose target doesn't exist on disk (flag-only)
+  relative-date-cycle Relative-date equal constraints form a cycle
+  relative-date-contradiction Multiple equal constraints resolve differently
+  relative-date-bound-violation Resolved date violates an after/before bound
+  relative-date-invalid-ref Relative-date anchor is missing or ambiguous
 
 Type Resolution:
   Audit resolves each file's type from its frontmatter 'type' field.

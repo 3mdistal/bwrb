@@ -12,9 +12,14 @@ import { collectFrontmatterKeys, normalizeWhereExpressions } from './where-norma
 import { extractLinkTarget } from './links.js';
 import {
   buildVaultNoteSnapshot,
+  buildVaultNoteIndex,
   deriveNoteTargetIndex,
   type VaultNoteSnapshot,
 } from './discovery.js';
+import {
+  buildRelativeDateFieldMap,
+  type RelativeDateFieldMap,
+} from './relative-date.js';
 
 /**
  * Validate that a field name is valid for a type.
@@ -588,10 +593,15 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
   }
 
   const relationSourceCache = new Map<string, Map<string, string | string[] | undefined>>();
+  const relativeDateFields =
+    schema && expressionPairs.length > 0
+      ? await resolveRelativeDateFieldsForQuery(schema, vaultDir)
+      : undefined;
   for (const file of files) {
     // Apply expression filters (--where style)
     if (expressionPairs.length > 0) {
-      const context = await buildEvalContext(file.path, vaultDir, file.frontmatter);
+      const evalFrontmatter = frontmatterWithResolvedRelativeDates(file, relativeDateFields);
+      const context = await buildEvalContext(file.path, vaultDir, evalFrontmatter);
       const relationType = resolveHierarchyType(file.frontmatter, {
         ...(schema ? { schema } : {}),
         ...(typePath ? { typePath } : {}),
@@ -626,4 +636,31 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
   }
 
   return result;
+}
+
+async function resolveRelativeDateFieldsForQuery(
+  schema: LoadedSchema,
+  vaultDir: string
+): Promise<RelativeDateFieldMap> {
+  const index = await buildVaultNoteIndex(schema, vaultDir);
+  return buildRelativeDateFieldMap(
+    schema,
+    vaultDir,
+    index.snapshot,
+    index.noteTargetIndex
+  ).fields;
+}
+
+function frontmatterWithResolvedRelativeDates<T extends FileWithFrontmatter>(
+  file: T,
+  relativeDateFields: RelativeDateFieldMap | undefined
+): Record<string, unknown> {
+  const fields = relativeDateFields?.get(file.path);
+  if (!fields || fields.size === 0) return file.frontmatter;
+
+  const frontmatter = { ...file.frontmatter };
+  for (const [fieldName, output] of fields) {
+    frontmatter[fieldName] = output.resolved;
+  }
+  return frontmatter;
 }

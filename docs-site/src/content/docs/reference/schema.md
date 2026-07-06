@@ -284,6 +284,7 @@ Fields define the frontmatter properties of a note. Each field has a name (the o
 | `number` | Numeric input | `number` | Priority, counts |
 | `boolean` | Y/n confirm | `true`/`false` | Flags, toggles |
 | `date` | Date input | `string` (YYYY-MM-DD) | Deadlines, dates |
+| `relative-date` | JSON/object input | object or object list | Query-time positions relative to another note |
 | `select` | Picker from options | `string` or `string[]` | Status, category |
 | `relation` | Picker from vault | `string` (wikilink) | Links to other notes |
 | `list` | Comma-separated input | `string[]` | Tags, aliases |
@@ -383,6 +384,42 @@ is the *coarsest* precision allowed; finer values are always accepted:
 Partial dates are stored verbatim (ISO partials still sort lexically). To relax
 the default for *all* date fields at once, set [`date_granularity`](#config) in
 config; a field's own `granularity` overrides that default.
+
+### relative-date
+
+Structured constraints that position a note relative to another note's date or
+relative-date field. The raw constraint is stored in frontmatter; resolved
+positions are computed at query time and are never written back to the note.
+
+```json
+{
+  "position": {
+    "prompt": "relative-date",
+    "source": "event"
+  }
+}
+```
+
+Stored value:
+
+```yaml
+position:
+  - kind: equal
+    ref: "[[The Rending]]"
+    field: start
+    offset: 34h
+```
+
+`kind` is `equal`, `after`, or `before`. `ref` is the anchor note reference.
+`field` is optional; when omitted, Bowerbird uses the anchor's date field, then
+its relative-date field. `offset` is an optional signed duration using `min`,
+`h`, `d`, or `w`.
+
+`bwrb list --output json` expands the field to include `source`, `resolved`, and
+`resolution`. `--sort <field>` and `--where` comparisons use the resolved value,
+with unresolved values sorted last. Audit reports cycles, contradictions,
+invalid anchor references, and after/before bound violations as warnings. See
+[Relative Dates](/concepts/relative-dates/) for the full query-time behavior.
 
 ### select
 
@@ -630,7 +667,7 @@ Complete list of field properties:
 | Property | Type | Applies To | Description |
 |----------|------|------------|-------------|
 | `value` | string | static | Fixed value (mutually exclusive with `prompt`) |
-| `prompt` | string | prompted | Prompt type: `text`, `number`, `boolean`, `date`, `select`, `relation`, `list` |
+| `prompt` | string | prompted | Prompt type: `text`, `number`, `boolean`, `date`, `relative-date`, `select`, `relation`, `list` |
 | `label` | string | prompted | Custom label shown during prompting (the imperative prompt text) |
 | `description` | string | any | What this field is for and when to use it. Surfaced by `bwrb schema list`; distinct from `label` |
 | `required` | boolean | prompted | Whether field must have a value (default: `false`) |
@@ -638,7 +675,7 @@ Complete list of field properties:
 | `granularity` | string | `date` | Coarsest precision allowed: `day` (default), `month`, or `year`. Overrides `date_granularity` |
 | `options` | array | `select` | Allowed values: bare strings or `{ value, description }` objects |
 | `multiple` | boolean | `select`, `relation` | Allow multiple values (default: `false`) |
-| `source` | string | `relation` | Type name to filter picker, or `"any"` |
+| `source` | string | `relation`, `relative-date` | Type name to filter anchor/picker candidates, or `"any"` |
 | `filter` | object | `relation` | Filter conditions for source query |
 | `owned` | boolean | `relation` | Whether referenced notes are owned/colocated (default: `false`) |
 | `alias` | boolean | `list` | Field role: marks this field as the entity's aliases. Value must be an array of non-empty, unique strings. Consulted by name resolution and linking (default: `false`) |

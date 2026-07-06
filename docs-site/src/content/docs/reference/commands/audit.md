@@ -95,6 +95,10 @@ Delete semantics in repair mode:
 | `broken-body-wikilink` | A well-formed `[[wikilink]]` in the note **body** whose target resolves to **no note** via the alias-aware, case-insensitive note index (warning; **flag-only** — offers a "did you mean?" hint but never auto-links — see below) |
 | `malformed-body-wikilink` | Wikilink bracket syntax in the body that is broken — an empty target (`[[]]`/`[[ ]]`) or an unclosed `[[` (warning; **flag-only**) |
 | `broken-body-file-link` | A relative markdown file/image link in the body — `[text](path.md)` / `![alt](img.png)` — whose target does not exist on disk (warning; **flag-only**) |
+| `relative-date-cycle` | A [`relative-date`](/concepts/relative-dates/) equal chain loops back on itself (warning; flag-only) |
+| `relative-date-contradiction` | Multiple `equal` constraints on a relative-date field resolve to different positions (warning; flag-only) |
+| `relative-date-bound-violation` | A resolved relative date violates an `after` or `before` bound (warning; flag-only) |
+| `relative-date-invalid-ref` | A relative-date anchor reference is missing or ambiguous (warning; flag-only) |
 | `missing-successor` | A [recurring](/automation/task-system/) note satisfies its trigger (e.g. `status = done`) but its chain field (`next`) is empty — a successor was never spawned (e.g. completed outside bwrb). Warning; **auto-fixable** (`--fix` spawns it, identical to the fast path) |
 | `invalid-recurrence` | A [recurrence](/automation/task-system/) rule is broken at the config level — a malformed trigger, a non-date offset base, or a template that doesn't exist (error; **never auto-fixable** — a config error gets the same safety net as data) |
 

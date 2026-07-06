@@ -148,6 +148,10 @@ bwrb list task --fields status,priority --output json
 bwrb list task --sort deadline --output json
 bwrb list task --sort priority --desc --output json
 
+# Relative-date fields sort/filter by their resolved query-time value
+bwrb list event --sort position --output json
+bwrb list event --where "position < date('2026-01-03T00:00:00Z')" --output json
+
 # Limit or count matches
 bwrb list task --limit 5 --output json
 bwrb list task --count --output json
@@ -158,6 +162,20 @@ bwrb list --id "<uuid>" --output json
 # Full-text search in note content
 bwrb list --body "search term" --output json
 ```
+
+### Relative-Date Fields
+
+Schema fields with `prompt: "relative-date"` store structured constraints, not
+computed dates. Use JSON/object input in automation:
+
+```bash
+bwrb new event --json '{"name":"Scene B","position":{"kind":"equal","ref":"[[Scene A]]","field":"start","offset":"34h"}}'
+bwrb edit "Scene B" --json '{"position":[{"kind":"after","ref":"[[Scene A]]","field":"start","offset":"1w"}]}'
+```
+
+`kind` is `equal`, `after`, or `before`; `offset` uses `min`, `h`, `d`, or `w`.
+`bwrb list --output json` renders the field as `{ source, resolved, resolution }`.
+Do not write resolved values back into frontmatter.
 
 ### Creating Notes
 

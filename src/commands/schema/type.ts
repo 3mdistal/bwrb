@@ -145,7 +145,7 @@ export function registerNewTypeCommand(newCommand: Command): void {
               throw new Error(`Invalid field definition: "${fieldDef}". Use "name:type" format.`);
             }
             // Map simple type strings to field definitions
-            const promptType = fieldType as 'text' | 'select' | 'date' | 'list' | 'relation' | 'boolean' | 'number';
+            const promptType = fieldType as Field['prompt'];
             fields[fieldName] = { prompt: promptType };
           }
         } else if (!jsonMode) {

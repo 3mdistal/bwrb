@@ -250,7 +250,7 @@ export function registerEditFieldCommand(editCommand: Command): void {
               }
             }
           } else if (choice === 'Change prompt type') {
-            const promptOptions = ['text', 'select', 'list', 'date', 'relation', 'boolean', 'number'];
+            const promptOptions = ['text', 'select', 'list', 'date', 'relative-date', 'relation', 'boolean', 'number'];
             const newPrompt = await promptSelection('Prompt type', promptOptions);
             const fieldEntry = rawTypeEntry.fields?.[fieldName];
             if (newPrompt !== null && fieldEntry) {

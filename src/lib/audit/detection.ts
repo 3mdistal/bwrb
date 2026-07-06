@@ -78,6 +78,7 @@ import {
   resolveRelationTarget,
   type NoteTargetIndex,
 } from '../discovery.js';
+import { buildRelativeDateFieldMap, validateRelativeDateValue } from '../relative-date.js';
 
 // Import ownership tracking
 import {
@@ -246,6 +247,38 @@ export async function runAudit(
         path: file.path,
         relativePath: file.relativePath,
         issues: filteredIssues,
+      });
+    }
+  }
+
+  const relativeDateDiagnostics = buildRelativeDateFieldMap(
+    schema,
+    vaultDir,
+    noteIndex.snapshot,
+    noteIndex.noteTargetIndex
+  ).diagnostics;
+  for (const diagnostic of relativeDateDiagnostics) {
+    const relativePath = filteredFiles.find(file => file.path === diagnostic.path)?.relativePath;
+    if (!relativePath) continue;
+    const issue: AuditIssue = {
+      severity: diagnostic.severity,
+      code: diagnostic.code,
+      message: diagnostic.message,
+      field: diagnostic.field,
+      autoFixable: false,
+      ...(diagnostic.relatedPaths ? { meta: { relatedPaths: diagnostic.relatedPaths } } : {}),
+    };
+    if (options.onlyIssue && issue.code !== options.onlyIssue) continue;
+    if (options.ignoreIssue && issue.code === options.ignoreIssue) continue;
+
+    const existing = results.find(result => result.path === diagnostic.path);
+    if (existing) {
+      existing.issues.push(issue);
+    } else {
+      results.push({
+        path: diagnostic.path,
+        relativePath,
+        issues: [issue],
       });
     }
   }
@@ -550,6 +583,22 @@ export async function auditFile(
   for (const [fieldName, value] of Object.entries(frontmatter)) {
     const field = fields[fieldName];
     if (!field) continue;
+
+    if (field.prompt === 'relative-date') {
+      const relativeDateError = validateRelativeDateValue(fieldName, value);
+      if (relativeDateError) {
+        issues.push({
+          severity: 'error',
+          code: 'format-violation',
+          message: relativeDateError,
+          field: fieldName,
+          value,
+          expected: '{ kind, ref, field?, offset? } or a list of those objects',
+          autoFixable: false,
+        });
+      }
+      continue;
+    }
 
     const expectsList = field.prompt === 'list' || field.multiple === true;
     const expectedScalarType = getExpectedScalarType(field);

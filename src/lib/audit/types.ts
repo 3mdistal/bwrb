@@ -86,7 +86,12 @@ export type IssueCode =
   // Body link validation (#652): a markdown file/image link `[t](path)` /
   // `![a](img)` whose relative target doesn't exist on disk (resolved relative to
   // the note's directory). External URLs / anchors are not checked. Flag-only.
-  | 'broken-body-file-link';
+  | 'broken-body-file-link'
+  | 'relative-date-cycle'
+  | 'relative-date-contradiction'
+  | 'relative-date-bound-violation'
+  | 'relative-date-unanchored'
+  | 'relative-date-invalid-ref';
 
 /**
  * A single audit issue.
