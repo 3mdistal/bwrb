@@ -15,6 +15,7 @@ import {
   validateContextFields,
   validateFrontmatter,
 } from '../../lib/validation.js';
+import { validateRelativeDateCalendarOffsetsForWrite } from '../../lib/relative-date.js';
 import {
   getFilenamePattern,
   processTemplateBody,
@@ -192,6 +193,23 @@ async function validateJsonFrontmatter(
         message: e.message,
         ...(e.value !== undefined && { value: e.value }),
         ...(e.expected !== undefined && { expected: e.expected }),
+      })),
+    }, ExitCodes.VALIDATION_ERROR);
+  }
+
+  const relativeDateDiagnostics = await validateRelativeDateCalendarOffsetsForWrite(
+    schema,
+    vaultDir,
+    typePath,
+    mergedInput
+  );
+  if (relativeDateDiagnostics.length > 0) {
+    throwJsonError({
+      success: false,
+      error: 'Validation failed',
+      errors: relativeDateDiagnostics.map(diagnostic => ({
+        field: diagnostic.field,
+        message: diagnostic.message,
       })),
     }, ExitCodes.VALIDATION_ERROR);
   }

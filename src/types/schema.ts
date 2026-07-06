@@ -12,6 +12,63 @@ export const FilterConditionSchema = z.object({
   not_in: z.array(z.string()).optional().describe('Field must not be one of these values'),
 });
 
+export const CalendarEraSchema = z.object({
+  name: z.string().describe('Era name'),
+  shortName: z.string().min(1).describe('Short era token used in date strings'),
+  backwards: z
+    .boolean()
+    .optional()
+    .describe('Whether years count down toward the era boundary'),
+});
+
+export const CalendarMonthSchema = z.object({
+  name: z.string().describe('Month name'),
+  shortName: z.string().min(1).optional().describe('Short month label'),
+  days: z.number().int().min(1).describe('Number of days in this month'),
+});
+
+export const CalendarSchema = z
+  .object({
+    label: z.string().optional().describe('Human-readable calendar label'),
+    hoursInDay: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe('Number of hours in a calendar day; defaults to 24'),
+    eras: z.array(CalendarEraSchema).min(1).describe('Calendar eras'),
+    months: z.array(CalendarMonthSchema).min(1).describe('Calendar months'),
+  })
+  .superRefine((calendar, ctx) => {
+    const backwardsCount = calendar.eras.filter((era) => era.backwards === true).length;
+
+    if (calendar.eras.length > 2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['eras'],
+        message:
+          'Custom calendar eras support at most 2 eras: one backwards era and one forward era.',
+      });
+    }
+
+    if (backwardsCount > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['eras'],
+        message: 'Custom calendar eras support at most one backwards: true era.',
+      });
+    }
+
+    if (calendar.eras.length === 2 && backwardsCount !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['eras'],
+        message:
+          'Custom calendars with 2 eras must define exactly one backwards: true era and one forward era.',
+      });
+    }
+  });
+
 /**
  * A single select option.
  * Either a bare value ("active") or an object that pairs the value with a
@@ -50,6 +107,10 @@ export const FieldSchema = z.object({
     .describe(
       'Coarsest date precision allowed for this `date` field, finer is always allowed (day = full YYYY-MM-DD, month = YYYY-MM or finer, year = YYYY or finer). Overrides the global config.date_granularity for this field.'
     ),
+  calendar: z
+    .string()
+    .optional()
+    .describe('Calendar id for date fields using config.calendars'),
   // Static value (no prompting)
   value: z
     .string()
@@ -298,6 +359,10 @@ export const TypeSchema = z.object({
     .record(FieldSchema)
     .optional()
     .describe('Field definitions, merged with ancestors and traits at load time'),
+  calendar_default: z
+    .string()
+    .optional()
+    .describe('Default calendar id for date fields on this type'),
   // Explicit field ordering (optional - defaults to definition order)
   field_order: z
     .array(z.string())
@@ -419,6 +484,10 @@ export const ConfigSchema = z.object({
     .describe(
       'Default coarsest date precision allowed for all date fields (day = full YYYY-MM-DD, month = YYYY-MM or finer, year = YYYY or finer). Per-field `granularity` overrides this default.'
     ),
+  calendars: z
+    .record(CalendarSchema)
+    .optional()
+    .describe('Named custom calendars available to date fields'),
   // Max Levenshtein distance cap for the `unlinked-mention` audit fuzzy ("did
   // you mean?") tier (#622). Integer 0-5; default 2. The effective distance is
   // also length-scaled. 0 disables the fuzzy tier. Overridden per run by
@@ -542,6 +611,9 @@ export const BwrbSchema = z.object({
 
 export type Field = z.infer<typeof FieldSchema>;
 export type FieldOption = z.infer<typeof FieldOptionSchema>;
+export type Calendar = z.infer<typeof CalendarSchema>;
+export type CalendarEra = z.infer<typeof CalendarEraSchema>;
+export type CalendarMonth = z.infer<typeof CalendarMonthSchema>;
 
 /**
  * Extract the bare value strings from a field's options, regardless of whether
@@ -613,6 +685,8 @@ export interface ResolvedType {
   fields: Record<string, Field>;
   /** Field ordering */
   fieldOrder: string[];
+  /** Default calendar id for this type's date fields */
+  calendarDefault: string | undefined;
   /** Body section definitions */
   bodySections: BodySection[];
   /** Whether this type can self-nest */
@@ -647,6 +721,8 @@ export interface ResolvedConfig {
   dateFormat: string;
   /** Default coarsest date precision allowed for date fields (defaults to 'day') */
   dateGranularity: 'day' | 'month' | 'year';
+  /** Named custom calendars available to date fields */
+  calendars: Record<string, Calendar>;
   /**
    * Max Levenshtein distance cap for the `unlinked-mention` audit fuzzy tier
    * (#622). Defaults to 2. A CLI flag (`--mention-fuzzy-threshold`) overrides

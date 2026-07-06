@@ -1280,6 +1280,51 @@ status: paused
       }
     });
 
+    it('should render date field calendars in type details text and JSON', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-calendar-schema-list-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          config: {
+            calendars: {
+              tmi: {
+                label: 'TMI lunar calendar',
+                eras: [{ name: 'After Humans', shortName: 'AR' }],
+                months: [{ name: 'Month 1', shortName: 'M1', days: 2 }],
+              },
+            },
+          },
+          types: {
+            event: {
+              output_dir: 'Events',
+              fields: {
+                name: { prompt: 'text', required: true },
+                when: { prompt: 'date', calendar: 'tmi' },
+              },
+            },
+          },
+        })
+      );
+
+      try {
+        const text = await runCLI(['schema', 'list', 'event'], tempVaultDir);
+        expect(text.exitCode).toBe(0);
+        expect(text.stdout).toMatch(/when:\s+date\s+\(calendar: tmi\)/);
+
+        const jsonResult = await runCLI(['schema', 'list', 'event', '--output', 'json'], tempVaultDir);
+        expect(jsonResult.exitCode).toBe(0);
+        const json = JSON.parse(jsonResult.stdout);
+        expect(json.fields.when).toMatchObject({
+          type: 'date',
+          calendar: 'tmi',
+        });
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
     it('should support --type alias for type details', async () => {
       const result = await runCLI(['schema', 'list', '--type', 'idea'], vaultDir);
 

@@ -109,6 +109,7 @@ export function resolveSchema(schema: Schema): LoadedSchema {
       children: [],
       fields: { ...typeDef.fields },
       fieldOrder: typeDef.field_order ?? (typeDef.fields ? Object.keys(typeDef.fields) : []),
+      calendarDefault: typeDef.calendar_default,
       bodySections: typeDef.body_sections ?? [],
       recursive: typeDef.recursive ?? false,
       outputDir: typeDef.output_dir,
@@ -133,6 +134,17 @@ export function resolveSchema(schema: Schema): LoadedSchema {
       }
     }
     type.ancestors = computeAncestors(types, name);
+  }
+
+  for (const type of types.values()) {
+    if (type.calendarDefault !== undefined) continue;
+    for (const ancestorName of type.ancestors) {
+      const ancestor = types.get(ancestorName);
+      if (ancestor?.calendarDefault !== undefined) {
+        type.calendarDefault = ancestor.calendarDefault;
+        break;
+      }
+    }
   }
   
   // Third pass: compute effective fields (inherit from ancestors, then compose
@@ -178,6 +190,8 @@ export function resolveSchema(schema: Schema): LoadedSchema {
   
   // Sixth pass: resolve configuration with defaults
   const config = resolveConfig(schema.config, types);
+
+  validateCalendarReferences(types, config);
   
   return { raw: schema, types, ownership, config };
 }
@@ -194,6 +208,7 @@ function createImplicitMeta(): ResolvedType {
     children: [],
     fields: {},
     fieldOrder: [],
+    calendarDefault: undefined,
     bodySections: [],
     recursive: false,
     outputDir: undefined,
@@ -559,6 +574,7 @@ function resolveConfig(
     defaultDashboard: config?.default_dashboard,
     dateFormat: config?.date_format ?? 'YYYY-MM-DD',
     dateGranularity: config?.date_granularity ?? 'day',
+    calendars: config?.calendars ?? {},
     // Default mirrors DEFAULT_FUZZY_MAX_DISTANCE in audit/unlinked-mention.ts.
     // Inlined to avoid importing the audit module into the schema loader (#622).
     mentionFuzzyThreshold: config?.mention_fuzzy_threshold ?? 2,
@@ -578,6 +594,43 @@ function resolveConfig(
     ),
     mentionExcludePaths: config?.mention_exclude_paths ?? [],
   };
+}
+
+function validateCalendarReferences(
+  types: Map<string, ResolvedType>,
+  config: ResolvedConfig
+): void {
+  const calendarIds = new Set(Object.keys(config.calendars));
+
+  for (const type of types.values()) {
+    if (type.calendarDefault && !calendarIds.has(type.calendarDefault)) {
+      throw new Error(
+        `Type "${type.name}" references unknown calendar_default "${type.calendarDefault}". ` +
+        describeAvailableCalendars(calendarIds)
+      );
+    }
+
+    for (const [fieldName, field] of Object.entries(type.fields)) {
+      if (field.calendar && field.prompt !== 'date') {
+        throw new Error(
+          `Field "${type.name}.${fieldName}" declares calendar "${field.calendar}", but calendar is only valid on prompt: "date" fields.`
+        );
+      }
+
+      if (field.calendar && !calendarIds.has(field.calendar)) {
+        throw new Error(
+          `Field "${type.name}.${fieldName}" references unknown calendar "${field.calendar}". ` +
+          describeAvailableCalendars(calendarIds)
+        );
+      }
+    }
+  }
+}
+
+function describeAvailableCalendars(calendarIds: Set<string>): string {
+  return calendarIds.size > 0
+    ? `Available calendars: ${Array.from(calendarIds).join(', ')}`
+    : 'No calendars are declared in config.calendars.';
 }
 
 /**
@@ -693,6 +746,17 @@ export function resolveDateGranularity(
   config: ResolvedConfig
 ): DatePrecision {
   return field.granularity ?? config.dateGranularity;
+}
+
+export function resolveDateCalendar(
+  schema: LoadedSchema,
+  typeName: string,
+  _fieldName: string,
+  field: Field
+): string | undefined {
+  if (field.prompt !== 'date') return undefined;
+  if (field.calendar) return field.calendar;
+  return getType(schema, typeName)?.calendarDefault;
 }
 
 /**

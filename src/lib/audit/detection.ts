@@ -15,6 +15,7 @@ import {
   getTypeFamilies,
   getDescendants,
   getOwnedFields,
+  resolveDateCalendar,
   resolveDateGranularity,
   getRecurrenceForType,
 } from '../schema.js';
@@ -79,6 +80,7 @@ import {
   type NoteTargetIndex,
 } from '../discovery.js';
 import { buildRelativeDateFieldMap, validateRelativeDateValue } from '../relative-date.js';
+import { parseCalendarDate } from '../calendar-date.js';
 
 // Import ownership tracking
 import {
@@ -702,6 +704,8 @@ export async function auditFile(
 
     if (field.prompt === 'date') {
       const granularity = resolveDateGranularity(field, schema.config);
+      const calendarId = resolveDateCalendar(schema, resolvedTypePath, fieldName, field);
+      const calendar = calendarId ? schema.config.calendars[calendarId] : undefined;
 
       // Validate a single date element. `listIndex` is supplied for elements of
       // a list/multiple date field so the reported issue identifies the element.
@@ -717,6 +721,43 @@ export async function auditFile(
         // reported once as `invalid-list-element`. Skipping here keeps write and
         // audit in agreement and avoids double-reporting.
         if (typeof element === 'string' && isBlankScalar(element)) return;
+
+        if (calendarId && calendar) {
+          if (typeof element !== 'string') {
+            issues.push({
+              severity: 'error',
+              code: 'invalid-date-format',
+              message:
+                listIndex === undefined
+                  ? `Invalid calendar date for ${fieldName}: expected string for calendar "${calendarId}"`
+                  : `Invalid calendar date for ${fieldName} at index ${listIndex}: expected string for calendar "${calendarId}"`,
+              field: fieldName,
+              value: element,
+              expected: '<eraShort> <year>-<month>-<day> [<hour>:<minute>]',
+              ...(listIndex !== undefined && { listIndex }),
+              autoFixable: false,
+            });
+            return;
+          }
+
+          const parsed = parseCalendarDate(element, calendarId, calendar);
+          if (!parsed.valid) {
+            issues.push({
+              severity: 'error',
+              code: 'invalid-date-format',
+              message:
+                listIndex === undefined
+                  ? `Invalid calendar date for ${fieldName}: ${parsed.error}`
+                  : `Invalid calendar date for ${fieldName} at index ${listIndex} ('${element}'): ${parsed.error}`,
+              field: fieldName,
+              value: element,
+              expected: '<eraShort> <year>-<month>-<day> [<hour>:<minute>]',
+              ...(listIndex !== undefined && { listIndex }),
+              autoFixable: false,
+            });
+          }
+          return;
+        }
 
         // A bare year (e.g. 2026) is parsed as a number by YAML; treat it as a
         // partial date string for validation.

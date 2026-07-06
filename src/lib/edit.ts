@@ -6,6 +6,7 @@
  * - `search --edit` (unified interface)
  */
 
+import { relative } from 'path';
 import {
   getTypeDefByPath,
   resolveTypePathFromFrontmatter,
@@ -45,6 +46,7 @@ import { type LoadedSchema, type Field, type BodySection, getOptionValues } from
 import { UserCancelledError } from './errors.js';
 import { expandStaticValue } from './local-date.js';
 import { prepareRecurrenceFastPath, commitRecurrenceFastPath } from './recurrence-fast-path.js';
+import { validateRelativeDateCalendarOffsetsForWrite } from './relative-date.js';
 
 // ============================================================================
 // Types
@@ -249,6 +251,30 @@ export async function editNoteFromJson(
       process.exit(ExitCodes.VALIDATION_ERROR);
     }
     throw new Error(`Context validation failed: ${contextValidation.errors.map(e => e.message).join(', ')}`);
+  }
+
+  const relativeDateDiagnostics = await validateRelativeDateCalendarOffsetsForWrite(
+    schema,
+    vaultDir,
+    typePath,
+    resolvedFrontmatter,
+    relative(vaultDir, filePath)
+  );
+  if (relativeDateDiagnostics.length > 0) {
+    if (jsonMode) {
+      printJson({
+        success: false,
+        error: 'Validation failed',
+        errors: relativeDateDiagnostics.map(diagnostic => ({
+          field: diagnostic.field,
+          message: diagnostic.message,
+          currentValue: frontmatter[diagnostic.field],
+          value: resolvedFrontmatter[diagnostic.field],
+        })),
+      });
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    throw new Error(`Validation failed: ${relativeDateDiagnostics.map(diagnostic => diagnostic.message).join(', ')}`);
   }
 
   // Validate parent field doesn't create a cycle (for recursive types)
