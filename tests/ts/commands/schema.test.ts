@@ -1247,6 +1247,39 @@ status: paused
       expect(result.stdout).toContain('Own fields:');
     });
 
+    it('should render relative-date prompt kinds in type details', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-relative-date-schema-list-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            meta: {},
+            event: {
+              extends: 'meta',
+              output_dir: 'Events',
+              fields: {
+                name: { prompt: 'text', required: true },
+                start: { prompt: 'date' },
+                position: { prompt: 'relative-date', source: 'event' },
+              },
+            },
+          },
+        })
+      );
+
+      try {
+        const result = await runCLI(['schema', 'list', 'event'], tempVaultDir);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toMatch(/position:\s+relative-date/);
+        expect(result.stdout).not.toMatch(/position:\s+auto/);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
     it('should support --type alias for type details', async () => {
       const result = await runCLI(['schema', 'list', '--type', 'idea'], vaultDir);
 

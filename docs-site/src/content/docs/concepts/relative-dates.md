@@ -15,6 +15,7 @@ Declare a `relative-date` field alongside a normal `date` field that can anchor 
 {
   "types": {
     "event": {
+      "output_dir": "Events",
       "fields": {
         "name": { "prompt": "text", "required": true },
         "start": { "prompt": "date" },
@@ -56,6 +57,8 @@ A relative-date field resolves to:
 - the transitive result of its first `equal` constraint plus the offset
 - `null` when it only has `after`/`before` bounds or the chain has no absolute anchor
 
+Plain `YYYY-MM-DD` dates are interpreted at local midnight in the machine's timezone before being converted to UTC.
+
 Multiple `equal` constraints are allowed, but only the first one provides the resolved value. If later equal constraints resolve to a different position, Bowerbird reports a contradiction.
 
 Cycles do not crash commands. The involved notes resolve to `null` and are marked with `resolution: "cycle"` in JSON output.
@@ -85,4 +88,3 @@ bwrb list event --where "position < date('2026-01-03T00:00:00Z')"
 ## Audit
 
 `bwrb audit` reports relative-date cycles, contradictions, invalid anchor references, and bound violations as warnings. Unanchored chains are normal and appear as `resolution: "unanchored"` in JSON list output instead of audit noise.
-

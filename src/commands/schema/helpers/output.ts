@@ -530,6 +530,8 @@ export function getFieldType(field: Field): string {
       return chalk.blue('text');
     case 'date':
       return chalk.blue('date');
+    case 'relative-date':
+      return chalk.blue('relative-date');
     case 'relation':
       return field.source ? chalk.blue(`relation:${field.source}`) : chalk.blue('relation');
     case 'boolean':
