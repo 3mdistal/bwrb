@@ -2,11 +2,78 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFile, writeFile, mkdir, mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { createTestVault, cleanupTestVault, runCLI, TEST_SCHEMA } from '../fixtures/setup.js';
+import { spawn } from 'child_process';
+import {
+  CLI_PATH,
+  PROJECT_ROOT,
+  createTestVault,
+  cleanupTestVault,
+  runCLI,
+  TEST_SCHEMA,
+  withTestCliNodeOptions,
+} from '../fixtures/setup.js';
 
 // Note: The `edit` command uses the `prompts` library which requires a TTY.
 // Interactive tests are in edit.pty.test.ts.
 // This file tests JSON mode, error handling, body preservation, and validation.
+
+const CLI_SRC_PATH = join(PROJECT_ROOT, 'src/index.ts');
+const TSX_BIN = join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx');
+const USE_DIST = process.env.BWRB_TEST_DIST === '1';
+
+async function runEditWithOpenStdin(
+  args: string[],
+  cwd: string,
+  timeoutMs = USE_DIST ? 2500 : 6000
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const cliCommand = USE_DIST ? 'node' : TSX_BIN;
+  const cliArgs = USE_DIST ? [CLI_PATH, ...args] : [CLI_SRC_PATH, ...args];
+
+  return await new Promise((resolve, reject) => {
+    const proc = spawn(cliCommand, cliArgs, {
+      cwd,
+      env: withTestCliNodeOptions({ ...process.env, NO_COLOR: '1' }),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      proc.kill('SIGKILL');
+      reject(new Error(`edit --json did not exit within ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(err);
+    });
+
+    proc.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve({
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        exitCode: code ?? 0,
+      });
+    });
+  });
+}
 
 describe('edit command', () => {
   let vaultDir: string;
@@ -423,6 +490,27 @@ context: "[[contexts/The Molting]]"
       expect(json.success).toBe(false);
       expect(json.error).toContain('id');
     });
+
+    it('exits promptly for a no-op JSON edit selected by --id with stdin left open (#793)', async () => {
+      const id = 'ef282c38-5ab1-48a7-bdfc-5eb2cc09a6b7';
+      await writeFile(
+        join(vaultDir, 'Ideas/No Op By Id.md'),
+        `---\ntype: idea\nid: ${id}\nstatus: raw\npriority: medium\n---\n`,
+        'utf-8'
+      );
+
+      const result = await runEditWithOpenStdin(
+        ['edit', '--id', id, '--picker', 'none', '--json', '{}', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe('');
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.path).toBe('Ideas/No Op By Id.md');
+      expect(json.updated).toEqual([]);
+    });
   });
 
   describe('body preservation', () => {
@@ -808,6 +896,20 @@ No frontmatter here.
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
+      expect(json.updated).toEqual([]);
+    });
+
+    it('exits promptly for a vault-relative no-op JSON edit with stdin left open (#793)', async () => {
+      const result = await runEditWithOpenStdin(
+        ['edit', 'Ideas/Sample Idea.md', '--picker', 'none', '--json', '{}', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe('');
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(true);
+      expect(json.path).toBe('Ideas/Sample Idea.md');
       expect(json.updated).toEqual([]);
     });
 
