@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync } from 'fs';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { createTestVault, cleanupTestVault, runCLI, waitForFile } from '../fixtures/setup.js';
+import { createTestVault, cleanupTestVault, runCLI, runCLIWithOpenStdin, waitForFile } from '../fixtures/setup.js';
 
 describe('delete command', () => {
   let vaultDir: string;
@@ -58,6 +58,22 @@ describe('delete command', () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Deleted');
+      expect(existsSync(filePath)).toBe(false);
+    });
+
+    it('exits promptly after stdin confirmation succeeds with stdin left open (#795)', async () => {
+      const filePath = join(vaultDir, 'Ideas', 'Sample Idea.md');
+      expect(existsSync(filePath)).toBe(true);
+
+      const result = await runCLIWithOpenStdin(
+        ['delete', 'Ideas/Sample Idea.md'],
+        vaultDir,
+        'y\n'
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Deleted: Ideas/Sample Idea.md');
+      expect(result.stderr).toBe('');
       expect(existsSync(filePath)).toBe(false);
     });
   });

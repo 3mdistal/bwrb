@@ -2,57 +2,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { mkdtemp, rm, mkdir, writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { spawn } from 'child_process';
-import { createTestVault, cleanupTestVault, runCLI, TEST_SCHEMA, CLI_PATH, PROJECT_ROOT, withTestCliNodeOptions } from '../fixtures/setup.js';
+import { createTestVault, cleanupTestVault, runCLI, runCLIWithOpenStdin, TEST_SCHEMA } from '../fixtures/setup.js';
 import { parseNote } from '../../../src/lib/frontmatter.js';
-
-const CLI_SRC_PATH = join(PROJECT_ROOT, 'src/index.ts');
-const TSX_BIN = join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx');
-const USE_DIST = process.env.BWRB_TEST_DIST === '1';
-
-async function runCLIWithOpenStdin(
-  args: string[],
-  vaultDir: string,
-  timeoutMs = USE_DIST ? 1500 : 4000
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
-
-  const cliCommand = USE_DIST ? 'node' : TSX_BIN;
-  const cliArgs = USE_DIST ? [CLI_PATH, ...fullArgs] : [CLI_SRC_PATH, ...fullArgs];
-
-  return await new Promise((resolve, reject) => {
-    const proc = spawn(cliCommand, cliArgs, {
-      cwd: PROJECT_ROOT,
-      env: withTestCliNodeOptions({ ...process.env, FORCE_COLOR: '0' }),
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    const timeout = setTimeout(() => {
-      proc.kill('SIGKILL');
-      reject(new Error('Process timed out waiting for non-interactive confirmation'));
-    }, timeoutMs);
-
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    proc.on('close', (code) => {
-      clearTimeout(timeout);
-      resolve({
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-        exitCode: code ?? 0,
-      });
-    });
-  });
-}
 
 describe('bulk command', () => {
   let vaultDir: string;
@@ -362,6 +313,27 @@ describe('bulk command', () => {
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toContain('Updated');
         expect(result.stdout).not.toContain('Are you sure');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+
+    it('exits promptly after stdin confirmation succeeds with stdin left open (#795)', async () => {
+      const tempVaultDir = await createTestVault();
+      try {
+        const result = await runCLIWithOpenStdin([
+          'bulk',
+          '--all',
+          '--set', 'custom-field=test',
+          '--execute'
+        ], tempVaultDir, 'y\n');
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Updated');
+        expect(result.stderr).toBe('');
+
+        const updated = await readFile(join(tempVaultDir, 'Ideas', 'Sample Idea.md'), 'utf-8');
+        expect(updated).toContain('custom-field: test');
       } finally {
         await cleanupTestVault(tempVaultDir);
       }

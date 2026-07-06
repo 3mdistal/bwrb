@@ -49,9 +49,21 @@ interface PromptModeContext {
 
 const NON_INTERACTIVE_CONFIRM_TIMEOUT_MS = 500;
 let promptModeContext: PromptModeContext = { forcedNonInteractive: false };
+let promptModeConfigured = false;
 
 export function configurePromptMode(context: PromptModeContext): void {
   promptModeContext = context;
+  promptModeConfigured = true;
+}
+
+export function cleanupPromptMode(): void {
+  if (promptModeConfigured && !process.stdin.isTTY) {
+    process.stdin.pause();
+    process.stdin.unref?.();
+  }
+
+  promptModeContext = { forcedNonInteractive: false };
+  promptModeConfigured = false;
 }
 
 function isInteractive(): boolean {
