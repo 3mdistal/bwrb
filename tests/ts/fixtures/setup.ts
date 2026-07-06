@@ -473,3 +473,76 @@ export async function runCLI(
     }`
   );
 }
+
+export async function runCLIWithOpenStdin(
+  args: string[],
+  vaultDir?: string,
+  stdin?: string,
+  {
+    cwd = PROJECT_ROOT,
+    env = {},
+    timeoutMs = USE_DIST ? 2_500 : 6_000,
+  }: Pick<RunCLIOptions, 'cwd' | 'env' | 'timeoutMs'> = {}
+): Promise<CLIResult> {
+  const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
+  const cliCommand = USE_DIST ? 'node' : TSX_BIN;
+  const cliArgs = USE_DIST ? [CLI_PATH, ...fullArgs] : [CLI_SRC_PATH, ...fullArgs];
+  const mergedEnv = withTestCliNodeOptions({
+    ...process.env,
+    NO_COLOR: '1',
+    ...env,
+  });
+
+  return await new Promise((resolve, reject) => {
+    const proc = spawn(cliCommand, cliArgs, {
+      cwd,
+      env: mergedEnv,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      proc.kill('SIGKILL');
+      reject(
+        new Error(
+          `runCLIWithOpenStdin exceeded ${timeoutMs}ms: ${cliCommand} ${cliArgs.join(' ')}`
+        )
+      );
+    }, timeoutMs);
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    if (stdin !== undefined) {
+      proc.stdin.write(stdin);
+    }
+
+    proc.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        exitCode: code ?? 0,
+      });
+    });
+  });
+}
