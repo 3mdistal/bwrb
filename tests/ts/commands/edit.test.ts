@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFile, writeFile, mkdir, mkdtemp, rm } from 'fs/promises';
+import { chmod, readFile, writeFile, mkdir, mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { spawn } from 'child_process';
@@ -80,6 +80,29 @@ function parseSingleJsonObject(stdout: string): Record<string, unknown> {
   expect(trimmed).toMatch(/^\{/);
   expect(trimmed).toMatch(/\}$/);
   return JSON.parse(trimmed) as Record<string, unknown>;
+}
+
+async function setVaultConfig(
+  vaultDir: string,
+  config: Record<string, unknown>
+): Promise<void> {
+  const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+  const schema = JSON.parse(await readFile(schemaPath, 'utf-8')) as {
+    config?: Record<string, unknown>;
+  };
+  schema.config = { ...schema.config, ...config };
+  await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+}
+
+async function writeExecutableScript(
+  vaultDir: string,
+  name: string,
+  body: string
+): Promise<string> {
+  const scriptPath = join(vaultDir, name);
+  await writeFile(scriptPath, `#!/bin/sh\n${body}\n`, 'utf-8');
+  await chmod(scriptPath, 0o755);
+  return scriptPath;
 }
 
 describe('edit command', () => {
@@ -1342,6 +1365,32 @@ describe('edit positional app mode (#711)', () => {
     });
   });
 
+  it('emits one JSON success object with app metadata for --open --app editor', async () => {
+    const editor = await writeExecutableScript(vaultDir, 'fake-editor-success.sh', 'exit 0');
+    await setVaultConfig(vaultDir, { editor });
+
+    const result = await runCLI(
+      ['edit', 'Sample Idea', '--json', '{"status":"backlog"}', '--open', '--app', 'editor'],
+      vaultDir,
+      undefined,
+      { env: { EDITOR: '', VISUAL: '', BWRB_DEFAULT_APP: '' } }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    const json = parseSingleJsonObject(result.stdout);
+    expect(json.success).toBe(true);
+    expect(json.path).toBe('Ideas/Sample Idea.md');
+    expect(json.updated).toEqual(['status']);
+    expect(json.data).toEqual({
+      open: {
+        relativePath: 'Ideas/Sample Idea.md',
+        fullPath: join(vaultDir, 'Ideas/Sample Idea.md'),
+        app: editor,
+      },
+    });
+  });
+
   it('lets --app flag take precedence over positional mode', async () => {
     const result = await runCLI(
       ['edit', 'Sample Idea', 'system', '--open', '--app', 'print', '--json', '{}'],
@@ -1375,6 +1424,65 @@ describe('edit positional app mode (#711)', () => {
     expect(json.error).toBe('No terminal editor configured. Set $EDITOR or config.editor.');
 
     const updated = await readFile(filePath, 'utf-8');
+    expect(updated).toContain('status: backlog');
+  });
+
+  it('emits one JSON error when edit succeeds but --open --app visual has no visual configured', async () => {
+    const result = await runCLI(
+      ['edit', 'Sample Idea', '--json', '{"status":"backlog"}', '--open', '--app', 'visual'],
+      vaultDir,
+      undefined,
+      { env: { EDITOR: '', VISUAL: '', BWRB_DEFAULT_APP: '' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe('');
+    const json = parseSingleJsonObject(result.stdout);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe('No GUI editor configured. Set $VISUAL or config.visual.');
+
+    const updated = await readFile(join(vaultDir, 'Ideas/Sample Idea.md'), 'utf-8');
+    expect(updated).toContain('status: backlog');
+  });
+
+  it('emits one JSON error for absolute-path --open --app visual without duplicate success', async () => {
+    const absolutePath = join(vaultDir, 'Ideas/Sample Idea.md');
+    const result = await runCLI(
+      ['edit', absolutePath, '--json', '{"status":"backlog"}', '--open', '--app', 'visual'],
+      vaultDir,
+      undefined,
+      { env: { EDITOR: '', VISUAL: '', BWRB_DEFAULT_APP: '' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe('');
+    const json = parseSingleJsonObject(result.stdout);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe('No GUI editor configured. Set $VISUAL or config.visual.');
+    expect(result.stdout).not.toContain('"path"');
+
+    const updated = await readFile(absolutePath, 'utf-8');
+    expect(updated).toContain('status: backlog');
+  });
+
+  it('emits one JSON error with IO exit code when a configured editor exits non-zero', async () => {
+    const editor = await writeExecutableScript(vaultDir, 'fake-editor-failure.sh', 'exit 7');
+    await setVaultConfig(vaultDir, { editor });
+
+    const result = await runCLI(
+      ['edit', 'Sample Idea', '--json', '{"status":"backlog"}', '--open', '--app', 'editor'],
+      vaultDir,
+      undefined,
+      { env: { EDITOR: '', VISUAL: '', BWRB_DEFAULT_APP: '' } }
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toBe('');
+    const json = parseSingleJsonObject(result.stdout);
+    expect(json.success).toBe(false);
+    expect(json.error).toContain('fake-editor-failure.sh exited with code 7');
+
+    const updated = await readFile(join(vaultDir, 'Ideas/Sample Idea.md'), 'utf-8');
     expect(updated).toContain('status: backlog');
   });
 

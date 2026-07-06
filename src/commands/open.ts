@@ -8,7 +8,7 @@
  */
 
 import { Command } from "commander";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { loadSchema, detectObsidianVault } from "../lib/schema.js";
 import { resolveVaultDirWithSelection } from "../lib/vaultSelection.js";
@@ -33,6 +33,17 @@ import { UserCancelledError } from "../lib/errors.js";
 // - obsidian: Open via Obsidian URI
 // - print: Print path to stdout (for scripting)
 export type AppMode = "system" | "editor" | "visual" | "obsidian" | "print";
+
+export interface OpenPathData {
+  relativePath: string;
+  fullPath: string;
+}
+
+export interface OpenResultData extends OpenPathData {
+  app?: string;
+}
+
+export class OpenConfigurationError extends Error {}
 
 /**
  * Parse app mode from string. Returns undefined if value is undefined/empty,
@@ -80,6 +91,56 @@ export function resolveAppMode(
   return config.openWith;
 }
 
+function resolveOpenPath(vaultDir: string, notePath: string): OpenPathData {
+  const fullPath = isAbsolute(notePath) ? resolve(notePath) : resolve(vaultDir, notePath);
+  return {
+    relativePath: relative(vaultDir, fullPath),
+    fullPath,
+  };
+}
+
+function missingOpenAppMessage(appMode: AppMode): string | undefined {
+  if (appMode === "editor") {
+    return "No terminal editor configured. Set $EDITOR or config.editor.";
+  }
+  if (appMode === "visual") {
+    return "No GUI editor configured. Set $VISUAL or config.visual.";
+  }
+  return undefined;
+}
+
+function resolveOpenAppMetadata(appMode: AppMode, config: ResolvedConfig): string | undefined {
+  switch (appMode) {
+    case "print":
+      return undefined;
+    case "system":
+      return "system";
+    case "obsidian":
+      return "obsidian";
+    case "editor":
+      if (!config.editor) {
+        throw new OpenConfigurationError(missingOpenAppMessage(appMode)!);
+      }
+      return config.editor;
+    case "visual":
+      if (!config.visual) {
+        throw new OpenConfigurationError(missingOpenAppMessage(appMode)!);
+      }
+      return config.visual;
+  }
+}
+
+export function getOpenResultData(
+  vaultDir: string,
+  notePath: string,
+  appMode: AppMode,
+  config: ResolvedConfig
+): OpenResultData {
+  const pathData = resolveOpenPath(vaultDir, notePath);
+  const app = resolveOpenAppMetadata(appMode, config);
+  return app ? { ...pathData, app } : pathData;
+}
+
 /**
  * Open a note in the specified application.
  * 
@@ -96,63 +157,57 @@ export async function openNote(
   config: ResolvedConfig,
   jsonMode: boolean = false
 ): Promise<void> {
-  // Normalize path - if absolute, use as-is; if relative, join with vaultDir
-  const fullPath = notePath.startsWith('/') ? notePath : join(vaultDir, notePath);
-  const relativePath = notePath.startsWith('/') ? notePath.replace(vaultDir + '/', '') : notePath;
+  let openData: OpenResultData;
+  try {
+    openData = getOpenResultData(vaultDir, notePath, appMode, config);
+  } catch (err) {
+    if (err instanceof OpenConfigurationError) {
+      if (jsonMode) {
+        printJson(jsonError(err.message));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      exitWithError(err.message);
+    }
+    throw err;
+  }
 
   switch (appMode) {
     case "print":
       if (jsonMode) {
-        printJson({ success: true, data: { relativePath, fullPath } });
+        printJson({ success: true, data: openData });
       } else {
-        console.log(fullPath);
+        console.log(openData.fullPath);
       }
       return;
 
     case "system":
-      await openWithSystem(fullPath);
+      await openWithSystem(openData.fullPath);
       if (jsonMode) {
-        printJson({ success: true, data: { relativePath, fullPath, app: "system" } });
+        printJson({ success: true, data: openData });
       }
       return;
 
     case "obsidian":
-      await openInObsidian(vaultDir, relativePath, config);
+      await openInObsidian(vaultDir, openData.relativePath, config);
       if (jsonMode) {
-        printJson({ success: true, data: { relativePath, fullPath, app: "obsidian" } });
+        printJson({ success: true, data: openData });
       }
       return;
 
     case "editor": {
-      const editorCmd = config.editor;
-      if (!editorCmd) {
-        const error = "No terminal editor configured. Set $EDITOR or config.editor.";
-        if (jsonMode) {
-          printJson(jsonError(error));
-          process.exit(ExitCodes.VALIDATION_ERROR);
-        }
-        exitWithError(error);
-      }
-      await openWithCommand(editorCmd!, fullPath, jsonMode);
+      const editorCmd = openData.app!;
+      await openWithCommand(editorCmd, openData.fullPath, jsonMode);
       if (jsonMode) {
-        printJson({ success: true, data: { relativePath, fullPath, app: editorCmd } });
+        printJson({ success: true, data: openData });
       }
       return;
     }
 
     case "visual": {
-      const visualCmd = config.visual;
-      if (!visualCmd) {
-        const error = "No GUI editor configured. Set $VISUAL or config.visual.";
-        if (jsonMode) {
-          printJson(jsonError(error));
-          process.exit(ExitCodes.VALIDATION_ERROR);
-        }
-        exitWithError(error);
-      }
-      await openWithCommand(visualCmd!, fullPath, jsonMode);
+      const visualCmd = openData.app!;
+      await openWithCommand(visualCmd, openData.fullPath, jsonMode);
       if (jsonMode) {
-        printJson({ success: true, data: { relativePath, fullPath, app: visualCmd } });
+        printJson({ success: true, data: openData });
       }
       return;
     }
