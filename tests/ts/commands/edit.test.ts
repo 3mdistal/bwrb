@@ -75,6 +75,13 @@ async function runEditWithOpenStdin(
   });
 }
 
+function parseSingleJsonObject(stdout: string): Record<string, unknown> {
+  const trimmed = stdout.trim();
+  expect(trimmed).toMatch(/^\{/);
+  expect(trimmed).toMatch(/\}$/);
+  return JSON.parse(trimmed) as Record<string, unknown>;
+}
+
 describe('edit command', () => {
   let vaultDir: string;
 
@@ -1314,15 +1321,25 @@ describe('edit positional app mode (#711)', () => {
     await cleanupTestVault(vaultDir);
   });
 
-  it('honors a positional mode with --open (edit <query> print --open --json {})', async () => {
+  it('emits one JSON success object for absolute-path --open print', async () => {
+    const absolutePath = join(vaultDir, 'Ideas/Sample Idea.md');
     const result = await runCLI(
-      ['edit', 'Sample Idea', 'print', '--open', '--json', '{}'],
+      ['edit', absolutePath, 'print', '--open', '--json', '{"status":"backlog"}'],
       vaultDir
     );
 
     expect(result.exitCode).toBe(0);
-    // Print mode emits the path after the edit completes.
-    expect(result.stdout + result.stderr).toContain('Sample Idea.md');
+    expect(result.stderr).toBe('');
+    const json = parseSingleJsonObject(result.stdout);
+    expect(json.success).toBe(true);
+    expect(json.path).toBe('Ideas/Sample Idea.md');
+    expect(json.updated).toEqual(['status']);
+    expect(json.data).toEqual({
+      open: {
+        relativePath: 'Ideas/Sample Idea.md',
+        fullPath: absolutePath,
+      },
+    });
   });
 
   it('lets --app flag take precedence over positional mode', async () => {
@@ -1333,6 +1350,32 @@ describe('edit positional app mode (#711)', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout + result.stderr).toContain('Sample Idea.md');
+  });
+
+  it('emits one JSON error when edit succeeds but --open --app editor has no editor configured', async () => {
+    const id = 'e86251ed-c378-4f8e-a57c-8d9527624580';
+    const filePath = join(vaultDir, 'Ideas/Open Fails After Edit.md');
+    await writeFile(
+      filePath,
+      `---\ntype: idea\nid: ${id}\nstatus: raw\npriority: medium\n---\n`,
+      'utf-8'
+    );
+
+    const result = await runCLI(
+      ['edit', '--id', id, '--json', '{"status":"backlog"}', '--open', '--app', 'editor'],
+      vaultDir,
+      undefined,
+      { env: { EDITOR: '', VISUAL: '', BWRB_DEFAULT_APP: '' } }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe('');
+    const json = parseSingleJsonObject(result.stdout);
+    expect(json.success).toBe(false);
+    expect(json.error).toBe('No terminal editor configured. Set $EDITOR or config.editor.');
+
+    const updated = await readFile(filePath, 'utf-8');
+    expect(updated).toContain('status: backlog');
   });
 
   it('errors on an invalid positional mode even without --open', async () => {
