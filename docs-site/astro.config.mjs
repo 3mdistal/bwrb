@@ -48,6 +48,7 @@ export default defineConfig({
 					items: [
 						{ slug: 'concepts/schema' },
 						{ slug: 'concepts/types-and-inheritance' },
+						{ slug: 'concepts/relative-dates' },
 						{ slug: 'concepts/validation-and-audit' },
 						{ slug: 'concepts/migrations' },
 						{ slug: 'concepts/hierarchical-scope' },

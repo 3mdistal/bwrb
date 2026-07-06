@@ -64,6 +64,7 @@ export async function promptFieldDefinition(
     'text',
     'select (options)',
     'date',
+    'relative date',
     'list (multi-value)',
     'relation (from other notes)',
     'boolean (yes/no)',
@@ -78,11 +79,12 @@ export async function promptFieldDefinition(
     0: 'text',
     1: 'select',
     2: 'date',
-    3: 'list',
-    4: 'relation',
-    5: 'boolean',
-    6: 'number',
-    7: 'value',
+    3: 'relative-date',
+    4: 'list',
+    5: 'relation',
+    6: 'boolean',
+    7: 'number',
+    8: 'value',
   };
   const promptType = promptTypeMap[promptTypeIndex];
   
@@ -111,7 +113,7 @@ export async function promptFieldDefinition(
     }
     
     // For dynamic, get source type
-    if (promptType === 'relation') {
+    if (promptType === 'relation' || promptType === 'relative-date') {
       const typeNames = getTypeNames(schema).filter(t => t !== 'meta');
       if (typeNames.length === 0) {
         printError('No types defined in schema yet.');
@@ -178,6 +180,7 @@ export async function promptSingleFieldDefinition(
     'text',
     'select (options)',
     'date',
+    'relative date',
     'list (multi-value)',
     'relation (from other notes)',
     'boolean (yes/no)',
@@ -192,11 +195,12 @@ export async function promptSingleFieldDefinition(
     0: 'text',
     1: 'select',
     2: 'date',
-    3: 'list',
-    4: 'relation',
-    5: 'boolean',
-    6: 'number',
-    7: 'value',
+    3: 'relative-date',
+    4: 'list',
+    5: 'relation',
+    6: 'boolean',
+    7: 'number',
+    8: 'value',
   };
   const promptType = promptTypeMap[promptTypeIndex];
   
@@ -223,8 +227,8 @@ export async function promptSingleFieldDefinition(
       field.options = annotated;
     }
     
-    // For relation, get source type
-    if (promptType === 'relation') {
+    // For relation-like fields, get source type
+    if (promptType === 'relation' || promptType === 'relative-date') {
       const typeNames = getTypeNames(schema).filter(t => t !== 'meta');
       if (typeNames.length === 0) {
         throw new Error('No types defined in schema yet.');

@@ -13,6 +13,7 @@ coverage/
 *.swp
 *.swo
 .vscode/
+.claude/
 
 # OS
 .DS_Store

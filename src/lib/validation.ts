@@ -18,6 +18,7 @@ import {
   isPrecisionAllowed,
   type DatePrecision,
 } from './local-date.js';
+import { validateRelativeDateValue } from './relative-date.js';
 
 export type NormalizedDateResult =
   | { valid: true; value: string }
@@ -197,6 +198,7 @@ type ValidationErrorType =
   | 'invalid_type'
   | 'unknown_field'
   | 'invalid_date'
+  | 'invalid_relative_date'
   | 'invalid_alias'
   | 'invalid_context_source';
 
@@ -522,6 +524,20 @@ function validateFieldType(
     }
 
     return validateDateValue(fieldName, value, granularity);
+  }
+
+  if (field.prompt === 'relative-date') {
+    const relativeDateError = validateRelativeDateValue(fieldName, value);
+    if (relativeDateError) {
+      return {
+        type: 'invalid_relative_date',
+        field: fieldName,
+        value,
+        message: relativeDateError,
+        expected: '{ kind: equal|after|before, ref: "[[Note]]", field?: string, offset?: signed duration min|h|d|w }',
+      };
+    }
+    return null;
   }
 
   // Boolean fields
