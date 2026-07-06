@@ -57,6 +57,10 @@ function printEditSuccess(path: string, updatedFields: string[], jsonMode: boole
   printSuccess(`Updated: ${path}${updatedText}`);
 }
 
+function exitEditSuccess(): never {
+  process.exit(ExitCodes.SUCCESS);
+}
+
 // ============================================================================
 // Command Definition
 // ============================================================================
@@ -213,7 +217,7 @@ Precedence (for --open app mode):
               await openNote(vaultDir, query, appMode, schema.config, false);
             }
           }
-          process.exit(0);
+          exitEditSuccess();
         }
       }
 
@@ -311,6 +315,7 @@ Precedence (for --open app mode):
           const appMode = resolveAppMode(appModeInput, schema.config);
           await openNote(vaultDir, targetFile.path, appMode, schema.config, true);
         }
+        exitEditSuccess();
       } else {
         // Interactive mode
         await editNoteInteractive(schema, vaultDir, targetFile.path);
@@ -321,6 +326,7 @@ Precedence (for --open app mode):
           const appMode = resolveAppMode(appModeInput, schema.config);
           await openNote(vaultDir, targetFile.path, appMode, schema.config, false);
         }
+        exitEditSuccess();
       }
     } catch (err) {
       if (err instanceof UserCancelledError) {
