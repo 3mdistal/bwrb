@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { mkdir, writeFile } from 'fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
 import { parseAppMode, resolveAppMode } from '../../../src/commands/open.js';
@@ -7,6 +7,36 @@ import type { ResolvedConfig } from '../../../src/types/schema.js';
 
 // Note: We can't test actually opening Obsidian/editors as they require the apps.
 // This file tests query resolution, error handling, and validation.
+
+function parseSingleJsonObject(stdout: string): Record<string, unknown> {
+  const trimmed = stdout.trim();
+  expect(trimmed).toMatch(/^\{/);
+  expect(trimmed).toMatch(/\}$/);
+  return JSON.parse(trimmed) as Record<string, unknown>;
+}
+
+async function setVaultConfig(
+  vaultDir: string,
+  config: Record<string, unknown>
+): Promise<void> {
+  const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+  const schema = JSON.parse(await readFile(schemaPath, 'utf-8')) as {
+    config?: Record<string, unknown>;
+  };
+  schema.config = { ...schema.config, ...config };
+  await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+}
+
+async function writeExecutableScript(
+  vaultDir: string,
+  name: string,
+  body: string
+): Promise<string> {
+  const scriptPath = join(vaultDir, name);
+  await writeFile(scriptPath, `#!/bin/sh\n${body}\n`, 'utf-8');
+  await chmod(scriptPath, 0o755);
+  return scriptPath;
+}
 
 describe('parseAppMode', () => {
   it('should return undefined for undefined/empty input', () => {
@@ -164,9 +194,45 @@ describe('open command', () => {
       const result = await runCLI(['open', 'Sample Idea', '--app', 'print', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      const json = JSON.parse(result.stdout);
+      const json = parseSingleJsonObject(result.stdout);
       expect(json.success).toBe(true);
-      expect(json.data.relativePath).toBe('Ideas/Sample Idea.md');
+      expect(json.data).toEqual({
+        relativePath: 'Ideas/Sample Idea.md',
+        fullPath: join(vaultDir, 'Ideas/Sample Idea.md'),
+      });
+    });
+
+    it('keeps JSON success compatible for --app editor and --app visual', async () => {
+      const tempVaultDir = await createTestVault();
+      try {
+        const editor = await writeExecutableScript(tempVaultDir, 'open-editor-success.sh', 'exit 0');
+        const visual = await writeExecutableScript(tempVaultDir, 'open-visual-success.sh', 'exit 0');
+        await setVaultConfig(tempVaultDir, { editor, visual });
+
+        for (const [appMode, app] of [
+          ['editor', editor],
+          ['visual', visual],
+        ] as const) {
+          const result = await runCLI(
+            ['open', 'Sample Idea', '--app', appMode, '--output', 'json'],
+            tempVaultDir,
+            undefined,
+            { env: { EDITOR: '', VISUAL: '', BWRB_DEFAULT_APP: '' } }
+          );
+
+          expect(result.exitCode).toBe(0);
+          expect(result.stderr).toBe('');
+          const json = parseSingleJsonObject(result.stdout);
+          expect(json.success).toBe(true);
+          expect(json.data).toEqual({
+            relativePath: 'Ideas/Sample Idea.md',
+            fullPath: join(tempVaultDir, 'Ideas/Sample Idea.md'),
+            app,
+          });
+        }
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
     });
 
     it('should output JSON error on no match with --output json', async () => {

@@ -6,7 +6,7 @@
  */
 
 import { Command } from 'commander';
-import { basename, isAbsolute, join, relative } from 'path';
+import { basename, isAbsolute, relative } from 'path';
 import fs from 'fs/promises';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
@@ -16,7 +16,15 @@ import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError }
 import { buildNoteIndex, type ManagedFile } from '../lib/navigation.js';
 import { parsePickerMode, resolveAndPick, type PickerMode } from '../lib/picker.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
-import { openNote, resolveAppMode, parseAppMode, type AppMode } from './open.js';
+import {
+  getOpenResultData,
+  openNote,
+  resolveAppMode,
+  parseAppMode,
+  OpenConfigurationError,
+  type AppMode,
+  type OpenResultData,
+} from './open.js';
 import { resolveTargets, hasAnyTargeting, type TargetingOptions } from '../lib/targeting.js';
 import { UserCancelledError } from '../lib/errors.js';
 import type { ResolvedConfig } from '../types/schema.js';
@@ -47,26 +55,7 @@ function resolveEditJsonMode(options: EditOptions, globalOutput?: string): boole
 }
 
 interface EditOpenJsonData {
-  open: {
-    relativePath: string;
-    fullPath: string;
-  };
-}
-
-class EditValidationError extends Error {}
-
-function getOpenPrintJsonData(vaultDir: string, notePath: string): EditOpenJsonData {
-  const fullPath = isAbsolute(notePath) ? notePath : join(vaultDir, notePath);
-  const relativePath = isAbsolute(notePath)
-    ? notePath.replace(`${vaultDir}/`, '')
-    : notePath;
-
-  return {
-    open: {
-      relativePath,
-      fullPath,
-    },
-  };
+  open: OpenResultData;
 }
 
 async function openAfterEdit(
@@ -76,16 +65,12 @@ async function openAfterEdit(
   config: ResolvedConfig,
   jsonMode: boolean
 ): Promise<EditOpenJsonData | undefined> {
-  if (jsonMode && appMode === 'print') {
-    return getOpenPrintJsonData(vaultDir, notePath);
-  }
-
-  if (jsonMode && appMode === 'editor' && !config.editor) {
-    throw new EditValidationError('No terminal editor configured. Set $EDITOR or config.editor.');
-  }
-
-  if (jsonMode && appMode === 'visual' && !config.visual) {
-    throw new EditValidationError('No GUI editor configured. Set $VISUAL or config.visual.');
+  if (jsonMode) {
+    const openData = getOpenResultData(vaultDir, notePath, appMode, config);
+    if (appMode !== 'print') {
+      await openNote(vaultDir, notePath, appMode, config, false);
+    }
+    return { open: openData };
   }
 
   await openNote(vaultDir, notePath, appMode, config, false);
@@ -398,7 +383,7 @@ Precedence (for --open app mode):
         process.exit(1);
       }
       const message = err instanceof Error ? err.message : String(err);
-      if (err instanceof EditValidationError) {
+      if (err instanceof OpenConfigurationError) {
         if (jsonMode) {
           printJson(jsonError(message));
           process.exit(ExitCodes.VALIDATION_ERROR);
