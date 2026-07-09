@@ -1,5 +1,5 @@
 import type { VaultNoteSnapshot, VaultNoteSnapshotEntry } from '../discovery.js';
-import { isValidNoteId } from '../note-id.js';
+import { isValidNoteId, normalizeNoteId } from '../note-id.js';
 import type { AuditIssue } from './types.js';
 
 const FORKED_FROM_FIELD = 'forked-from';
@@ -24,6 +24,16 @@ function getValidParentId(note: VaultNoteSnapshotEntry): string | undefined {
   return isValidNoteId(value) ? value : undefined;
 }
 
+function getIdIdentity(note: VaultNoteSnapshotEntry): string | undefined {
+  const id = getValidId(note);
+  return id ? normalizeNoteId(id) : undefined;
+}
+
+function getParentIdIdentity(note: VaultNoteSnapshotEntry): string | undefined {
+  const parentId = getValidParentId(note);
+  return parentId ? normalizeNoteId(parentId) : undefined;
+}
+
 /**
  * Audit hand-authored document lineage metadata across a vault snapshot.
  *
@@ -42,17 +52,18 @@ export function collectLineageIssues(
 
   const notesById = new Map<string, VaultNoteSnapshotEntry[]>();
   for (const note of notes) {
-    const id = getValidId(note);
-    if (!id) continue;
-    const matches = notesById.get(id) ?? [];
+    const idIdentity = getIdIdentity(note);
+    if (!idIdentity) continue;
+    const matches = notesById.get(idIdentity) ?? [];
     matches.push(note);
-    notesById.set(id, matches);
+    notesById.set(idIdentity, matches);
   }
 
-  for (const [id, matches] of notesById) {
+  for (const matches of notesById.values()) {
     if (matches.length < 2) continue;
     const paths = matches.map((note) => note.relativePath).sort();
     for (const note of matches) {
+      const id = getValidId(note)!;
       addIssue(issuesByPath, note.relativePath, {
         severity: 'error',
         code: 'duplicate-note-id',
@@ -90,7 +101,10 @@ export function collectLineageIssues(
       });
     }
 
-    if (isValidNoteId(parentValue) && !notesById.has(parentValue)) {
+    if (
+      isValidNoteId(parentValue) &&
+      !notesById.has(normalizeNoteId(parentValue))
+    ) {
       addIssue(issuesByPath, note.relativePath, {
         severity: 'warning',
         code: 'dangling-forked-from',
@@ -103,8 +117,8 @@ export function collectLineageIssues(
   }
 
   const uniqueNotesById = new Map<string, VaultNoteSnapshotEntry>();
-  for (const [id, matches] of notesById) {
-    if (matches.length === 1) uniqueNotesById.set(id, matches[0]!);
+  for (const [idIdentity, matches] of notesById) {
+    if (matches.length === 1) uniqueNotesById.set(idIdentity, matches[0]!);
   }
 
   const reportedCycles = new Set<string>();
@@ -142,8 +156,11 @@ export function collectLineageIssues(
       seenAt.set(currentId, walk.length);
       walk.push(currentId);
       const currentNote = uniqueNotesById.get(currentId)!;
-      const parentId = getValidParentId(currentNote);
-      currentId = parentId && uniqueNotesById.has(parentId) ? parentId : undefined;
+      const parentIdIdentity = getParentIdIdentity(currentNote);
+      currentId =
+        parentIdIdentity && uniqueNotesById.has(parentIdIdentity)
+          ? parentIdIdentity
+          : undefined;
     }
   }
 

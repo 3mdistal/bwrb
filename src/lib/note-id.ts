@@ -12,6 +12,16 @@ export function isValidNoteId(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value);
 }
 
+/**
+ * Return the canonical comparison key for a stable note ID.
+ *
+ * UUID hex digits are case-insensitive. Keep the authored value in frontmatter
+ * and diagnostics, but use this normalized identity at map/set boundaries.
+ */
+export function normalizeNoteId(id: string): string {
+  return id.toLowerCase();
+}
+
 function getIdRegistryPath(vaultDir: string): string {
   return join(vaultDir, ID_REGISTRY_RELATIVE_PATH);
 }
