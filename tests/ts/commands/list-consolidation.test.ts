@@ -268,8 +268,69 @@ describe('list as the canonical query/search/open surface', () => {
 
     expect(compatibilitySearch.exitCode).toBe(canonicalSearch.exitCode);
     expect(compatibilitySearch.stdout).toBe(canonicalSearch.stdout);
+    expect(compatibilitySearch.stderr.split('\n')).toEqual([
+      'Warning: bwrb search is deprecated, use bwrb list --name <query> instead',
+    ]);
     expect(compatibilityOpen.exitCode).toBe(canonicalOpen.exitCode);
     expect(compatibilityOpen.stdout).toBe(canonicalOpen.stdout);
+    expect(compatibilityOpen.stderr.split('\n')).toEqual([
+      'Warning: bwrb open is deprecated, use bwrb list --open instead',
+    ]);
+  });
+
+  it('keeps compatibility JSON stdout parseable', async () => {
+    const search = await runCLI([
+      'search', 'Sample Idea', '--output', 'json', '--picker', 'none',
+    ], vaultDir);
+    const open = await runCLI([
+      'open', 'Sample Idea', '--app', 'print', '--output', 'json', '--picker', 'none',
+    ], vaultDir);
+
+    expect(search.exitCode).toBe(0);
+    expect(JSON.parse(search.stdout)).toMatchObject({ success: true });
+    expect(search.stderr.split('\n')).toHaveLength(1);
+    expect(search.stderr).toContain('bwrb search is deprecated');
+
+    expect(open.exitCode).toBe(0);
+    expect(JSON.parse(open.stdout)).toMatchObject({ success: true });
+    expect(open.stderr.split('\n')).toHaveLength(1);
+    expect(open.stderr).toContain('bwrb open is deprecated');
+  });
+
+  it('does not duplicate the command warning when a legacy search flag also warns', async () => {
+    const result = await runCLI([
+      'search', 'Sample Idea', '--wikilink', '--picker', 'none',
+    ], vaultDir);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('[[Sample Idea]]');
+    expect(result.stderr.split('\n').filter(line => line.includes('bwrb search is deprecated'))).toHaveLength(1);
+    expect(result.stderr).toContain('--wikilink is deprecated, use --output link instead');
+  });
+
+  it('keeps search --edit --json as a clean structured patch flow', async () => {
+    const notePath = join(vaultDir, 'Ideas', 'Sample Idea.md');
+    const original = await readFile(notePath, 'utf-8');
+
+    try {
+      const result = await runCLI([
+        'search', 'Sample Idea', '--edit', '--json',
+        '{"status":"backlog"}', '--output', 'json', '--picker', 'none',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        success: true,
+        path: 'Ideas/Sample Idea.md',
+        updated: ['status'],
+      });
+      expect(result.stderr.split('\n')).toEqual([
+        'Warning: bwrb search is deprecated, use bwrb edit <target> --json <patch> instead',
+      ]);
+      expect(await readFile(notePath, 'utf-8')).toContain('status: backlog');
+    } finally {
+      await writeFile(notePath, original);
+    }
   });
 
   it('hides compatibility commands from root help but labels their own help', async () => {
@@ -281,6 +342,8 @@ describe('list as the canonical query/search/open surface', () => {
     expect(extractHelpCommands(root.stdout)).not.toContain('open');
     expect(searchHelp.stdout).toContain('compatibility command; use list');
     expect(openHelp.stdout).toContain('compatibility command; use list --open');
+    expect(searchHelp.stderr).toBe('');
+    expect(openHelp.stderr).toBe('');
   });
 
   it('rejects mode-specific flags instead of silently ignoring them', async () => {

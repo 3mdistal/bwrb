@@ -21,6 +21,7 @@ import {
   exitWithError,
   ExitCodes,
   exitWithResolutionError,
+  warnDeprecatedCommand,
 } from "../lib/output.js";
 import { resolveTargets, type TargetingOptions } from "../lib/targeting.js";
 import type { ResolvedConfig } from "../types/schema.js";
@@ -355,6 +356,7 @@ Examples:
   // — which is precisely the failure mode #662 set out to fix.
   .allowExcessArguments(false)
   .action(async (query: string | undefined, mode: string | undefined, options: OpenOptions, cmd) => {
+    warnDeprecatedCommand("open", "bwrb list --open");
     const jsonMode = options.output === "json";
 
     try {

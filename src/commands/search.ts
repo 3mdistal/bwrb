@@ -13,7 +13,16 @@ import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
 import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
 import { configurePromptMode, printError, printSuccess, printWarning } from '../lib/prompt.js';
-import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError, warnDeprecated, type SearchOutputFormat } from '../lib/output.js';
+import {
+  printJson,
+  jsonSuccess,
+  jsonError,
+  ExitCodes,
+  exitWithResolutionError,
+  warnDeprecated,
+  warnDeprecatedCommand,
+  type SearchOutputFormat,
+} from '../lib/output.js';
 import { openNote, resolveAppMode, parseAppMode } from './open.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
 import {
@@ -267,7 +276,22 @@ Examples:
   # Piping
   bwrb search "bug" -t --output paths | xargs -I {} code {}`)
   .allowExcessArguments(false)
-  .action(runSearchCommand);
+  .action(async (
+    query: string | undefined,
+    mode: string | undefined,
+    options: SearchOptions,
+    cmd: Command
+  ) => {
+    const replacement = options.edit
+      ? 'bwrb edit <target> --json <patch>'
+      : options.fuzzy
+        ? `bwrb list --fuzzy <query>${options.open ? ' --open' : ''}`
+        : options.body || options.text
+          ? `bwrb list --body <query> --matches${options.open ? ' --open' : ''}`
+          : `bwrb list --name <query>${options.open ? ' --open' : ''}`;
+    warnDeprecatedCommand('search', replacement);
+    await runSearchCommand(query, mode, options, cmd);
+  });
 
 /**
  * Run the shared name, fuzzy, or content-search flow.

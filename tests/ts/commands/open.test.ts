@@ -221,7 +221,9 @@ describe('open command', () => {
           );
 
           expect(result.exitCode).toBe(0);
-          expect(result.stderr).toBe('');
+          expect(result.stderr).toBe(
+            'Warning: bwrb open is deprecated, use bwrb list --open instead'
+          );
           const json = parseSingleJsonObject(result.stdout);
           expect(json.success).toBe(true);
           expect(json.data).toEqual({
