@@ -144,7 +144,7 @@ Collapsing `scope` + `context` into a single context tree removes the redundancy
 - **Contexts are first-class notes.** Because they're real notes, they get `unlinked-mention` audit coverage, backlinks, and graph presence for free, and aliases (see [Schema](/concepts/schema/)) help with all of those. Rich contexts (Builder, with its own content) and label-like contexts (PKM) cost the same.
 
 :::note[`under()` is alias-aware]
-Aliases (see [Schema](/concepts/schema/)) work transparently with `under()`. The operator canonicalizes aliases on **both sides** before walking the tree — the same alias resolution that powers `bwrb open <alias>`.
+Aliases (see [Schema](/concepts/schema/)) work transparently with `under()`. The operator canonicalizes aliases on **both sides** before walking the tree — the same alias resolution that powers `bwrb list --name <alias>`.
 
 Concretely, if `Builder` has an alias `BuilderProject`, then a task with `context: "[[BuilderProject]]"` **is** returned by `under(context, '[[Builder]]')` and `under(context, '[[career]]')` — the alias resolves back to `Builder`, so the tree walk reaches it. Passing the alias as the query node works too: `under(context, '[[BuilderProject]]')` resolves to `Builder` and walks its whole subtree. You can use either the canonical name or an alias in `under()` targets and in leaf `context` relations.
 

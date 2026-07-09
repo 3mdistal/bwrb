@@ -303,7 +303,7 @@ interface OpenOptions {
 }
 
 export const openCommand = new Command("open")
-  .description("Open a note (alias for search --open)")
+  .description("Open a note (compatibility command; use list --open)")
   .argument("[query]", "Note name or path to open")
   .argument("[mode]", "App mode to open with: system, editor, visual, obsidian, print")
   .option("-a, --app <mode>", "Application to open with: system, editor, visual, obsidian, print")

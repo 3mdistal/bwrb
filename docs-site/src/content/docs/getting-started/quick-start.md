@@ -101,13 +101,13 @@ bwrb list task --where "status = 'todo'"
 
 ```bash
 # Open with system default (default)
-bwrb open "My Great Idea"
+bwrb list --name "My Great Idea" --open
 
 # Open in your $EDITOR
-bwrb open "My Great Idea" --app editor
+bwrb list --name "My Great Idea" --open --app editor
 
 # Just print the path
-bwrb open "My Great Idea" --app print
+bwrb list --name "My Great Idea" --open --app print
 ```
 
 ## 6. Edit a Note
@@ -230,8 +230,8 @@ export BWRB_VAULT=~/notes
 | `bwrb edit <path>` | Edit note frontmatter |
 | `bwrb delete [query]` | Delete notes from the vault |
 | `bwrb list <type>` | List notes of a type |
-| `bwrb open [query]` | Open a note |
-| `bwrb search [query]` | Find notes, generate wikilinks |
+| `bwrb list --name <query>` | Resolve a note; add `--open` or `--output link` |
+| `bwrb list --fuzzy <query>` | Rank approximate name and alias matches |
 | `bwrb schema list` | View schema types |
 | `bwrb audit` | Check schema compliance |
 | `bwrb bulk --type <type> --set key=value` | Apply frontmatter changes in bulk |

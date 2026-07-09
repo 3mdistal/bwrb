@@ -36,7 +36,7 @@ Bowerbird's functionality exists in concentric layers of priority:
 │   └─────────────────────────────────┘   │
 │              AI SAFETY NET               │
 │   Deterministic primitives the AI        │
-│   agent relies on (search --fuzzy,       │
+│   agent relies on (list --fuzzy,         │
 │   unlinked-mention audit)                │
 │                                         │
 └─────────────────────────────────────────┘
@@ -101,7 +101,7 @@ Bowerbird works anywhere, on anything.
 
 **Runtime support:** Node.js >= 22.
 
-**Opening notes:** `bwrb open` defaults to your system's default handler. Override with `config.open_with` or `BWRB_DEFAULT_APP` when you want a specific app (e.g., `obsidian`, `editor`).
+**Opening notes:** `bwrb list --open` defaults to your system's default handler. Override with `config.open_with` or `BWRB_DEFAULT_APP` when you want a specific app (e.g., `obsidian`, `editor`).
 
 ### 4. Incrementally Adoptable
 
@@ -215,9 +215,7 @@ Target: <15 top-level commands that cover all use cases.
 **Current commands:**
 - `bwrb new` — Create notes with schema-driven prompts
 - `bwrb edit` — Modify existing note frontmatter
-- `bwrb list` — Query notes by type and fields
-- `bwrb search` — Find notes by name or content
-- `bwrb open` — Open notes in your configured handler
+- `bwrb list` — Query, resolve, search, and open notes
 - `bwrb delete` — Remove notes with backlink warnings
 - `bwrb audit` — Validate notes against schema
 - `bwrb bulk` — Batch frontmatter operations
@@ -243,15 +241,16 @@ bwrb template list [type] [name]   # List all, or show details if both provided
 ```
 
 **Decisions made:**
-- `open` is an alias for `search --open`
-- `edit` is an alias for `search --edit`
-- `list` remains separate (structured query output vs search/action)
-- The AI safety-net primitives (`search --fuzzy`, `audit: unlinked-mention`) are deferred to post-V1.0
+- `list` is the canonical read-only query, search, picker, and open surface.
+- `search` and `open` remain hidden compatibility commands for existing scripts.
+- `edit` remains the canonical mutation surface; compatibility `search --edit`
+  retains its established meaning.
+- The AI safety-net primitives (`list --fuzzy`, `audit: unlinked-mention`) are deferred to post-V1.0
 
 ### Design Principles
 
 1. **Consistent flags** — Same flag means same thing everywhere
-2. **Unified verbs** — `new`, `edit`, `delete`, `list`, `search` work everywhere
+2. **Unified verbs** — `new`, `edit`, `delete`, and `list` carry the main note workflows
 3. **JSON mode everywhere** — `--output json` on all commands (see `docs/product/cli-output-contract.md`)
 4. **Dry-run default for destructive ops** — `--execute` to apply (including auto audit fixes); use `--dry-run` to preview interactive audit fixes
 5. **Discoverable prompts** — Missing required info prompts, doesn't error
@@ -282,14 +281,14 @@ This ordering presents commands as a guided path: create notes → find notes �
 
 1. **Schema enforcement** — Hard on CLI, soft audit on drift
 2. **Inheritance model** — Full, consistent type inheritance
-3. **Core commands** — new, edit, list, search, audit, bulk, schema, template
+3. **Core commands** — new, edit, list, audit, bulk, schema, template
 4. **JSON mode** — Every command scriptable
 5. **Migration tooling** — Rename fields, change select options, refactor types
 
 ### Post-V1.0
 
 - Schema expressiveness — aliases, traits, hierarchical scope
-- Ingest safety net — `search --fuzzy`, `audit: unlinked-mention` / `frequent-unlinked-term`, daily-note sweep
+- Ingest safety net — `list --fuzzy`, `audit: unlinked-mention` / `frequent-unlinked-term`, daily-note sweep
 - `schema discover` — deterministic field-usage facts over a folder
 - Task system — event-driven recurrence + offset templating
 

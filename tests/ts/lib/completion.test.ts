@@ -135,8 +135,8 @@ describe("completion", () => {
       expect(commands).toContain("new");
       expect(commands).toContain("edit");
       expect(commands).toContain("list");
-      expect(commands).toContain("open");
-      expect(commands).toContain("search");
+      expect(commands).not.toContain("open");
+      expect(commands).not.toContain("search");
       expect(commands).toContain("audit");
       expect(commands).toContain("bulk");
       expect(commands).toContain("schema");
@@ -163,6 +163,11 @@ describe("completion", () => {
       expect(options).toContain("-p");
       expect(options).toContain("--where");
       expect(options).toContain("-w");
+      expect(options).toContain("--name");
+      expect(options).toContain("--fuzzy");
+      expect(options).toContain("--matches");
+      expect(options).toContain("--open");
+      expect(options).toContain("--picker");
     });
 
     it("returns options for new command", () => {

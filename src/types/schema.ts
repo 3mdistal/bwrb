@@ -918,7 +918,7 @@ export const DashboardDefinitionSchema = z.object({
   /** Body content search query */
   body: z.string().optional(),
   /** Default output format */
-  output: z.enum(['default', 'text', 'paths', 'tree', 'link', 'json']).optional(),
+  output: z.enum(['default', 'text', 'paths', 'tree', 'link', 'content', 'json']).optional(),
   /** Fields to display in table output */
   fields: z.array(z.string()).optional(),
   /** Limit output to the first n matching notes */

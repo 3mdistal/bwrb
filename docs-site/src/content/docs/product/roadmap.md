@@ -35,7 +35,7 @@ A richer schema so the AI agent uses it correctly:
 
 bwrb is the deterministic safety net *under* the AI agent, never an LLM caller:
 
-- `search --fuzzy` — scored candidate lookup before writing
+- `list --fuzzy` — scored candidate lookup before writing
 - `audit: unlinked-mention` — flag known entities mentioned but not linked
 - Daily-note sweep — coverage bookkeeping
 - `schema discover` — deterministic field-usage facts over a folder

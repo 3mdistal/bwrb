@@ -1,105 +1,22 @@
 ---
-title: bwrb open
-description: Open notes in editor or Obsidian
+title: bwrb open (compatibility)
+description: Legacy open command retained for script compatibility
 ---
 
-Open a note by query in your preferred application. This is an alias for `search --open`.
+`bwrb open` remains callable with its existing flags and output contracts, but
+is hidden from the canonical top-level help and completion lists. New workflows
+should resolve and open through [`bwrb list`](/reference/commands/list/).
 
-## Synopsis
+## Mappings
 
-```bash
-bwrb open [options] [query] [mode]
-```
+| Compatibility invocation | Canonical invocation |
+|---|---|
+| `bwrb open "My Note"` | `bwrb list --name "My Note" --open` |
+| `bwrb open "My Note" print` | `bwrb list --name "My Note" --open --app print` |
+| `bwrb open --id "<uuid>" --app print` | `bwrb list --id "<uuid>" --open --app print` |
+| `bwrb open --type task` | `bwrb list --type task --open` |
+| `bwrb open --body "TODO"` | `bwrb list --body "TODO" --open` |
 
-`[mode]` is an optional positional app mode (e.g. `bwrb open "My Note" print`),
-equivalent to passing `--app <mode>`. An explicit `--app` flag always wins.
-
-## Options
-
-| Option | Description |
-|--------|-------------|
-| `-a, --app <mode>` | Application to open with |
-| `--picker <mode>` | Picker mode: `fzf`, `numbered`, `none` |
-| `--output <format>` | Output format: `text`, `json` |
-| `--preview` | Show preview in fzf picker |
-| `-t, --type <type>` | Filter by note type |
-| `-p, --path <glob>` | Filter by path pattern |
-| `-w, --where <expr>` | Filter by frontmatter expression (repeatable) |
-| `-b, --body <pattern>` | Filter by body content pattern |
-
-## App Modes
-
-| Mode | Description |
-|------|-------------|
-| `system` | Open with OS default handler (default) |
-| `editor` | Open in terminal editor (`$EDITOR` or `config.editor`) |
-| `visual` | Open in GUI editor (`$VISUAL` or `config.visual`) |
-| `obsidian` | Open in Obsidian via URI scheme |
-| `print` | Print path to stdout (for scripting) |
-
-## Examples
-
-### Basic Usage
-
-```bash
-# Browse all notes with picker
-bwrb open
-
-# Open specific note (uses config default)
-bwrb open "My Note"
-
-# Open in Obsidian
-bwrb open "My Note" --app obsidian
-
-# Open in $EDITOR
-bwrb open "My Note" --app editor
-
-# Print the resolved path to stdout (positional mode, handy for scripting)
-bwrb open "My Note" print
-```
-
-### With Targeting
-
-```bash
-# Pick from all tasks
-bwrb open --type task
-
-# Pick from active notes
-bwrb open --where "status=active"
-
-# Open high-priority task
-bwrb open -t task -w "priority=high"
-
-# Find and open note containing TODO
-bwrb open --body "TODO"
-```
-
-## App Mode Precedence
-
-The default app is determined by:
-
-1. `--app` flag (explicit)
-2. `[mode]` positional argument (e.g. `bwrb open "My Note" print`)
-3. `BWRB_DEFAULT_APP` environment variable
-4. `config.open_with` in `.bwrb/schema.json`
-5. Fallback: `system`
-
-```bash
-# Set default via environment
-export BWRB_DEFAULT_APP=editor
-bwrb open "My Note"  # Opens in $EDITOR
-```
-
-## Picker Modes
-
-| Mode | Behavior |
-|------|----------|
-| `fzf` | Interactive fuzzy finder (default) |
-| `numbered` | Numbered list selection |
-| `none` | No picker - fail if ambiguous |
-
-## See Also
-
-- [bwrb search](/reference/commands/search/) — Full search command
-- [bwrb edit](/reference/commands/edit/) — Edit note frontmatter
-- [Targeting Model](/reference/targeting/) — Selector reference
+The `--app`, `--picker`, `--preview`, `--output`, local `--vault`, and composed
+targeting flags remain supported on the compatibility command. New automation
+should prefer `--picker none` or global `--non-interactive` to avoid prompts.

@@ -38,12 +38,13 @@ import {
 import { parseNote } from '../lib/frontmatter.js';
 import { applyWhereExpressions } from '../lib/where-targeting.js';
 import { UserCancelledError } from '../lib/errors.js';
+import { resolveTargets, type TargetingOptions } from '../lib/targeting.js';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface SearchOptions {
+export interface SearchOptions {
   picker?: string;
   output?: string;
   // Deprecated output flags (use --output instead)
@@ -133,7 +134,7 @@ function resolveSearchOutputFormat(options: SearchOptions): SearchOutputFormat {
 // ============================================================================
 
 export const searchCommand = new Command('search')
-  .description('Search for notes by name or content')
+  .description('Search for notes by name or content (compatibility command; use list)')
   .argument('[query]', 'Search pattern (name/path for default mode, content pattern for --body)')
   .argument('[mode]', 'App mode for --open: system, editor, visual, obsidian, print')
   // Output format (new unified flag)
@@ -261,7 +262,22 @@ Examples:
   # Piping
   bwrb search "bug" -t --output paths | xargs -I {} code {}`)
   .allowExcessArguments(false)
-  .action(async (query: string | undefined, mode: string | undefined, options: SearchOptions, cmd: Command) => {
+  .action(runSearchCommand);
+
+/**
+ * Run the shared name, fuzzy, or content-search flow.
+ *
+ * `bwrb list` is the canonical command surface. The hidden `search`
+ * compatibility command and `list` both call this function so the mature
+ * resolution, picker, output, and edit-through-search contracts stay in one
+ * place.
+ */
+export async function runSearchCommand(
+  query: string | undefined,
+  mode: string | undefined,
+  options: SearchOptions,
+  cmd: Command
+): Promise<void> {
     // Resolve output format from deprecated flags and new --output option
     const outputFormat = resolveSearchOutputFormat(options);
     const jsonMode = outputFormat === 'json';
@@ -378,7 +394,7 @@ Examples:
       printError(message);
       process.exit(1);
     }
-  });
+}
 
 // ============================================================================
 // Content Search Handler
@@ -656,6 +672,45 @@ async function filterByFrontmatter(
 // Fuzzy Search Handler
 // ============================================================================
 
+async function buildScopedSearchIndex(
+  schema: import('../types/schema.js').LoadedSchema,
+  vaultDir: string,
+  options: Pick<SearchOptions, 'type' | 'path' | 'where'>
+): Promise<NoteIndex> {
+  const index = await buildNoteIndex(schema, vaultDir, options.path);
+  if (!options.type && !options.where?.length) return index;
+
+  if (options.type && !getTypeDefByPath(schema, options.type)) {
+    throw new Error(formatUnknownTypeError(schema, options.type));
+  }
+
+  const targeting: TargetingOptions = {};
+  if (options.type) targeting.type = options.type;
+  if (options.path) targeting.path = options.path;
+  if (options.where?.length) targeting.where = options.where;
+  const targetResult = await resolveTargets(targeting, schema, vaultDir);
+  if (targetResult.error) throw new Error(targetResult.error);
+
+  const allowedPaths = new Set(targetResult.files.map(file => file.path));
+  const keep = (file: ManagedFile): boolean => allowedPaths.has(file.path);
+  const filterMap = (source: Map<string, ManagedFile[]>): Map<string, ManagedFile[]> => {
+    const filtered = new Map<string, ManagedFile[]>();
+    for (const [key, files] of source) {
+      const matches = files.filter(keep);
+      if (matches.length > 0) filtered.set(key, matches);
+    }
+    return filtered;
+  };
+
+  return {
+    byPath: new Map([...index.byPath].filter(([, file]) => keep(file))),
+    byBasename: filterMap(index.byBasename),
+    byAlias: filterMap(index.byAlias),
+    allFiles: index.allFiles.filter(keep),
+    ...(index.fullByBasename ? { fullByBasename: index.fullByBasename } : {}),
+  };
+}
+
 /**
  * Strictly parse a finite decimal number from a raw flag string.
  *
@@ -739,8 +794,9 @@ async function handleFuzzySearch(
     process.exit(1);
   }
 
-  // Scope to --path when provided, consistent with name and content search (#705).
-  const index = await buildNoteIndex(schema, vaultDir, options.path);
+  // Scope resolution before ranking. `--path`, `--type`, and `--where` compose
+  // without rebuilding the mature fuzzy scorer or losing alias metadata.
+  const index = await buildScopedSearchIndex(schema, vaultDir, options);
   const matches = await fuzzySearch(index, query, schema, vaultDir, { threshold, limit });
 
   // --open / --edit: act on the matched note(s), reusing the exact open/edit +
@@ -918,7 +974,7 @@ async function handleNameSearch(
   // honored (not ignored) for consistency with content search: the same
   // filterByPath glob normalization narrows the candidate set before every
   // resolution step (path/basename/alias/fuzzy) runs against it (#705).
-  const index = await buildNoteIndex(schema, vaultDir, options.path);
+  const index = await buildScopedSearchIndex(schema, vaultDir, options);
 
   // Resolve query to file(s)
   const result = await resolveAndPick(index, query, {

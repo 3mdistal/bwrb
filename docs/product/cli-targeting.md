@@ -118,7 +118,7 @@ Filter by body content (full-text search via ripgrep).
 ```bash
 bwrb list --body "TODO"
 bwrb bulk --body "DEPRECATED" --delete deprecated_field
-bwrb search --body "meeting notes" --type task
+bwrb list --body "meeting notes" --matches --type task
 ```
 
 **Behavior:**
@@ -203,7 +203,8 @@ Commands that operate on note sets support the core selectors. Some commands als
 **Short flags:** `-t` (type), `-p` (path), `-w` (where), `-b` (body)
 
 **Notes:**
-- `open` is an alias for `search --open`
+- `list` is the canonical query/search/open surface; `open` and `search` are
+  compatibility commands.
 - `edit` is an alias for `search --edit`
 - Both aliases gain full targeting support automatically
 
@@ -310,7 +311,7 @@ Excluded directories apply to **all bwrb operations** consistently. If a file is
 # Archive/Tasks/ contains "Old Task.md" (a task type note)
 
 bwrb list task            # Does NOT find it
-bwrb search "Old Task"    # Does NOT find it
+bwrb list --name "Old Task"    # Does NOT find it
 bwrb audit task           # Skips Archive/
 ```
 
@@ -405,7 +406,7 @@ bwrb list --type task --output json
 bwrb list --type task --output paths
 bwrb list --type task --output link      # [[Task 1]], [[Task 2]], ...
 bwrb list --type task --output tree      # Hierarchical display
-bwrb search "TODO" --output content      # Full file with matches
+bwrb list --name "TODO" --output content # Full resolved file
 ```
 
 ---
@@ -473,7 +474,7 @@ bwrb list task --path "Work/" --where "status == 'active'"
 bwrb list --body "TODO" --where "status == 'draft'"
 
 # Open a task by searching
-bwrb open --type task --body "quarterly review"
+bwrb list --type task --body "quarterly review" --open
 ```
 
 ### Audit and maintenance

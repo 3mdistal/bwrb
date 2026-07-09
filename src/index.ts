@@ -67,8 +67,10 @@ if (completionsIndex !== -1) {
   // Query operations
   program.addCommand(listCommand);
   program.addCommand(recentCommand);
-  program.addCommand(openCommand);
-  program.addCommand(searchCommand);
+  // Compatibility commands remain callable, but `list` is the canonical
+  // query/search/open surface shown in root help and command completion.
+  program.addCommand(openCommand, { hidden: true });
+  program.addCommand(searchCommand, { hidden: true });
 
   // Schema and management
   program.addCommand(schemaCommand);

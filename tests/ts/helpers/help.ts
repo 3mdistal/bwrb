@@ -4,8 +4,6 @@ const CANONICAL_HELP_COMMAND_ORDER = [
   'delete',
   'list',
   'recent',
-  'open',
-  'search',
   'schema',
   'audit',
   'bulk',

@@ -183,7 +183,7 @@ Notes:
   [Schema](/concepts/schema/)) on **both sides** — an aliased relation value (`context: "[[BuilderProject]]"` where
   `BuilderProject` is an alias of `Builder`) and an aliased query node
   (`under(context, '[[BuilderProject]]')`) both resolve to the canonical note,
-  using the same resolution as `bwrb open <alias>`. An ambiguous alias (declared
+  using the same resolution as `bwrb list --name <alias>`. An ambiguous alias (declared
   on more than one note) is **not** auto-resolved — it matches nothing rather
   than silently picking a winner.
 - **Robustness.** A dangling (unresolvable) relation target — including a
@@ -201,7 +201,7 @@ Filter by body content (full-text search via ripgrep).
 ```bash
 bwrb list --body "TODO"
 bwrb bulk --body "DEPRECATED" --delete deprecated_field
-bwrb search --body "meeting notes" --type task
+bwrb list --body "meeting notes" --matches --type task
 ```
 
 **Behavior:**
@@ -241,15 +241,14 @@ For ergonomics, the first positional argument is auto-detected:
 |---------|----------|----------|-----------|----------|--------|
 | [edit](/reference/commands/edit/)    | Y | Y | Y | Y | Y |
 | [delete](/reference/commands/delete/)  | Y | Y | Y | Y | - |
-| [list](/reference/commands/list/)    | Y | Y | Y | Y | - |
-| [open](/reference/commands/open/)    | Y | Y | Y | Y | Y |
-| [search](/reference/commands/search/)  | Y | Y | Y | Y | Y |
+| [list](/reference/commands/list/)    | Y | Y | Y | Y | Y |
 | [audit](/reference/commands/audit/)   | Y | Y | Y | Y | - |
 | [bulk](/reference/commands/bulk/)    | Y | Y | Y | Y | - |
 
 **Notes:**
-- `open` is an alias for `search --open`
-- `edit` is an alias for `search --edit`
+- `list` is the canonical query, search, picker, and open surface.
+- `open` and `search` remain callable compatibility commands but are hidden from
+  the canonical command list.
 
 ## Default Behavior
 
@@ -319,7 +318,7 @@ bwrb list --type task --output json
 bwrb list --type task --output paths
 bwrb list --type task --output link      # [[Task 1]], [[Task 2]], ...
 bwrb list --type task --output tree      # Hierarchical display
-bwrb search "TODO" --output content      # Full file with matches
+bwrb list --name "TODO" --output content # Full resolved file
 ```
 
 ## Pagination (interactive picker)

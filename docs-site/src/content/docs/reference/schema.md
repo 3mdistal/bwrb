@@ -81,8 +81,8 @@ Types define categories of notes. Each type has a name (the object key) and a de
 ### Output directories
 
 Each type's `output_dir` is the folder its notes live in. `bwrb new` creates notes
-directly in `output_dir`, but discovery (`bwrb list`, `bwrb search`, and
-`search --fuzzy`) treats `output_dir` as a **subtree**: notes filed in nested
+directly in `output_dir`, but discovery (`bwrb list`, including `list --fuzzy`)
+treats `output_dir` as a **subtree**: notes filed in nested
 subfolders are discovered and associated with that type too.
 
 For a `people` type with `output_dir: "People"`, all of these are discovered as
@@ -493,7 +493,7 @@ Link to other notes in the vault. Shows a picker filtered by type.
 different note type also has that name. If more than one matching source-type
 note shares the name, path-qualify the link (for example `[[contexts/Betson]]`).
 Path-qualified links keep exact path behavior. See the
-[`search` command](/reference/commands/search/) for the full link-resolution
+[`list` command](/reference/commands/list/) for the full link-resolution
 rule.
 
 **Filtering results:**
@@ -546,7 +546,7 @@ When `owned: true`, referenced notes are private to the parent and colocate in t
 Owned notes:
 - Live in the owner's subfolder (e.g., `drafts/My Novel/chapters/`)
 - Cannot be referenced by other notes' frontmatter fields
-- Are still discoverable via `bwrb list` and `bwrb search`
+- Are still discoverable via `bwrb list`
 - If moved out of that subfolder — **or** placed under a *different* owner's owned
   subfolder — `bwrb audit` flags them as
   [`owned-wrong-location`](/reference/commands/audit/#issue-codes) (resolved via the
@@ -605,7 +605,8 @@ also known by. bwrb consults aliases during name resolution and linking, so an
 entity is **findable and linkable by its aliases wherever it is findable by its
 name**:
 
-- `bwrb open`, `bwrb edit`, and `bwrb search` resolve a query to an entity when
+- `bwrb list --name`, `bwrb edit`, and the compatibility `open`/`search`
+  commands resolve a query to an entity when
   it matches one of the entity's aliases (a real note name always wins over an
   alias of the same string — **case-insensitively**, consistent with the rest of
   resolution, so a real note `steve` wins over an entity merely aliased `Steve`).

@@ -126,9 +126,9 @@ Owned notes have special visibility rules:
 | Command | Owned Notes | Rationale |
 |---------|-------------|-----------|
 | `bwrb list` | **Included** | Discovery — nothing feels lost |
-| `bwrb search` | **Included** | Discovery — find any note by content |
+| `bwrb list` | **Included** | Discovery — find any note by name or content |
 | Field prompts | **Excluded** | Can't reference owned notes in frontmatter |
-| `bwrb open` | **Included** | Can open any note directly |
+| `bwrb list --open` | **Included** | Can open any note directly |
 
 **Why exclude from field prompts?**
 

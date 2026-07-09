@@ -28,7 +28,7 @@ import {
   type DirectoryTreeNode,
   type FileStatMap,
 } from '../lib/list-helpers.js';
-import { stat } from 'fs/promises';
+import { readFile, stat } from 'fs/promises';
 
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
@@ -43,6 +43,7 @@ import {
 } from '../lib/output.js';
 import { UserCancelledError } from '../lib/errors.js';
 import { openNote, resolveAppMode, parseAppMode } from './open.js';
+import { runSearchCommand, type SearchOptions } from './search.js';
 import { pickFile, parsePickerMode } from '../lib/picker.js';
 import { formatDisplayValue } from '../lib/value-format.js';
 import type { LoadedSchema, DashboardDefinition } from '../types/schema.js';
@@ -94,7 +95,7 @@ function resolveListOutputFormat(options: ListCommandOptions): ListOutputFormat 
     if (options.output === 'text') {
       return 'default';
     }
-    const validFormats: ListOutputFormat[] = ['default', 'paths', 'tree', 'link', 'json'];
+    const validFormats: ListOutputFormat[] = ['default', 'paths', 'tree', 'link', 'content', 'json'];
     if (validFormats.includes(options.output as ListOutputFormat)) {
       return options.output as ListOutputFormat;
     }
@@ -125,6 +126,13 @@ interface ListCommandOptions {
   type?: string;
   path?: string;
   body?: string;
+  name?: string;
+  fuzzy?: string;
+  matches?: boolean;
+  threshold?: string;
+  context?: string | boolean;
+  caseSensitive?: boolean;
+  regex?: boolean;
   text?: string; // deprecated
   paths?: boolean; // deprecated
   fields?: string;
@@ -139,6 +147,8 @@ interface ListCommandOptions {
   // Open options
   open?: boolean;
   app?: string;
+  picker?: string;
+  preview?: boolean;
   // Hierarchy options for recursive types
   roots?: boolean;
   childrenOf?: string;
@@ -148,6 +158,79 @@ interface ListCommandOptions {
   // Dashboard save options
   saveAs?: string;
   force?: boolean;
+}
+
+function hasCanonicalSearchMode(options: ListCommandOptions): boolean {
+  return options.name !== undefined || options.fuzzy !== undefined || options.matches === true;
+}
+
+function validateCanonicalSearchMode(
+  positional: string | undefined,
+  mode: string | undefined,
+  options: ListCommandOptions
+): string | undefined {
+  const selectedModes = [
+    options.name !== undefined ? '--name' : undefined,
+    options.fuzzy !== undefined ? '--fuzzy' : undefined,
+    options.matches ? '--matches' : undefined,
+  ].filter((value): value is string => value !== undefined);
+
+  if (selectedModes.length > 1) {
+    return `Cannot combine ${selectedModes.join(', ')}. Choose one search mode.`;
+  }
+  if ((options.name !== undefined || options.fuzzy !== undefined) && (options.body !== undefined || options.text !== undefined)) {
+    return '--name and --fuzzy cannot be combined with --body or --text.';
+  }
+  if (options.matches && !options.body) {
+    return '--matches requires --body <query>';
+  }
+  if ((options.context !== undefined || options.caseSensitive || options.regex) && !options.matches) {
+    return '--context, --no-context, --case-sensitive, and --regex require --matches';
+  }
+  if (options.threshold !== undefined && options.fuzzy === undefined) {
+    return '--threshold requires --fuzzy <query>';
+  }
+  if (hasCanonicalSearchMode(options) && (positional !== undefined || mode !== undefined)) {
+    return 'Search modes do not accept positional filters or app modes; use targeting flags and --app instead.';
+  }
+  if (hasCanonicalSearchMode(options) && (options.fields || options.count || options.sort || options.desc || options.roots || options.childrenOf || options.descendantsOf || options.tree || options.depth || options.saveAs || options.force)) {
+    return '--name, --fuzzy, and --matches cannot be combined with table, hierarchy, sort, count, or dashboard options.';
+  }
+  if (hasCanonicalSearchMode(options) && options.id) {
+    return '--id cannot be combined with --name, --fuzzy, or --matches; use --id with normal list targeting.';
+  }
+  if (hasCanonicalSearchMode(options) && options.output === 'tree') {
+    return '--output tree is not available with --name, --fuzzy, or --matches.';
+  }
+  return undefined;
+}
+
+async function runCanonicalSearchMode(
+  options: ListCommandOptions,
+  cmd: Command
+): Promise<void> {
+  if (options.json) warnDeprecated('--json', '--output json');
+  if (options.paths) warnDeprecated('--paths', '--output paths');
+  const query = options.name ?? options.fuzzy ?? options.body;
+  const searchOptions: SearchOptions = {
+    ...(options.type !== undefined ? { type: options.type } : {}),
+    ...(options.path !== undefined ? { path: options.path } : {}),
+    ...(options.where !== undefined ? { where: options.where } : {}),
+    ...(options.limit !== undefined ? { limit: options.limit } : {}),
+    ...(options.open !== undefined ? { open: options.open } : {}),
+    ...(options.app !== undefined ? { app: options.app } : {}),
+    ...(options.picker !== undefined ? { picker: options.picker } : {}),
+    ...(options.preview !== undefined ? { preview: options.preview } : {}),
+    ...(options.threshold !== undefined ? { threshold: options.threshold } : {}),
+    ...(typeof options.context === 'string' ? { context: options.context } : {}),
+    ...(options.context === false ? { noContext: true } : {}),
+    ...(options.caseSensitive !== undefined ? { caseSensitive: options.caseSensitive } : {}),
+    ...(options.regex !== undefined ? { regex: options.regex } : {}),
+    output: options.json ? 'json' : options.paths ? 'paths' : (options.output ?? 'text'),
+    fuzzy: options.fuzzy !== undefined,
+    body: options.matches === true,
+  };
+  await runSearchCommand(query, undefined, searchOptions, cmd);
 }
 
 const RESERVED_DISPLAY_FIELDS = new Set(['name', '_name', '_path']);
@@ -178,7 +261,7 @@ async function collectFileStats(paths: string[]): Promise<FileStatMap> {
 }
 
 export const listCommand = new Command('list')
-  .description('List notes with optional filtering')
+  .description('Find, filter, inspect, and open notes')
   .addHelpText('after', `
 Targeting Selectors (compose via AND):
   --type <type>        Filter by type (e.g., task, objective/milestone)
@@ -186,6 +269,8 @@ Targeting Selectors (compose via AND):
   --where <expr>       Filter by frontmatter expression (can repeat)
   --id <uuid>          Filter by stable note id
   --body <query>       Filter by body content (uses ripgrep)
+  --name <query>       Resolve notes by name, path, or alias
+  --fuzzy <query>      Rank approximate name and alias matches with scores
   --sort <field>       Sort by frontmatter field, name, _name, _path,
                        or a file stat: file.mtime, file.ctime, file.size
   --desc               Sort descending (requires --sort)
@@ -206,6 +291,9 @@ Examples:
   bwrb list --type idea
   bwrb list --type task --where "status == 'done'"
   bwrb list --path "Projects/**" --body "TODO"
+  bwrb list --name "My Note" --output link
+  bwrb list --fuzzy "Stephen Yeg" --output json
+  bwrb list --body "TODO" --matches --regex --context 0
   bwrb list --type task --sort deadline
   bwrb list --type task --sort priority --desc
   bwrb list --sort file.mtime --desc              # Most recently modified first
@@ -250,6 +338,14 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path glob (e.g., Projects/**, Ideas/)')
   .option('-b, --body <query>', 'Filter by body content search')
+  .option('--name <query>', 'Resolve notes by name, path, or alias')
+  .option('--fuzzy <query>', 'Rank approximate name and alias matches with scores')
+  .option('--matches', 'Show detailed body matches instead of filtering note rows')
+  .option('--threshold <score>', 'Minimum similarity from 0 to 1 for --fuzzy (default: 0.5)')
+  .option('-C, --context <lines>', 'Lines of context around detailed body matches (default: 2)')
+  .option('--no-context', 'Do not show context around detailed body matches')
+  .option('-S, --case-sensitive', 'Use case-sensitive matching with --matches')
+  .option('-E, --regex', 'Treat the --body query as a regex with --matches')
   .option('--text <query>', 'Filter by body content search (deprecated: use --body)', undefined)
   .option('--paths', 'Output file paths (deprecated: use --output paths)')
   .option('--json', 'Output as JSON (deprecated: use --output json)')
@@ -260,10 +356,12 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--desc', 'Sort descending (requires --sort)')
   .option('--limit <n>', 'Limit output to the first n matching notes')
   .option('--count', 'Print only the number of matching notes')
-  .option('--output <format>', 'Output format: text (default), paths, tree, link, json')
+  .option('--output <format>', 'Output format: text (default), paths, tree, link, content, json')
   // Open options
   .option('-o, --open', 'Open the first result (or pick from results interactively)')
   .option('--app <mode>', 'How to open: system (default), editor, visual, obsidian, print')
+  .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
+  .option('--preview', 'Show file preview in the fzf picker')
   // Hierarchy options for recursive types (deprecated in favor of --where functions)
   .option('--roots', 'Only show root notes (deprecated: use --where "isRoot()")')
   .option('--children-of <note>', 'Only show direct children (deprecated: use --where "isChildOf(\'[[Note]]\')")')
@@ -278,6 +376,22 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   // (commander's default) hides the mistake.
   .allowExcessArguments(false)
   .action(async (positional: string | undefined, mode: string | undefined, options: ListCommandOptions, cmd: Command) => {
+    const searchModeError = validateCanonicalSearchMode(positional, mode, options);
+    if (searchModeError) {
+      const requestedJson = options.json || options.output === 'json';
+      if (requestedJson) {
+        printJson(jsonError(searchModeError));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      printError(searchModeError);
+      process.exit(1);
+    }
+
+    if (hasCanonicalSearchMode(options)) {
+      await runCanonicalSearchMode(options, cmd);
+      return;
+    }
+
     // Resolve output format from --output flag and deprecated flags
     const outputFormat = resolveListOutputFormat(options);
     const jsonMode = outputFormat === 'json';
@@ -432,7 +546,8 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         // Open options
         open: options.open,
         app: appModeInput,
-        pickerMode: resolveGlobalPickerMode(undefined, globalOpts, 'auto'),
+        pickerMode: resolveGlobalPickerMode(options.picker, globalOpts, 'auto'),
+        preview: options.preview,
         // Hierarchy options
         roots: options.roots,
         childrenOf: options.childrenOf,
@@ -516,6 +631,7 @@ export interface ListOptions {
   open?: boolean | undefined;
   app?: string | undefined;
   pickerMode?: string | undefined;
+  preview?: boolean | undefined;
   // Hierarchy options
   roots?: boolean | undefined;
   childrenOf?: string | undefined;
@@ -663,7 +779,17 @@ export async function listObjects(
       const pickerResult = await pickFile(pickerFiles, {
         mode: parsePickerMode(options.pickerMode),
         prompt: `${filteredFiles.length} notes - select to open`,
+        ...(options.preview !== undefined ? { preview: options.preview } : {}),
+        vaultDir,
       });
+
+      if (pickerResult.error) {
+        exitWithResolutionError(
+          pickerResult.error,
+          pickerResult.candidates,
+          jsonMode
+        );
+      }
       
       if (pickerResult.cancelled || !pickerResult.selected) {
         process.exit(0);
@@ -757,6 +883,13 @@ export async function listObjects(
       for (const { path } of filteredFiles) {
         const name = basename(path, '.md');
         console.log(`[[${name}]]`);
+      }
+      return;
+    }
+
+    case 'content': {
+      for (const { path } of filteredFiles) {
+        process.stdout.write(await readFile(path, 'utf-8'));
       }
       return;
     }

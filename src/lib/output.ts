@@ -4,7 +4,7 @@ import chalk from 'chalk';
  * Output format options for list command.
  * 'text' is an alias for 'default' (the standard table/name output).
  */
-export type ListOutputFormat = 'default' | 'text' | 'paths' | 'tree' | 'link' | 'json';
+export type ListOutputFormat = 'default' | 'text' | 'paths' | 'tree' | 'link' | 'content' | 'json';
 
 /**
  * Output format options for search command.

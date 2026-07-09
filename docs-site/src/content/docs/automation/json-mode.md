@@ -19,7 +19,7 @@ Add `--output json` to any command:
 ```bash
 bwrb list task --output json
 bwrb audit --output json
-bwrb search "My Note" --output json
+bwrb list --name "My Note" --output json --picker none
 ```
 
 ## JSON Input

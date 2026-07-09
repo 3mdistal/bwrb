@@ -3,7 +3,7 @@ title: bwrb edit
 description: Modify existing note frontmatter
 ---
 
-Edit the frontmatter of an existing note. This is an alias for `search --edit`.
+Edit the frontmatter of an existing note after resolving it by query or filters.
 
 ## Synopsis
 
@@ -13,7 +13,7 @@ bwrb edit [options] [query] [mode]
 
 The optional second positional `[mode]` is the app mode used with `--open`
 (`system`, `editor`, `visual`, `obsidian`, `print`) — parity with
-[`bwrb open`](/reference/commands/open/). For example,
+[`bwrb list --open`](/reference/commands/list/). For example,
 `bwrb edit "My Note" --open print` edits the note and then prints its path. An
 explicit `--app` flag always takes precedence over the positional `[mode]`, an
 invalid mode value is rejected with a clear error (even without `--open`), and a
@@ -103,7 +103,6 @@ When multiple notes match your query:
 
 ## See Also
 
-- [bwrb search](/reference/commands/search/) — Full search command (edit is an alias)
-- [bwrb open](/reference/commands/open/) — Open notes without editing
+- [bwrb list](/reference/commands/list/) — Find or open notes without editing
 - [bwrb bulk](/reference/commands/bulk/) — Batch frontmatter changes
 - [Targeting Model](/reference/targeting/) — Selector reference

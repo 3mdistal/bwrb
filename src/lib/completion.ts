@@ -248,8 +248,6 @@ const COMMANDS = [
   'edit',
   'list',
   'recent',
-  'open',
-  'search',
   'audit',
   'bulk',
   'schema',
@@ -273,10 +271,10 @@ async function resolveVaultDirForCompletion(options: { vault?: string }): Promis
 const COMMAND_OPTIONS: Record<string, string[]> = {
   new: ['--type', '-t', '--vault', '-v', '--non-interactive', '--template', '--json', '--help'],
   edit: ['--type', '-t', '--path', '-p', '--where', '-w', '--id', '--body', '-b', '--picker', '--json', '--output', '--open', '--app', '--vault', '-v', '--non-interactive', '--help'],
-  list: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--text', '--id', '--fields', '--sort', '--desc', '--limit', '--count', '--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
+  list: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--name', '--fuzzy', '--matches', '--threshold', '--context', '-C', '--no-context', '--case-sensitive', '-S', '--regex', '-E', '--text', '--id', '--fields', '--sort', '--desc', '--limit', '--count', '--output', '--open', '-o', '--app', '--picker', '--preview', '--vault', '-v', '--non-interactive', '--json', '--help'],
   recent: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--limit', '--output', '--vault', '-v', '--non-interactive', '--help'],
-  open: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--app', '--vault', '-v', '--non-interactive', '--help'],
-  search: ['--type', '-t', '--path', '-p', '--where', '-w', '--text', '--all', '-a', '--wikilink', '--vault', '-v', '--non-interactive', '--help'],
+  open: ['--type', '-t', '--path', '-p', '--where', '-w', '--id', '--body', '-b', '--app', '-a', '--picker', '--output', '--preview', '--vault', '-v', '--non-interactive', '--help'],
+  search: ['--type', '-t', '--path', '-p', '--path-glob', '--where', '-w', '--body', '-b', '--text', '--fuzzy', '--threshold', '--context', '-C', '--no-context', '--case-sensitive', '-S', '--regex', '-E', '--limit', '-l', '--output', '--wikilink', '--path-output', '--content', '--open', '-o', '--edit', '--json', '--app', '--picker', '--preview', '--vault', '-v', '--non-interactive', '--help'],
   audit: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--text', '--all', '-a', '--strict', '--only', '--ignore', '--output', '--fix', '--auto', '--dry-run', '--execute', '--allow-field', '--vault', '-v', '--non-interactive', '--help'],
   bulk: [
     '--type', '-t',
