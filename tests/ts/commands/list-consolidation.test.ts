@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { cleanupTestVault, createTestVault, runCLI } from '../fixtures/setup.js';
 import { extractHelpCommands } from '../helpers/help.js';
@@ -29,6 +29,30 @@ describe('list as the canonical query/search/open surface', () => {
         '---\nid: 11111111-1111-4111-8111-111111111111\naliases:\n  - Seed Thought\n'
       )
     );
+
+    const writeRegressionNote = async (
+      relativePath: string,
+      status: string,
+      aliases: string[] = []
+    ): Promise<void> => {
+      const path = join(vaultDir, relativePath);
+      await mkdir(join(path, '..'), { recursive: true });
+      const aliasYaml = aliases.length > 0
+        ? `aliases:\n${aliases.map(alias => `  - ${alias}`).join('\n')}\n`
+        : '';
+      await writeFile(path, `---\ntype: idea\nstatus: ${status}\n${aliasYaml}---\n`);
+    };
+
+    await Promise.all([
+      writeRegressionNote('Regression/Path Target.md', 'raw'),
+      writeRegressionNote('Regression/Basename Target.md', 'raw'),
+      writeRegressionNote('Regression/Alias Owner.md', 'raw', ['Hidden Alias']),
+      writeRegressionNote('Other/Path Target Neighbor.md', 'backlog'),
+      writeRegressionNote('Other/Basename Target Neighbor.md', 'backlog'),
+      writeRegressionNote('Other/Hidden Alias Neighbor.md', 'backlog'),
+      writeRegressionNote('Duplicates/One/Duplicate.md', 'raw'),
+      writeRegressionNote('Duplicates/Two/Duplicate.md', 'raw'),
+    ]);
   });
 
   afterAll(async () => {
@@ -64,20 +88,71 @@ describe('list as the canonical query/search/open surface', () => {
     expect(json.data.every(result => result.path.startsWith('Ideas/'))).toBe(true);
   });
 
-  it('does not replace an exact target with a fuzzy note when filters exclude it', async () => {
-    const output = await runCLI([
-      'list', '--name', 'Ideas/Sample Idea.md', '--where', "status == 'backlog'",
-      '--output', 'paths', '--picker', 'none',
+  it('does not replace filtered-out exact paths, basenames, or aliases with fuzzy notes', async () => {
+    const cases = [
+      {
+        query: 'Regression/Path Target.md',
+        scope: ['--where', "status == 'backlog'"],
+        replacement: 'Path Target Neighbor',
+      },
+      {
+        query: 'Basename Target',
+        scope: ['--path', 'Other/**'],
+        replacement: 'Basename Target Neighbor',
+      },
+      {
+        query: 'Hidden Alias',
+        scope: ['--where', "status == 'backlog'"],
+        replacement: 'Hidden Alias Neighbor',
+      },
+    ];
+
+    for (const { query, scope, replacement } of cases) {
+      const output = await runCLI([
+        'list', '--name', query, ...scope, '--output', 'paths', '--picker', 'none',
+      ], vaultDir);
+      const opened = await runCLI([
+        'list', '--name', query, ...scope, '--open', '--app', 'print', '--picker', 'none',
+      ], vaultDir);
+
+      for (const result of [output, opened]) {
+        expect(result.exitCode).toBe(1);
+        expect(result.stdout).not.toContain(replacement);
+        expect(result.stderr).toContain('exact target does not match the requested filters');
+      }
+    }
+  });
+
+  it('applies name-mode limits to ambiguous displayed results', async () => {
+    const paths = await runCLI([
+      'list', '--name', 'Duplicate', '--limit', '1', '--output', 'paths', '--picker', 'none',
     ], vaultDir);
-    const opened = await runCLI([
-      'list', '--name', 'Ideas/Sample Idea.md', '--where', "status == 'backlog'",
-      '--open', '--app', 'print', '--picker', 'none',
+    const jsonResult = await runCLI([
+      'list', '--name', 'Duplicate', '--limit', '1', '--output', 'json', '--picker', 'none',
     ], vaultDir);
 
-    for (const result of [output, opened]) {
+    expect(paths.exitCode).toBe(0);
+    expect(paths.stdout.trim().split('\n')).toHaveLength(1);
+    expect(paths.stdout).toMatch(/Duplicates\/(One|Two)\/Duplicate\.md/);
+
+    expect(jsonResult.exitCode).toBe(0);
+    const json = JSON.parse(jsonResult.stdout) as { data: Array<{ path: string }> };
+    expect(json.data).toHaveLength(1);
+    expect(json.data[0]?.path).toMatch(/^Duplicates\/(One|Two)\/Duplicate\.md$/);
+  });
+
+  it('never turns a name-mode display limit into an arbitrary open selection', async () => {
+    for (const outputArgs of [[], ['--output', 'paths']]) {
+      const result = await runCLI([
+        'list', '--name', 'Duplicate', '--limit', '1', ...outputArgs,
+        '--open', '--app', 'print', '--picker', 'none',
+      ], vaultDir);
+
       expect(result.exitCode).toBe(1);
-      expect(result.stdout).not.toContain('Another Idea');
-      expect(result.stderr).toContain('exact target does not match the requested filters');
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toContain('Ambiguous query: 2 matches found');
+      expect(result.stderr).toContain('Duplicates/One/Duplicate.md');
+      expect(result.stderr).toContain('Duplicates/Two/Duplicate.md');
     }
   });
 
@@ -215,10 +290,15 @@ describe('list as the canonical query/search/open surface', () => {
     const treeWithFuzzy = await runCLI([
       'list', '--fuzzy', 'sample', '--output', 'tree',
     ], vaultDir);
+    const invalidNameLimit = await runCLI([
+      'list', '--name', 'sample', '--limit', '0', '--output', 'paths',
+    ], vaultDir);
 
     expect(contextWithoutMatches.exitCode).toBe(1);
     expect(contextWithoutMatches.stderr).toContain('require --matches');
     expect(treeWithFuzzy.exitCode).toBe(1);
     expect(treeWithFuzzy.stderr).toContain('--output tree is not available');
+    expect(invalidNameLimit.exitCode).toBe(1);
+    expect(invalidNameLimit.stderr).toContain('must be a positive integer');
   });
 });

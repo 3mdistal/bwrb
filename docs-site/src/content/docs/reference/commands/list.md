@@ -53,7 +53,7 @@ rejected.
 | `--fields <fields>` | Show fields in a table (comma-separated). Accepts frontmatter fields plus the file stats `file.mtime`, `file.ctime`, `file.size` |
 | `--sort <field>` | Sort by a frontmatter field, `name`, `_name`, `_path`, or a file stat (`file.mtime`, `file.ctime`, `file.size`) |
 | `--desc` | Sort descending (requires `--sort`) |
-| `--limit <n>` | Show only the first `n` matching notes |
+| `--limit <n>` | Limit displayed results; never narrows name-mode selection |
 | `--count` | Print only the number of matching notes |
 | `-L, --depth <n>` | Limit tree depth |
 
@@ -109,9 +109,16 @@ bwrb list --body "TODO|FIXME" --matches --regex --context 0
 ```
 
 `--type`, `--path`, and `--where` further scope all three search modes. `--limit`
-also applies. Table, hierarchy, sort, count, and dashboard options belong to the
-normal filtered-list mode and are rejected with the search modes rather than
-being silently ignored.
+also applies: it caps displayed candidates in name mode, ranked candidates in
+fuzzy mode, and matching files in detailed body-match mode. Table, hierarchy,
+sort, count, and dashboard options belong to the normal filtered-list mode and
+are rejected with the search modes rather than being silently ignored.
+
+Name-mode limiting happens only after resolution. An interactive picker still
+shows every matching candidate, and `--picker none` still reports ambiguity
+against the complete set. Consequently, `--name "Duplicate" --limit 1 --open`
+cannot silently open one of two notes named `Duplicate`; select one
+interactively or pass its exact relative path.
 
 If `--name` exactly identifies a path, basename, or declared alias that the
 composed filters exclude, the command reports no match. It never substitutes a

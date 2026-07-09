@@ -163,13 +163,17 @@ export const searchCommand = new Command('search')
   .option('--no-context', 'Do not show context lines')
   .option('-S, --case-sensitive', 'Case-sensitive search (default: case-insensitive)')
   .option('-E, --regex', 'Treat pattern as regex (default: literal)')
-  .option('-l, --limit <count>', 'Maximum files to return (default: 100)')
+  .option('-l, --limit <count>', 'Maximum displayed files (never narrows name-mode selection)')
   // Fuzzy search options
   .option('--fuzzy', 'Fuzzy name/alias search: ranked approximate matches with scores')
   .option('--threshold <score>', 'Minimum similarity 0-1 for --fuzzy (default: 0.5)')
   .addHelpText('after', `
 Name Search (default):
   Searches by note name, basename, or path.
+
+  -l, --limit <n>      Limit displayed candidates. Resolution and --open use
+                       the complete candidate set, so a limit never resolves
+                       an ambiguous name or alias arbitrarily.
 
   -p, --path <pat>     Scope resolution to a path glob (e.g. "Projects/**").
                        Applies in name, --fuzzy, and --body modes. If both
@@ -994,6 +998,18 @@ async function handleNameSearch(
   outputFormat: SearchOutputFormat
 ): Promise<void> {
   const pickerMode = parsePickerMode(options.picker);
+  const limit = options.limit !== undefined
+    ? parseStrictInteger(options.limit)
+    : undefined;
+  if (limit === null || (limit !== undefined && limit < 1)) {
+    const error = `Invalid --limit "${options.limit}": must be a positive integer`;
+    if (jsonMode) {
+      printJson(jsonError(error));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    printError(error);
+    process.exit(1);
+  }
 
   // JSON mode implies non-interactive (but returns all matches instead of error)
   const effectivePickerMode: PickerMode = jsonMode ? 'none' : pickerMode;
@@ -1041,9 +1057,21 @@ async function handleNameSearch(
       process.exit(0);
     }
 
-    // In JSON mode with candidates, return all matches as success
-    if (jsonMode && result.candidates && result.candidates.length > 0) {
-      const data = await buildSearchResults(index, result.candidates, options.content ?? false);
+    // Actions must resolve against the complete candidate set. In particular,
+    // --limit 1 is only a display cap: it must never turn an ambiguous exact
+    // basename or alias into an arbitrary note to open or edit. Interactive
+    // pickers also receive the full set above, before any display limiting.
+    if (options.open || options.edit) {
+      exitWithResolutionError(result.error, result.candidates, jsonMode);
+    }
+
+    const displayedCandidates = limit === undefined
+      ? result.candidates
+      : result.candidates?.slice(0, limit);
+
+    // In JSON mode with candidates, return the requested display window.
+    if (jsonMode && displayedCandidates && displayedCandidates.length > 0) {
+      const data = await buildSearchResults(index, displayedCandidates, options.content ?? false);
       printJson(jsonSuccess({
         data,
       }));
@@ -1054,10 +1082,10 @@ async function handleNameSearch(
     // candidates instead of erroring on ambiguity. This enables workflows
     // like `bwrb search Idea --output link` to return disambiguated
     // wikilinks for all matches. (fixes #544)
-    if (result.candidates && result.candidates.length > 0) {
+    if (displayedCandidates && displayedCandidates.length > 0) {
       const pipeFormats: SearchOutputFormat[] = ['link', 'paths', 'content'];
       if (pipeFormats.includes(outputFormat)) {
-        for (const candidate of result.candidates) {
+        for (const candidate of displayedCandidates) {
           await outputTextResult(index, candidate, outputFormat);
         }
         process.exit(0);

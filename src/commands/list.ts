@@ -274,7 +274,7 @@ Targeting Selectors (compose via AND):
   --sort <field>       Sort by frontmatter field, name, _name, _path,
                        or a file stat: file.mtime, file.ctime, file.size
   --desc               Sort descending (requires --sort)
-  --limit <n>          Show only the first n matching notes
+  --limit <n>          Limit displayed results (never narrows --name selection)
   --count              Print only the number of matching notes
 
 Expression Filters (--where):
@@ -354,7 +354,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--id <uuid>', 'Filter by stable note id')
   .option('--sort <field>', 'Sort by frontmatter field, name, _name, _path, or file stat (file.mtime, file.ctime, file.size)')
   .option('--desc', 'Sort descending (requires --sort)')
-  .option('--limit <n>', 'Limit output to the first n matching notes')
+  .option('--limit <n>', 'Limit displayed results (never narrows --name selection)')
   .option('--count', 'Print only the number of matching notes')
   .option('--output <format>', 'Output format: text (default), paths, tree, link, content, json')
   // Open options

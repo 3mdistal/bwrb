@@ -189,6 +189,11 @@ bwrb list event --where "when > 'AR 1000-01-01'" --output json
 bwrb list task --limit 5 --output json
 bwrb list task --count --output json
 
+# In name mode, limit caps output but never resolves ambiguity for actions
+bwrb list --name "Duplicate" --limit 1 --output paths --picker none
+# Use an exact relative path before opening from automation
+bwrb list --name "Projects/Duplicate.md" --open --app print --picker none
+
 # Target by stable id
 bwrb list --id "<uuid>" --output json
 
