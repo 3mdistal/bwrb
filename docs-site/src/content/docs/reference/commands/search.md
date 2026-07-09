@@ -5,8 +5,8 @@ description: Legacy search command retained for script compatibility
 
 `bwrb search` remains callable for existing scripts, but is hidden from the
 canonical top-level help and completion lists. New workflows should use
-[`bwrb list`](/reference/commands/list/), which shares the same name, fuzzy,
-content-search, picker, and opening implementation.
+[`bwrb list`](/reference/commands/list/), which provides the same name-resolution,
+fuzzy-search, content-search, picker, and opening capabilities.
 
 Existing `search` flags and output contracts have not been reinterpreted. In
 particular, `search --edit --json <patch>` still means a frontmatter edit; it
