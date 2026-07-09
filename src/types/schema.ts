@@ -191,7 +191,32 @@ export const FieldSchema = z.object({
     .describe(
       'Field role: marks this field as holding the entity\'s aliases (alternate names). bwrb consults aliases during name resolution and linking, so an entity is findable by its aliases wherever it is findable by its name. The value must be an array of non-empty, unique strings (Obsidian `aliases` format).'
     ),
+  reset_on_fork: z
+    .boolean()
+    .optional()
+    .describe(
+      'When true, omit this field when copying a note into a fork so schema defaults can be applied to the new note.'
+    ),
 });
+
+/**
+ * Field names authored in a vault schema.
+ *
+ * `forked-from` is injected only by lineage-aware system workflows. Keeping the
+ * restriction in the record key schema rejects it for both type and trait
+ * fields and also carries the contract into the generated JSON Schema via
+ * `propertyNames.pattern`.
+ *
+ * `id` is intentionally not restricted here: this change preserves the
+ * existing schema contract for that older system field.
+ */
+const SchemaFieldNameSchema = z
+  .string()
+  .regex(
+    /^(?!forked-from$).*$/,
+    '"forked-from" is reserved and cannot be declared as a schema field'
+  )
+  .describe('Schema field name; "forked-from" is reserved for system-managed lineage');
 
 // Body section definition
 export const BodySectionSchema: z.ZodType<BodySection, z.ZodTypeDef, BodySectionInput> = z.lazy(() =>
@@ -307,7 +332,7 @@ export const TraitSchema = z.object({
     ),
   // Field definitions contributed by this trait.
   fields: z
-    .record(FieldSchema)
+    .record(SchemaFieldNameSchema, FieldSchema)
     .optional()
     .describe('Field definitions contributed by this trait'),
   // Recurrence configuration (spawn-on-transition). When present, types that
@@ -356,7 +381,7 @@ export const TypeSchema = z.object({
     ),
   // Field definitions (merged with ancestors at load time)
   fields: z
-    .record(FieldSchema)
+    .record(SchemaFieldNameSchema, FieldSchema)
     .optional()
     .describe('Field definitions, merged with ancestors and traits at load time'),
   calendar_default: z

@@ -156,6 +156,7 @@ Some fields are written by bwrb regardless of schema:
 
 - `id`: reserved/system-managed UUID created by `bwrb new` and should not be edited.
 - `name`: written by `bwrb new` as the note title; `bwrb audit` does not treat it as an unknown field even if the schema does not declare it.
+- `forked-from`: reserved immediate-source UUID for document lineage. It is not a wikilink. Agents may encounter hand-authored values, but must not set or modify it through ordinary `new --json`, `edit`, or template input.
 
 ## Core Commands for Agents
 
@@ -265,6 +266,10 @@ bwrb template validate --output json
 ```
 
 Notes created via `bwrb new` always include a system-managed frontmatter `id` (UUIDv4). The `id` is reserved: you cannot set it in `bwrb new --json`, and you cannot modify it via `bwrb edit`.
+
+`forked-from` is also reserved. If an agent encounters it, treat the value as an
+immediate source note UUID and leave it unchanged. `bwrb audit --output json`
+reports malformed, dangling, duplicate-ID, and cyclic lineage metadata.
 
 ### Editing Notes
 

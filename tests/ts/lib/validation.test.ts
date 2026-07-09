@@ -583,6 +583,35 @@ describe('validation', () => {
       // status has a default of 'raw' in the test schema
       expect(result.status).toBe('raw');
     });
+
+    it.each([
+      ['default', { prompt: 'text' as const, default: '11111111-1111-4111-8111-111111111111' }],
+      ['static value', { value: '11111111-1111-4111-8111-111111111111' }],
+    ])('does not materialize forked-from from a bypassed schema %s', (_kind, fieldDefinition) => {
+      // resolveSchema accepts an already-typed object, so this simulates an
+      // internal caller bypassing the BwrbSchema load/write boundary.
+      const malformedSchema = resolveSchema({
+        version: 2,
+        types: {
+          idea: {
+            output_dir: 'Ideas',
+            fields: {
+              'forked-from': fieldDefinition,
+            },
+          },
+        },
+      });
+
+      expect(applyDefaults(malformedSchema, 'idea', {})).not.toHaveProperty('forked-from');
+    });
+
+    it('preserves existing lineage while applying unrelated defaults', () => {
+      const existingLineage = '11111111-1111-4111-8111-111111111111';
+      const result = applyDefaults(schema, 'idea', { 'forked-from': existingLineage });
+
+      expect(result['forked-from']).toBe(existingLineage);
+      expect(result.status).toBe('raw');
+    });
   });
 
   describe('suggestOptionValue', () => {

@@ -798,6 +798,59 @@ describe('createScaffoldedInstances', () => {
     schema = resolveSchema(testSchemaRaw);
   });
 
+  it('refuses reserved lineage metadata in instance defaults', async () => {
+    const result = await createScaffoldedInstances(
+      schema,
+      tempDir,
+      'draft',
+      join(tempDir, 'Drafts', 'Parent'),
+      [{
+        type: 'research',
+        filename: 'Reserved.md',
+        defaults: { 'forked-from': '11111111-1111-4111-8111-111111111111' },
+      }],
+      { Name: 'Parent' }
+    );
+
+    expect(result.created).toEqual([]);
+    expect(result.errors[0]?.message).toContain("Reserved field 'forked-from'");
+  });
+
+  it.each([
+    ['default', { prompt: 'text' as const, default: '11111111-1111-4111-8111-111111111111' }],
+    ['static value', { value: '11111111-1111-4111-8111-111111111111' }],
+  ])('does not scaffold lineage from a bypassed schema %s', async (_kind, fieldDefinition) => {
+    const malformedSchema = resolveSchema({
+      ...testSchemaRaw,
+      types: {
+        ...testSchemaRaw.types,
+        research: {
+          ...testSchemaRaw.types.research,
+          fields: {
+            ...testSchemaRaw.types.research?.fields,
+            'forked-from': fieldDefinition,
+          },
+        },
+      },
+    });
+
+    const result = await createScaffoldedInstances(
+      malformedSchema,
+      tempDir,
+      'draft',
+      join(tempDir, 'Drafts', 'Parent'),
+      [{ type: 'research', filename: `Schema ${_kind}.md` }],
+      { Name: 'Parent' }
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.created).toHaveLength(1);
+    const content = await import('fs/promises').then(fs =>
+      fs.readFile(join(tempDir, 'Drafts', `Schema ${_kind}.md`), 'utf-8')
+    );
+    expect(content).not.toContain('forked-from:');
+  });
+
   afterEach(async () => {
     await rm(tempDir, { recursive: true, force: true });
   });

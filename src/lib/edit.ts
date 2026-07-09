@@ -47,6 +47,7 @@ import { UserCancelledError } from './errors.js';
 import { expandStaticValue } from './local-date.js';
 import { prepareRecurrenceFastPath, commitRecurrenceFastPath } from './recurrence-fast-path.js';
 import { validateRelativeDateCalendarOffsetsForWrite } from './relative-date.js';
+import { isBwrbReservedFrontmatterField } from './frontmatter/systemFields.js';
 
 // ============================================================================
 // Types
@@ -104,11 +105,12 @@ export async function editNoteFromJson(
   }
 
   // Disallow editing system-managed fields
-  if ('id' in patchData && patchData['id'] !== undefined) {
-    const error = "Field 'id' is system-managed and cannot be modified";
+  const reservedField = Object.keys(patchData).find(isBwrbReservedFrontmatterField);
+  if (reservedField) {
+    const error = `Field '${reservedField}' is system-managed and cannot be modified`;
     if (jsonMode) {
       printJson(jsonError(error, {
-        errors: [{ field: 'id', value: patchData['id'], message: error }],
+        errors: [{ field: reservedField, value: patchData[reservedField], message: error }],
       }));
       process.exit(ExitCodes.VALIDATION_ERROR);
     }
@@ -374,7 +376,13 @@ export async function editNoteInteractive(
   printInfo(`Type path: ${typePath}\n`);
 
   // Edit frontmatter fields
-  const newFrontmatter: Record<string, unknown> = {};
+  // Preserve system-managed fields without offering them as editable schema
+  // input, even if a vault schema happens to declare a same-named field.
+  const newFrontmatter: Record<string, unknown> = Object.fromEntries(
+    Object.entries(frontmatter).filter(([fieldName]) =>
+      isBwrbReservedFrontmatterField(fieldName)
+    )
+  );
   const fields = getFieldsForType(schema, typePath);
   const fieldOrder = getFrontmatterOrder(typeDef);
 
@@ -382,6 +390,7 @@ export async function editNoteInteractive(
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(fields);
 
   for (const fieldName of orderedFields) {
+    if (isBwrbReservedFrontmatterField(fieldName)) continue;
     const field = fields[fieldName];
     if (!field) continue;
 

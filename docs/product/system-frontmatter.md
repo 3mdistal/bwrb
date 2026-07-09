@@ -8,17 +8,28 @@ These fields are written by bwrb and are always allowed in frontmatter:
 
 - `id`
 - `name`
+- `forked-from` (immediate source note UUID; hand-authored until a native fork
+  workflow ships)
 
 Audit/validation behavior:
 
 - These fields never produce `unknown-field` issues in `bwrb audit` or validation.
-- If a schema defines them explicitly, schema validation still applies to the declared field.
+- `forked-from` cannot be declared as a type or trait schema field. Schema load,
+  validation, and field creation reject the reserved name.
+- Existing `id` schema declarations retain their current behavior.
 
 ## Reserved (immutable) fields
 
 These fields are system-managed and must not be mutated by automated fixes:
 
 - `id`
+- `forked-from`
+
+Reserved fields cannot be supplied through ordinary JSON creation, JSON or
+interactive edit, or template defaults/prompt fields. Audit fixes also leave
+them untouched. Schema defaults and static values cannot author
+`forked-from`; lineage-aware system workflows inject it after ordinary defaults
+are resolved.
 
 ## Policy
 

@@ -28,6 +28,7 @@ import type { PlannedNoteContent } from './types.js';
 import { promptBodySections, promptField } from './prompting.js';
 import { resolveInteractiveOwnership } from './ownership.js';
 import { writeNotePlan } from './write-plan.js';
+import { isBwrbReservedFrontmatterField } from '../../lib/frontmatter/systemFields.js';
 
 export async function createNoteInteractive(
   schema: LoadedSchema,
@@ -112,6 +113,7 @@ async function buildNoteContent(
   const promptFields = new Set(templateResolution.mergedPromptFields);
 
   for (const fieldName of orderedFields) {
+    if (isBwrbReservedFrontmatterField(fieldName)) continue;
     const field = fields[fieldName];
     if (!field) continue;
 

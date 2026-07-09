@@ -680,7 +680,41 @@ Complete list of field properties:
 | `filter` | object | `relation` | Filter conditions for source query |
 | `owned` | boolean | `relation` | Whether referenced notes are owned/colocated (default: `false`) |
 | `alias` | boolean | `list` | Field role: marks this field as the entity's aliases. Value must be an array of non-empty, unique strings. Consulted by name resolution and linking (default: `false`) |
+| `reset_on_fork` | boolean | any | When `true`, a fork copy omits this field so the new note can receive its schema default. The marker does not change ordinary `new` or `edit` behavior |
 | `list_format` | string | `list` | Output format: `yaml-array` or `comma-separated` |
+
+---
+
+### Fork reset metadata
+
+Set `reset_on_fork: true` on state that should not carry into a copied revision:
+
+```json
+{
+  "status": {
+    "prompt": "select",
+    "options": ["draft", "published"],
+    "default": "draft",
+    "reset_on_fork": true
+  }
+}
+```
+
+The rule is deliberately mechanical: fork-aware copying omits the stored field,
+then normal schema defaults may populate it. BWRB does not infer meaning from
+names such as `status`, `published`, or `approved`. Ordinary note creation and
+editing are unchanged by this marker.
+
+### Built-in lineage metadata
+
+`forked-from` is a reserved built-in frontmatter field containing the UUID of a
+note's immediate source. It is a UUID string, never a wikilink. Hand-authored
+lineage is allowed and audited, but normal JSON creation, edit, and template
+input cannot set or modify this system-managed field. Do not declare
+`forked-from` in a type or trait's `fields`: schema loading and schema field
+creation reject the reserved name, including declarations with `default` or
+static `value` entries. A native fork workflow injects provenance after ordinary
+creation defaults have been resolved.
 
 ---
 

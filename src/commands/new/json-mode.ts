@@ -31,6 +31,7 @@ import type { JsonNoteInputResult, NoteCreationResult, PlannedNoteContent } from
 import { throwJsonError } from './errors.js';
 import { resolveJsonOwnership } from './ownership.js';
 import { writeNotePlan } from './write-plan.js';
+import { isBwrbReservedFrontmatterField } from '../../lib/frontmatter/systemFields.js';
 
 export async function createNoteFromJson(
   schema: LoadedSchema,
@@ -112,9 +113,10 @@ function parseJsonNoteInput(jsonInput: string): JsonNoteInputResult {
   // so the extra quotes cause double-wrapping in the output file.
   stripRedundantWikilinkQuotes(frontmatterInput);
 
-  if ('id' in frontmatterInput) {
+  const reservedField = Object.keys(frontmatterInput).find(isBwrbReservedFrontmatterField);
+  if (reservedField) {
     throwJsonError(
-      jsonError("Frontmatter field 'id' is reserved and cannot be set in --json mode"),
+      jsonError(`Frontmatter field '${reservedField}' is reserved and cannot be set in --json mode`),
       ExitCodes.VALIDATION_ERROR
     );
   }
@@ -153,6 +155,12 @@ function mergeJsonTemplateDefaults(
 
   const evaluatedDefaults: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(template.defaults)) {
+    if (isBwrbReservedFrontmatterField(key)) {
+      throwJsonError(
+        jsonError(`Template default '${key}' is reserved and cannot be set during note creation`),
+        ExitCodes.VALIDATION_ERROR
+      );
+    }
     evaluatedDefaults[key] = evaluateTemplateDefault(value, schema.config.dateFormat, fields[key]?.prompt);
   }
 

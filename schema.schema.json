@@ -235,6 +235,9 @@
           "additionalProperties": {
             "$ref": "#/definitions/frontmatterField"
           },
+          "propertyNames": {
+            "pattern": "^(?!forked-from$).*$"
+          },
           "description": "Field definitions contributed by this trait"
         },
         "recurrence": {
@@ -293,6 +296,9 @@
           "type": "object",
           "additionalProperties": {
             "$ref": "#/definitions/frontmatterField"
+          },
+          "propertyNames": {
+            "pattern": "^(?!forked-from$).*$"
           },
           "description": "Field definitions, merged with ancestors and traits at load time"
         },
@@ -461,6 +467,10 @@
         "alias": {
           "type": "boolean",
           "description": "Field role: marks this field as holding the entity's aliases (alternate names). bwrb consults aliases during name resolution and linking, so an entity is findable by its aliases wherever it is findable by its name. The value must be an array of non-empty, unique strings (Obsidian `aliases` format)."
+        },
+        "reset_on_fork": {
+          "type": "boolean",
+          "description": "When true, omit this field when copying a note into a fork so schema defaults can be applied to the new note."
         }
       },
       "additionalProperties": false

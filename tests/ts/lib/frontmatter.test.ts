@@ -7,6 +7,7 @@ import {
   serializeFrontmatter,
   buildNoteContent,
   writeNote,
+  writeNoteExclusive,
   generateBodySections,
   generateBodyWithContent,
   extractSectionItems,
@@ -112,6 +113,26 @@ Body content`;
       const content = await readFile(filePath, 'utf-8');
       expect(content).toContain('type: idea');
       expect(content).toContain('Test body');
+    });
+  });
+
+  describe('writeNoteExclusive', () => {
+    it('allows exactly one concurrent writer for the same path without corruption', async () => {
+      const filePath = join(vaultDir, 'Ideas', 'Exclusive.md');
+      const attempts = await Promise.allSettled([
+        writeNoteExclusive(filePath, { type: 'idea', marker: 'first' }, 'First body\n'),
+        writeNoteExclusive(filePath, { type: 'idea', marker: 'second' }, 'Second body\n'),
+      ]);
+
+      expect(attempts.filter((attempt) => attempt.status === 'fulfilled')).toHaveLength(1);
+      expect(attempts.filter((attempt) => attempt.status === 'rejected')).toHaveLength(1);
+
+      const written = await readFile(filePath, 'utf-8');
+      expect(
+        written.includes('marker: first') && written.includes('First body') ||
+        written.includes('marker: second') && written.includes('Second body')
+      ).toBe(true);
+      expect(written.includes('First body') && written.includes('Second body')).toBe(false);
     });
   });
 

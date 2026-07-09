@@ -438,6 +438,12 @@ export function applyDefaults(
   for (const [fieldName, field] of Object.entries(fields)) {
     if (keyScope !== undefined && !keyScope.has(fieldName)) continue;
 
+    // Lineage is provenance, not a user/schema default. Valid schemas reject
+    // this declaration at load/write time; this guard protects creation paths
+    // that receive a hand-built or otherwise unparsed LoadedSchema. Existing
+    // frontmatter is left untouched so edit can preserve legitimate lineage.
+    if (fieldName === 'forked-from') continue;
+
     const value = result[fieldName];
     // Blank optional values (incl. whitespace-only) are "unset", so defaults and
     // static values fill them in just like a missing field (#707).

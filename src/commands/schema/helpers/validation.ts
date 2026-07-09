@@ -30,5 +30,8 @@ export function validateFieldName(name: string): string | undefined {
   if (!/^[a-z][a-z0-9-]*$/.test(name)) {
     return 'Field name must start with a lowercase letter and contain only lowercase letters, numbers, and hyphens';
   }
+  if (name === 'forked-from') {
+    return '"forked-from" is a reserved system-managed field';
+  }
   return undefined;
 }

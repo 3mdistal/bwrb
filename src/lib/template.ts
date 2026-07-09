@@ -5,7 +5,10 @@ import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
 import { closestMatch } from './close-match.js';
 import { TemplateFrontmatterSchema, type Template, type LoadedSchema, type Field, type Constraint, type InstanceScaffold, type ResolvedType } from '../types/schema.js';
 import { getType, getFieldsForType, getFieldOptions, getOutputDir, formatUnknownTypeError } from './schema.js';
-import { isBwrbBuiltinFrontmatterField } from './frontmatter/systemFields.js';
+import {
+  isBwrbBuiltinFrontmatterField,
+  isBwrbReservedFrontmatterField,
+} from './frontmatter/systemFields.js';
 import { matchesExpression, parseExpression, type EvalContext } from './expression.js';
 import { applyDefaults } from './validation.js';
 import { evaluateTemplateDefault, validateDateExpression, isDateExpression, isDateTypedFieldPrompt } from './date-expression.js';
@@ -1036,6 +1039,15 @@ export async function validateTemplate(
   // 2. Validate defaults
   if (template.defaults) {
     for (const [fieldName, value] of Object.entries(template.defaults)) {
+      if (isBwrbReservedFrontmatterField(fieldName)) {
+        issues.push({
+          severity: 'error',
+          message: `Reserved field '${fieldName}' cannot be set in template defaults`,
+          field: fieldName,
+          suggestion: `Remove '${fieldName}' from defaults; bwrb manages this field.`,
+        });
+        continue;
+      }
       // Check field exists
       if (!isKnownField(fieldName)) {
         issues.push({
@@ -1081,7 +1093,14 @@ export async function validateTemplate(
   // 3. Validate prompt-fields
   if (template.promptFields) {
     for (const fieldName of template.promptFields) {
-      if (!isKnownField(fieldName)) {
+      if (isBwrbReservedFrontmatterField(fieldName)) {
+        issues.push({
+          severity: 'error',
+          message: `Reserved field '${fieldName}' cannot be used in prompt-fields`,
+          field: fieldName,
+          suggestion: `Remove '${fieldName}' from prompt-fields; bwrb manages this field.`,
+        });
+      } else if (!isKnownField(fieldName)) {
         issues.push({
           severity: 'error',
           message: `Unknown field '${fieldName}' in prompt-fields`,
@@ -1209,7 +1228,14 @@ export async function validateTemplate(
           instanceFieldNames.includes(fieldName) || isBwrbBuiltinFrontmatterField(fieldName);
         
         for (const fieldName of Object.keys(instance.defaults)) {
-          if (!isKnownInstanceField(fieldName)) {
+          if (isBwrbReservedFrontmatterField(fieldName)) {
+            issues.push({
+              severity: 'error',
+              message: `Reserved field '${fieldName}' cannot be set in instance defaults for '${instance.type}'`,
+              field: fieldName,
+              suggestion: `Remove '${fieldName}' from instance defaults; bwrb manages this field.`,
+            });
+          } else if (!isKnownInstanceField(fieldName)) {
             issues.push({
               severity: 'warning',
               message: `Unknown field '${fieldName}' in instance defaults for '${instance.type}'`,
@@ -1489,6 +1515,11 @@ export async function createScaffoldedInstances(
       // Apply instance-specific defaults first, evaluating date expressions
       if (instance.defaults) {
         for (const [key, value] of Object.entries(instance.defaults)) {
+          if (isBwrbReservedFrontmatterField(key)) {
+            throw new Error(
+              `Reserved field '${key}' cannot be set in instance defaults for '${instance.type}'`
+            );
+          }
           frontmatter[key] = evaluateTemplateDefault(value, schema.config.dateFormat, instanceFields[key]?.prompt);
         }
       }
@@ -1497,6 +1528,11 @@ export async function createScaffoldedInstances(
       // Also evaluate date expressions
       if (instanceTemplate?.defaults) {
         for (const [key, value] of Object.entries(instanceTemplate.defaults)) {
+          if (isBwrbReservedFrontmatterField(key)) {
+            throw new Error(
+              `Reserved field '${key}' cannot be set in template defaults for '${instance.type}'`
+            );
+          }
           frontmatter[key] = evaluateTemplateDefault(value, schema.config.dateFormat, instanceFields[key]?.prompt);
         }
       }

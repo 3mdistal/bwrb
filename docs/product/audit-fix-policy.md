@@ -66,3 +66,12 @@ A **valid numeric element of a `multiple` date field** (e.g. an unquoted `2026` 
 - In auto-fix mode, writing requires `audit --fix --auto --execute`.
 
 User-facing command behavior and examples are documented in `docs-site/src/content/docs/reference/commands/audit.md`.
+
+## Document Lineage Integrity
+
+The reserved `forked-from` field stores an immediate source note UUID. Audit
+reports malformed provenance, missing child IDs, duplicate note IDs, and cycles
+as errors. A missing parent is a warning because the source may be restored.
+Every lineage finding is flag-only: guessing a replacement UUID, clearing
+provenance, or breaking a cycle automatically would rewrite authorship history.
+Cycle walks use visited sets and must always terminate.

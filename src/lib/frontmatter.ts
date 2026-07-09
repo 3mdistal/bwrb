@@ -1,6 +1,6 @@
 import matter from 'gray-matter';
 import { stringify } from 'yaml';
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, open, unlink } from 'fs/promises';
 import { dirname } from 'path';
 import type { BodySection } from '../types/schema.js';
 
@@ -128,6 +128,40 @@ export async function writeNote(
   await mkdir(dirname(filePath), { recursive: true });
   const content = buildNoteContent(frontmatter, body, frontmatterOrder);
   await writeFile(filePath, content, 'utf-8');
+}
+
+/**
+ * Create a note without ever replacing an existing path.
+ *
+ * The exclusive `wx` open is the filesystem-level reservation: concurrent
+ * callers for the same path cannot both succeed. If writing fails after the
+ * reservation is created, the partial file is removed before the error is
+ * rethrown. Existing write paths keep their current overwrite semantics by
+ * continuing to use {@link writeNote}.
+ */
+export async function writeNoteExclusive(
+  filePath: string,
+  frontmatter: Record<string, unknown>,
+  body: string,
+  frontmatterOrder?: string[]
+): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true });
+  const content = buildNoteContent(frontmatter, body, frontmatterOrder);
+  const handle = await open(filePath, 'wx');
+  let completed = false;
+
+  try {
+    await handle.writeFile(content, 'utf-8');
+    completed = true;
+  } finally {
+    try {
+      await handle.close();
+    } finally {
+      if (!completed) {
+        await unlink(filePath).catch(() => undefined);
+      }
+    }
+  }
 }
 
 /**
