@@ -4,6 +4,10 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Document forks** — `bwrb new --fork <target>` creates a sibling document with a fresh stable ID and immutable `forked-from` provenance while preserving the source body and prior work.
+
 ## [0.2.2] - 2026-07-04
 
 Patch release for unlinked-mention precision, mention-linking controls, and relation-resolution fixes.

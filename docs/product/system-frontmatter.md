@@ -8,8 +8,7 @@ These fields are written by bwrb and are always allowed in frontmatter:
 
 - `id`
 - `name`
-- `forked-from` (immediate source note UUID; hand-authored until a native fork
-  workflow ships)
+- `forked-from` (immediate source note UUID, written by `bwrb new --fork`)
 
 Audit/validation behavior:
 
@@ -28,8 +27,7 @@ These fields are system-managed and must not be mutated by automated fixes:
 Reserved fields cannot be supplied through ordinary JSON creation, JSON or
 interactive edit, or template defaults/prompt fields. Audit fixes also leave
 them untouched. Schema defaults and static values cannot author
-`forked-from`; lineage-aware system workflows inject it after ordinary defaults
-are resolved.
+`forked-from`; `bwrb new --fork` injects it after ordinary defaults are resolved.
 
 ## Policy
 

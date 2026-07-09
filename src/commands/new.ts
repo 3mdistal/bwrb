@@ -3,7 +3,13 @@ import { relative } from 'path';
 import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
-import { configurePromptMode, promptSelection, printError } from '../lib/prompt.js';
+import {
+  configurePromptMode,
+  promptSelection,
+  printError,
+  printSuccess,
+  printWarning,
+} from '../lib/prompt.js';
 import {
   printJson,
   jsonSuccess,
@@ -23,6 +29,7 @@ import { resolveTypePath } from './new/type-selection.js';
 import { createNoteInteractive } from './new/interactive.js';
 import type { NewCommandOptions } from './new/types.js';
 import { JsonCommandError } from './new/errors.js';
+import { forkNote } from './new/fork.js';
 
 export const newCommand = new Command('new')
   .description('Create a new note (interactive type navigation if type omitted)')
@@ -37,6 +44,10 @@ export const newCommand = new Command('new')
   .option('--no-instances', 'Skip instance scaffolding (when template has instances)')
   .option('--owner <wikilink>', 'Owner note for owned types (e.g., "[[My Novel]]")')
   .option('--standalone', 'Create as standalone (skip owner selection for ownable types)')
+  .option('--fork <target>', 'Create a new document forked from an exact note target')
+  .option('--label <label>', 'Name a fork as "<source> — <label>"')
+  .option('--name <name>', 'Set the fork name and filename explicitly')
+  .option('--output <format>', 'Fork output format: text or json')
   .addHelpText('after', `
 Examples:
   bwrb new                    # Interactive type selection
@@ -63,6 +74,11 @@ Non-interactive (JSON) mode:
   bwrb new task --json '{"name": "Fix bug", "status": "in-progress"}'
   bwrb new task --json '{"name": "Bug"}' --template bug-report
 
+Document forks:
+  bwrb new --fork "Plans/Launch Brief" --label alternative
+  bwrb new --fork 8f48f6a8-55c1-4ea7-9f4b-96735ed24af3 --name "Launch Brief v2"
+  bwrb new --fork "Launch Brief" --label concise --output json
+
 Body sections (JSON mode):
   bwrb new task --json '{"name": "Fix bug", "_body": {"Steps": ["Step 1", "Step 2"]}}'
   bwrb new task --json '{"name": "Quick capture", "_body": "## Notes\\n\\n- Captured from a script."}'
@@ -73,7 +89,9 @@ Template management:
 
 `)
   .action(async (positionalType: string | undefined, options: NewCommandOptions, cmd: Command) => {
-    const jsonMode = options.json !== undefined;
+    const forkMode = options.fork !== undefined;
+    const forkJsonMode = forkMode && options.output === 'json';
+    const jsonMode = options.json !== undefined || forkJsonMode;
     const typePath = options.type ?? positionalType;
 
     try {
@@ -87,6 +105,49 @@ Template management:
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
 
+      validateForkOptions(positionalType, options);
+
+      if (forkMode) {
+        const result = await forkNote(schema, vaultDir, {
+          target: options.fork!,
+          ...(options.name !== undefined ? { name: options.name } : {}),
+          ...(options.label !== undefined ? { label: options.label } : {}),
+          nonInteractive: globalOpts.nonInteractive === true || forkJsonMode,
+        });
+
+        const relativePath = relative(vaultDir, result.path);
+        if (forkJsonMode) {
+          const jsonOutput: Record<string, unknown> = {
+            path: relativePath,
+            id: result.id,
+            forked_from: result.forkedFrom,
+            warnings: result.warnings,
+          };
+          if (result.nameTransformed) jsonOutput.nameTransformed = result.nameTransformed;
+          if (result.pathLengthWarning) jsonOutput.pathLengthWarning = result.pathLengthWarning;
+          printJson(jsonSuccess(jsonOutput));
+        } else {
+          printSuccess(`Created fork: ${relativePath}`);
+          if (result.nameTransformed) {
+            printWarning(
+              `Warning: Note name was changed for the filename: "${result.nameTransformed.original}" -> "${result.nameTransformed.filename}"`
+            );
+          }
+          if (result.pathLengthWarning) {
+            printWarning(
+              `Warning: Note path is ${result.pathLengthWarning.length} characters; paths over ${result.pathLengthWarning.threshold} may be less portable: ${result.pathLengthWarning.path}`
+            );
+          }
+          for (const warning of result.warnings) printWarning(`Warning: ${warning}`);
+        }
+
+        if (options.open) {
+          const { openNote, resolveAppMode } = await import('./open.js');
+          await openNote(vaultDir, result.path, resolveAppMode(undefined, schema.config), schema.config, false);
+        }
+        return;
+      }
+
       if (globalOpts.nonInteractive && !jsonMode) {
         printError('bwrb new requires --json <frontmatter> when --non-interactive is set.');
         process.exit(1);
@@ -99,7 +160,7 @@ Template management:
         }
 
         let template: Template | null = null;
-        if (!options.noTemplate && options.template) {
+        if (!options.noTemplate && typeof options.template === 'string') {
           template = await findTemplateByName(vaultDir, typePath, options.template);
           if (!template) {
             printJson(jsonError(`Template not found: ${options.template}`));
@@ -215,11 +276,11 @@ async function resolveTemplateResolution(
 ): Promise<InheritedTemplateResolution> {
   let templateResolution: InheritedTemplateResolution = createEmptyTemplateResolution();
 
-  if (options.noTemplate) {
+  if (options.noTemplate || options.template === false) {
     return templateResolution;
   }
 
-  if (options.template) {
+  if (typeof options.template === 'string') {
     templateResolution = await resolveTemplateWithInheritance(vaultDir, resolvedPath, schema, {
       templateName: options.template,
     });
@@ -256,4 +317,42 @@ async function resolveTemplateResolution(
   }
 
   return templateResolution;
+}
+
+function validateForkOptions(
+  positionalType: string | undefined,
+  options: NewCommandOptions
+): void {
+  const forkMode = options.fork !== undefined;
+  const forkOnlyFlags = [
+    options.label !== undefined ? '--label' : undefined,
+    options.name !== undefined ? '--name' : undefined,
+    options.output !== undefined ? '--output' : undefined,
+  ].filter((flag): flag is string => Boolean(flag));
+
+  if (!forkMode && forkOnlyFlags.length > 0) {
+    throw new Error(`${forkOnlyFlags.join(', ')} can only be used with --fork <target>.`);
+  }
+  if (!forkMode) return;
+
+  if (!options.fork?.trim()) throw new Error('--fork <target> cannot be empty.');
+  if (options.output !== undefined && options.output !== 'text' && options.output !== 'json') {
+    throw new Error(`Invalid --output format '${options.output}'. Expected text or json.`);
+  }
+  if (options.name !== undefined && !options.name.trim()) throw new Error('--name cannot be empty.');
+  if (options.label !== undefined && !options.label.trim()) throw new Error('--label cannot be empty.');
+
+  const conflicts = [
+    positionalType !== undefined ? 'positional type' : undefined,
+    options.type !== undefined ? '--type' : undefined,
+    options.template !== undefined ? (options.template === false ? '--no-template' : '--template') : undefined,
+    options.instances === false ? '--no-instances' : undefined,
+    options.json !== undefined ? '--json' : undefined,
+    options.owner !== undefined ? '--owner' : undefined,
+    options.standalone ? '--standalone' : undefined,
+  ].filter((flag): flag is string => Boolean(flag));
+
+  if (conflicts.length > 0) {
+    throw new Error(`--fork cannot be combined with ${conflicts.join(', ')}.`);
+  }
 }

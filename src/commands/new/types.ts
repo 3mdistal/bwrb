@@ -6,11 +6,15 @@ export interface NewCommandOptions {
   open?: boolean;
   json?: string;
   type?: string;
-  template?: string;
+  template?: string | boolean;
   noTemplate?: boolean;
   instances?: boolean;
   owner?: string;
   standalone?: boolean;
+  fork?: string;
+  label?: string;
+  name?: string;
+  output?: string;
 }
 
 export type CreationMode = 'interactive' | 'json';

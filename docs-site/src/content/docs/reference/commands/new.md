@@ -23,6 +23,10 @@ bwrb new [options] [type]
 | `--no-instances` | Skip instance scaffolding (when template has instances) |
 | `--owner <wikilink>` | Owner note for owned types (e.g., `"[[My Novel]]"`) |
 | `--standalone` | Create as standalone (skip owner selection for ownable types) |
+| `--fork <target>` | Create a sibling document forked from an exact path, name, alias, or stable UUID |
+| `--label <label>` | Name the fork `<source> — <label>` |
+| `--name <name>` | Set the fork's frontmatter name and filename explicitly |
+| `--output <text\|json>` | Set fork output format (default: `text`; only valid with `--fork`) |
 
 ## Examples
 
@@ -154,13 +158,51 @@ JSON output for templates with instances includes an `instances` object:
 }
 ```
 
+### Document forks
+
+Forks are ordinary Markdown notes with a small lineage marker. They live beside
+their immediate source, receive a fresh `id`, and store the source UUID in
+`forked-from`:
+
+```bash
+# Creates "Launch Brief — concise.md" beside the source
+bwrb new --fork "Launch Brief" --label concise
+
+# Exact paths and stable UUIDs are accepted too
+bwrb new --fork "Briefs/Launch Brief.md" --name "Launch Brief v2"
+bwrb new --fork 8f48f6a8-55c1-4ea7-9f4b-96735ed24af3 --label alternate
+
+# Script-friendly output
+bwrb new --fork "Launch Brief" --label alternate --output json
+```
+
+Targets are exact: bwrb never substitutes a fuzzy near-match. Duplicate names
+or aliases must be disambiguated with a path or UUID. A legacy source without an
+`id` receives one before the fork is written; an invalid existing ID is rejected
+without modification.
+
+The child copies the source body and frontmatter, then:
+
+- replaces `id`, `name`, and any inherited `forked-from`;
+- removes `prev` and `next` navigation fields;
+- resets schema fields marked `reset_on_fork` and applies their defaults;
+- clears the type's alias-role field so two notes do not claim one identity;
+- preserves unknown schema-drift fields and reports them as warnings.
+
+Without `--name`, `--label` supplies the suffix in `<source> — <label>`. In an
+interactive terminal, omitting both prompts with `<source> (fork)` as the
+default. `--non-interactive` and `--output json` require `--name` or `--label`.
+Fork mode cannot be combined with a positional type, `--type`, templates,
+`--json`, instance scaffolding, or ownership-selection flags. An owned note can
+only be forked when its owner's field permits multiple children.
+
 ## Behavior
 
 1. **Type resolution**: Prompts for type if not specified (with subtype navigation)
 2. **Template loading**: Loads matching template if available (unless `--no-template`)
 3. **Field prompts**: Prompts for each field defined in schema/template
 4. **File creation**: Creates file in the type's `output_dir`
-5. **System fields**: Writes `id` and `name` as bwrb-managed frontmatter fields. The reserved `forked-from` provenance field cannot be supplied through `--json`, templates, or schema fields/defaults; only lineage-aware system workflows may inject it
+5. **System fields**: Writes `id` and `name` as bwrb-managed frontmatter fields. The reserved `forked-from` provenance field cannot be supplied through `--json`, templates, or schema fields/defaults; `new --fork` is the lineage-aware workflow that injects it
 6. **Output**: Returns path to created file
 
 ## Template Discovery

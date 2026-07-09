@@ -269,7 +269,7 @@ async function resolveVaultDirForCompletion(options: { vault?: string }): Promis
  * Only includes options that make sense to complete.
  */
 const COMMAND_OPTIONS: Record<string, string[]> = {
-  new: ['--type', '-t', '--vault', '-v', '--non-interactive', '--template', '--json', '--help'],
+  new: ['--type', '-t', '--vault', '-v', '--non-interactive', '--template', '--no-template', '--no-instances', '--owner', '--standalone', '--json', '--open', '-o', '--fork', '--label', '--name', '--output', '--help'],
   edit: ['--type', '-t', '--path', '-p', '--where', '-w', '--id', '--body', '-b', '--picker', '--json', '--output', '--open', '--app', '--vault', '-v', '--non-interactive', '--help'],
   list: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--name', '--fuzzy', '--matches', '--threshold', '--context', '-C', '--no-context', '--case-sensitive', '-S', '--regex', '-E', '--text', '--id', '--fields', '--sort', '--desc', '--limit', '--count', '--output', '--open', '-o', '--app', '--picker', '--preview', '--vault', '-v', '--non-interactive', '--json', '--help'],
   recent: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--limit', '--output', '--vault', '-v', '--non-interactive', '--help'],
@@ -378,6 +378,9 @@ function isValueOption(option: string): boolean {
     '--where', '-w',
     '--output', '-o',
     '--template',
+    '--fork',
+    '--label',
+    '--name',
     '--app',
     '--set',
     '--vault', '-v',
