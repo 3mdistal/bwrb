@@ -13,9 +13,23 @@ const C = 'CCCCCCCC-3333-4333-8333-333333333333';
 const D = '44444444-4444-4444-8444-444444444444';
 const E = 'EEEEEEEE-5555-4555-8555-555555555555';
 const F = '66666666-6666-4666-8666-666666666666';
+const BRANCHED_PATHS = [
+  'Ideas/Lineage A.md',
+  'Ideas/Lineage B.md',
+  'Ideas/Lineage C.md',
+  'Ideas/Lineage D.md',
+  'Ideas/Lineage E.md',
+  'Ideas/Lineage F.md',
+];
+const BRANCHED_TARGETS = ['Lineage A', 'Lineage B', 'Lineage C', 'Lineage F'];
 
 function raw(id: unknown, parent?: unknown, body = ''): string {
   return `---\ntype: idea\n${id !== undefined ? `id: ${String(id)}\n` : ''}${parent !== undefined ? `forked-from: ${String(parent)}\n` : ''}status: raw\n---\n${body}`;
+}
+
+async function addCollateralBranch(vaultDir: string): Promise<void> {
+  await writeFile(join(vaultDir, 'Ideas/Lineage E.md'), raw(E, A, 'E body\n'));
+  await writeFile(join(vaultDir, 'Ideas/Lineage F.md'), raw(F, E, 'F body\n'));
 }
 
 describe('list --lineage', () => {
@@ -82,41 +96,17 @@ B body
     }
   });
 
-  it('returns one identical physical family from root, middle, and leaves', async () => {
-    await writeFile(join(vaultDir, 'Ideas/Lineage E.md'), raw(E, A, 'E body\n'));
-    await writeFile(join(vaultDir, 'Ideas/Lineage F.md'), raw(F, E, 'F body\n'));
-    const expectedPaths = [
-      'Ideas/Lineage A.md',
-      'Ideas/Lineage B.md',
-      'Ideas/Lineage C.md',
-      'Ideas/Lineage D.md',
-      'Ideas/Lineage E.md',
-      'Ideas/Lineage F.md',
-    ];
-    const targets = ['Lineage A', 'Lineage B', 'Lineage C', 'Lineage F'];
+  it('returns one identical JSON family from root, middle, and leaves', async () => {
+    await addCollateralBranch(vaultDir);
     const jsonByTarget = new Map<string, any>();
-    const contentOutputs: string[] = [];
 
-    for (const target of targets) {
+    for (const target of BRANCHED_TARGETS) {
       const json = await runCLI(['list', '--lineage', target, '--output', 'json'], vaultDir);
       expect(json.exitCode, json.stderr || json.stdout).toBe(0);
       const output = JSON.parse(json.stdout);
       jsonByTarget.set(target, output);
-      expect(output.nodes.map((node: any) => node.path)).toEqual(expectedPaths);
-
-      const paths = await runCLI(['list', '--lineage', target, '--output', 'paths'], vaultDir);
-      expect(paths.stdout.trim().split('\n')).toEqual(expectedPaths);
-      const links = await runCLI(['list', '--lineage', target, '--output', 'link'], vaultDir);
-      expect(links.stdout.trim().split('\n')).toEqual(
-        expectedPaths.map(path => `[[${path.slice('Ideas/'.length, -3)}]]`)
-      );
-      const content = await runCLI(['list', '--lineage', target, '--output', 'content'], vaultDir);
-      contentOutputs.push(content.stdout);
-      for (const body of ['A body', 'B body', 'C body', 'D body', 'E body', 'F body']) {
-        expect(content.stdout).toContain(body);
-      }
+      expect(output.nodes.map((node: any) => node.path)).toEqual(BRANCHED_PATHS);
     }
-    expect(new Set(contentOutputs).size).toBe(1);
 
     expect(jsonByTarget.get('Lineage B').nodes).toMatchObject([
       { path: 'Ideas/Lineage A.md', depth: -1, relationship: 'ancestor' },
@@ -142,10 +132,43 @@ B body
       { path: 'Ideas/Lineage E.md', depth: -1, relationship: 'ancestor' },
       { path: 'Ideas/Lineage F.md', depth: 0, relationship: 'target' },
     ]);
+  });
 
+  it.each(['paths', 'link', 'content'] as const)(
+    'returns identical %s output from root, middle, and leaves',
+    async outputFormat => {
+      await addCollateralBranch(vaultDir);
+      const outputs: string[] = [];
+      for (const target of BRANCHED_TARGETS) {
+        const result = await runCLI(
+          ['list', '--lineage', target, '--output', outputFormat],
+          vaultDir
+        );
+        expect(result.exitCode, result.stderr || result.stdout).toBe(0);
+        outputs.push(result.stdout);
+      }
+      expect(new Set(outputs).size).toBe(1);
+
+      if (outputFormat === 'paths') {
+        expect(outputs[0]!.trim().split('\n')).toEqual(BRANCHED_PATHS);
+      } else if (outputFormat === 'link') {
+        expect(outputs[0]!.trim().split('\n')).toEqual(
+          BRANCHED_PATHS.map(path => `[[${path.slice('Ideas/'.length, -3)}]]`)
+        );
+      } else {
+        for (const body of ['A body', 'B body', 'C body', 'D body', 'E body', 'F body']) {
+          expect(outputs[0]).toContain(body);
+        }
+      }
+    }
+  );
+
+  it('renders one identical tree from root, middle, and leaves', async () => {
+    await addCollateralBranch(vaultDir);
     const trees: string[] = [];
-    for (const target of targets) {
+    for (const target of BRANCHED_TARGETS) {
       const tree = await runCLI(['list', '--lineage', target, '--output', 'tree'], vaultDir);
+      expect(tree.exitCode, tree.stderr || tree.stdout).toBe(0);
       trees.push(tree.stdout.replace(' (target)', ''));
     }
     expect(new Set(trees).size).toBe(1);
