@@ -171,6 +171,12 @@ always provide `--name` or `--label` and use `--output json`; the result contain
 fork mode with a type, template, `--json`, instance, or ownership-selection
 flag. The child is a normal note beside its source, not a hidden snapshot.
 
+Deleting a document with direct fork children refuses unless `--force` is
+supplied. With `--force`, bwrb deletes only the selected document: children keep
+their `forked-from` value, which surfaces as `dangling-forked-from` in
+`bwrb audit`. Use `bwrb list --lineage <target> --output json` before forcing a
+parent deletion when an agent needs to enumerate the affected family.
+
 ## Core Commands for Agents
 
 ### Querying Notes

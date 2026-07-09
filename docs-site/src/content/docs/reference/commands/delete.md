@@ -65,6 +65,42 @@ bwrb delete --type task --execute
 bwrb delete --type idea "Specific Name" --execute
 ```
 
+### Fork-lineage safety
+
+Without `--force`, delete refuses any note that has a direct document fork. The
+check applies to single, scoped, bulk, execute, and dry-run modes; bulk deletion
+is all-or-nothing when any selected note is blocked. Duplicate stable IDs also
+refuse deletion because the parent identity is ambiguous.
+
+```text
+Error: Refusing to delete Ideas/Launch Brief.md: fork lineage would be orphaned
+  Ideas/Launch Brief.md: 1 direct fork child
+    - Ideas/Launch Brief — concise.md
+Use --force to delete anyway; child fork provenance will be left dangling.
+```
+
+JSON refusals include a machine-readable `reason` (`has-fork-children` or
+`duplicate-identity`) and the affected paths:
+
+```json
+{
+  "success": false,
+  "error": "Refusing to delete Ideas/Launch Brief.md: fork lineage would be orphaned",
+  "code": 1,
+  "data": {
+    "path": "Ideas/Launch Brief.md",
+    "reason": "has-fork-children",
+    "childCount": 1,
+    "children": [{ "path": "Ideas/Launch Brief — concise.md" }]
+  }
+}
+```
+
+`--force` is the sole override. It deletes only the selected note: children are
+not deleted or reparented, and their `forked-from` value stays intact. A later
+`bwrb audit` reports that retained provenance as `dangling-forked-from`, so the
+source can still be restored deliberately.
+
 ## Examples
 
 ### Single-file Mode
