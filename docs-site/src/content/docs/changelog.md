@@ -12,7 +12,7 @@ For the complete changelog with all details, see [CHANGELOG.md](https://github.c
 ### Unreleased
 
 - **Document forks** — `bwrb new --fork <target>` creates an ordinary sibling note with a fresh ID and immutable immediate-source provenance
-- **Fork lineage inspection** — `bwrb list --lineage <target>` renders all ancestors, the target, and all descendants as a tree, paths, links, content, or structured JSON
+- **Fork lineage inspection** — `bwrb list --lineage <target>` renders the complete connected fork component, including sibling and cousin branches, as a tree, paths, links, content, or structured JSON
 
 ### 0.2.2
 

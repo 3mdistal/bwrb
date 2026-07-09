@@ -11,6 +11,8 @@ const A = 'ABCDEF12-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
 const C = 'CCCCCCCC-3333-4333-8333-333333333333';
 const D = '44444444-4444-4444-8444-444444444444';
+const E = 'EEEEEEEE-5555-4555-8555-555555555555';
+const F = '66666666-6666-4666-8666-666666666666';
 
 function raw(id: unknown, parent?: unknown, body = ''): string {
   return `---\ntype: idea\n${id !== undefined ? `id: ${String(id)}\n` : ''}${parent !== undefined ? `forked-from: ${String(parent)}\n` : ''}status: raw\n---\n${body}`;
@@ -78,6 +80,72 @@ B body
         warnings: [],
       });
     }
+  });
+
+  it('returns one identical physical family from root, middle, and leaves', async () => {
+    await writeFile(join(vaultDir, 'Ideas/Lineage E.md'), raw(E, A, 'E body\n'));
+    await writeFile(join(vaultDir, 'Ideas/Lineage F.md'), raw(F, E, 'F body\n'));
+    const expectedPaths = [
+      'Ideas/Lineage A.md',
+      'Ideas/Lineage B.md',
+      'Ideas/Lineage C.md',
+      'Ideas/Lineage D.md',
+      'Ideas/Lineage E.md',
+      'Ideas/Lineage F.md',
+    ];
+    const targets = ['Lineage A', 'Lineage B', 'Lineage C', 'Lineage F'];
+    const jsonByTarget = new Map<string, any>();
+
+    for (const target of targets) {
+      const json = await runCLI(['list', '--lineage', target, '--output', 'json'], vaultDir);
+      expect(json.exitCode, json.stderr || json.stdout).toBe(0);
+      const output = JSON.parse(json.stdout);
+      jsonByTarget.set(target, output);
+      expect(output.nodes.map((node: any) => node.path)).toEqual(expectedPaths);
+
+      const paths = await runCLI(['list', '--lineage', target, '--output', 'paths'], vaultDir);
+      expect(paths.stdout.trim().split('\n')).toEqual(expectedPaths);
+      const links = await runCLI(['list', '--lineage', target, '--output', 'link'], vaultDir);
+      expect(links.stdout.trim().split('\n')).toEqual(
+        expectedPaths.map(path => `[[${path.slice('Ideas/'.length, -3)}]]`)
+      );
+      const content = await runCLI(['list', '--lineage', target, '--output', 'content'], vaultDir);
+      for (const body of ['A body', 'B body', 'C body', 'D body', 'E body', 'F body']) {
+        expect(content.stdout).toContain(body);
+      }
+    }
+
+    expect(jsonByTarget.get('Lineage B').nodes).toMatchObject([
+      { path: 'Ideas/Lineage A.md', depth: -1, relationship: 'ancestor' },
+      { path: 'Ideas/Lineage B.md', depth: 0, relationship: 'target' },
+      { path: 'Ideas/Lineage C.md', depth: 1, relationship: 'descendant' },
+      { path: 'Ideas/Lineage D.md', depth: 1, relationship: 'descendant' },
+      { path: 'Ideas/Lineage E.md', depth: 0, relationship: 'related' },
+      { path: 'Ideas/Lineage F.md', depth: 1, relationship: 'related' },
+    ]);
+    expect(jsonByTarget.get('Lineage C').nodes).toMatchObject([
+      { path: 'Ideas/Lineage A.md', depth: -2, relationship: 'ancestor' },
+      { path: 'Ideas/Lineage B.md', depth: -1, relationship: 'ancestor' },
+      { path: 'Ideas/Lineage C.md', depth: 0, relationship: 'target' },
+      { path: 'Ideas/Lineage D.md', depth: 0, relationship: 'related' },
+      { path: 'Ideas/Lineage E.md', depth: -1, relationship: 'related' },
+      { path: 'Ideas/Lineage F.md', depth: 0, relationship: 'related' },
+    ]);
+    expect(jsonByTarget.get('Lineage F').nodes).toMatchObject([
+      { path: 'Ideas/Lineage A.md', depth: -2, relationship: 'ancestor' },
+      { path: 'Ideas/Lineage B.md', depth: -1, relationship: 'related' },
+      { path: 'Ideas/Lineage C.md', depth: 0, relationship: 'related' },
+      { path: 'Ideas/Lineage D.md', depth: 0, relationship: 'related' },
+      { path: 'Ideas/Lineage E.md', depth: -1, relationship: 'ancestor' },
+      { path: 'Ideas/Lineage F.md', depth: 0, relationship: 'target' },
+    ]);
+
+    const trees: string[] = [];
+    for (const target of targets) {
+      const tree = await runCLI(['list', '--lineage', target, '--output', 'tree'], vaultDir);
+      trees.push(tree.stdout.replace(' (target)', ''));
+    }
+    expect(new Set(trees).size).toBe(1);
   });
 
   it('renders default and explicit tree output with target markers at root, middle, and leaf', async () => {
@@ -238,6 +306,25 @@ B body
       expect(result.stderr).toContain('--lineage');
     }
   });
+
+  it.each([1, 2, 3, 4])(
+    'rejects %i extra positional argument(s) through JSON and text channels',
+    async count => {
+      const extras = Array.from({ length: count }, (_, index) => `extra-${index + 1}`);
+      const json = await runCLI(
+        ['list', '--lineage', 'Lineage B', ...extras, '--output', 'json'],
+        vaultDir
+      );
+      expect(json.exitCode).toBe(1);
+      expect(json.stderr).toBe('');
+      expect(JSON.parse(json.stdout)).toMatchObject({ success: false, code: 1 });
+
+      const text = await runCLI(['list', '--lineage', 'Lineage B', ...extras], vaultDir);
+      expect(text.exitCode).toBe(1);
+      expect(text.stdout).toBe('');
+      expect(text.stderr).toMatch(/--lineage|too many arguments/);
+    }
+  );
 
   it('creates a disposable chain through new --fork and reads it through lineage and audit', async () => {
     const first = await runCLI(['new', '--fork', 'Lineage A', '--name', 'Actual Fork 1', '--output', 'json'], vaultDir);

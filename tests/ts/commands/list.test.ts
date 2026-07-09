@@ -1680,6 +1680,7 @@ describe('list positional app mode (#711)', () => {
     );
 
     expect(result.exitCode).not.toBe(0);
+    expect(result.stdout).toBe('');
     expect(result.stderr).toContain('too many arguments');
   });
 

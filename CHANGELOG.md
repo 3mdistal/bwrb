@@ -7,7 +7,7 @@ All notable changes to Bowerbird are documented in this file.
 ### Added
 
 - **Document forks** — `bwrb new --fork <target>` creates a sibling document with a fresh stable ID and immutable `forked-from` provenance while preserving the source body and prior work.
-- **Fork lineage inspection** — `bwrb list --lineage <target>` renders the complete connected fork lineage in tree, paths, link, content, or JSON form, resolving targets by exact path, name, alias, or case-insensitive UUID.
+- **Fork lineage inspection** — `bwrb list --lineage <target>` renders the complete connected fork component—including sibling and cousin branches—in tree, paths, link, content, or JSON form, resolving targets by exact path, name, alias, or case-insensitive UUID.
 
 ## [0.2.2] - 2026-07-04
 

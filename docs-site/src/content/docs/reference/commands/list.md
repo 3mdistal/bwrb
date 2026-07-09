@@ -128,11 +128,14 @@ fuzzy neighbour for an exact target.
 ## Fork Lineage
 
 `bwrb list --lineage <target>` follows the immutable `forked-from` UUID edges
-for one document and returns its complete connected lineage: every ancestor,
-the selected target, and every descendant. The target uses the same exact
-resolution surfaces as `new --fork`: an absolute or vault-relative managed
-path (with or without `.md`), basename, frontmatter name, declared alias, or
-case-insensitive stable UUID. It never falls back to fuzzy matching.
+for one document and returns its complete connected lineage component. That
+means every ancestor and descendant plus collateral branches: siblings,
+cousins, and their descendants. Querying any member returns the same physical
+family tree; only the target marker and target-relative JSON metadata change.
+The target uses the same exact resolution surfaces as `new --fork`: an
+absolute or vault-relative managed path (with or without `.md`), basename,
+frontmatter name, declared alias, or case-insensitive stable UUID. It never
+falls back to fuzzy matching.
 
 With no `--output`, lineage mode renders a structural tree. Explicit
 `--output tree` does the same, and marks the selected note with `(target)`:
@@ -163,15 +166,30 @@ stable and machine-readable:
       "forked_from": "...",
       "depth": 0,
       "relationship": "target"
+    },
+    {
+      "path": "Briefs/Alternate Launch Brief v2.md",
+      "id": "...",
+      "forked_from": "...",
+      "depth": 0,
+      "relationship": "related"
     }
   ],
   "warnings": []
 }
 ```
 
-Depth is signed relative to the target. Ancestors are negative, the target is
-zero, and descendants are positive. Paths are vault-relative, authored UUID
-casing is preserved, and each physical note appears at most once.
+`depth` is a signed generation offset: the node's generation in the rendered
+physical tree minus the target's generation. Thus an ancestor is usually
+negative and a descendant positive, while a same-generation sibling is
+`related` at depth `0`; cousins can have negative, zero, or positive depth.
+`relationship` is `ancestor` for the target's authored parent chain, `target`
+for the selected note, `descendant` for notes reachable downward from it, and
+`related` for every other member of the same component. On a malformed cycle,
+the authored ancestor classification takes precedence and one deterministic
+cycle edge is broken only for rendering and generation calculation. Paths are
+vault-relative, authored UUID casing is preserved, and each physical note
+appears at most once.
 
 Malformed graphs remain inspectable without inventing history. Cycles,
 dangling parents, invalid `forked-from` values, and child notes without a valid
@@ -182,7 +200,7 @@ valid ID is included once as a terminal node. A target without a valid ID, or a
 duplicate ID affecting the reached lineage, is a hard validation error; the
 duplicate error lists every candidate path.
 
-Lineage promises a complete component, so it rejects positional filters and
+Lineage promises a complete connected component, so it rejects positional filters and
 all query, search, hierarchy, truncation, sorting, field, dashboard, picker,
 preview, and open actions rather than silently narrowing the graph. Deprecated
 output aliases such as `--json`, `--paths`, and `--tree` are also rejected; use

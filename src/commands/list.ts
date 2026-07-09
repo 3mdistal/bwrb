@@ -588,11 +588,21 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   // Dashboard save options
   .option('--save-as <name>', 'Save this query as a dashboard')
   .option('--force', 'Overwrite existing dashboard when using --save-as')
-  // Reject excess positional args. Only [positional] and [mode] are accepted;
-  // a third+ token is almost certainly a typo, and silently swallowing it
-  // (commander's default) hides the mistake.
-  .allowExcessArguments(false)
+  // Let the handler reject excess args so --lineage --output json can preserve
+  // its machine-readable error contract. Ordinary list still emits the same
+  // Commander-style text error below.
+  .allowExcessArguments(true)
   .action(async (positional: string | undefined, mode: string | undefined, options: ListCommandOptions, cmd: Command) => {
+    if (cmd.args.length > 2) {
+      const excessError = `too many arguments. Expected 2 arguments but got ${cmd.args.length}.`;
+      if (options.lineage !== undefined && (options.json || options.output === 'json')) {
+        printJson(jsonError(excessError, { code: ExitCodes.VALIDATION_ERROR }));
+      } else {
+        console.error(`error: ${excessError}`);
+      }
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+
     const lineageModeError = validateLineageMode(positional, mode, options);
     if (lineageModeError) {
       const requestedJson = options.json || options.output === 'json';
