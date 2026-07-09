@@ -3,7 +3,12 @@ import { basename, dirname, isAbsolute, relative, resolve, sep } from 'path';
 import type { LoadedSchema } from '../../types/schema.js';
 import type { ManagedFile, NoteIndex } from '../../lib/navigation.js';
 import { buildNoteIndex } from '../../lib/navigation.js';
-import { parseNote, writeNote, writeNoteExclusive } from '../../lib/frontmatter.js';
+import {
+  insertFrontmatterScalarPreservingBytes,
+  parseNote,
+  writeFileAtomic,
+  writeNoteExclusive,
+} from '../../lib/frontmatter.js';
 import {
   generateUniqueNoteId,
   isValidNoteId,
@@ -16,7 +21,7 @@ import {
   getFieldsForType,
   resolveTypeFromFrontmatter,
 } from '../../lib/schema.js';
-import { applyDefaults } from '../../lib/validation.js';
+import { applyDefaults, normalizeDateFields } from '../../lib/validation.js';
 import { isBwrbBuiltinFrontmatterField } from '../../lib/frontmatter/systemFields.js';
 import { buildNotePath } from './paths.js';
 import { promptInput } from '../../lib/prompt.js';
@@ -68,11 +73,14 @@ export async function forkNote(
   options: ForkNoteOptions
 ): Promise<ForkNoteResult> {
   const source = await resolveForkSource(schema, vaultDir, options.target);
+  if (isValidNoteId(source.frontmatter.id)) {
+    await assertSourceIdUnique(schema, vaultDir, source.file.path, source.frontmatter.id);
+  }
   assertOwnedForkAllowed(schema, source.file);
 
   const sourceName = resolveSourceName(source);
   const childName = await resolveChildName(sourceName, options);
-  const sourceId = await ensureSourceId(vaultDir, source.file.path);
+  const sourceId = await ensureSourceId(schema, vaultDir, source.file.path);
 
   // Re-read after a possible ID backfill so the child copies the source's
   // current frontmatter rather than a stale pre-lock snapshot.
@@ -83,12 +91,16 @@ export async function forkNote(
   }
 
   const warnings = collectSchemaDriftWarnings(schema, currentType, current.frontmatter);
-  const frontmatter = buildForkFrontmatter(
+  const frontmatter = normalizeDateFields(
     schema,
     currentType,
-    current.frontmatter,
-    childName,
-    sourceId
+    buildForkFrontmatter(
+      schema,
+      currentType,
+      current.frontmatter,
+      childName,
+      sourceId
+    )
   );
   const childId = await generateUniqueNoteId(vaultDir);
   frontmatter.id = childId;
@@ -286,7 +298,11 @@ async function resolveChildName(sourceName: string, options: ForkNoteOptions): P
   return selected.trim();
 }
 
-async function ensureSourceId(vaultDir: string, sourcePath: string): Promise<string> {
+async function ensureSourceId(
+  schema: LoadedSchema,
+  vaultDir: string,
+  sourcePath: string
+): Promise<string> {
   return withSourceIdLock(vaultDir, async () => {
     const parsed = await parseNote(sourcePath);
     const existing = parsed.frontmatter.id;
@@ -294,21 +310,70 @@ async function ensureSourceId(vaultDir: string, sourcePath: string): Promise<str
       if (!isValidNoteId(existing)) {
         throw new Error(`Fork source has an invalid id and was not modified: ${relative(vaultDir, sourcePath)}`);
       }
+      await assertSourceIdUnique(schema, vaultDir, sourcePath, existing);
       return existing;
     }
 
     const id = await generateUniqueNoteId(vaultDir);
-    const nextFrontmatter = { ...parsed.frontmatter, id };
-    const order = buildBackfillFieldOrder(parsed.frontmatter);
-    await writeNote(sourcePath, nextFrontmatter, parsed.body, order);
+    const collisions = await findNotesWithId(schema, vaultDir, id);
+    if (collisions.length > 0) {
+      throw new Error('Generated source ID collides with an existing note; retry the command.');
+    }
+    const nextRaw = insertFrontmatterScalarPreservingBytes(parsed.raw, 'id', id);
+    await writeFileAtomic(sourcePath, nextRaw);
     try {
       await registerIssuedNoteId(vaultDir, id, sourcePath);
     } catch (error) {
-      await writeNote(sourcePath, parsed.frontmatter, parsed.body, Object.keys(parsed.frontmatter));
+      await writeFileAtomic(sourcePath, parsed.raw);
       throw error;
     }
     return id;
   });
+}
+
+async function assertSourceIdUnique(
+  schema: LoadedSchema,
+  vaultDir: string,
+  sourcePath: string,
+  id: string
+): Promise<void> {
+  const matches = await findNotesWithId(schema, vaultDir, id);
+  const otherMatches = matches.filter(file => resolve(file.path) !== resolve(sourcePath));
+  if (otherMatches.length === 0) return;
+
+  const candidates = Array.from(new Set([
+    relative(vaultDir, sourcePath),
+    ...matches.map(file => file.relativePath),
+  ]))
+    .sort()
+    .join(', ');
+  throw new Error(
+    `Cannot fork source ${relative(vaultDir, sourcePath)}: id ${id} is duplicated; matches: ${candidates}`
+  );
+}
+
+async function findNotesWithId(
+  schema: LoadedSchema,
+  vaultDir: string,
+  id: string
+): Promise<ManagedFile[]> {
+  const normalized = normalizeNoteId(id);
+  const index = await buildNoteIndex(schema, vaultDir);
+  const matches: ManagedFile[] = [];
+  for (const file of index.allFiles) {
+    try {
+      const parsed = await parseNote(file.path);
+      if (
+        isValidNoteId(parsed.frontmatter.id) &&
+        normalizeNoteId(parsed.frontmatter.id) === normalized
+      ) {
+        matches.push(file);
+      }
+    } catch {
+      // An unrelated unreadable note cannot be a confirmed identity match.
+    }
+  }
+  return matches;
 }
 
 async function withSourceIdLock<T>(vaultDir: string, task: () => Promise<T>): Promise<T> {
@@ -397,14 +462,6 @@ function assertOwnedForkAllowed(schema: LoadedSchema, file: ManagedFile): void {
       `Cannot fork owned note ${file.relativePath}: owner field '${file.ownership.fieldName}' is single-valued.`
     );
   }
-}
-
-function buildBackfillFieldOrder(frontmatter: Record<string, unknown>): string[] {
-  const keys = Object.keys(frontmatter);
-  const typeIndex = keys.indexOf('type');
-  if (typeIndex >= 0) keys.splice(typeIndex + 1, 0, 'id');
-  else keys.unshift('id');
-  return keys;
 }
 
 function buildForkFieldOrder(

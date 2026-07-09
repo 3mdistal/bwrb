@@ -82,6 +82,42 @@ Words worth keeping.
     expect(fork.body).toBe('## Draft\n\nWords worth keeping.\n');
   });
 
+  it('normalizes reset date defaults exactly like ordinary new and stays audit-clean', async () => {
+    const schemaPath = join(vaultDir, '.bwrb/schema.json');
+    const schema = JSON.parse(await readFile(schemaPath, 'utf-8')) as any;
+    schema.types.task.fields.deadline.default = '12/25/2026';
+    schema.types.task.fields.deadline.reset_on_fork = true;
+    await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+
+    const ordinary = await runCLI([
+      'new', 'task', '--json', '{"name":"Ordinary Date Default"}', '--no-template',
+    ], vaultDir);
+    expect(ordinary.exitCode, ordinary.stderr || ordinary.stdout).toBe(0);
+
+    const sourcePath = join(vaultDir, 'Objectives/Tasks/Fork Date Source.md');
+    await writeFile(sourcePath, `---\ntype: task\nid: ${SOURCE_ID}\nname: Fork Date Source\nstatus: backlog\ndeadline: 2026-01-01\n---\n`);
+    const forked = await runCLI([
+      'new', '--fork', 'Fork Date Source', '--name', 'Fork Date Default', '--output', 'json',
+    ], vaultDir);
+    expect(forked.exitCode, forked.stderr || forked.stdout).toBe(0);
+
+    const ordinaryOutput = JSON.parse(ordinary.stdout);
+    const forkOutput = JSON.parse(forked.stdout);
+    const ordinaryNote = await parseNote(join(vaultDir, ordinaryOutput.path));
+    const forkNote = await parseNote(join(vaultDir, forkOutput.path));
+    expect(ordinaryNote.frontmatter.deadline).toBe('2026-12-25');
+    expect(forkNote.frontmatter.deadline).toBe(ordinaryNote.frontmatter.deadline);
+
+    for (const notePath of [ordinaryOutput.path, forkOutput.path]) {
+      const audit = await runCLI(['audit', '--path', notePath, '--output', 'json'], vaultDir);
+      const output = JSON.parse(audit.stdout) as {
+        files: Array<{ issues: Array<{ code: string }> }>;
+      };
+      expect(output.files.flatMap(file => file.issues).map(issue => issue.code))
+        .not.toContain('invalid-date-format');
+    }
+  });
+
   it('resolves exact relative and absolute paths, frontmatter names, and aliases', async () => {
     const schemaPath = join(vaultDir, '.bwrb/schema.json');
     const schema = JSON.parse(await readFile(schemaPath, 'utf-8')) as any;
@@ -112,6 +148,44 @@ Body
       expect(result.exitCode, `${targets[index]}: ${result.stderr || result.stdout}`).toBe(0);
       expect(JSON.parse(result.stdout).forked_from).toBe(SOURCE_ID);
     }
+  });
+
+  it('rejects a duplicated source UUID for path, name, and alias targets without writing', async () => {
+    const schemaPath = join(vaultDir, '.bwrb/schema.json');
+    const schema = JSON.parse(await readFile(schemaPath, 'utf-8')) as any;
+    schema.types.idea.fields.aliases = { prompt: 'list', alias: true };
+    schema.types.idea.field_order.push('aliases');
+    await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+
+    const firstPath = join(vaultDir, 'Ideas/Identity A.md');
+    const secondPath = join(vaultDir, 'Ideas/Identity B.md');
+    const firstRaw = `---\ntype: idea\nid: ${SOURCE_ID}\nname: Duplicate Named Source\naliases: [Duplicate Source Alias]\nstatus: raw\n---\nFirst\n`;
+    const secondRaw = `---\ntype: idea\nid: ${SOURCE_ID.toLowerCase()}\nname: Other Source\nstatus: raw\n---\nSecond\n`;
+    await writeFile(firstPath, firstRaw);
+    await writeFile(secondPath, secondRaw);
+    const registryPath = join(vaultDir, '.bwrb/ids.jsonl');
+    const registryBefore = await readFile(registryPath, 'utf-8').catch(() => null);
+
+    const attempts = [
+      { target: 'Ideas/Identity A', name: 'Rejected Path', json: true },
+      { target: 'Duplicate Named Source', name: 'Rejected Name', json: true },
+      { target: 'Duplicate Source Alias', name: 'Rejected Alias', json: false },
+    ];
+    for (const attempt of attempts) {
+      const args = ['new', '--fork', attempt.target, '--name', attempt.name];
+      if (attempt.json) args.push('--output', 'json');
+      const result = await runCLI(args, vaultDir);
+      expect(result.exitCode).toBe(1);
+      const message = attempt.json ? JSON.parse(result.stdout).error : result.stderr;
+      expect(message).toContain('id ABCDEF12-3456-4789-ABCD-EF1234567890 is duplicated');
+      expect(message).toContain('Ideas/Identity A.md');
+      expect(message).toContain('Ideas/Identity B.md');
+      await expect(readFile(join(vaultDir, `Ideas/${attempt.name}.md`), 'utf-8')).rejects.toThrow();
+    }
+
+    expect(await readFile(firstPath, 'utf-8')).toBe(firstRaw);
+    expect(await readFile(secondPath, 'utf-8')).toBe(secondRaw);
+    expect(await readFile(registryPath, 'utf-8').catch(() => null)).toBe(registryBefore);
   });
 
   it('never fuzzy-substitutes and reports ambiguous exact basenames', async () => {
@@ -154,6 +228,24 @@ Body
       .trim().split('\n').map(line => JSON.parse(line))
       .filter(row => row.path === 'Ideas/Sample Idea.md');
     expect(sourceRows).toHaveLength(1);
+  });
+
+  it('backfills a missing ID without changing any other source byte', async () => {
+    const sourcePath = join(vaultDir, 'Ideas/Precious YAML.md');
+    const original = '\uFEFF---\r\n# keep this header\r\ntype: "idea" # keep quotes\r\n# belongs to status\r\nstatus: &raw raw\r\nstatus-copy: *raw\r\ndescription: |-\r\n  first line\r\n  second line\r\n---\r\nBody with punctuation: --- and # characters.\r\n';
+    await writeFile(sourcePath, original);
+
+    const result = await runCLI([
+      'new', '--fork', 'Precious YAML', '--name', 'Preserved Child', '--output', 'json',
+    ], vaultDir);
+
+    expect(result.exitCode, result.stderr || result.stdout).toBe(0);
+    const output = JSON.parse(result.stdout);
+    const updated = await readFile(sourcePath, 'utf-8');
+    expect(updated).toContain(`type: "idea" # keep quotes\r\nid: ${output.forked_from}\r\n# belongs to status`);
+    expect(updated.replace(`id: ${output.forked_from}\r\n`, '')).toBe(original);
+    expect(await readFile(join(vaultDir, 'Ideas/Preserved Child.md'), 'utf-8'))
+      .toContain(`forked-from: ${output.forked_from}`);
   });
 
   it('rejects a malformed source ID without changing the source', async () => {
