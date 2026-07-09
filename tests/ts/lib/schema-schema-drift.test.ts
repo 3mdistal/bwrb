@@ -72,12 +72,18 @@ function makeValidator(root: any) {
     if (schema.enum && !schema.enum.includes(value as never)) {
       errors.push(`${path}: ${JSON.stringify(value)} not in enum`);
     }
+    if (schema.pattern && typeof value === 'string' && !new RegExp(schema.pattern).test(value)) {
+      errors.push(`${path}: ${JSON.stringify(value)} did not match ${schema.pattern}`);
+    }
     if (schema.type === 'object' && typeOf(value) === 'object') {
       const obj = value as Record<string, unknown>;
       for (const req of schema.required ?? []) {
         if (!(req in obj)) errors.push(`${path}: missing required "${req}"`);
       }
       for (const [k, v] of Object.entries(obj)) {
+        if (schema.propertyNames) {
+          check(schema.propertyNames, k, `${path}/<property:${k}>`, errors);
+        }
         const propSchema = schema.properties?.[k];
         if (propSchema) {
           check(propSchema, v, `${path}/${k}`, errors);
@@ -310,6 +316,7 @@ describe('published JSON Schema is generated from Zod (no drift, #666)', () => {
       const props = metaSchema.definitions.typeNode.properties;
       expect(props.fields).toBeDefined();
       expect(props.fields.additionalProperties.$ref).toBe('#/definitions/frontmatterField');
+      expect(props.fields.propertyNames.pattern).toBe('^(?!forked-from$).*$');
       // The loader reads `fields`; the legacy `frontmatter` shape must be gone.
       expect(props.frontmatter).toBeUndefined();
       expect(props.frontmatter_order).toBeUndefined();
@@ -395,6 +402,36 @@ describe('published JSON Schema is generated from Zod (no drift, #666)', () => {
       const { ok, errors } = validate(valid);
       expect(errors).toEqual([]);
       expect(ok).toBe(true);
+    });
+
+    it('rejects forked-from as a type or trait schema field', () => {
+      const invalid = {
+        version: 2,
+        traits: {
+          lineage: {
+            fields: {
+              'forked-from': { value: '11111111-1111-4111-8111-111111111111' },
+            },
+          },
+        },
+        types: {
+          idea: {
+            output_dir: 'Ideas',
+            fields: {
+              'forked-from': {
+                prompt: 'text',
+                default: '11111111-1111-4111-8111-111111111111',
+              },
+            },
+          },
+        },
+      };
+
+      const { ok, errors } = validate(invalid);
+      expect(ok).toBe(false);
+      expect(errors).toEqual(expect.arrayContaining([
+        expect.stringContaining('forked-from'),
+      ]));
     });
 
     it('a schema using traits + recurrence + alias validates (#107/#679)', () => {

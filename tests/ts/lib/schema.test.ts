@@ -108,6 +108,34 @@ describe('schema', () => {
         await rm(tempVaultDir, { recursive: true, force: true });
       }
     });
+
+    it.each([
+      ['default', { prompt: 'text', default: '11111111-1111-4111-8111-111111111111' }],
+      ['static value', { value: '11111111-1111-4111-8111-111111111111' }],
+    ])('rejects a reserved forked-from field with a %s', async (_kind, fieldDefinition) => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-reserved-schema-field-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({
+          version: 2,
+          types: {
+            idea: {
+              output_dir: 'Ideas',
+              fields: {
+                'forked-from': fieldDefinition,
+              },
+            },
+          },
+        })
+      );
+
+      try {
+        await expect(loadCurrentSchema(tempVaultDir)).rejects.toThrow(/forked-from.*reserved/i);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe('getTypeFamilies', () => {

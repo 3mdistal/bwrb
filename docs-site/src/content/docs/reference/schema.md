@@ -710,7 +710,11 @@ editing are unchanged by this marker.
 `forked-from` is a reserved built-in frontmatter field containing the UUID of a
 note's immediate source. It is a UUID string, never a wikilink. Hand-authored
 lineage is allowed and audited, but normal JSON creation, edit, and template
-input cannot set or modify this system-managed field.
+input cannot set or modify this system-managed field. Do not declare
+`forked-from` in a type or trait's `fields`: schema loading and schema field
+creation reject the reserved name, including declarations with `default` or
+static `value` entries. A native fork workflow injects provenance after ordinary
+creation defaults have been resolved.
 
 ---
 

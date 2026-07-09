@@ -235,6 +235,9 @@
           "additionalProperties": {
             "$ref": "#/definitions/frontmatterField"
           },
+          "propertyNames": {
+            "pattern": "^(?!forked-from$).*$"
+          },
           "description": "Field definitions contributed by this trait"
         },
         "recurrence": {
@@ -293,6 +296,9 @@
           "type": "object",
           "additionalProperties": {
             "$ref": "#/definitions/frontmatterField"
+          },
+          "propertyNames": {
+            "pattern": "^(?!forked-from$).*$"
           },
           "description": "Field definitions, merged with ancestors and traits at load time"
         },
