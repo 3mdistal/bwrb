@@ -4,7 +4,7 @@ import chalk from 'chalk';
  * Output format options for list command.
  * 'text' is an alias for 'default' (the standard table/name output).
  */
-export type ListOutputFormat = 'default' | 'text' | 'paths' | 'tree' | 'link' | 'json';
+export type ListOutputFormat = 'default' | 'text' | 'paths' | 'tree' | 'link' | 'content' | 'json';
 
 /**
  * Output format options for search command.
@@ -18,6 +18,16 @@ export type SearchOutputFormat = 'default' | 'text' | 'paths' | 'link' | 'conten
  */
 export function warnDeprecated(oldFlag: string, newUsage: string): void {
   console.error(chalk.yellow(`Warning: ${oldFlag} is deprecated, use ${newUsage} instead`));
+}
+
+/**
+ * Emit the command-level warning for a deprecated compatibility entrypoint.
+ *
+ * Keep this at the compatibility command's action boundary so shared command
+ * implementations can also serve canonical entrypoints without warning.
+ */
+export function warnDeprecatedCommand(command: string, newUsage: string): void {
+  warnDeprecated(`bwrb ${command}`, newUsage);
 }
 
 /**

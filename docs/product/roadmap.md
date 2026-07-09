@@ -8,7 +8,7 @@
 
 **v1: Schema + Dashboards** — Rock-solid schema enforcement, inheritance model, type safety, and saved queries
 **v2: Schema expressiveness + PKM** — A richer schema (aliases, traits, hierarchical scope) so the AI agent uses it correctly, plus deeper queries and visibility
-**v3: AI safety net** — Deterministic primitives *under* the AI agent (no LLM in bwrb): `search --fuzzy`, `audit: unlinked-mention`, daily-note sweep, `schema discover`, event-driven task recurrence
+**v3: AI safety net** — Deterministic primitives *under* the AI agent (no LLM in bwrb): `list --fuzzy`, `audit: unlinked-mention`, daily-note sweep, `schema discover`, event-driven task recurrence
 
 ---
 
@@ -113,7 +113,7 @@ bwrb is the **deterministic safety net under the AI agent, not an LLM caller.** 
 
 | Feature | Issue | Description |
 |---------|-------|-------------|
-| `search --fuzzy` | #93 | Scored candidate lookup so the agent checks "does X exist?" before writing |
+| `list --fuzzy` | #93 | Scored candidate lookup so the agent checks "does X exist?" before writing |
 | `audit: unlinked-mention` | #93 | Flag known-entity names in prose that aren't wikilinked (exact/alias auto-fixable; fuzzy flag-only) |
 | `audit: frequent-unlinked-term` | — | Advisory nudge toward entities mentioned often but with no note yet |
 | Daily-note sweep | #87 | Frontmatter convention + saved query proving every ramble was looked at |
@@ -121,7 +121,7 @@ bwrb is the **deterministic safety net under the AI agent, not an LLM caller.** 
 
 ### v3.0 Exit Criteria
 
-- [ ] `search --fuzzy` returns scored candidates
+- [ ] `list --fuzzy` returns scored candidates
 - [ ] `unlinked-mention` audit with exact/alias auto-fix and fuzzy review
 - [ ] Daily-note sweep coverage query
 - [ ] Event-driven recurrence with audit backstop

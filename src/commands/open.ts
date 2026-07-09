@@ -21,6 +21,7 @@ import {
   exitWithError,
   ExitCodes,
   exitWithResolutionError,
+  warnDeprecatedCommand,
 } from "../lib/output.js";
 import { resolveTargets, type TargetingOptions } from "../lib/targeting.js";
 import type { ResolvedConfig } from "../types/schema.js";
@@ -303,7 +304,7 @@ interface OpenOptions {
 }
 
 export const openCommand = new Command("open")
-  .description("Open a note (alias for search --open)")
+  .description("Open a note (compatibility command; use list --open)")
   .argument("[query]", "Note name or path to open")
   .argument("[mode]", "App mode to open with: system, editor, visual, obsidian, print")
   .option("-a, --app <mode>", "Application to open with: system, editor, visual, obsidian, print")
@@ -355,6 +356,7 @@ Examples:
   // — which is precisely the failure mode #662 set out to fix.
   .allowExcessArguments(false)
   .action(async (query: string | undefined, mode: string | undefined, options: OpenOptions, cmd) => {
+    warnDeprecatedCommand("open", "bwrb list --open");
     const jsonMode = options.output === "json";
 
     try {

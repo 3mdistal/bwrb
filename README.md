@@ -88,18 +88,13 @@ bwrb list --output paths idea                # Show vault-relative paths
 bwrb list --fields=status,priority idea      # Show selected frontmatter fields in a table
 bwrb list --output paths --fields=status objective  # Combine paths + fields
 
-# Open a note by query (or browse all)
-bwrb open                                    # Browse all notes with picker
-bwrb open "My Note"                          # Open with system default (default)
-bwrb open "My Note" --app editor             # Open in $EDITOR
-bwrb open "My Note" --app print              # Just print the path
-bwrb open "Amb" --picker fzf                 # Use fzf for ambiguous matches
-
-# Generate a wikilink (or browse all)
-bwrb search                                  # Browse all notes with picker
-bwrb search "My Note" --wikilink             # Output: [[My Note]]
-bwrb search "My Note"                        # Output: My Note (name only)
-bwrb search "Amb" --output json              # JSON output for scripting
+# Resolve, search, and open through list
+bwrb list --name "My Note"                   # Resolve by name, path, or alias
+bwrb list --name "My Note" --output link     # Output: [[My Note]]
+bwrb list --fuzzy "My Nte" --output json      # Ranked matches with scores
+bwrb list --body "TODO" --matches             # Detailed body matches
+bwrb list --name "My Note" --open --app editor
+bwrb list --id "<uuid>" --open --app print
 
 # Help
 bwrb --help
@@ -480,20 +475,21 @@ my-vault/
     └── schema.json     # Vault-specific type definitions
 ```
 
-## Navigation Commands
+## Finding and Opening Notes
 
-### `bwrb open [query]`
+### `bwrb list`
 
-Open a note by name or path query. If no query is provided, shows a picker to browse all notes.
+`list` is the canonical query, search, and opening surface. Resolve by name,
+path, alias, or stable ID; run fuzzy or body searches; and optionally open the
+selected result.
 
 ```sh
-bwrb open                              # Browse all notes with picker
-bwrb open "My Note"                    # Open with system default (default)
-bwrb open "my note"                    # Case-insensitive
-bwrb open "Ideas/My Note"              # By path
-bwrb open "My Note" --app editor       # Open in $VISUAL or $EDITOR
-bwrb open "My Note" --app system       # Open with system default
-bwrb open "My Note" --app print        # Just print the resolved path
+bwrb list --name "My Note"                             # Case-insensitive resolution
+bwrb list --name "Ideas/My Note.md" --output link      # [[My Note]]
+bwrb list --fuzzy "My Nte" --output json               # Ranked candidates
+bwrb list --body "TODO" --matches --context 0          # Detailed matches
+bwrb list --name "My Note" --open --app editor         # Open in editor
+bwrb list --id "<uuid>" --open --app print             # Stable-id path lookup
 ```
 
 **App modes:**
@@ -515,30 +511,30 @@ export BWRB_DEFAULT_APP=editor  # Always open in $EDITOR by default
 
 **JSON output** (implies `--picker none`):
 ```sh
-bwrb open "My Note" --app print --output json
+bwrb list --name "My Note" --open --app print --output json
 ```
 
-### `bwrb search [query]`
-
-Find notes and generate wikilinks. If no query is provided, shows a picker to browse all notes. Uses shortest unambiguous form:
+Name resolution uses the shortest unambiguous wikilink form:
 - Basename if unique across vault: `[[My Note]]`
 - Full path if ambiguous: `[[Ideas/My Note]]`
 
 ```sh
-bwrb search                              # Browse all notes with picker
-bwrb search "My Note" --wikilink         # Output: [[My Note]]
-bwrb search "My Note"                    # Output: My Note
-bwrb search "Amb" --picker none --output json  # Scripting mode
+bwrb list --name "My Note" --output link --picker none
+bwrb list --name "Amb" --picker none --output json
 ```
 
 **Neovim/scripting example:**
 ```sh
 # Copy wikilink to clipboard (macOS)
-bwrb search "My Note" --wikilink | pbcopy
+bwrb list --name "My Note" --output link --picker none | pbcopy
 
 # Use in a Lua script
-local link = vim.fn.system("bwrb search 'My Note' --picker none")
+local link = vim.fn.system("bwrb list --name 'My Note' --output link --picker none")
 ```
+
+The older `bwrb search` and `bwrb open` commands remain callable for script
+compatibility, but are hidden from the canonical top-level help and completion
+lists.
 
 ## Shell Completion
 

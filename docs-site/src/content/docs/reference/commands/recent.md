@@ -18,7 +18,7 @@ where expression (contains operators) — the same smart detection used by `list
 
 The optional second positional `[mode]` is the app mode used with `--open`
 (`system`, `editor`, `visual`, `obsidian`, `print`) — parity with
-[`bwrb open`](/reference/commands/open/). Because `[mode]` is the **second**
+[`bwrb list --open`](/reference/commands/list/). Because `[mode]` is the **second**
 positional, a lone positional is always treated as the smart filter, never the
 mode: use `bwrb recent task print --open`, not `bwrb recent print --open` (which
 would treat `print` as a type filter). To set the mode without a filter

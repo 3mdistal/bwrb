@@ -13,12 +13,22 @@ import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
 import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
 import { configurePromptMode, printError, printSuccess, printWarning } from '../lib/prompt.js';
-import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError, warnDeprecated, type SearchOutputFormat } from '../lib/output.js';
+import {
+  printJson,
+  jsonSuccess,
+  jsonError,
+  ExitCodes,
+  exitWithResolutionError,
+  warnDeprecated,
+  warnDeprecatedCommand,
+  type SearchOutputFormat,
+} from '../lib/output.js';
 import { openNote, resolveAppMode, parseAppMode } from './open.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
 import {
   buildNoteIndex,
   generateWikilink,
+  resolveExactNoteQuery,
   type ManagedFile,
   type NoteIndex,
 } from '../lib/navigation.js';
@@ -38,12 +48,13 @@ import {
 import { parseNote } from '../lib/frontmatter.js';
 import { applyWhereExpressions } from '../lib/where-targeting.js';
 import { UserCancelledError } from '../lib/errors.js';
+import { resolveTargets, type TargetingOptions } from '../lib/targeting.js';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface SearchOptions {
+export interface SearchOptions {
   picker?: string;
   output?: string;
   // Deprecated output flags (use --output instead)
@@ -133,7 +144,7 @@ function resolveSearchOutputFormat(options: SearchOptions): SearchOutputFormat {
 // ============================================================================
 
 export const searchCommand = new Command('search')
-  .description('Search for notes by name or content')
+  .description('Search for notes by name or content (compatibility command; use list)')
   .argument('[query]', 'Search pattern (name/path for default mode, content pattern for --body)')
   .argument('[mode]', 'App mode for --open: system, editor, visual, obsidian, print')
   // Output format (new unified flag)
@@ -161,13 +172,17 @@ export const searchCommand = new Command('search')
   .option('--no-context', 'Do not show context lines')
   .option('-S, --case-sensitive', 'Case-sensitive search (default: case-insensitive)')
   .option('-E, --regex', 'Treat pattern as regex (default: literal)')
-  .option('-l, --limit <count>', 'Maximum files to return (default: 100)')
+  .option('-l, --limit <count>', 'Maximum displayed files (never narrows name-mode selection)')
   // Fuzzy search options
   .option('--fuzzy', 'Fuzzy name/alias search: ranked approximate matches with scores')
   .option('--threshold <score>', 'Minimum similarity 0-1 for --fuzzy (default: 0.5)')
   .addHelpText('after', `
 Name Search (default):
   Searches by note name, basename, or path.
+
+  -l, --limit <n>      Limit displayed candidates. Resolution and --open use
+                       the complete candidate set, so a limit never resolves
+                       an ambiguous name or alias arbitrarily.
 
   -p, --path <pat>     Scope resolution to a path glob (e.g. "Projects/**").
                        Applies in name, --fuzzy, and --body modes. If both
@@ -261,7 +276,37 @@ Examples:
   # Piping
   bwrb search "bug" -t --output paths | xargs -I {} code {}`)
   .allowExcessArguments(false)
-  .action(async (query: string | undefined, mode: string | undefined, options: SearchOptions, cmd: Command) => {
+  .action(async (
+    query: string | undefined,
+    mode: string | undefined,
+    options: SearchOptions,
+    cmd: Command
+  ) => {
+    const replacement = options.edit
+      ? 'bwrb edit <target> --json <patch>'
+      : options.fuzzy
+        ? `bwrb list --fuzzy <query>${options.open ? ' --open' : ''}`
+        : options.body || options.text
+          ? `bwrb list --body <query> --matches${options.open ? ' --open' : ''}`
+          : `bwrb list --name <query>${options.open ? ' --open' : ''}`;
+    warnDeprecatedCommand('search', replacement);
+    await runSearchCommand(query, mode, options, cmd);
+  });
+
+/**
+ * Run the shared name, fuzzy, or content-search flow.
+ *
+ * `bwrb list` is the canonical command surface. The hidden `search`
+ * compatibility command and `list` both call this function so the mature
+ * resolution, picker, output, and edit-through-search contracts stay in one
+ * place.
+ */
+export async function runSearchCommand(
+  query: string | undefined,
+  mode: string | undefined,
+  options: SearchOptions,
+  cmd: Command
+): Promise<void> {
     // Resolve output format from deprecated flags and new --output option
     const outputFormat = resolveSearchOutputFormat(options);
     const jsonMode = outputFormat === 'json';
@@ -378,7 +423,7 @@ Examples:
       printError(message);
       process.exit(1);
     }
-  });
+}
 
 // ============================================================================
 // Content Search Handler
@@ -588,7 +633,11 @@ async function handleContentSearch(
       return;
     }
 
-    // Output all results
+    // Output all results. Match detail belongs to text and JSON; the
+    // pipe-friendly formats operate once per matching note, and content emits
+    // each matching note in full. ContentMatch already has one row per file,
+    // but de-duplicate defensively so the format contract remains stable if the
+    // search backend ever changes its grouping.
     if (jsonMode) {
       const jsonOutput = formatResultsJson({
         ...searchResult,
@@ -597,6 +646,20 @@ async function handleContentSearch(
       });
       // Content search has a custom JSON shape, output directly
       console.log(JSON.stringify(jsonOutput, null, 2));
+    } else if (outputFormat === 'paths') {
+      for (const result of dedupeContentResults(filteredResults)) {
+        console.log(result.file.relativePath);
+      }
+    } else if (outputFormat === 'link') {
+      const index = await buildNoteIndex(schema, vaultDir);
+      for (const result of dedupeContentResults(filteredResults)) {
+        console.log(generateWikilink(index, result.file));
+      }
+    } else if (outputFormat === 'content') {
+      const index = await buildNoteIndex(schema, vaultDir);
+      for (const result of dedupeContentResults(filteredResults)) {
+        await outputTextResult(index, result.file, 'content');
+      }
     } else {
       const showContext = !options.noContext && contextLines > 0;
       const textOutput = formatResultsText(filteredResults, showContext);
@@ -605,6 +668,15 @@ async function handleContentSearch(
       }
     }
   }
+}
+
+function dedupeContentResults(results: ContentMatch[]): ContentMatch[] {
+  const seen = new Set<string>();
+  return results.filter((result) => {
+    if (seen.has(result.file.path)) return false;
+    seen.add(result.file.path);
+    return true;
+  });
 }
 
 /**
@@ -655,6 +727,45 @@ async function filterByFrontmatter(
 // ============================================================================
 // Fuzzy Search Handler
 // ============================================================================
+
+async function buildScopedSearchIndex(
+  schema: import('../types/schema.js').LoadedSchema,
+  vaultDir: string,
+  options: Pick<SearchOptions, 'type' | 'path' | 'where'>
+): Promise<NoteIndex> {
+  const index = await buildNoteIndex(schema, vaultDir, options.path);
+  if (!options.type && !options.where?.length) return index;
+
+  if (options.type && !getTypeDefByPath(schema, options.type)) {
+    throw new Error(formatUnknownTypeError(schema, options.type));
+  }
+
+  const targeting: TargetingOptions = {};
+  if (options.type) targeting.type = options.type;
+  if (options.path) targeting.path = options.path;
+  if (options.where?.length) targeting.where = options.where;
+  const targetResult = await resolveTargets(targeting, schema, vaultDir);
+  if (targetResult.error) throw new Error(targetResult.error);
+
+  const allowedPaths = new Set(targetResult.files.map(file => file.path));
+  const keep = (file: ManagedFile): boolean => allowedPaths.has(file.path);
+  const filterMap = (source: Map<string, ManagedFile[]>): Map<string, ManagedFile[]> => {
+    const filtered = new Map<string, ManagedFile[]>();
+    for (const [key, files] of source) {
+      const matches = files.filter(keep);
+      if (matches.length > 0) filtered.set(key, matches);
+    }
+    return filtered;
+  };
+
+  return {
+    byPath: new Map([...index.byPath].filter(([, file]) => keep(file))),
+    byBasename: filterMap(index.byBasename),
+    byAlias: filterMap(index.byAlias),
+    allFiles: index.allFiles.filter(keep),
+    ...(index.fullByBasename ? { fullByBasename: index.fullByBasename } : {}),
+  };
+}
 
 /**
  * Strictly parse a finite decimal number from a raw flag string.
@@ -739,8 +850,9 @@ async function handleFuzzySearch(
     process.exit(1);
   }
 
-  // Scope to --path when provided, consistent with name and content search (#705).
-  const index = await buildNoteIndex(schema, vaultDir, options.path);
+  // Scope resolution before ranking. `--path`, `--type`, and `--where` compose
+  // without rebuilding the mature fuzzy scorer or losing alias metadata.
+  const index = await buildScopedSearchIndex(schema, vaultDir, options);
   const matches = await fuzzySearch(index, query, schema, vaultDir, { threshold, limit });
 
   // --open / --edit: act on the matched note(s), reusing the exact open/edit +
@@ -910,6 +1022,18 @@ async function handleNameSearch(
   outputFormat: SearchOutputFormat
 ): Promise<void> {
   const pickerMode = parsePickerMode(options.picker);
+  const limit = options.limit !== undefined
+    ? parseStrictInteger(options.limit)
+    : undefined;
+  if (limit === null || (limit !== undefined && limit < 1)) {
+    const error = `Invalid --limit "${options.limit}": must be a positive integer`;
+    if (jsonMode) {
+      printJson(jsonError(error));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    printError(error);
+    process.exit(1);
+  }
 
   // JSON mode implies non-interactive (but returns all matches instead of error)
   const effectivePickerMode: PickerMode = jsonMode ? 'none' : pickerMode;
@@ -918,7 +1042,31 @@ async function handleNameSearch(
   // honored (not ignored) for consistency with content search: the same
   // filterByPath glob normalization narrows the candidate set before every
   // resolution step (path/basename/alias/fuzzy) runs against it (#705).
-  const index = await buildNoteIndex(schema, vaultDir, options.path);
+  const index = await buildScopedSearchIndex(schema, vaultDir, options);
+
+  // Resolve exact intent against the full vault before using the scoped index.
+  // Otherwise an exact path/name/alias removed by --type/--path/--where becomes
+  // unknown inside the scoped index and resolveAndPick can silently fall through
+  // to an unrelated fuzzy candidate. Filters are constraints, not permission to
+  // improvise a replacement note.
+  if (query && (options.type || options.path || options.where?.length)) {
+    const fullIndex = await buildNoteIndex(schema, vaultDir);
+    const fullExact = resolveExactNoteQuery(fullIndex, query);
+    const exactFiles = fullExact.exact
+      ? [fullExact.exact]
+      : fullExact.candidates;
+    if (exactFiles.length > 0) {
+      const scopedPaths = new Set(index.allFiles.map(file => file.path));
+      const exactSurvivors = exactFiles.filter(file => scopedPaths.has(file.path));
+      if (exactSurvivors.length === 0) {
+        exitWithResolutionError(
+          `No matching notes found: exact target does not match the requested filters: ${query}`,
+          undefined,
+          jsonMode
+        );
+      }
+    }
+  }
 
   // Resolve query to file(s)
   const result = await resolveAndPick(index, query, {
@@ -933,9 +1081,21 @@ async function handleNameSearch(
       process.exit(0);
     }
 
-    // In JSON mode with candidates, return all matches as success
-    if (jsonMode && result.candidates && result.candidates.length > 0) {
-      const data = await buildSearchResults(index, result.candidates, options.content ?? false);
+    // Actions must resolve against the complete candidate set. In particular,
+    // --limit 1 is only a display cap: it must never turn an ambiguous exact
+    // basename or alias into an arbitrary note to open or edit. Interactive
+    // pickers also receive the full set above, before any display limiting.
+    if (options.open || options.edit) {
+      exitWithResolutionError(result.error, result.candidates, jsonMode);
+    }
+
+    const displayedCandidates = limit === undefined
+      ? result.candidates
+      : result.candidates?.slice(0, limit);
+
+    // In JSON mode with candidates, return the requested display window.
+    if (jsonMode && displayedCandidates && displayedCandidates.length > 0) {
+      const data = await buildSearchResults(index, displayedCandidates, options.content ?? false);
       printJson(jsonSuccess({
         data,
       }));
@@ -946,10 +1106,10 @@ async function handleNameSearch(
     // candidates instead of erroring on ambiguity. This enables workflows
     // like `bwrb search Idea --output link` to return disambiguated
     // wikilinks for all matches. (fixes #544)
-    if (result.candidates && result.candidates.length > 0) {
+    if (displayedCandidates && displayedCandidates.length > 0) {
       const pipeFormats: SearchOutputFormat[] = ['link', 'paths', 'content'];
       if (pipeFormats.includes(outputFormat)) {
-        for (const candidate of result.candidates) {
+        for (const candidate of displayedCandidates) {
           await outputTextResult(index, candidate, outputFormat);
         }
         process.exit(0);

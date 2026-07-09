@@ -189,6 +189,11 @@ bwrb list event --where "when > 'AR 1000-01-01'" --output json
 bwrb list task --limit 5 --output json
 bwrb list task --count --output json
 
+# In name mode, limit caps output but never resolves ambiguity for actions
+bwrb list --name "Duplicate" --limit 1 --output paths --picker none
+# Use an exact relative path before opening from automation
+bwrb list --name "Projects/Duplicate.md" --open --app print --picker none
+
 # Target by stable id
 bwrb list --id "<uuid>" --output json
 
@@ -307,16 +312,16 @@ bwrb delete --type task --execute --force
 
 ```bash
 # Get wikilink (avoid interactive picker)
-bwrb search "Note Name" --wikilink --picker none
+bwrb list --name "Note Name" --output link --picker none
 
 # JSON output for scripting
-bwrb search "Note" --output json --picker none
+bwrb list --name "Note" --output json --picker none
 
 # Open and get path
-bwrb open "Note Name" --app print --picker none
+bwrb list --name "Note Name" --open --app print --picker none
 
 # Open and get path by stable id
-bwrb open --id "<uuid>" --app print --picker none
+bwrb list --id "<uuid>" --open --app print --picker none
 ```
 
 ### Validation
@@ -463,7 +468,7 @@ For automation, treat Commander negated flags as a contract:
 Examples in bwrb:
 
 - `bwrb new ... --no-template` => `options.template === false`
-- `bwrb search ... --no-context` => `options.context === false`
+- `bwrb list --body "..." --matches --no-context` => `options.context === false`
 - `bwrb schema migrate ... --no-backup` => `options.backup === false`
 
 ## Filter Expression Syntax
@@ -502,7 +507,7 @@ bwrb bulk --all --set status=processed --execute --yes
 echo "y" | bwrb bulk --all --set status=processed --execute
 
 # Generate a wikilink for insertion
-bwrb search "Target Note" --wikilink --picker none  # Output: [[Target Note]]
+bwrb list --name "Target Note" --output link --picker none  # Output: [[Target Note]]
 ```
 
 ## Error Handling

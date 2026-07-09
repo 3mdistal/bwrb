@@ -1,9 +1,11 @@
 ---
 title: bwrb list
-description: Query and filter notes by type and fields
+description: Find, filter, inspect, and open notes
 ---
 
-List notes matching filter criteria with flexible output formats.
+`list` is Bowerbird's canonical read-only note surface. It can resolve a note
+by name, path, alias, or stable ID; rank fuzzy candidates; search body matches;
+compose vault filters; print links, paths, content, or JSON; and open a result.
 
 ## Synopsis
 
@@ -15,7 +17,7 @@ The first positional argument is auto-detected as type, path (contains `/`), or 
 
 The optional second positional `[mode]` is the app mode used with `--open`
 (`system`, `editor`, `visual`, `obsidian`, `print`) — parity with
-[`bwrb open`](/reference/commands/open/). Because `[mode]` is the **second**
+the compatibility [`bwrb open`](/reference/commands/open/). Because `[mode]` is the **second**
 positional, a lone positional is always treated as the smart filter, never the
 mode: use `bwrb list task print --open`, not `bwrb list print --open` (which
 would treat `print` as a type filter). To set the mode without a filter
@@ -34,16 +36,24 @@ rejected.
 | `-p, --path <glob>` | Filter by file path glob (e.g., `Projects/**`, `Ideas/`) |
 | `-w, --where <expr>` | Filter with expression (repeatable, ANDed together) |
 | `-b, --body <query>` | Filter by body content search |
+| `--name <query>` | Resolve by note name, path, or declared alias |
+| `--fuzzy <query>` | Rank approximate name and alias matches |
+| `--matches` | Show detailed body matches instead of filtering note rows |
+| `--threshold <0-1>` | Minimum fuzzy similarity (default: `0.5`) |
+| `-C, --context <lines>` | Context lines for `--matches` (default: `2`) |
+| `--no-context` | Hide context around detailed body matches |
+| `-S, --case-sensitive` | Case-sensitive detailed body matching |
+| `-E, --regex` | Treat the detailed body query as a regex |
 
 ### Output
 
 | Option | Description |
 |--------|-------------|
-| `--output <format>` | Output format: `text`, `paths`, `tree`, `link`, `json` |
+| `--output <format>` | Output format: `text`, `paths`, `tree`, `link`, `content`, `json` |
 | `--fields <fields>` | Show fields in a table (comma-separated). Accepts frontmatter fields plus the file stats `file.mtime`, `file.ctime`, `file.size` |
 | `--sort <field>` | Sort by a frontmatter field, `name`, `_name`, `_path`, or a file stat (`file.mtime`, `file.ctime`, `file.size`) |
 | `--desc` | Sort descending (requires `--sort`) |
-| `--limit <n>` | Show only the first `n` matching notes |
+| `--limit <n>` | Limit displayed results; never narrows name-mode selection |
 | `--count` | Print only the number of matching notes |
 | `-L, --depth <n>` | Limit tree depth |
 
@@ -53,6 +63,8 @@ rejected.
 |--------|-------------|
 | `-o, --open` | Open the first result (or pick interactively) |
 | `--app <mode>` | How to open: `system`, `editor`, `visual`, `obsidian`, `print` |
+| `--picker <mode>` | Selection mode: `auto`, `fzf`, `numbered`, `none` |
+| `--preview` | Show a preview in the fzf picker |
 | `--save-as <name>` | Save this query as a dashboard |
 | `--force` | Overwrite existing dashboard when using `--save-as` |
 
@@ -64,7 +76,53 @@ rejected.
 | `paths` | Vault-relative file paths |
 | `tree` | Hierarchical tree view |
 | `link` | Wikilinks (`[[Note Name]]`) |
+| `content` | Complete Markdown file contents |
 | `json` | Full JSON data |
+
+Name, fuzzy, and detailed-match modes use the established search JSON shapes.
+Fuzzy JSON includes similarity scores and the field that matched; detailed body
+JSON includes line matches and context. Normal filtered-list JSON remains the
+array of note frontmatter objects used by existing scripts.
+
+With `--matches`, text output shows grep-style line details and JSON preserves
+structured match details. `paths` and `link` emit each matching note once, while
+`content` emits each complete matching Markdown file. Output formats do not
+quietly collapse into text merely because match detail is available.
+
+## Resolution and Search Modes
+
+The explicit modes keep smart positional filters unambiguous:
+
+```bash
+# Resolve a single entity by name, path, or alias
+bwrb list --name "My Note" --picker none
+bwrb list --name "Ideas/My Note.md" --output link --picker none
+
+# Ranked approximate matches, including aliases
+bwrb list --fuzzy "Stephen Yeg" --threshold 0.7 --output json
+
+# Filter note rows by a literal, case-insensitive body query
+bwrb list --body "TODO" --path "Projects/**"
+
+# Inspect exact body matches with grep-style context and regex controls
+bwrb list --body "TODO|FIXME" --matches --regex --context 0
+```
+
+`--type`, `--path`, and `--where` further scope all three search modes. `--limit`
+also applies: it caps displayed candidates in name mode, ranked candidates in
+fuzzy mode, and matching files in detailed body-match mode. Table, hierarchy,
+sort, count, and dashboard options belong to the normal filtered-list mode and
+are rejected with the search modes rather than being silently ignored.
+
+Name-mode limiting happens only after resolution. An interactive picker still
+shows every matching candidate, and `--picker none` still reports ambiguity
+against the complete set. Consequently, `--name "Duplicate" --limit 1 --open`
+cannot silently open one of two notes named `Duplicate`; select one
+interactively or pass its exact relative path.
+
+If `--name` exactly identifies a path, basename, or declared alias that the
+composed filters exclude, the command reports no match. It never substitutes a
+fuzzy neighbour for an exact target.
 
 ## Examples
 
@@ -209,6 +267,8 @@ Missing sort values are always placed at the end, including with `--desc`.
 bwrb list --type task --open                    # Pick from tasks and open
 bwrb list --type task --where "status=inbox" --open
 bwrb list task print --open                      # Positional filter + app mode
+bwrb list --name "My Note" --open --app editor --picker none
+bwrb list --id "<uuid>" --open --app print --picker none
 ```
 
 ### Save as Dashboard
@@ -231,4 +291,5 @@ bwrb list --type task --where '!isEmpty(deadline)'
 - [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — When to use `--force`
 - [Targeting Model](/reference/targeting/) — Full selector reference
 - [bwrb dashboard](/reference/commands/dashboard/) — Run saved queries
-- [bwrb search](/reference/commands/search/) — Interactive search with picker
+- [`search` compatibility command](/reference/commands/search/) — Legacy invocation mappings
+- [`open` compatibility command](/reference/commands/open/) — Legacy invocation mappings
