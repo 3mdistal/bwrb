@@ -158,6 +158,19 @@ Some fields are written by bwrb regardless of schema:
 - `name`: written by `bwrb new` as the note title; `bwrb audit` does not treat it as an unknown field even if the schema does not declare it.
 - `forked-from`: reserved immediate-source UUID for document lineage. It is not a wikilink. Agents may encounter hand-authored values, but must not set or modify it through ordinary `new --json`, `edit`, or template input.
 
+Create a document fork when preserving an earlier draft matters:
+
+```bash
+bwrb new --fork "Briefs/Launch Brief" --label concise --output json
+bwrb new --fork 8f48f6a8-55c1-4ea7-9f4b-96735ed24af3 --name "Launch Brief v2" --output json
+```
+
+Fork targets are exact path, name, alias, or stable UUID matches. For agents,
+always provide `--name` or `--label` and use `--output json`; the result contains
+`path`, the child's fresh `id`, `forked_from`, and `warnings`. Do not combine
+fork mode with a type, template, `--json`, instance, or ownership-selection
+flag. The child is a normal note beside its source, not a hidden snapshot.
+
 ## Core Commands for Agents
 
 ### Querying Notes

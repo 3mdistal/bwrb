@@ -98,6 +98,9 @@ describe('new command', () => {
       expect(result.stdout).toContain('--template');
       expect(result.stdout).toContain('--type');
       expect(result.stdout).toContain('--no-template');
+      expect(result.stdout).toContain('--fork <target>');
+      expect(result.stdout).toContain('--label <label>');
+      expect(result.stdout).toContain('--name <name>');
     });
   });
 

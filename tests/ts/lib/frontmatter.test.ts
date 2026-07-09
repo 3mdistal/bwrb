@@ -6,6 +6,7 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
   buildNoteContent,
+  insertFrontmatterScalarPreservingBytes,
   writeNote,
   writeNoteExclusive,
   generateBodySections,
@@ -98,6 +99,27 @@ Body content`;
       expect(content).toContain('---');
       expect(content).toContain('type: idea');
       expect(content).toContain('Body content');
+    });
+  });
+
+  describe('insertFrontmatterScalarPreservingBytes', () => {
+    it('inserts after type while preserving every other byte, including CRLF and YAML syntax', () => {
+      const original = '\uFEFF---\r\n# note header\r\ntype: "idea" # quoted on purpose\r\n# belongs to status\r\nstatus: &raw raw\r\nstatus-copy: *raw\r\ndescription: |-\r\n  first line\r\n  second line\r\n---\r\nBody with  ---  and punctuation.\r\n';
+      const id = '11111111-1111-4111-8111-111111111111';
+
+      const inserted = insertFrontmatterScalarPreservingBytes(original, 'id', id);
+
+      expect(inserted).toContain(`type: "idea" # quoted on purpose\r\nid: ${id}\r\n# belongs to status`);
+      expect(inserted.replace(`id: ${id}\r\n`, '')).toBe(original);
+    });
+
+    it('refuses malformed, non-mapping, and already-present fields', () => {
+      expect(() => insertFrontmatterScalarPreservingBytes('---\nid: old\n---\n', 'id', 'new'))
+        .toThrow("already contains 'id'");
+      expect(() => insertFrontmatterScalarPreservingBytes('---\n[one, two]\n---\n', 'id', 'new'))
+        .toThrow('valid top-level mapping frontmatter');
+      expect(() => insertFrontmatterScalarPreservingBytes('---\ntype: [\n---\n', 'id', 'new'))
+        .toThrow('valid top-level mapping frontmatter');
     });
   });
 
