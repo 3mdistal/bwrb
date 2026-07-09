@@ -264,6 +264,7 @@ describe("completion", () => {
 
       expect(completions).toContain("--type");
       expect(completions).toContain("--path");
+      expect(completions).toContain("--lineage");
     });
 
     it("returns empty array when vault not found", async () => {

@@ -284,6 +284,16 @@ Notes created via `bwrb new` always include a system-managed frontmatter `id` (U
 immediate source note UUID and leave it unchanged. `bwrb audit --output json`
 reports malformed, dangling, duplicate-ID, and cyclic lineage metadata.
 
+To inspect that history, prefer
+`bwrb list --lineage <target> --output json` over walking `forked-from`
+manually. It resolves the target exactly and returns the complete component—all
+ancestors, descendants, and collateral sibling/cousin branches—with structured
+warnings for malformed edges. Every member returns the same physical tree.
+JSON `depth` is the node's rendered-tree generation minus the target's
+generation, and `relationship` is `ancestor`, `target`, `descendant`, or
+`related`; related cousins can therefore have negative, zero, or positive
+depth.
+
 ### Editing Notes
 
 ```bash

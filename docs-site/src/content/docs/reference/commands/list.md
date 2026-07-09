@@ -44,6 +44,7 @@ rejected.
 | `--no-context` | Hide context around detailed body matches |
 | `-S, --case-sensitive` | Case-sensitive detailed body matching |
 | `-E, --regex` | Treat the detailed body query as a regex |
+| `--lineage <target>` | Render the complete fork lineage for one exact path, name, alias, or stable UUID target |
 
 ### Output
 
@@ -123,6 +124,94 @@ interactively or pass its exact relative path.
 If `--name` exactly identifies a path, basename, or declared alias that the
 composed filters exclude, the command reports no match. It never substitutes a
 fuzzy neighbour for an exact target.
+
+## Fork Lineage
+
+`bwrb list --lineage <target>` follows the immutable `forked-from` UUID edges
+for one document and returns its complete connected lineage component. That
+means every ancestor and descendant plus collateral branches: siblings,
+cousins, and their descendants. Querying any member returns the same physical
+family tree; only the target marker and target-relative JSON metadata change.
+The target uses the same exact resolution surfaces as `new --fork`: an
+absolute or vault-relative managed path (with or without `.md`), basename,
+frontmatter name, declared alias, or case-insensitive stable UUID. It never
+falls back to fuzzy matching.
+
+With no `--output`, lineage mode renders a structural tree. Explicit
+`--output tree` does the same, and marks the selected note with `(target)`:
+
+```text
+Briefs/Launch Brief.md
+└── Briefs/Launch Brief v2.md (target)
+    └── Briefs/Launch Brief v3.md
+```
+
+The other canonical outputs are `paths`, `link`, `content`, and `json`. JSON is
+stable and machine-readable:
+
+```json
+{
+  "target": { "path": "Briefs/Launch Brief v2.md", "id": "..." },
+  "nodes": [
+    {
+      "path": "Briefs/Launch Brief.md",
+      "id": "...",
+      "forked_from": null,
+      "depth": -1,
+      "relationship": "ancestor"
+    },
+    {
+      "path": "Briefs/Launch Brief v2.md",
+      "id": "...",
+      "forked_from": "...",
+      "depth": 0,
+      "relationship": "target"
+    },
+    {
+      "path": "Briefs/Alternate Launch Brief v2.md",
+      "id": "...",
+      "forked_from": "...",
+      "depth": 0,
+      "relationship": "related"
+    }
+  ],
+  "warnings": []
+}
+```
+
+`depth` is a signed generation offset: the node's generation in the rendered
+physical tree minus the target's generation. Thus an ancestor is usually
+negative and a descendant positive, while a same-generation sibling is
+`related` at depth `0`; cousins can have negative, zero, or positive depth.
+`relationship` is `ancestor` for the target's authored parent chain, `target`
+for the selected note, `descendant` for notes reachable downward from it, and
+`related` for every other member of the same component. On a malformed cycle,
+the authored ancestor classification takes precedence and one deterministic
+cycle edge is broken only for rendering and generation calculation. Paths are
+vault-relative, authored UUID casing is preserved, and each physical note
+appears at most once.
+
+Malformed graphs remain inspectable without inventing history. Cycles,
+dangling parents, invalid `forked-from` values, and child notes without a valid
+ID produce structured `fork-cycle`, `dangling-forked-from`,
+`invalid-forked-from`, or `missing-lineage-id` warnings. Text outputs write
+warnings to stderr; JSON includes them only in `warnings`. A child without a
+valid ID is included once as a terminal node. A target without a valid ID, or a
+duplicate ID affecting the reached lineage, is a hard validation error; the
+duplicate error lists every candidate path.
+
+Lineage promises a complete connected component, so it rejects positional filters and
+all query, search, hierarchy, truncation, sorting, field, dashboard, picker,
+preview, and open actions rather than silently narrowing the graph. Deprecated
+output aliases such as `--json`, `--paths`, and `--tree` are also rejected; use
+canonical `--output ...` forms.
+
+```bash
+bwrb list --lineage "Briefs/Launch Brief"              # tree
+bwrb list --lineage "Briefs/Launch Brief" --output paths
+bwrb list --lineage 8f48f6a8-55c1-4ea7-9f4b-96735ed24af3 --output link
+bwrb list --lineage "Launch Brief v2" --output json
+```
 
 ## Examples
 
