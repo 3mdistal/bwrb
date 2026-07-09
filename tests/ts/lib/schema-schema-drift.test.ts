@@ -230,6 +230,12 @@ describe('published JSON Schema is generated from Zod (no drift, #666)', () => {
     expect(alias.type).toBe('boolean');
   });
 
+  it('exposes field-level reset_on_fork as a boolean', () => {
+    const resetOnFork = metaSchema.definitions.frontmatterField.properties.reset_on_fork;
+    expect(resetOnFork).toBeDefined();
+    expect(resetOnFork.type).toBe('boolean');
+  });
+
   it('exposes select option objects with value + description', () => {
     const options = metaSchema.definitions.frontmatterField.properties.options;
     expect(options).toBeDefined();

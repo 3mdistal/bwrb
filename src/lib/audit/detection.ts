@@ -81,6 +81,7 @@ import {
 } from '../discovery.js';
 import { buildRelativeDateFieldMap, validateRelativeDateValue } from '../relative-date.js';
 import { parseCalendarDate } from '../calendar-date.js';
+import { collectLineageIssues } from './lineage.js';
 
 // Import ownership tracking
 import {
@@ -203,6 +204,7 @@ export async function runAudit(
 
   // Build parent map for cycle detection on recursive types
   const parentMap = await buildParentMap(schema, filteredFiles, noteIndex);
+  const lineageIssuesByPath = collectLineageIssues(noteIndex.snapshot);
 
   const wantUnlinkedMention =
     options.ignoreIssue !== 'unlinked-mention' &&
@@ -233,7 +235,10 @@ export async function runAudit(
   const results: FileAuditResult[] = [];
 
   for (const file of filteredFiles) {
-    const issues = await auditFile(schema, vaultDir, file, options, noteIndex, ownershipIndex, parentMap, entityMentionIndex);
+    const issues = [
+      ...(await auditFile(schema, vaultDir, file, options, noteIndex, ownershipIndex, parentMap, entityMentionIndex)),
+      ...(lineageIssuesByPath.get(file.relativePath) ?? []),
+    ];
 
     // Apply issue filters
     let filteredIssues = issues;

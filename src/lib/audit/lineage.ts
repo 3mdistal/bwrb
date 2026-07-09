@@ -1,0 +1,151 @@
+import type { VaultNoteSnapshot, VaultNoteSnapshotEntry } from '../discovery.js';
+import { isValidNoteId } from '../note-id.js';
+import type { AuditIssue } from './types.js';
+
+const FORKED_FROM_FIELD = 'forked-from';
+
+function addIssue(
+  issuesByPath: Map<string, AuditIssue[]>,
+  relativePath: string,
+  issue: AuditIssue
+): void {
+  const existing = issuesByPath.get(relativePath) ?? [];
+  existing.push(issue);
+  issuesByPath.set(relativePath, existing);
+}
+
+function getValidId(note: VaultNoteSnapshotEntry): string | undefined {
+  const value = note.frontmatter?.id;
+  return isValidNoteId(value) ? value : undefined;
+}
+
+function getValidParentId(note: VaultNoteSnapshotEntry): string | undefined {
+  const value = note.frontmatter?.[FORKED_FROM_FIELD];
+  return isValidNoteId(value) ? value : undefined;
+}
+
+/**
+ * Audit hand-authored document lineage metadata across a vault snapshot.
+ *
+ * Findings are flag-only. In particular, dangling provenance is retained: the
+ * source may be restored later, while clearing it would silently discard
+ * authorship history. Cycle traversal is bounded by per-walk visited maps.
+ */
+export function collectLineageIssues(
+  snapshot: VaultNoteSnapshot
+): Map<string, AuditIssue[]> {
+  const issuesByPath = new Map<string, AuditIssue[]>();
+  const notes = snapshot.notes.filter(
+    (note): note is VaultNoteSnapshotEntry & { frontmatter: Record<string, unknown> } =>
+      note.frontmatter !== undefined
+  );
+
+  const notesById = new Map<string, VaultNoteSnapshotEntry[]>();
+  for (const note of notes) {
+    const id = getValidId(note);
+    if (!id) continue;
+    const matches = notesById.get(id) ?? [];
+    matches.push(note);
+    notesById.set(id, matches);
+  }
+
+  for (const [id, matches] of notesById) {
+    if (matches.length < 2) continue;
+    const paths = matches.map((note) => note.relativePath).sort();
+    for (const note of matches) {
+      addIssue(issuesByPath, note.relativePath, {
+        severity: 'error',
+        code: 'duplicate-note-id',
+        message: `Duplicate note id '${id}' is also used by ${paths.filter((path) => path !== note.relativePath).join(', ')}`,
+        field: 'id',
+        value: id,
+        autoFixable: false,
+        meta: { paths },
+      });
+    }
+  }
+
+  for (const note of notes) {
+    if (!(FORKED_FROM_FIELD in note.frontmatter)) continue;
+
+    const parentValue = note.frontmatter[FORKED_FROM_FIELD];
+    if (!isValidNoteId(parentValue)) {
+      addIssue(issuesByPath, note.relativePath, {
+        severity: 'error',
+        code: 'invalid-forked-from',
+        message: `'${FORKED_FROM_FIELD}' must be a UUID string referencing the immediate source note`,
+        field: FORKED_FROM_FIELD,
+        value: parentValue,
+        autoFixable: false,
+      });
+    }
+
+    if (!getValidId(note)) {
+      addIssue(issuesByPath, note.relativePath, {
+        severity: 'error',
+        code: 'missing-lineage-id',
+        message: `A note with '${FORKED_FROM_FIELD}' must also have a valid UUID 'id'`,
+        field: 'id',
+        autoFixable: false,
+      });
+    }
+
+    if (isValidNoteId(parentValue) && !notesById.has(parentValue)) {
+      addIssue(issuesByPath, note.relativePath, {
+        severity: 'warning',
+        code: 'dangling-forked-from',
+        message: `'${FORKED_FROM_FIELD}' references missing note id '${parentValue}'`,
+        field: FORKED_FROM_FIELD,
+        value: parentValue,
+        autoFixable: false,
+      });
+    }
+  }
+
+  const uniqueNotesById = new Map<string, VaultNoteSnapshotEntry>();
+  for (const [id, matches] of notesById) {
+    if (matches.length === 1) uniqueNotesById.set(id, matches[0]!);
+  }
+
+  const reportedCycles = new Set<string>();
+  for (const startId of uniqueNotesById.keys()) {
+    const seenAt = new Map<string, number>();
+    const walk: string[] = [];
+    let currentId: string | undefined = startId;
+
+    while (currentId && uniqueNotesById.has(currentId)) {
+      const cycleStart = seenAt.get(currentId);
+      if (cycleStart !== undefined) {
+        const cycleIds = walk.slice(cycleStart);
+        const signature = [...cycleIds].sort().join('|');
+        if (!reportedCycles.has(signature)) {
+          reportedCycles.add(signature);
+          const cyclePaths = cycleIds.map(
+            (id) => uniqueNotesById.get(id)!.relativePath
+          );
+          const displayCycle = [...cyclePaths, cyclePaths[0]!];
+          for (const id of cycleIds) {
+            const note = uniqueNotesById.get(id)!;
+            addIssue(issuesByPath, note.relativePath, {
+              severity: 'error',
+              code: 'fork-cycle',
+              message: `Fork lineage cycle detected: ${displayCycle.join(' → ')}`,
+              field: FORKED_FROM_FIELD,
+              autoFixable: false,
+              cyclePath: displayCycle,
+            });
+          }
+        }
+        break;
+      }
+
+      seenAt.set(currentId, walk.length);
+      walk.push(currentId);
+      const currentNote = uniqueNotesById.get(currentId)!;
+      const parentId = getValidParentId(currentNote);
+      currentId = parentId && uniqueNotesById.has(parentId) ? parentId : undefined;
+    }
+  }
+
+  return issuesByPath;
+}

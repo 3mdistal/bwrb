@@ -102,6 +102,45 @@ describe('new command', () => {
   });
 
   describe('template flags (JSON mode)', () => {
+    it('rejects reserved fork provenance in JSON input', async () => {
+      const result = await runCLI(
+        [
+          'new',
+          'idea',
+          '--json',
+          '{"name":"Invalid provenance","forked-from":"11111111-1111-4111-8111-111111111111"}',
+          '--no-template',
+        ],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
+      expect(JSON.parse(result.stdout).error).toContain('forked-from');
+    });
+
+    it('rejects reserved fork provenance in template defaults', async () => {
+      await writeFile(
+        join(vaultDir, '.bwrb', 'templates', 'idea', 'reserved-lineage.md'),
+        `---\ntype: template\ntemplate-for: idea\ndefaults:\n  forked-from: 11111111-1111-4111-8111-111111111111\n---\n`,
+        'utf-8'
+      );
+
+      const result = await runCLI(
+        [
+          'new',
+          'idea',
+          '--json',
+          '{"name":"Invalid template provenance"}',
+          '--template',
+          'reserved-lineage',
+        ],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
+      expect(JSON.parse(result.stdout).error).toContain('forked-from');
+    });
+
     it('should error when --template specifies non-existent template', async () => {
       const result = await runCLI(
         ['new', 'idea', '--json', '{"name": "Test"}', '--template', 'nonexistent'],

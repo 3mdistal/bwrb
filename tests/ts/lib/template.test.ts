@@ -798,6 +798,24 @@ describe('createScaffoldedInstances', () => {
     schema = resolveSchema(testSchemaRaw);
   });
 
+  it('refuses reserved lineage metadata in instance defaults', async () => {
+    const result = await createScaffoldedInstances(
+      schema,
+      tempDir,
+      'draft',
+      join(tempDir, 'Drafts', 'Parent'),
+      [{
+        type: 'research',
+        filename: 'Reserved.md',
+        defaults: { 'forked-from': '11111111-1111-4111-8111-111111111111' },
+      }],
+      { Name: 'Parent' }
+    );
+
+    expect(result.created).toEqual([]);
+    expect(result.errors[0]?.message).toContain("Reserved field 'forked-from'");
+  });
+
   afterEach(async () => {
     await rm(tempDir, { recursive: true, force: true });
   });

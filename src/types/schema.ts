@@ -191,6 +191,12 @@ export const FieldSchema = z.object({
     .describe(
       'Field role: marks this field as holding the entity\'s aliases (alternate names). bwrb consults aliases during name resolution and linking, so an entity is findable by its aliases wherever it is findable by its name. The value must be an array of non-empty, unique strings (Obsidian `aliases` format).'
     ),
+  reset_on_fork: z
+    .boolean()
+    .optional()
+    .describe(
+      'When true, omit this field when copying a note into a fork so schema defaults can be applied to the new note.'
+    ),
 });
 
 // Body section definition

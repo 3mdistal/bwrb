@@ -521,6 +521,33 @@ context: "[[contexts/The Molting]]"
       expect(json.error).toContain('id');
     });
 
+    it('should reject attempts to modify forked-from provenance', async () => {
+      const filePath = join(vaultDir, 'Ideas/Immutable Lineage.md');
+      await writeFile(
+        filePath,
+        `---\ntype: idea\nid: 8f3c8d3c-7bf2-49a0-b96c-1e2bf4d6f5bb\nforked-from: 22222222-2222-4222-8222-222222222222\nstatus: raw\npriority: medium\n---\n`,
+        'utf-8'
+      );
+
+      const result = await runCLI(
+        [
+          'edit',
+          'Ideas/Immutable Lineage.md',
+          '--json',
+          '{"forked-from":"11111111-1111-4111-8111-111111111111"}',
+        ],
+        vaultDir
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain('forked-from');
+      expect(await readFile(filePath, 'utf-8')).toContain(
+        'forked-from: 22222222-2222-4222-8222-222222222222'
+      );
+    });
+
     it('exits promptly for a no-op JSON edit selected by --id with stdin left open (#793)', async () => {
       const id = 'ef282c38-5ab1-48a7-bdfc-5eb2cc09a6b7';
       await writeFile(

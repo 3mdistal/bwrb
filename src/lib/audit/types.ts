@@ -38,6 +38,11 @@ export type IssueCode =
   // NEVER auto-fixable (so `--fix --auto` never moves it under a guessed owner).
   | 'owned-ambiguous-owner'
   | 'parent-cycle'
+  | 'fork-cycle'
+  | 'invalid-forked-from'
+  | 'missing-lineage-id'
+  | 'dangling-forked-from'
+  | 'duplicate-note-id'
   | 'self-reference'
   | 'ambiguous-link-target'
   | 'invalid-list-element'

@@ -8,6 +8,8 @@ These fields are written by bwrb and are always allowed in frontmatter:
 
 - `id`
 - `name`
+- `forked-from` (immediate source note UUID; hand-authored until a native fork
+  workflow ships)
 
 Audit/validation behavior:
 
@@ -19,6 +21,11 @@ Audit/validation behavior:
 These fields are system-managed and must not be mutated by automated fixes:
 
 - `id`
+- `forked-from`
+
+Reserved fields cannot be supplied through ordinary JSON creation, JSON or
+interactive edit, or template defaults/prompt fields. Audit fixes also leave
+them untouched.
 
 ## Policy
 

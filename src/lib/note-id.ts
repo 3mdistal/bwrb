@@ -7,6 +7,11 @@ const ID_REGISTRY_RELATIVE_PATH = '.bwrb/ids.jsonl';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_ID_GENERATION_ATTEMPTS = 1000;
 
+/** Return whether a value is a UUID-shaped stable note ID. */
+export function isValidNoteId(value: unknown): value is string {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
 function getIdRegistryPath(vaultDir: string): string {
   return join(vaultDir, ID_REGISTRY_RELATIVE_PATH);
 }
@@ -39,7 +44,7 @@ async function readIssuedIds(vaultDir: string): Promise<Set<string>> {
       // fall through
     }
 
-    if (UUID_RE.test(trimmed)) {
+    if (isValidNoteId(trimmed)) {
       ids.add(trimmed);
     }
   }

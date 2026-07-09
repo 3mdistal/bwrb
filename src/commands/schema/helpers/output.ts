@@ -193,6 +193,7 @@ function formatFieldForJson(field: Field): Record<string, unknown> {
   if (field.list_format) result.list_format = field.list_format;
   if (field.granularity) result.granularity = field.granularity;
   if (field.calendar) result.calendar = field.calendar;
+  if (field.reset_on_fork) result.reset_on_fork = true;
 
   return result;
 }
@@ -455,6 +456,10 @@ function printFieldDetails(
 
   if (field.granularity) {
     details.push(`granularity=${field.granularity}`);
+  }
+
+  if (field.reset_on_fork) {
+    details.push('reset-on-fork');
   }
 
   const calendarSuffix = field.prompt === 'date' && field.calendar

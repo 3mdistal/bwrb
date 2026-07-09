@@ -114,6 +114,11 @@ Issue Types:
   owned-ambiguous-owner Note's name is declared as owned by 2+ owners; reported as a
                         conflict for manual resolution (never auto-restored)
   parent-cycle          Cycle detected in parent references
+  fork-cycle            Cycle detected in forked-from provenance
+  invalid-forked-from   forked-from is not a UUID string
+  missing-lineage-id    Note with forked-from lacks a valid note id
+  dangling-forked-from  forked-from references a missing note id (warning)
+  duplicate-note-id     Stable note id is used by multiple notes
   self-reference        Relation field references the same note
   ambiguous-link-target Relation target matches multiple files
   invalid-list-element  List field contains non-string values
