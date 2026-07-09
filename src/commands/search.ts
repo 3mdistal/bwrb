@@ -19,6 +19,7 @@ import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
 import {
   buildNoteIndex,
   generateWikilink,
+  resolveExactNoteQuery,
   type ManagedFile,
   type NoteIndex,
 } from '../lib/navigation.js';
@@ -604,7 +605,11 @@ async function handleContentSearch(
       return;
     }
 
-    // Output all results
+    // Output all results. Match detail belongs to text and JSON; the
+    // pipe-friendly formats operate once per matching note, and content emits
+    // each matching note in full. ContentMatch already has one row per file,
+    // but de-duplicate defensively so the format contract remains stable if the
+    // search backend ever changes its grouping.
     if (jsonMode) {
       const jsonOutput = formatResultsJson({
         ...searchResult,
@@ -613,6 +618,20 @@ async function handleContentSearch(
       });
       // Content search has a custom JSON shape, output directly
       console.log(JSON.stringify(jsonOutput, null, 2));
+    } else if (outputFormat === 'paths') {
+      for (const result of dedupeContentResults(filteredResults)) {
+        console.log(result.file.relativePath);
+      }
+    } else if (outputFormat === 'link') {
+      const index = await buildNoteIndex(schema, vaultDir);
+      for (const result of dedupeContentResults(filteredResults)) {
+        console.log(generateWikilink(index, result.file));
+      }
+    } else if (outputFormat === 'content') {
+      const index = await buildNoteIndex(schema, vaultDir);
+      for (const result of dedupeContentResults(filteredResults)) {
+        await outputTextResult(index, result.file, 'content');
+      }
     } else {
       const showContext = !options.noContext && contextLines > 0;
       const textOutput = formatResultsText(filteredResults, showContext);
@@ -621,6 +640,15 @@ async function handleContentSearch(
       }
     }
   }
+}
+
+function dedupeContentResults(results: ContentMatch[]): ContentMatch[] {
+  const seen = new Set<string>();
+  return results.filter((result) => {
+    if (seen.has(result.file.path)) return false;
+    seen.add(result.file.path);
+    return true;
+  });
 }
 
 /**
@@ -975,6 +1003,30 @@ async function handleNameSearch(
   // filterByPath glob normalization narrows the candidate set before every
   // resolution step (path/basename/alias/fuzzy) runs against it (#705).
   const index = await buildScopedSearchIndex(schema, vaultDir, options);
+
+  // Resolve exact intent against the full vault before using the scoped index.
+  // Otherwise an exact path/name/alias removed by --type/--path/--where becomes
+  // unknown inside the scoped index and resolveAndPick can silently fall through
+  // to an unrelated fuzzy candidate. Filters are constraints, not permission to
+  // improvise a replacement note.
+  if (query && (options.type || options.path || options.where?.length)) {
+    const fullIndex = await buildNoteIndex(schema, vaultDir);
+    const fullExact = resolveExactNoteQuery(fullIndex, query);
+    const exactFiles = fullExact.exact
+      ? [fullExact.exact]
+      : fullExact.candidates;
+    if (exactFiles.length > 0) {
+      const scopedPaths = new Set(index.allFiles.map(file => file.path));
+      const exactSurvivors = exactFiles.filter(file => scopedPaths.has(file.path));
+      if (exactSurvivors.length === 0) {
+        exitWithResolutionError(
+          `No matching notes found: exact target does not match the requested filters: ${query}`,
+          undefined,
+          jsonMode
+        );
+      }
+    }
+  }
 
   // Resolve query to file(s)
   const result = await resolveAndPick(index, query, {

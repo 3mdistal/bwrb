@@ -84,6 +84,11 @@ Fuzzy JSON includes similarity scores and the field that matched; detailed body
 JSON includes line matches and context. Normal filtered-list JSON remains the
 array of note frontmatter objects used by existing scripts.
 
+With `--matches`, text output shows grep-style line details and JSON preserves
+structured match details. `paths` and `link` emit each matching note once, while
+`content` emits each complete matching Markdown file. Output formats do not
+quietly collapse into text merely because match detail is available.
+
 ## Resolution and Search Modes
 
 The explicit modes keep smart positional filters unambiguous:
@@ -107,6 +112,10 @@ bwrb list --body "TODO|FIXME" --matches --regex --context 0
 also applies. Table, hierarchy, sort, count, and dashboard options belong to the
 normal filtered-list mode and are rejected with the search modes rather than
 being silently ignored.
+
+If `--name` exactly identifies a path, basename, or declared alias that the
+composed filters exclude, the command reports no match. It never substitutes a
+fuzzy neighbour for an exact target.
 
 ## Examples
 

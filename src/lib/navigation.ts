@@ -192,7 +192,15 @@ function dedupeFiles(files: ManagedFile[]): ManagedFile[] {
   return result;
 }
 
-export function resolveNoteQuery(index: NoteIndex, query: string): ResolutionResult {
+/**
+ * Resolve only exact path, basename, and alias matches.
+ *
+ * Keeping this exact tier separate lets callers preserve explicit target
+ * intent while composing filters: if an exact note exists in the full vault
+ * but is excluded by a scope, callers can report no match instead of quietly
+ * substituting a fuzzy neighbour from the filtered index.
+ */
+export function resolveExactNoteQuery(index: NoteIndex, query: string): ResolutionResult {
   const cleanQuery = query.replace(/\.md$/, '');
   const cleanQueryWithExt = cleanQuery + '.md';
   
@@ -243,6 +251,17 @@ export function resolveNoteQuery(index: NoteIndex, query: string): ResolutionRes
     }
     return { exact: null, candidates: aliasMatches, isAmbiguous: true };
   }
+
+  return { exact: null, candidates: [], isAmbiguous: false };
+}
+
+export function resolveNoteQuery(index: NoteIndex, query: string): ResolutionResult {
+  const exactResolution = resolveExactNoteQuery(index, query);
+  if (exactResolution.exact || exactResolution.candidates.length > 0) {
+    return exactResolution;
+  }
+
+  const cleanQuery = query.replace(/\.md$/, '');
 
   // 5. Fuzzy / Partial match
   const allBasenames = new Set(index.byBasename.keys());

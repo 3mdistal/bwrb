@@ -64,6 +64,23 @@ describe('list as the canonical query/search/open surface', () => {
     expect(json.data.every(result => result.path.startsWith('Ideas/'))).toBe(true);
   });
 
+  it('does not replace an exact target with a fuzzy note when filters exclude it', async () => {
+    const output = await runCLI([
+      'list', '--name', 'Ideas/Sample Idea.md', '--where', "status == 'backlog'",
+      '--output', 'paths', '--picker', 'none',
+    ], vaultDir);
+    const opened = await runCLI([
+      'list', '--name', 'Ideas/Sample Idea.md', '--where', "status == 'backlog'",
+      '--open', '--app', 'print', '--picker', 'none',
+    ], vaultDir);
+
+    for (const result of [output, opened]) {
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).not.toContain('Another Idea');
+      expect(result.stderr).toContain('exact target does not match the requested filters');
+    }
+  });
+
   it('returns ranked fuzzy matches and scores through --fuzzy', async () => {
     const result = await runCLI([
       'list', '--fuzzy', 'Sample Ide', '--threshold', '0.5', '--limit', '2', '--output', 'json',
@@ -88,6 +105,49 @@ describe('list as the canonical query/search/open surface', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toLowerCase()).toContain('status');
     expect(result.stdout).not.toContain('Objectives/');
+  });
+
+  it('honors paths and link output for detailed body matches', async () => {
+    const paths = await runCLI([
+      'list', '--body', 'status', '--matches', '--path', 'Ideas/**', '--output', 'paths',
+    ], vaultDir);
+    const links = await runCLI([
+      'list', '--body', 'status', '--matches', '--path', 'Ideas/**', '--output', 'link',
+    ], vaultDir);
+
+    expect(paths.exitCode).toBe(0);
+    const pathLines = paths.stdout.trim().split('\n');
+    expect(pathLines).toEqual(['Ideas/Another Idea.md', 'Ideas/Sample Idea.md']);
+    expect(new Set(pathLines).size).toBe(pathLines.length);
+    expect(paths.stdout).not.toMatch(/:\d+:/);
+
+    expect(links.exitCode).toBe(0);
+    const linkLines = links.stdout.trim().split('\n');
+    expect(linkLines).toEqual(['[[Another Idea]]', '[[Sample Idea]]']);
+    expect(new Set(linkLines).size).toBe(linkLines.length);
+    expect(links.stdout).not.toMatch(/:\d+:/);
+  });
+
+  it('keeps text, content, and JSON detailed-match output coherent', async () => {
+    const text = await runCLI([
+      'list', '--body', 'status', '--matches', '--path', 'Ideas/**', '--no-context',
+    ], vaultDir);
+    const content = await runCLI([
+      'list', '--body', 'status', '--matches', '--path', 'Ideas/**', '--output', 'content',
+    ], vaultDir);
+    const jsonResult = await runCLI([
+      'list', '--body', 'status', '--matches', '--path', 'Ideas/**', '--output', 'json',
+    ], vaultDir);
+
+    expect(text.stdout).toMatch(/Ideas\/Sample Idea\.md:\d+:status: raw/);
+    expect(content.stdout).toContain('type: idea');
+    expect(content.stdout).toContain('status: raw');
+    expect(content.stdout).not.toMatch(/Ideas\/Sample Idea\.md:\d+:/);
+    const json = JSON.parse(jsonResult.stdout) as {
+      data: Array<{ path: string; matches: Array<{ line: number; text: string }> }>;
+    };
+    expect(json.data.every(result => result.matches.length > 0)).toBe(true);
+    expect(json.data.some(result => result.path === 'Ideas/Sample Idea.md')).toBe(true);
   });
 
   it('prints full Markdown content through list output', async () => {
