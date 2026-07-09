@@ -95,6 +95,7 @@ B body
     ];
     const targets = ['Lineage A', 'Lineage B', 'Lineage C', 'Lineage F'];
     const jsonByTarget = new Map<string, any>();
+    const contentOutputs: string[] = [];
 
     for (const target of targets) {
       const json = await runCLI(['list', '--lineage', target, '--output', 'json'], vaultDir);
@@ -110,10 +111,12 @@ B body
         expectedPaths.map(path => `[[${path.slice('Ideas/'.length, -3)}]]`)
       );
       const content = await runCLI(['list', '--lineage', target, '--output', 'content'], vaultDir);
+      contentOutputs.push(content.stdout);
       for (const body of ['A body', 'B body', 'C body', 'D body', 'E body', 'F body']) {
         expect(content.stdout).toContain(body);
       }
     }
+    expect(new Set(contentOutputs).size).toBe(1);
 
     expect(jsonByTarget.get('Lineage B').nodes).toMatchObject([
       { path: 'Ideas/Lineage A.md', depth: -1, relationship: 'ancestor' },
