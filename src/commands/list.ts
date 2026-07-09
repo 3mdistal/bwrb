@@ -69,6 +69,14 @@ import {
   isCalendarDateValue,
   parseCalendarDate,
 } from '../lib/calendar-date.js';
+import { resolveExactNoteTarget } from '../lib/exact-note-target.js';
+import {
+  buildLineageMaps,
+  collectLineage,
+  type CollectedLineage,
+  type LineageNode,
+} from '../lib/lineage.js';
+import { isValidNoteId, normalizeNoteId } from '../lib/note-id.js';
 
 /**
  * Resolve the output format from --output flag and deprecated flags.
@@ -138,6 +146,7 @@ interface ListCommandOptions {
   fields?: string;
   where?: string[];
   id?: string;
+  lineage?: string;
   limit?: string;
   count?: boolean;
   sort?: string;
@@ -158,6 +167,59 @@ interface ListCommandOptions {
   // Dashboard save options
   saveAs?: string;
   force?: boolean;
+}
+
+function validateLineageMode(
+  positional: string | undefined,
+  mode: string | undefined,
+  options: ListCommandOptions
+): string | undefined {
+  if (options.lineage === undefined) return undefined;
+
+  const conflicts: string[] = [];
+  if (positional !== undefined) conflicts.push('[positional]');
+  if (mode !== undefined) conflicts.push('[mode]');
+  if (options.type !== undefined) conflicts.push('--type');
+  if (options.path !== undefined) conflicts.push('--path');
+  if (options.where !== undefined) conflicts.push('--where');
+  if (options.body !== undefined) conflicts.push('--body');
+  if (options.text !== undefined) conflicts.push('--text');
+  if (options.name !== undefined) conflicts.push('--name');
+  if (options.fuzzy !== undefined) conflicts.push('--fuzzy');
+  if (options.matches === true) conflicts.push('--matches');
+  if (options.threshold !== undefined) conflicts.push('--threshold');
+  if (options.context !== undefined) conflicts.push(options.context === false ? '--no-context' : '--context');
+  if (options.caseSensitive === true) conflicts.push('--case-sensitive');
+  if (options.regex === true) conflicts.push('--regex');
+  if (options.id !== undefined) conflicts.push('--id');
+  if (options.fields !== undefined) conflicts.push('--fields');
+  if (options.sort !== undefined) conflicts.push('--sort');
+  if (options.desc === true) conflicts.push('--desc');
+  if (options.limit !== undefined) conflicts.push('--limit');
+  if (options.count === true) conflicts.push('--count');
+  if (options.roots === true) conflicts.push('--roots');
+  if (options.childrenOf !== undefined) conflicts.push('--children-of');
+  if (options.descendantsOf !== undefined) conflicts.push('--descendants-of');
+  if (options.tree === true) conflicts.push('--tree');
+  if (options.depth !== undefined) conflicts.push('--depth');
+  if (options.open === true) conflicts.push('--open');
+  if (options.app !== undefined) conflicts.push('--app');
+  if (options.picker !== undefined) conflicts.push('--picker');
+  if (options.preview === true) conflicts.push('--preview');
+  if (options.saveAs !== undefined) conflicts.push('--save-as');
+  if (options.force === true) conflicts.push('--force');
+  if (options.json === true) conflicts.push('--json');
+  if (options.paths === true) conflicts.push('--paths');
+
+  if (conflicts.length > 0) {
+    return `--lineage cannot be combined with ${conflicts.join(', ')}.`;
+  }
+
+  const allowedOutputs = new Set(['default', 'tree', 'paths', 'link', 'content', 'json']);
+  if (options.output !== undefined && !allowedOutputs.has(options.output)) {
+    return '--lineage supports only --output default, tree, paths, link, content, or json.';
+  }
+  return undefined;
 }
 
 function hasCanonicalSearchMode(options: ListCommandOptions): boolean {
@@ -233,6 +295,158 @@ async function runCanonicalSearchMode(
   await runSearchCommand(query, undefined, searchOptions, cmd);
 }
 
+async function runLineageMode(options: ListCommandOptions, cmd: Command): Promise<void> {
+  const output = options.output ?? 'tree';
+  const jsonMode = output === 'json';
+
+  try {
+    const globalOpts = getGlobalOpts(cmd);
+    const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
+    if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
+    const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
+    const schema = await loadSchema(vaultDir);
+    const resolved = await resolveExactNoteTarget(
+      schema,
+      vaultDir,
+      options.lineage!,
+      { purpose: 'lineage' }
+    );
+    if (!isValidNoteId(resolved.frontmatter.id)) {
+      throw new Error(`Lineage target ${resolved.file.relativePath} must have a valid UUID id.`);
+    }
+
+    const targetEntry = resolved.snapshot.notes.find(note => note.path === resolved.file.path);
+    if (!targetEntry) {
+      throw new Error(`Lineage target disappeared during discovery: ${resolved.file.relativePath}`);
+    }
+    const graph = collectLineage(targetEntry, buildLineageMaps(resolved.snapshot));
+
+    if (jsonMode) {
+      console.log(JSON.stringify({
+        target: graph.target,
+        nodes: graph.nodes.map(node => ({
+          path: node.path,
+          id: node.id,
+          forked_from: node.forkedFrom,
+          depth: node.depth,
+          relationship: node.relationship,
+        })),
+        warnings: graph.warnings,
+      }, null, 2));
+      return;
+    }
+
+    for (const warning of graph.warnings) {
+      console.error(`Warning [${warning.code}]: ${warning.message}`);
+    }
+
+    switch (output) {
+      case 'default':
+      case 'tree':
+        printLineageTree(graph);
+        return;
+      case 'paths':
+        for (const node of graph.nodes) console.log(node.path);
+        return;
+      case 'link':
+        for (const node of graph.nodes) console.log(`[[${basename(node.path, '.md')}]]`);
+        return;
+      case 'content':
+        for (const node of graph.nodes) {
+          process.stdout.write(await readFile(node.absolutePath, 'utf-8'));
+        }
+        return;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (jsonMode) {
+      printJson(jsonError(message, { code: ExitCodes.VALIDATION_ERROR }));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    printError(message);
+    process.exit(ExitCodes.VALIDATION_ERROR);
+  }
+}
+
+function printLineageTree(graph: CollectedLineage): void {
+  const byId = new Map<string, LineageNode>();
+  for (const node of graph.nodes) {
+    if (node.id) byId.set(normalizeNoteId(node.id), node);
+  }
+
+  const childrenByPath = new Map<string, LineageNode[]>();
+  const attachedPaths = new Set<string>();
+  for (const node of graph.nodes) {
+    if (!node.forkedFrom) continue;
+    const parent = byId.get(normalizeNoteId(node.forkedFrom));
+    if (!parent || parent.path === node.path) continue;
+    const children = childrenByPath.get(parent.path) ?? [];
+    children.push(node);
+    childrenByPath.set(parent.path, children);
+    attachedPaths.add(node.path);
+  }
+  for (const children of childrenByPath.values()) {
+    children.sort((a, b) => a.path.localeCompare(b.path, 'en'));
+  }
+
+  let roots = graph.nodes.filter(node => !attachedPaths.has(node.path));
+  if (roots.length === 0) {
+    roots = [graph.nodes.reduce((earliest, node) =>
+      node.depth < earliest.depth ||
+      (node.depth === earliest.depth && node.path.localeCompare(earliest.path, 'en') < 0)
+        ? node
+        : earliest
+    )];
+  }
+  roots.sort((a, b) => a.path.localeCompare(b.path, 'en'));
+
+  const printed = new Set<string>();
+  type PrintFrame = {
+    node: LineageNode;
+    prefix: string;
+    connector: string;
+    childPrefix: string;
+  };
+  const printFrom = (initial: PrintFrame): void => {
+    const stack: PrintFrame[] = [initial];
+    while (stack.length > 0) {
+      const frame = stack.pop()!;
+      if (printed.has(frame.node.path)) continue;
+      printed.add(frame.node.path);
+      console.log(
+        `${frame.prefix}${frame.connector}${frame.node.path}${frame.node.relationship === 'target' ? ' (target)' : ''}`
+      );
+      const children = childrenByPath.get(frame.node.path) ?? [];
+      for (let index = children.length - 1; index >= 0; index--) {
+        const last = index === children.length - 1;
+        stack.push({
+          node: children[index]!,
+          prefix: `${frame.prefix}${frame.childPrefix}`,
+          connector: last ? '└── ' : '├── ',
+          childPrefix: last ? '    ' : '│   ',
+        });
+      }
+    }
+  };
+
+  for (let index = 0; index < roots.length; index++) {
+    printFrom({
+      node: roots[index]!,
+      prefix: '',
+      connector: index === 0 ? '' : '└── ',
+      childPrefix: '',
+    });
+  }
+
+  // Defensive fallback for malformed cyclic input whose structural edge set
+  // leaves a disconnected note after the chosen cycle break.
+  for (const node of graph.nodes) {
+    if (!printed.has(node.path)) {
+      printFrom({ node, prefix: '', connector: '', childPrefix: '' });
+    }
+  }
+}
+
 const RESERVED_DISPLAY_FIELDS = new Set(['name', '_name', '_path']);
 
 /**
@@ -268,6 +482,7 @@ Targeting Selectors (compose via AND):
   --path <glob>        Filter by file path (e.g., Projects/**, Ideas/)
   --where <expr>       Filter by frontmatter expression (can repeat)
   --id <uuid>          Filter by stable note id
+  --lineage <target>   Show a document's complete fork lineage
   --body <query>       Filter by body content (uses ripgrep)
   --name <query>       Resolve notes by name, path, or alias
   --fuzzy <query>      Rank approximate name and alias matches with scores
@@ -294,6 +509,7 @@ Examples:
   bwrb list --name "My Note" --output link
   bwrb list --fuzzy "Stephen Yeg" --output json
   bwrb list --body "TODO" --matches --regex --context 0
+  bwrb list --lineage "Briefs/Launch Brief" --output tree
   bwrb list --type task --sort deadline
   bwrb list --type task --sort priority --desc
   bwrb list --sort file.mtime --desc              # Most recently modified first
@@ -352,6 +568,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--fields <fields>', 'Show frontmatter fields in a table (comma-separated)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
   .option('--id <uuid>', 'Filter by stable note id')
+  .option('--lineage <target>', 'Show the complete fork lineage for an exact note target')
   .option('--sort <field>', 'Sort by frontmatter field, name, _name, _path, or file stat (file.mtime, file.ctime, file.size)')
   .option('--desc', 'Sort descending (requires --sort)')
   .option('--limit <n>', 'Limit displayed results (never narrows --name selection)')
@@ -376,6 +593,22 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   // (commander's default) hides the mistake.
   .allowExcessArguments(false)
   .action(async (positional: string | undefined, mode: string | undefined, options: ListCommandOptions, cmd: Command) => {
+    const lineageModeError = validateLineageMode(positional, mode, options);
+    if (lineageModeError) {
+      const requestedJson = options.json || options.output === 'json';
+      if (requestedJson) {
+        printJson(jsonError(lineageModeError, { code: ExitCodes.VALIDATION_ERROR }));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      printError(lineageModeError);
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+
+    if (options.lineage !== undefined) {
+      await runLineageMode(options, cmd);
+      return;
+    }
+
     const searchModeError = validateCanonicalSearchMode(positional, mode, options);
     if (searchModeError) {
       const requestedJson = options.json || options.output === 'json';

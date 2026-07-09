@@ -9,6 +9,11 @@ For the complete changelog with all details, see [CHANGELOG.md](https://github.c
 
 ## Recent Highlights
 
+### Unreleased
+
+- **Document forks** — `bwrb new --fork <target>` creates an ordinary sibling note with a fresh ID and immutable immediate-source provenance
+- **Fork lineage inspection** — `bwrb list --lineage <target>` renders all ancestors, the target, and all descendants as a tree, paths, links, content, or structured JSON
+
 ### 0.2.2
 
 - **Mention target exclusions** — `mention_exclude_types` and `mention_exclude_paths` keep imported/reference notes out of unlinked-mention target pools while still scanning them as source documents

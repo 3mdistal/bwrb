@@ -1,7 +1,7 @@
 import { mkdir, open, stat, unlink } from 'fs/promises';
-import { basename, dirname, isAbsolute, relative, resolve, sep } from 'path';
+import { basename, dirname, relative, resolve } from 'path';
 import type { LoadedSchema } from '../../types/schema.js';
-import type { ManagedFile, NoteIndex } from '../../lib/navigation.js';
+import type { ManagedFile } from '../../lib/navigation.js';
 import { buildNoteIndex } from '../../lib/navigation.js';
 import {
   insertFrontmatterScalarPreservingBytes,
@@ -17,7 +17,6 @@ import {
 } from '../../lib/note-id.js';
 import {
   getAliasFieldName,
-  getEntityAliases,
   getFieldsForType,
   resolveTypeFromFrontmatter,
 } from '../../lib/schema.js';
@@ -26,6 +25,7 @@ import { isBwrbBuiltinFrontmatterField } from '../../lib/frontmatter/systemField
 import { buildNotePath } from './paths.js';
 import { promptInput } from '../../lib/prompt.js';
 import { UserCancelledError } from '../../lib/errors.js';
+import { resolveExactNoteTarget } from '../../lib/exact-note-target.js';
 
 const SOURCE_ID_LOCK = '.bwrb/locks/fork-source-id.lock';
 const LOCK_RETRY_MS = 20;
@@ -156,128 +156,13 @@ async function resolveForkSource(
   vaultDir: string,
   target: string
 ): Promise<ResolvedForkSource> {
-  const index = await buildNoteIndex(schema, vaultDir);
-  const idMatches: ManagedFile[] = [];
-  const parsedByPath = new Map<string, Awaited<ReturnType<typeof parseNote>>>();
-
-  for (const file of index.allFiles) {
-    try {
-      const parsed = await parseNote(file.path);
-      parsedByPath.set(file.path, parsed);
-      if (
-        isValidNoteId(target) &&
-        isValidNoteId(parsed.frontmatter.id) &&
-        normalizeNoteId(parsed.frontmatter.id) === normalizeNoteId(target)
-      ) {
-        idMatches.push(file);
-      }
-    } catch {
-      // Exact path/name resolution below will produce a useful parse error if
-      // this malformed note is the requested source.
-    }
-  }
-
-  let file: ManagedFile | undefined;
-  if (idMatches.length > 1) {
-    throwAmbiguousTarget(target, idMatches);
-  }
-  if (idMatches.length === 1) {
-    file = idMatches[0];
-  } else {
-    file = resolveExactFile(schema, index, vaultDir, target, parsedByPath);
-  }
-
-  if (!file) {
-    throw new Error(`No exact note found for fork target: ${target}`);
-  }
-
-  let parsed = parsedByPath.get(file.path);
-  if (!parsed) {
-    try {
-      parsed = await parseNote(file.path);
-    } catch (error) {
-      throw new Error(
-        `Cannot read fork source ${file.relativePath}: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-  const typeName = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
-  if (!typeName) {
-    throw new Error(`Fork source does not have a valid schema type: ${file.relativePath}`);
-  }
-  return { file, frontmatter: parsed.frontmatter, body: parsed.body, typeName };
-}
-
-function resolveExactFile(
-  schema: LoadedSchema,
-  index: NoteIndex,
-  vaultDir: string,
-  target: string,
-  parsedByPath: Map<string, Awaited<ReturnType<typeof parseNote>>>
-): ManagedFile | undefined {
-  if (isAbsolute(target)) {
-    const absolute = resolve(target);
-    const root = resolve(vaultDir);
-    if (absolute !== root && !absolute.startsWith(`${root}${sep}`)) return undefined;
-    const relativeTarget = relative(root, absolute);
-    const withExtension = relativeTarget.endsWith('.md') ? relativeTarget : `${relativeTarget}.md`;
-    return index.byPath.get(relativeTarget) ?? index.byPath.get(withExtension);
-  }
-
-  const normalizedTarget = target.replace(/^\.\//, '');
-  const cleanTarget = normalizedTarget.replace(/\.md$/, '');
-  const withExtension = `${cleanTarget}.md`;
-
-  const pathMatch = index.byPath.get(normalizedTarget) ?? index.byPath.get(withExtension);
-  if (pathMatch) return pathMatch;
-
-  const basenameMatches = exactMapMatches(index.byBasename, cleanTarget);
-  if (basenameMatches.length > 1) throwAmbiguousTarget(target, basenameMatches);
-  if (basenameMatches.length === 1) return basenameMatches[0];
-
-  // A frontmatter name can intentionally differ from the filename. It remains
-  // an exact identity surface, never a fuzzy one.
-  const requested = cleanTarget.toLowerCase();
-  const nameMatches: ManagedFile[] = [];
-  for (const file of index.allFiles) {
-    const name = parsedByPath.get(file.path)?.frontmatter.name;
-    if (typeof name === 'string' && name.toLowerCase() === requested) {
-      nameMatches.push(file);
-    }
-  }
-  if (nameMatches.length > 1) throwAmbiguousTarget(target, nameMatches);
-  if (nameMatches.length === 1) return nameMatches[0];
-
-  // Aliases are the final exact tier: a real path, basename, or frontmatter
-  // name always wins over an alias claiming the same surface.
-  const aliasMatches: ManagedFile[] = [];
-  for (const file of index.allFiles) {
-    const parsed = parsedByPath.get(file.path);
-    if (!parsed) continue;
-    const typeName = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
-    if (!typeName) continue;
-    const aliases = getEntityAliases(schema, typeName, parsed.frontmatter);
-    if (aliases.some(alias => alias.toLowerCase() === requested)) aliasMatches.push(file);
-  }
-  if (aliasMatches.length > 1) throwAmbiguousTarget(target, aliasMatches);
-  return aliasMatches[0];
-}
-
-function exactMapMatches(
-  map: Map<string, ManagedFile[]>,
-  target: string
-): ManagedFile[] {
-  const direct = map.get(target);
-  if (direct) return direct;
-  const lower = target.toLowerCase();
-  return Array.from(map.entries())
-    .filter(([key]) => key.toLowerCase() === lower)
-    .flatMap(([, files]) => files);
-}
-
-function throwAmbiguousTarget(target: string, files: ManagedFile[]): never {
-  const candidates = files.map(file => file.relativePath).sort().join(', ');
-  throw new Error(`Ambiguous fork target "${target}"; matches: ${candidates}`);
+  const source = await resolveExactNoteTarget(schema, vaultDir, target, { purpose: 'fork' });
+  return {
+    file: source.file,
+    frontmatter: source.frontmatter,
+    body: source.body,
+    typeName: source.typeName,
+  };
 }
 
 function resolveSourceName(source: ResolvedForkSource): string {
