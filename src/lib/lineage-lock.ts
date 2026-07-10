@@ -33,6 +33,11 @@ interface LockSnapshot {
   size: number;
 }
 
+type LockSnapshotRead =
+  | { kind: 'present'; snapshot: LockSnapshot }
+  | { kind: 'missing' }
+  | { kind: 'busy' };
+
 const DEFAULT_OPTIONS: OwnershipFileLockOptions = {
   retryMs: LOCK_RETRY_MS,
   attempts: LOCK_ATTEMPTS,
@@ -166,8 +171,11 @@ async function acquireLock(
       }
     } catch (error) {
       if (!isFileExistsError(error)) throw error;
-      const snapshot = await readLockSnapshot(lockPath);
-      if (snapshot && await isRecoverable(snapshot, options.staleMs)) {
+      const snapshotRead = await readLockSnapshot(lockPath);
+      if (
+        snapshotRead.kind === 'present' &&
+        await isRecoverable(snapshotRead.snapshot, options.staleMs)
+      ) {
         await recoverStaleLock(lockPath, recoveryPath, options);
         continue;
       }
@@ -208,8 +216,11 @@ async function heartbeatOwnedLock(
   handle: Awaited<ReturnType<typeof open>>,
   token: string
 ): Promise<void> {
-  const snapshot = await readLockSnapshot(lockPath);
-  if (snapshot?.metadata?.token !== token) return;
+  const snapshotRead = await readLockSnapshot(lockPath);
+  if (
+    snapshotRead.kind !== 'present' ||
+    snapshotRead.snapshot.metadata?.token !== token
+  ) return;
 
   // Touch the inode opened by this holder, not whatever might have appeared at
   // the path after the ownership check. The immutable JSON records when the
@@ -227,8 +238,11 @@ async function recoverStaleLock(
   if (!recovery) return;
 
   try {
-    const snapshot = await readLockSnapshot(lockPath);
-    if (!snapshot || !await isRecoverable(snapshot, options.staleMs)) return;
+    const snapshotRead = await readLockSnapshot(lockPath);
+    if (
+      snapshotRead.kind !== 'present' ||
+      !await isRecoverable(snapshotRead.snapshot, options.staleMs)
+    ) return;
 
     // The fixed recovery marker prevents acquisitions and competing reapers
     // while the stale inode is atomically moved out of the lock pathname.
@@ -237,7 +251,12 @@ async function recoverStaleLock(
       await rename(lockPath, quarantinePath);
       await unlink(quarantinePath).catch(() => undefined);
     } catch (error) {
-      if (!isFileMissingError(error)) throw error;
+      if (isFileMissingError(error)) return;
+      // Windows can reject a rename while another process still has the lock
+      // open. That is evidence against stealing, not permission to do so. Let
+      // the outer acquisition loop retry until its ordinary timeout instead.
+      if (isTransientLockFilesystemError(error)) return;
+      throw error;
     }
     await cleanupQuarantines(lockPath);
   } finally {
@@ -272,9 +291,12 @@ async function acquireRecoveryMarker(
     };
   } catch (error) {
     if (!isFileExistsError(error)) throw error;
-    const snapshot = await readLockSnapshot(recoveryPath);
-    if (snapshot && await isRecoverable(snapshot, options.staleMs)) {
-      await unlinkIfUnchanged(recoveryPath, snapshot);
+    const snapshotRead = await readLockSnapshot(recoveryPath);
+    if (
+      snapshotRead.kind === 'present' &&
+      await isRecoverable(snapshotRead.snapshot, options.staleMs)
+    ) {
+      await unlinkIfUnchanged(recoveryPath, snapshotRead.snapshot);
     }
     return null;
   }
@@ -284,10 +306,11 @@ async function recoveryIsInProgress(
   recoveryPath: string,
   options: OwnershipFileLockOptions
 ): Promise<boolean> {
-  const snapshot = await readLockSnapshot(recoveryPath);
-  if (!snapshot) return false;
-  if (await isRecoverable(snapshot, options.staleMs)) {
-    await unlinkIfUnchanged(recoveryPath, snapshot);
+  const snapshotRead = await readLockSnapshot(recoveryPath);
+  if (snapshotRead.kind === 'missing') return false;
+  if (snapshotRead.kind === 'busy') return true;
+  if (await isRecoverable(snapshotRead.snapshot, options.staleMs)) {
+    await unlinkIfUnchanged(recoveryPath, snapshotRead.snapshot);
     return pathExists(recoveryPath);
   }
   return true;
@@ -318,23 +341,30 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-async function readLockSnapshot(lockPath: string): Promise<LockSnapshot | null> {
+async function readLockSnapshot(lockPath: string): Promise<LockSnapshotRead> {
   try {
     const [raw, info] = await Promise.all([
       readFile(lockPath, 'utf-8'),
       stat(lockPath),
     ]);
     return {
-      raw,
-      metadata: parseLockMetadata(raw),
-      device: info.dev,
-      inode: info.ino,
-      modifiedAt: info.mtimeMs,
-      size: info.size,
+      kind: 'present',
+      snapshot: {
+        raw,
+        metadata: parseLockMetadata(raw),
+        device: info.dev,
+        inode: info.ino,
+        modifiedAt: info.mtimeMs,
+        size: info.size,
+      },
     };
   } catch (error) {
-    if (isFileMissingError(error)) return null;
-    return null;
+    if (isFileMissingError(error)) return { kind: 'missing' };
+    // Sharing/permission failures are common while Windows handles are open.
+    // Preserve that distinction so every caller fails closed rather than
+    // mistaking an unreadable lock or recovery marker for an absent one.
+    if (isTransientLockFilesystemError(error)) return { kind: 'busy' };
+    throw error;
   }
 }
 
@@ -357,14 +387,20 @@ function parseLockMetadata(raw: string): LockMetadata | null {
 }
 
 async function unlinkIfOwned(lockPath: string, token: string): Promise<boolean> {
-  const snapshot = await readLockSnapshot(lockPath);
-  if (snapshot?.metadata?.token !== token) return false;
-  return unlinkIfUnchanged(lockPath, snapshot);
+  const snapshotRead = await readLockSnapshot(lockPath);
+  if (
+    snapshotRead.kind !== 'present' ||
+    snapshotRead.snapshot.metadata?.token !== token
+  ) return false;
+  return unlinkIfUnchanged(lockPath, snapshotRead.snapshot);
 }
 
 async function unlinkIfUnchanged(lockPath: string, expected: LockSnapshot): Promise<boolean> {
-  const current = await readLockSnapshot(lockPath);
-  if (!current || !snapshotsMatch(current, expected)) return false;
+  const currentRead = await readLockSnapshot(lockPath);
+  if (
+    currentRead.kind !== 'present' ||
+    !snapshotsMatch(currentRead.snapshot, expected)
+  ) return false;
   try {
     await unlink(lockPath);
     return true;
@@ -394,8 +430,11 @@ async function pathExists(path: string): Promise<boolean> {
   try {
     await stat(path);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isFileMissingError(error)) return false;
+    // An unreadable recovery marker must serialize acquisitions just like a
+    // readable one. The lock would rather wait than become two locks in a coat.
+    return true;
   }
 }
 
@@ -407,6 +446,12 @@ function isFileExistsError(error: unknown): boolean {
 function isFileMissingError(error: unknown): boolean {
   return error instanceof Error && 'code' in error &&
     (error as NodeJS.ErrnoException).code === 'ENOENT';
+}
+
+function isTransientLockFilesystemError(error: unknown): boolean {
+  if (!(error instanceof Error) || !('code' in error)) return false;
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === 'EBUSY' || code === 'EPERM' || code === 'EACCES' || code === 'ENOTEMPTY';
 }
 
 function delay(ms: number): Promise<void> {

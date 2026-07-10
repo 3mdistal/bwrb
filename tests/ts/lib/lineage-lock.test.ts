@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync } from 'fs';
-import { mkdtemp, mkdir, readFile, readdir, rm, stat, unlink, utimes, writeFile } from 'fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, unlink, utimes, writeFile } from 'fs/promises';
 import { basename, join } from 'path';
 import { tmpdir } from 'os';
 import {
@@ -148,6 +148,26 @@ describe('lineage mutation lock', () => {
       { attempts: 8, retryMs: 2, staleMs: 100 }
     )).rejects.toThrow('Timed out waiting for a fork-lineage mutation lock');
     expect(await readFile(lockPath, 'utf-8')).toBe('not-json\n');
+  });
+
+  it.skipIf(process.platform === 'win32')('fails closed when an existing lock cannot be read', async () => {
+    const source = join(vaultDir, 'Source.md');
+    const lockPath = getLineageMutationLockPath(vaultDir, source);
+    await mkdir(join(vaultDir, '.bwrb', 'locks'), { recursive: true });
+    await writeFile(lockPath, lockMetadata(lockPath, deadPid(), 'unreadable-owner'));
+    await chmod(lockPath, 0o000);
+
+    try {
+      await expect(withLineageMutationLocks(
+        vaultDir,
+        [source],
+        async () => undefined,
+        { attempts: 8, retryMs: 2, staleMs: 1 }
+      )).rejects.toThrow('Timed out waiting for a fork-lineage mutation lock');
+      expect(existsSync(lockPath)).toBe(true);
+    } finally {
+      await chmod(lockPath, 0o600);
+    }
   });
 
   it('does not let an old holder release a replacement lock with another token', async () => {

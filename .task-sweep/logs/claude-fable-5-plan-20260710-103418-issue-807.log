@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+output: .task-sweep/logs/claude-fable-5-plan-output-20260710-103418-issue-807.md
+chars: 7822 words: 1124
+preview: # Implementation Plan — Issue #807\n\n## 1. Production changes for Windows semantics (keep minimal)\n\n**Principle: preserve fail-closed timeout behavior.** Windows sharing violations during recovery should be treated as "holder may be alive" and retried within the acquisition loop — never as license to steal.\n\nSmallest set of changes:\n\n- **Classify errors in `readLockSnapshot` instead of swallowing everything.** Distinguish: `ENOENT` (gone, retry acquire), `EBUSY`/`EPERM`/`EACCES` on Windows (likely open handle → treat as live holder, back off), parse errors (corrupt → existing quarantine path). Return a discriminated result (`{ kind: 'missing' | 'busy' | 'corrupt' | 'ok', ... }`) rather than `null`. This is the single most important seam.\n- **Recovery rename/unlink:** wrap the quarantine `re

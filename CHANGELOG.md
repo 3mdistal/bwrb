@@ -10,6 +10,7 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Fixed
 
+- **Portable lineage mutation locking** — lineage and note-ID locks now fail closed on Windows sharing/permission errors, have deterministic real-process stress coverage plus a focused Windows CI lane, and return stable retryable text/JSON context when a non-force delete target disappears before its authoritative under-lock recheck (#807).
 - **Body-only content targeting** — `--body` now excludes YAML frontmatter in both note filtering and detailed match reports while preserving original file line numbers and body-only context (#812).
 
 ## [0.2.3] - 2026-07-09
