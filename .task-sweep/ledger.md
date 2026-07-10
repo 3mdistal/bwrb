@@ -30,8 +30,8 @@ Bring Bowerbird's documentation fully into line with the shipped product from `v
 - manual successful user story: As a new or returning Bowerbird user reading any maintained documentation surface, I can understand and correctly use the product that exists from `v0.2.0` through current `main`. Command examples run against the current CLI, release history remains accurate, agent guidance matches the real safety contracts, and I do not encounter stale names, missing major features, or documentation for behavior that never shipped.
 - dependencies/blockers: exact `anthropic/claude-fable-5` availability; GitHub auth; local dependencies; required CI; moving `main`
 - parallel safety: evidence gathering may use up to three independent lanes; overlapping command/reference/changelog edits must serialize
-- status: implementation, fresh tester PASS, all local gates, and final Fable review complete; publication pending
-- branch/PR: `codex/docs-v020-current-parity`; PR pending
+- status: published as a green, conflict-free draft PR; final metadata CI pass and quiet-period recheck pending
+- branch/PR: `codex/docs-v020-current-parity`; draft PR [#814](https://github.com/3mdistal/bwrb/pull/814)
 
 ## Shipped release and PR range
 
@@ -182,13 +182,13 @@ Edits remain serialized on the orchestrator branch after all lane reports, becau
 - `pnpm docs:check`: PASS
 - `pnpm docs:build`: PASS from a clean Astro cache, 41 pages built and 53 HTML files indexed
 - `git diff --check`: PASS
-- GitHub required checks: pending
+- GitHub content-commit checks: PASS on `b601425bded058de72f4aef44b16c613a007e898` in run `29064495251` (`Test`, `PTY Tests`, `Docs Site CI`, `Docs Relevance`, and Vercel all green)
 
 ## Moving-main refresh
 
 - Initial refresh: `2026-07-09`, `origin/main` = `7b741c632805554dff77cf4cae8d42005cea6e3b`
 - Pre-PR refresh: `2026-07-09`, `origin/main` unchanged at `7b741c632805554dff77cf4cae8d42005cea6e3b`; no newly merged PRs to add
-- Pre-handoff refresh/re-audit: pending
+- Pre-handoff refresh/re-audit: `2026-07-09`, `origin/main` still `7b741c632805554dff77cf4cae8d42005cea6e3b`; no new commits or PRs entered the audited range
 
 ## Product follow-ups
 
@@ -201,9 +201,9 @@ Edits remain serialized on the orchestrator branch after all lane reports, becau
 
 ## Handoff
 
-- Status: active
-- Draft PR: pending
-- Conflict state: pending
-- CI state: pending
-- Review/bot feedback: pending
-- Final user-story evidence: pending
+- Status: active pending the ledger-only metadata commit's CI and quiet-period recheck
+- Draft PR: [#814](https://github.com/3mdistal/bwrb/pull/814), intentionally kept draft
+- Conflict state: mergeable and clean against unchanged current `main`
+- CI state: all checks green on content commit `b601425`; metadata-only ledger commit will receive a final pass
+- Review/bot feedback: no reviews, no unresolved threads, and no actionable bot feedback; Vercel's skipped-deployment status comment is informational and its check is green
+- Final user-story evidence: PASS in `.task-sweep/logs/fresh-cli-tester-20260709.md`
