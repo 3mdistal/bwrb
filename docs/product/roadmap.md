@@ -39,8 +39,7 @@ mutation surface.
 3. **Schema evolution reliability** — Continue strengthening migration/audit
    behavior as field and calendar expressiveness grows.
 4. **Known parity gaps** — Resolve schema/config command coverage
-   ([#809](https://github.com/3mdistal/bwrb/issues/809)) and completion tables
-   ([#810](https://github.com/3mdistal/bwrb/issues/810)).
+   ([#809](https://github.com/3mdistal/bwrb/issues/809)).
 
 ## Future boundary
 
