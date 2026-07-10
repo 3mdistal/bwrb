@@ -1,58 +1,53 @@
 # CLI JSON Output + Exit Contract
 
-> The product-level contract for machine-readable CLI output.
+> Product-level contract for machine-readable CLI output.
 
-**Canonical docs:** This document is product rationale + implementation contract. User-facing JSON behavior is canonical on docs-site (see https://bwrb.dev/automation/json-mode/ and command reference pages). Source-of-truth policy: `docs/product/canonical-docs-policy.md`.
+**Canonical docs:** User-facing JSON behavior lives in the docs-site
+[JSON Mode](../../docs-site/src/content/docs/automation/json-mode.md) and
+command-reference pages. This note records implementation constraints and the
+intentional command-specific shapes.
 
----
+## Scope
 
-## Why this exists
+JSON is not a universal global mode. A command supports `--output json` or
+`--json` input only when its registered help says so. Adding either option is a
+command-boundary API decision and needs command-specific tests and docs.
 
-Bowerbird is designed to be scriptable and composable. In `--output json` mode, the CLI is an API.
+When a command selects JSON output, it must write exactly one complete,
+newline-terminated JSON value to stdout. Prompts and human diagnostics must not
+pollute stdout; warnings belong on stderr or should be suppressed. Success exits
+`0`; failure exits non-zero. The CLI-wide codes are `0` success, `1` validation,
+`2` I/O, and `3` schema.
 
-This contract ensures:
-- Automation and CI can parse output reliably.
-- The Neovim plugin (and any wrappers) can depend on stable JSON.
-- We avoid intermittent truncated JSON caused by exiting too early.
+## Success shapes are command-specific
 
----
+The helpers in `src/lib/output.ts` define a useful `JsonSuccess`/`JsonError`
+envelope, but not every successful workflow uses that envelope. Existing shapes
+are part of the compatibility contract:
 
-## Contract (authoritative)
+| Workflow | Success JSON |
+| --- | --- |
+| Normal `list --output json` | Raw array of note objects |
+| `list --count --output json` | Raw `{ count }` object |
+| Canonical name/fuzzy modes | `{ success: true, data: [...] }` |
+| Detailed body matches | `{ success: true, data: [...], totalMatches, truncated }` |
+| `list --lineage --output json` | Raw `{ target, nodes, warnings }` object |
+| `new --fork --output json` | `{ success: true, path, id, forked_from, warnings, ... }` |
+| Other mutation/management commands | Usually a `JsonSuccess` envelope; document and test the exact command shape |
 
-When `--output json` is selected, commands MUST follow these rules:
+Do not wrap a legacy raw success shape merely to make the prose look uniform.
+That would be a product/API change, not a documentation correction.
 
-### Stdout
+## Error contract
 
-- MUST write **exactly one** complete JSON value to **stdout**.
-- MAY pretty-print the JSON (whitespace and internal newlines are allowed).
-- MUST newline-terminate the output.
-- MUST NOT write any non-JSON text to stdout (no tables, prompts, progress, warnings, etc.).
-- Consumers MUST parse stdout as JSON (not line-delimited/NDJSON).
-
-### Stderr
-
-- Human-oriented logs, progress, warnings, and diagnostics MUST go to **stderr**, or be suppressed in JSON mode.
-- In JSON mode, commands SHOULD avoid interactive prompts; if required input is missing, return `JsonError` and a non-zero exit code instead.
-
-### JSON envelope
-
-- Stdout MUST be a single `JsonResult` value.
-- Command-specific payload belongs under `data`.
-
-The canonical envelope is defined in `src/lib/output.ts`:
+Machine-readable command failures should emit a structured error object on
+stdout and set a non-zero process exit code:
 
 ```ts
-export interface JsonSuccess<T = unknown> {
-  success: true;
-  data?: T;
-  path?: string;
-  updated?: string[];
-  message?: string;
-}
-
 export interface JsonError {
   success: false;
   error: string;
+  data?: unknown;
   errors?: Array<{
     field: string;
     value?: unknown;
@@ -62,98 +57,29 @@ export interface JsonError {
   }>;
   code?: number;
 }
-
-export type JsonResult<T = unknown> = JsonSuccess<T> | JsonError;
 ```
 
-**Structured error details:** Use `errors[]` for machine-readable details (e.g., resolution candidates):
+The process exit code is authoritative; `code` is best-effort metadata. Clients
+must ignore unknown fields so compatible metadata can be added later.
 
-```json
-{
-  "success": false,
-  "error": "No matches for query",
-  "errors": [
-    { "field": "candidate", "value": "Work/Task A.md", "message": "Matching file" }
-  ]
-}
-```
+One command-specific exception is deliberate: `audit --fix --auto` exits `0`
+after its preview or execution pass even when non-auto-fixable issues remain.
+Interactive `audit --fix` exits non-zero when issues remain. Consumers that need
+the remaining-issue count should parse the audit summary rather than infer it
+from the auto-fix process status.
 
----
+## Termination guidance
 
-## Stability & compatibility
+Avoid `process.exit()` in deep helpers. Return or throw to the command boundary,
+which decides the output shape and exit code. If a command must exit directly,
+write the full JSON value first. This prevents truncated output when stdin stays
+open or the command is embedded in automation.
 
-- The `JsonResult` envelope is intended to be forward-compatible: consumers MUST ignore unknown fields.
-- We MAY add new optional fields over time without breaking consumers.
-- We SHOULD NOT rename/remove existing fields without a major version bump.
-- The process exit code is authoritative; `JsonError.code` is best-effort metadata.
+## Author checklist
 
----
-
-## Exit behavior
-
-### Exit codes
-
-- Success MUST exit with code `0`.
-- Failure MUST exit with a non-zero code.
-
-Exception: `bwrb audit --fix --auto` exits `0` after applying unambiguous fixes even if issues remain. Remaining issues are reported in the output summary and should be treated as follow-up work rather than a hard failure.
-
-The CLI-wide exit codes are defined in `src/lib/output.ts`:
-
-- `0` `SUCCESS`
-- `1` `VALIDATION_ERROR`
-- `2` `IO_ERROR`
-- `3` `SCHEMA_ERROR`
-
-### Errors in JSON mode
-
-- In `--output json`, failures MUST still emit a JSON error object (`JsonError`) on stdout.
-- When available, `JsonError.code` SHOULD match the process exit code.
-
----
-
-## Termination (`process.exit`) guidance
-
-Avoid `process.exit()` from inside deep helpers.
-
-- Prefer returning a result or throwing an error and letting the command handler decide:
-  - what to print
-  - what exit code to use
-- If `process.exit()` is used, it MUST be done only at the command boundary and only after stdout has been written.
-
-This reduces the risk of truncated JSON output.
-
----
-
-## Examples
-
-### Success
-
-```json
-{
-  "success": true,
-  "data": {
-    "count": 3
-  }
-}
-```
-
-### Failure
-
-```json
-{
-  "success": false,
-  "error": "Invalid schema",
-  "code": 3
-}
-```
-
----
-
-## Author checklist (for command implementations)
-
-In `--output json`:
-- Emit one `JsonResult` to stdout (newline-terminated).
-- Send logs/warnings/progress to stderr (or suppress).
-- Do not call `process.exit()` from helper functions.
-- On failure, emit `JsonError` and set a non-zero exit code.
+- Register and document JSON flags per command; never claim blanket support.
+- Emit one parseable JSON value with no human text on stdout.
+- Preserve the command's established success shape.
+- Emit structured errors and a non-zero failure exit.
+- Test prompt-mode/stdin-open termination for mutation commands.
+- Document raw arrays/objects and envelopes exactly as consumers receive them.

@@ -29,11 +29,15 @@ bwrb audit --type task
 Audit catches:
 
 - Missing required fields
-- Invalid field values (not in enum options)
+- Invalid field values (not in a select field's inline options)
 - Type mismatches
 - Malformed frontmatter
 
-System-managed fields written by bwrb (`id`, `name`) are always allowed and never reported as `unknown-field`.
+Built-in fields recognized by bwrb (`id`, `name`, and `forked-from`) are always
+allowed and never reported as `unknown-field`. Ordinary creation writes `id`;
+JSON creation also persists its input `name`, while interactive creation
+currently derives the effective name from the filename without writing a `name`
+key ([#813](https://github.com/3mdistal/bwrb/issues/813)).
 
 ## Fixing Issues
 

@@ -27,6 +27,18 @@ bwrb config <subcommand>
 | `visual` | GUI editor command | Path or command |
 | `open_with` | Default app for opening notes | `system`, `editor`, `visual`, `obsidian` |
 | `obsidian_vault` | Obsidian vault name for URI scheme | String |
+| `default_dashboard` | Dashboard used when no name is passed | Dashboard name or empty string |
+| `excluded_directories` | Directory prefixes excluded from discovery and targeting | JSON string array |
+| `mention_exclude_types` | Types excluded as mention targets | JSON string array |
+| `mention_exclude_paths` | Path globs excluded as mention targets | JSON string array |
+| `mention_link_once` | Limit auto-fixes to one link per note/target pair | Boolean |
+
+This is the command's complete editable subset. Other valid schema settings —
+including `date_format`, `date_granularity`, `calendars`,
+`mention_fuzzy_threshold`, and the `mention_corpus_*` keys — must currently be
+edited directly in `.bwrb/schema.json` and checked with
+`bwrb schema validate`. The difference is tracked in
+[#809](https://github.com/3mdistal/bwrb/issues/809).
 
 ## Configuration Location
 
@@ -116,6 +128,11 @@ bwrb config edit open_with --json '"editor"'
 
 # Set complex value
 bwrb config edit obsidian_vault --json '"My Vault"'
+
+# Set arrays and booleans
+bwrb config edit excluded_directories --json '["Archive","Templates"]'
+bwrb config edit mention_exclude_paths --json '["Imports/**"]'
+bwrb config edit mention_link_once --json 'true'
 ```
 
 ---

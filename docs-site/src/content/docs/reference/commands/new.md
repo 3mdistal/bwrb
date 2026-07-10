@@ -202,7 +202,13 @@ only be forked when its owner's field permits multiple children.
 2. **Template loading**: Loads matching template if available (unless `--no-template`)
 3. **Field prompts**: Prompts for each field defined in schema/template
 4. **File creation**: Creates file in the type's `output_dir`
-5. **System fields**: Writes `id` and `name` as bwrb-managed frontmatter fields. The reserved `forked-from` provenance field cannot be supplied through `--json`, templates, or schema fields/defaults; `new --fork` is the lineage-aware workflow that injects it
+5. **Built-in fields**: Writes system-managed `id`. JSON creation also persists
+   its input `name`; interactive creation currently derives the effective name
+   from the filename without writing that key
+   ([#813](https://github.com/3mdistal/bwrb/issues/813)). The reserved
+   `forked-from` provenance field cannot be supplied through `--json`, templates,
+   or schema fields/defaults; `new --fork` is the lineage-aware workflow that
+   injects it
 6. **Output**: Returns path to created file
 
 ## Template Discovery

@@ -284,7 +284,7 @@ bwrb template validate
 
 This catches:
 - References to removed fields
-- Invalid enum values
+- Invalid select values
 - Mismatched type paths
 
 ## Instance Scaffolding

@@ -14,14 +14,19 @@ Schema-driven note management for markdown vaults.
 
 ## Overview
 
-`bwrb` is a CLI tool that creates and edits markdown files based on a hierarchical type schema. It supports:
+`bwrb` creates, queries, migrates, and audits markdown notes against a version 2
+type schema. It supports:
 
-- Interactive type selection with subtype navigation
-- Dynamic frontmatter prompts (select options, text input, vault queries)
-- Configurable body sections with various content types
-- Edit mode for updating existing files
-- List and filter notes by type and frontmatter fields
-- Works with any vault via the `--vault` flag
+- Flat types with inheritance, reusable traits, ownership, and templates
+- Dynamic frontmatter prompts, body sections, and instance scaffolding
+- Canonical `list` discovery by filters, exact name, fuzzy name, body matches,
+  stable ID, or document lineage
+- Schema migrations plus conservative audit and repair workflows
+- Partial and relative dates, including schema-defined custom calendars
+- Native document forks with immutable provenance, lineage inspection, and
+  fork-safe deletion
+- Command-specific JSON automation and explicit non-interactive safety
+- Any markdown vault selected through discovery or the global `--vault` flag
 
 ## Prerequisites
 
@@ -46,7 +51,17 @@ pnpm dev -- new idea  # Run without building
 
 ## Setup
 
-Create a `.bwrb/schema.json` in each vault you want to use with bwrb.
+Initialize each vault you want to use with bwrb:
+
+```sh
+mkdir my-vault
+cd my-vault
+bwrb init --yes
+```
+
+This creates a version 2 `.bwrb/schema.json`. See the
+[Quick Start](https://bwrb.dev/getting-started/quick-start/) for a runnable first
+schema.
 
 ## Usage
 
@@ -66,7 +81,7 @@ bwrb --vault=/path/to/vault new
 
 # Direct creation - specify type
 bwrb new objective    # Then select subtype (task/milestone/project/goal)
-bwrb new idea         # Creates idea directly (no subtypes)
+bwrb new idea         # Creates idea directly (no child-type selection)
 
 # Templates
 bwrb new task --template bug-report  # Use specific template
@@ -92,9 +107,13 @@ bwrb list --output paths --fields=status objective  # Combine paths + fields
 bwrb list --name "My Note"                   # Resolve by name, path, or alias
 bwrb list --name "My Note" --output link     # Output: [[My Note]]
 bwrb list --fuzzy "My Nte" --output json      # Ranked matches with scores
-bwrb list --body "TODO" --matches             # Detailed body matches
+bwrb list --body "TODO" --matches             # Detailed file matches (frontmatter included today)
 bwrb list --name "My Note" --open --app editor
 bwrb list --id "<uuid>" --open --app print
+
+# Preserve a revision as a native document fork, then inspect its family
+bwrb new --fork "Briefs/Launch Brief" --label concise --output json
+bwrb list --lineage "Briefs/Launch Brief" --output tree
 
 # Help
 bwrb --help
@@ -107,20 +126,36 @@ The schema file is expected at `<vault>/.bwrb/schema.json`. It defines:
 
 ### Types
 
-Hierarchical type definitions. Types can have subtypes for nested categorization:
+Version 2 schemas keep all types in one flat map. A child names its parent with
+`extends`:
 
 ```json
 {
+  "version": 2,
   "types": {
     "objective": {
-      "subtypes": {
-        "task": { /* type definition */ },
-        "milestone": { /* type definition */ }
+      "output_dir": "Objectives",
+      "fields": {
+        "type": { "value": "objective" },
+        "status": {
+          "prompt": "select",
+          "options": ["planned", "active", "done"],
+          "default": "planned"
+        }
       }
     },
-    "idea": {
-      "output_dir": "Objectives/Ideas",
-      "frontmatter": { /* ... */ }
+    "task": {
+      "extends": "objective",
+      "output_dir": "Objectives/Tasks",
+      "fields": {
+        "type": { "value": "task" },
+        "priority": {
+          "prompt": "select",
+          "options": ["low", "medium", "high"],
+          "default": "medium"
+        }
+      },
+      "field_order": ["type", "status", "priority"]
     }
   }
 }
@@ -128,13 +163,14 @@ Hierarchical type definitions. Types can have subtypes for nested categorization
 
 ### Type Definition
 
-Each leaf type requires:
+Type properties include:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `output_dir` | Yes | Directory relative to vault root |
-| `frontmatter` | Yes | Field definitions |
-| `frontmatter_order` | No | Array specifying field order |
+| `extends` | No | Parent type name; defaults to the implicit `meta` root |
+| `output_dir` | Yes for `new` | Directory relative to vault root. Schema inspection can report a computed fallback, but current note creation still requires an explicit value ([#811](https://github.com/3mdistal/bwrb/issues/811)) |
+| `fields` | No | Field definitions, merged with inherited fields |
+| `field_order` | No | Array specifying effective field order |
 | `body_sections` | No | Array of section definitions |
 
 ### Frontmatter Fields
@@ -181,16 +217,16 @@ Query notes of a specific type to populate field options:
 {
   "milestone": {
     "prompt": "relation",
-    "source": "objective/milestone",
-    "filter": "status != 'settled' && status != 'ghosted'",
-    "format": "quoted-wikilink"
+    "source": "milestone",
+    "filter": { "status": { "not_in": ["settled", "ghosted"] } },
+    "required": false
   }
 }
 ```
 
-- `source` - Type path to query (e.g., `"objective/milestone"`)
-- `filter` - Optional expression to filter results
-- `format` - Output format: `plain`, `wikilink` (`[[value]]`), `quoted-wikilink` (`"[[value]]"`)
+- `source` - Type name to query (e.g., `"milestone"`)
+- `filter` - Optional per-field condition object for filtering candidates
+- Relation link formatting is vault-wide through `config.link_format`
 
 ### Body Sections
 
@@ -487,7 +523,7 @@ selected result.
 bwrb list --name "My Note"                             # Case-insensitive resolution
 bwrb list --name "Ideas/My Note.md" --output link      # [[My Note]]
 bwrb list --fuzzy "My Nte" --output json               # Ranked candidates
-bwrb list --body "TODO" --matches --context 0          # Detailed matches
+bwrb list --body "TODO" --matches --context 0          # Detailed file matches
 bwrb list --name "My Note" --open --app editor         # Open in editor
 bwrb list --id "<uuid>" --open --app print             # Stable-id path lookup
 ```
@@ -566,7 +602,10 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 
 ### What Gets Completed
 
-- **Commands**: `bwrb <TAB>` shows `new`, `edit`, `list`, `open`, etc.
+- **Commands**: `bwrb <TAB>` shows `new`, `edit`, `list`, `recent`, `audit`,
+  `bulk`, `schema`, `template`, `dashboard`, `delete`, `completion`, and `config`.
+  `init` appears in `bwrb --help` but is currently missing from generated root
+  completion candidates ([#810](https://github.com/3mdistal/bwrb/issues/810)).
 - **Options**: `bwrb list -<TAB>` shows `--type`, `--path`, `--where`, etc.
 - **Types**: `bwrb list --type <TAB>` shows types from your schema (task, idea, etc.)
 - **Paths**: `bwrb list --path <TAB>` shows vault directories (Ideas/, Objectives/, etc.)

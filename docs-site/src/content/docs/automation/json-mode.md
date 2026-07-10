@@ -1,80 +1,95 @@
 ---
 title: JSON Mode
-description: Scripting and automation with JSON input/output
+description: Scripting and automation with command-specific JSON input and output
 ---
 
-Every Bowerbird command supports JSON mode for scripting and AI integration.
+Bowerbird's machine-readable options are command-specific. Use `--output json`
+only where that command's `--help` lists it, and use `--json` input only on
+commands that explicitly accept a JSON payload. They are not universal global
+flags.
 
-For commands that normally prompt or open pickers, pair JSON mode with the global `--non-interactive` flag when you want a hard guarantee that the CLI will never drop into interactive UI:
+For commands that can prompt or open a picker, add the global
+`--non-interactive` flag when you need a hard no-prompt guarantee:
 
 ```bash
 bwrb --non-interactive new task --json '{"name":"Fix login","priority":"high"}'
 bwrb --non-interactive edit "My Task" --json '{"status":"settled"}'
 ```
 
-## JSON Output
+## JSON output shapes
 
-Add `--output json` to any command:
+Check the command reference before choosing a parser. Bowerbird emits one
+complete JSON value, but success shapes differ by workflow:
 
-```bash
-bwrb list task --output json
-bwrb audit --output json
-bwrb list --name "My Note" --output json --picker none
-```
+| Workflow | Success shape |
+| --- | --- |
+| `list [filters] --output json` | Raw array of note objects with `_path`, `_name`, and frontmatter |
+| `list --count --output json` | Raw `{ "count": number }` object |
+| `list --name ... --output json` | `{ "success": true, "data": [...] }` |
+| `list --fuzzy ... --output json` | `{ "success": true, "data": [...] }`, including scores and match metadata |
+| `list --body ... --matches --output json` | Match report with `success`, `data`, `totalMatches`, and `truncated` |
+| `list --lineage ... --output json` | Raw `{ "target", "nodes", "warnings" }` object |
+| `new --fork ... --output json` | `{ "success": true, "path", "id", "forked_from", "warnings" }` |
 
-## JSON Input
-
-Provide field values without interactive prompts:
-
-```bash
-bwrb new task --json '{"name": "Fix login", "priority": "high"}'
-bwrb edit "My Task" --json '{"status": "settled"}'
-bwrb bulk --type task --set status=archived
-```
-
-`bwrb new --json` reports filename safety metadata when relevant: `nameTransformed` appears when the requested name is normalized for the filesystem, and `pathLengthWarning` appears for relative paths longer than 200 characters. Paths longer than 260 characters are rejected.
-
-## Scripting Examples
-
-### Create Note from Script
+Normal list output is intentionally a raw array:
 
 ```bash
-#!/bin/bash
-bwrb new task --json "{
-  \"name\": \"$TASK_NAME\",
-  \"priority\": \"$PRIORITY\"
-}"
+bwrb list task --output json | jq -r '.[] | ._path'
 ```
 
-### Process Audit Results
+Name and fuzzy resolution use a success envelope:
 
 ```bash
-bwrb audit --output json | jq '.files[] | .path'
+bwrb list --name "My Note" --output json --picker none | jq -r '.data[0].path'
+bwrb list --fuzzy "My Nte" --output json | jq '.data[] | {path, score}'
 ```
 
-Audit JSON is report-only. It never performs fixes or deletes. For delete-eligible findings, the issue payload can include recommendation metadata under `meta.recommendation` (for example `{"action":"delete-note","interactiveOnly":true}`).
-
-### Batch Operations
+Lineage output is a raw graph object, not a `data` envelope:
 
 ```bash
-bwrb list task --output json | \
-  jq -r '.[] | select(.status == "settled") | ._path' | \
-  xargs -I {} bwrb delete {} --force
+bwrb list --lineage "Briefs/Launch Brief" --output json | jq '.nodes[]'
 ```
 
-## AI Integration
+## JSON input
 
-JSON mode makes Bowerbird scriptable by AI assistants:
+`new` and `edit` accept frontmatter payloads directly:
 
 ```bash
-# AI can read vault state
-bwrb list --output json
-
-# AI can create notes
-bwrb new idea --json '{"name": "AI suggestion", "status": "raw"}'
+bwrb new task --json '{"name":"Fix login","priority":"high"}'
+bwrb edit "My Task" --json '{"status":"settled"}'
 ```
+
+Other management commands accept JSON only where their help documents it, such
+as `config edit <key> --json <value>` and selected template/dashboard workflows.
+Run `bwrb <command> --help`; do not infer `--json` support from another command.
+
+`bwrb new --json` reports filename safety metadata when relevant:
+`nameTransformed` appears when a requested name is normalized, and
+`pathLengthWarning` appears for relative paths longer than 200 characters.
+Paths longer than 260 characters are rejected.
+
+## Errors and exits
+
+Machine-readable failures normally use a structured error object such as:
+
+```json
+{
+  "success": false,
+  "error": "No matches for query",
+  "code": 1
+}
+```
+
+The process exit code remains authoritative. Consumers should tolerate added
+fields and should not assume that every successful command uses the same
+envelope merely because errors share a common shape.
+
+Audit JSON is report-only: it never applies fixes or deletes. For
+delete-eligible findings, issue metadata may include a recommendation under
+`meta.recommendation`.
 
 ## See Also
 
-- [Shell completion](/automation/shell-completion/)
 - [AI integration](/automation/ai-integration/)
+- [bwrb list](/reference/commands/list/)
+- [Targeting Model](/reference/targeting/)

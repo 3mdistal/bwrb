@@ -66,7 +66,7 @@ export default defineConfig({
 							label: 'Commands',
 							collapsed: true,
 							// Keep in sync with runtime `bwrb --help` command ordering.
-							// `init` and `help` are intentionally omitted until docs pages exist.
+							// Commander-provided `help` has no dedicated reference page.
 							items: [
 								{ slug: 'reference/commands/new' },
 								{ slug: 'reference/commands/edit' },
@@ -78,6 +78,7 @@ export default defineConfig({
 								{ slug: 'reference/commands/bulk' },
 								{ slug: 'reference/commands/template' },
 								{ slug: 'reference/commands/dashboard' },
+								{ slug: 'reference/commands/init' },
 								{ slug: 'reference/commands/config' },
 								{ slug: 'reference/commands/completion' },
 							],

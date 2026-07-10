@@ -269,7 +269,7 @@ Checks templates for:
 
 - Valid `template-for` type reference
 - Default field values match schema types
-- Default enum values are valid
+- Default select values appear in the field's inline options
 - Prompt-fields reference existing fields
 - No references to removed schema fields
 

@@ -22,7 +22,7 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `-t, --type <type>` | Filter by type path |
 | `-p, --path <glob>` | Filter by file path pattern |
 | `-w, --where <expr>` | Filter by frontmatter expression (repeatable) |
-| `-b, --body <query>` | Filter by body content |
+| `-b, --body <query>` | Filter by file content; current matching includes YAML frontmatter ([#812](https://github.com/3mdistal/bwrb/issues/812)) |
 | `-a, --all` | Target all files (explicit vault-wide selector) |
 
 ### Issue Filtering
@@ -100,7 +100,7 @@ Delete semantics in repair mode:
 | `broken-body-wikilink` | A well-formed `[[wikilink]]` in the note **body** whose target resolves to **no note** via the alias-aware, case-insensitive note index (warning; **flag-only** — offers a "did you mean?" hint but never auto-links — see below) |
 | `malformed-body-wikilink` | Wikilink bracket syntax in the body that is broken — an empty target (`[[]]`/`[[ ]]`) or an unclosed `[[` (warning; **flag-only**) |
 | `broken-body-file-link` | A relative markdown file/image link in the body — `[text](path.md)` / `![alt](img.png)` — whose target does not exist on disk (warning; **flag-only**) |
-| `relative-date-cycle` | A [`relative-date`](/concepts/relative-dates/) equal chain loops back on itself (warning; flag-only) |
+| `relative-date-cycle` | A [Relative Dates](/concepts/relative-dates/) equal chain loops back on itself (warning; flag-only) |
 | `relative-date-contradiction` | Multiple `equal` constraints on a relative-date field resolve to different positions (warning; flag-only) |
 | `relative-date-bound-violation` | A resolved relative date violates an `after` or `before` bound (warning; flag-only) |
 | `relative-date-invalid-ref` | A relative-date anchor reference is missing or ambiguous (warning; flag-only) |

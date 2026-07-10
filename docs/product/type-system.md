@@ -27,8 +27,9 @@ meta (global fields: status, created)
 
 **What this means:**
 - A `task` automatically has all `objective` fields AND all `meta` fields
-- Add a field to `meta` → every note gets it
-- No duplicate field definitions
+- Add a field to `meta` → every descendant type inherits it
+- A child can re-declare only the keys that differ; its explicit metadata and
+  structural keys override the inherited field, while omitted keys stay inherited
 
 ### 2. Types Link to Context (Relationships)
 
@@ -108,8 +109,10 @@ chapter: "Act One"          ← scene's parent can be a chapter
 ### Unique Type Names
 No two types can share a name. `type: task` is always unambiguous.
 
-### Single Inheritance
-A type has exactly one parent. No mixins, no multiple inheritance. Simple.
+### Single Inheritance, Explicit Composition
+A type has exactly one `extends` parent. Reusable `traits` provide separate
+also-has composition for cross-cutting field bundles; they do not create a
+second parent chain.
 
 ### Ownership is Optional
 Not everything needs to be owned. Use ownership for private/internal notes, skip it for shared resources.
@@ -143,8 +146,9 @@ When creating a type, the user decides:
 
 1. **What does it extend?** (determines inherited fields)
 2. **What fields does it add?** (its unique data)
-3. **Does it own children?** (private notes that live with it)
-4. **Is it recursive?** (can contain instances of itself)
+3. **Which traits does it compose?** (reusable cross-cutting fields)
+4. **Does it own children?** (private notes that live with it)
+5. **Is it recursive?** (can contain instances of itself)
 
 ---
 
@@ -162,6 +166,7 @@ Fields have a **prompt type** that determines how values are collected and what 
 | `number` | Numeric input | `number` | Priority, word count, ratings |
 | `boolean` | Y/n confirm | `true`/`false` | Completed, archived, pinned |
 | `date` | Date input | `string` (YYYY-MM-DD) | Due dates, created dates |
+| `relative-date` | Structured JSON/object input | object or object list | Positions relative to another note's date |
 | `select` | Numbered picker | `string` or `string[]` | Status, category, tags |
 | `relation` | Picker from vault | `string` (wikilink) | Parent task, milestone, project |
 | `list` | Comma-separated input | `string[]` | Aliases, keywords |
@@ -200,13 +205,14 @@ Relation fields link to notes of a specific type (and its descendants):
 {
   "milestone": {
     "prompt": "relation",
-    "source": "milestone",
-    "format": "wikilink"
+    "source": "milestone"
   }
 }
 ```
 
-The picker shows only notes matching the `source` type constraint.
+The picker shows only notes matching the `source` type constraint. Relation
+storage uses the vault-wide `config.link_format`; version 2 fields do not carry
+a per-field `format` property.
 
 ### Field Inheritance
 

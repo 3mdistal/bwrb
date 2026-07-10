@@ -6,12 +6,15 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [0.2.3] - 2026-07-09
 
-Patch release for document forking, lineage inspection, and fork-safe deletion.
+Patch release for relative dates and custom calendars, canonical list/search/open
+consolidation, JSON-mode exit reliability, and the complete native document
+forking/lineage/fork-safe-deletion stack.
 
 ### Added
 
 - **Relative-date fields** — schema-defined `relative-date` values position notes before, after, or equal to other notes, with query-time resolution and audit warnings for invalid chains (#789).
 - **Custom calendars** — vault schemas can define fictional or alternative calendars for native date validation, sorting, comparisons, JSON output, audit, and relative-date anchors (#792).
+- **Lineage foundation** — reserved immutable `forked-from` provenance, per-field `reset_on_fork`, and audit contracts for malformed IDs, dangling provenance, duplicate identities, and lineage cycles establish the shared safety model used by native forks (#802).
 - **Document forks** — `bwrb new --fork <target>` creates a sibling document with a fresh stable ID and immutable `forked-from` provenance while preserving the source body and prior work.
 - **Fork lineage inspection** — `bwrb list --lineage <target>` renders the complete connected fork component—including sibling and cousin branches—in tree, paths, link, content, or JSON form, resolving targets by exact path, name, alias, or case-insensitive UUID.
 - **Fork-safe deletion** — `bwrb delete` refuses notes with direct fork children or duplicate identities unless `--force` is supplied; forced deletion leaves child `forked-from` provenance intact for audit.
@@ -61,7 +64,7 @@ Patch release for the post-0.2.0 bugfix sweep.
 
 ## [0.2.0] - 2026-06-26
 
-Changes since `v0.1.9` — a large release (78 PRs). Headlines: schema **traits**, **hierarchical scope** (contexts as notes + `under()`), **fuzzy search**, the new **`recent`** command, **partial dates**, and a deep audit / migration / ownership hardening wave.
+Changes since `v0.1.9` — a large release (80 non-release PRs). Headlines: schema **traits**, **hierarchical scope** (contexts as notes + `under()`), **fuzzy search**, the new **`recent`** command, **partial dates**, and a deep audit / migration / ownership hardening wave.
 
 ### Added
 
@@ -88,6 +91,8 @@ Changes since `v0.1.9` — a large release (78 PRs). Headlines: schema **traits*
 - **`schema.schema.json` reconciled** with the Zod / loader contract (#626, #665).
 - **Sharper unknown-type help** — "did you mean a type?" suggestions extended to template commands and case-only mismatches (#669, #721).
 - **Multi-select template defaults** — multi-select fields now receive multi-value defaults (#668, #714).
+- **Multi-relation template defaults** — `template new` captures valid
+  multi-value relation defaults when generating a template (#745).
 
 ### Fixed
 
@@ -98,6 +103,11 @@ Changes since `v0.1.9` — a large release (78 PRs). Headlines: schema **traits*
 - **Edit** — nested body sections recurse so `add-sections` agrees with audit (#653, #697, #716).
 - **Open** — positional app mode so `open <name> print` works (#662, #710).
 - **Bulk** — affected files de-duplicated by filesystem identity (#720, #736).
+- **Optional scalar whitespace parity** — whitespace-only values in optional
+  scalar fields are handled consistently by write validation and audit (#741).
+- **Positional app-mode parity** — trailing `[mode]` works consistently on
+  `list`, `recent`, `search`, and `edit`, matching the existing `open` pattern
+  (#744).
 
 ### Performance
 
@@ -860,7 +870,11 @@ Changes since `v0.1.4`.
 
 - **Stop exporting unused note-id helpers (Knip)** (#359)
 
-## [0.2.0] - 2025-12-29
+## [0.2.0 legacy untagged/pre-publish] - 2025-12-29
+
+Legacy pre-publish milestone that used the `0.2.0` label before the tagged 2026
+release series. It is retained for historical context and is not the
+`v0.2.0` tag documented above.
 
 Complete rewrite from shell scripts to TypeScript with significant new features.
 

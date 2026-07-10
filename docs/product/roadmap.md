@@ -1,145 +1,59 @@
 # Bowerbird Roadmap
 
-> Versioned milestones for Bowerbird development
+> Shipped foundation and remaining pre-1.0 priorities.
 
----
+User-facing status is summarized on the docs-site
+[Roadmap](../../docs-site/src/content/docs/product/roadmap.md). Feature behavior
+is canonical in the relevant docs-site concepts and command references.
 
-## Version Philosophy
+## Shipped foundation
 
-**v1: Schema + Dashboards** — Rock-solid schema enforcement, inheritance model, type safety, and saved queries
-**v2: Schema expressiveness + PKM** — A richer schema (aliases, traits, hierarchical scope) so the AI agent uses it correctly, plus deeper queries and visibility
-**v3: AI safety net** — Deterministic primitives *under* the AI agent (no LLM in bwrb): `list --fuzzy`, `audit: unlinked-mention`, daily-note sweep, `schema discover`, event-driven task recurrence
+The old v1/v2/v3 phase labels no longer describe product state. Their principal
+features have shipped:
 
----
+- **Schema and enforcement:** version 2 flat schemas, single inheritance,
+  explicit-key inherited field overrides, traits, ownership, recursive types,
+  schema CRUD, effective-schema migrations, validation, and audit repair
+- **PKM/query surface:** dashboards and `list --save-as`, aliases, hierarchical
+  scope and `under()`, partial dates, relative dates, custom calendars, and
+  canonical `list` name/fuzzy/body/content/open modes
+- **Deterministic safety net:** `unlinked-mention`,
+  `frequent-unlinked-term`, daily-note coverage queries, `schema discover`, and
+  event-driven recurrence with an audit backstop
+- **Document history:** native forks, system `id` and `forked-from`, field
+  `reset_on_fork`, lineage inspection, lineage integrity audits, and fork-safe
+  deletion
+- **Delivery:** live docs-site, generated JSON Schema, JSON-capable automation
+  on the commands that advertise it, shell completion, and release packaging
 
-## v1.0: Schema (Current Focus)
+The compatibility `search` and `open` commands remain callable for existing
+scripts, but `list` is the canonical read surface and `edit` is the canonical
+mutation surface.
 
-The core promise: your notes can't violate the schema.
+## Current focus
 
-### Execution Order
+1. **Pre-1.0 contract hardening** — Keep help, docs, agent guidance, generated
+   schema, completion, and tests synchronized with shipped behavior.
+2. **Safe automation** — Preserve command-specific JSON shapes, clean exits,
+   non-interactive guarantees, and conservative destructive-operation gates.
+3. **Schema evolution reliability** — Continue strengthening migration/audit
+   behavior as field and calendar expressiveness grows.
+4. **Known parity gaps** — Resolve schema/config command coverage
+   ([#809](https://github.com/3mdistal/bwrb/issues/809)) and completion tables
+   ([#810](https://github.com/3mdistal/bwrb/issues/810)).
 
-Work should proceed in this order due to dependencies:
+## Future boundary
 
-#### Phase 1: The Big Rename + Refactor
-| Priority | Issue | Title | Blocked By |
-|----------|-------|-------|------------|
-| P0 | `bwrb-cr7` | Rename ovault to bwrb | — |
-| P0 | `bwrb-wbz` | Implement inheritance model | `bwrb-cr7` |
+Bowerbird stays the deterministic layer under an AI agent. It does not call
+models, host notes, sync vaults, or become a writing application. Future work is
+tracked in GitHub issues and `plans/features/`; a proposal remains a proposal
+until merged. Evergreen docs must describe shipped behavior, while historical
+release notes preserve when it arrived.
 
-#### Phase 2: Core Inheritance Features
-After inheritance model is in place:
-| Priority | Issue | Title |
-|----------|-------|-------|
-| P1 | `bwrb-9g9` | Implement ownership and folder computation |
-| P1 | `bwrb-0k0` | Update tests for new schema format |
-| P1 | `bwrb-taz` | Implement context field validation |
-| P1 | `bwrb-ita` | Implement recursive type support |
-| P1 | `bwrb-oa8` | Update audit for new type resolution |
+## References
 
-#### Phase 3: Schema Management CLI
-| Priority | Issue | Title |
-|----------|-------|-------|
-| P1 | `bwrb-tsh` | Schema Management CLI |
-| P2 | `bwrb-w2a` | `bwrb schema new type` command |
-| P2 | `bwrb-tev` | `bwrb schema new field` command |
-| P1 | — | Field primitives (text, number, boolean, relation) |
-
-#### Phase 4: Polish
-| Priority | Issue | Title |
-|----------|-------|-------|
-| P2 | `bwrb-3nd` | Schema migration system |
-| P2 | `bwrb-fkd` | Finalize command surface |
-| P2 | `bwrb-oay` | Template spawning with ownership |
-| P2 | `bwrb-xy1` | Remove name_field, standardize on 'name' |
-
-#### Phase 5: Dashboards
-Dashboards are saved `bwrb list` queries that can be recalled by name. This minimal implementation builds on existing list infrastructure.
-
-| Priority | Issue | Title |
-|----------|-------|-------|
-| P1 | #196 | Storage format and persistence layer |
-| P1 | #197 | `dashboard <name>` - Run saved query |
-| P1 | #199 | `dashboard list` - List saved dashboards |
-| P1 | #200 | `dashboard new` - Create dashboard |
-| P2 | #198 | `dashboard` (no args) - Picker or default |
-| P2 | #201 | `dashboard edit` - Modify dashboard |
-| P2 | #202 | `dashboard delete` - Remove dashboard |
-| P2 | #203 | Default dashboard support |
-| P2 | #204 | List `--save-as` flag |
-
-### v1.0 Exit Criteria
-
-- [x] Renamed to Bowerbird (CLI, config, docs, repo)
-- [x] Inheritance model fully implemented
-- [x] Ownership/colocation working
-- [x] Context field validation in audit
-- [x] Schema management CLI (schema new/edit/delete/list)
-- [x] Field primitives: text, number, boolean, date, select, relation, list
-- [ ] Dashboard system (storage, CRUD commands, list --save-as)
-- [x] All tests passing with new schema format
-- [ ] Documentation website (bwrb.dev)
-
----
-
-## v2.0: Schema Expressiveness + PKM (Future)
-
-Make the schema richer so the AI agent uses it correctly, and make queries deeper. The schema is the shared language between the human and the agent; investing here pays off everywhere. See `plans/features/schema-expressiveness.md`.
-
-### Planned Features
-
-| Feature | Issue | Description |
-|---------|-------|-------------|
-| Aliases | #266 | First-class alias field role; substrate for the ingest safety net |
-| Traits | #442 | Composition (`also-has`) alongside inheritance (`is-a`) |
-| Hierarchical scope | #554 | Contexts as real notes + `under` join; collapses scope + context |
-| Link validation | `bwrb-6f0` | Broken link detection in audit |
-| Command consolidation | `bwrb-fkd` | Merge list/search/open |
-
-### v2.0 Exit Criteria
-
-- [ ] Alias field role and Obsidian-format validation
-- [ ] Trait composition with deterministic precedence rules
-- [ ] Hierarchical scope with `under` operator
-- [ ] Comprehensive link validation
-- [ ] Polished, consistent CLI surface
-
----
-
-## v3.0: AI Safety Net (Future)
-
-bwrb is the **deterministic safety net under the AI agent, not an LLM caller.** The AI agent (Claude Code, Codex, etc.) does open-world extraction; bwrb provides closed-world verification — deterministic primitives that guarantee nothing gets swept under the rug. No LLM, no OpenRouter client, no cost tracking in bwrb. See `plans/features/ingest-safety-net.md` and `plans/features/task-system.md`.
-
-### Planned Features
-
-| Feature | Issue | Description |
-|---------|-------|-------------|
-| `list --fuzzy` | #93 | Scored candidate lookup so the agent checks "does X exist?" before writing |
-| `audit: unlinked-mention` | #93 | Flag known-entity names in prose that aren't wikilinked (exact/alias auto-fixable; fuzzy flag-only) |
-| `audit: frequent-unlinked-term` | — | Advisory nudge toward entities mentioned often but with no note yet |
-| Daily-note sweep | #87 | Frontmatter convention + saved query proving every ramble was looked at |
-| Task recurrence | #107 | Event-driven spawn-on-transition + offset templating (no daemon, no cron) |
-
-### v3.0 Exit Criteria
-
-- [ ] `list --fuzzy` returns scored candidates
-- [ ] `unlinked-mention` audit with exact/alias auto-fix and fuzzy review
-- [ ] Daily-note sweep coverage query
-- [ ] Event-driven recurrence with audit backstop
-- [ ] Zero LLM calls — works entirely offline, no AI keys
-
----
-
-## Deferred (Post-v3)
-
-| Feature | Issue | Notes |
-|---------|-------|-------|
-| `schema discover` | #97 | Deterministic field-usage facts over a folder (not AI schema generation) |
-
----
-
-## Reference
-
-- **Product Vision:** `docs/product/vision.md`
-- **Type System (overview):** `docs/product/type-system.md`
-- **Type System (technical):** `docs/technical/inheritance.md`
-- **Issue Tracker:** GitHub Issues
+- [Product Vision](vision.md)
+- [Canonical documentation policy](canonical-docs-policy.md)
+- [Type System](type-system.md)
+- [Inheritance technical note](../technical/inheritance.md)
+- [Issue tracker](https://github.com/3mdistal/bwrb/issues)

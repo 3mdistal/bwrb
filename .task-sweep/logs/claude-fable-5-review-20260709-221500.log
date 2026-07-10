@@ -1,0 +1,7 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+max_tokens: 16000
+output_chars: 4409
+output_words: 561
+verdict: NON-BLOCKING

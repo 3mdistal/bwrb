@@ -8,11 +8,19 @@
 
 ## Overview
 
-`bwrb new` has four creation flows (interactive/JSON × owned/pooled). The command handler in `src/commands/new.ts` selects the path, delegates to the interactive or JSON module, resolves ownership, and finally writes the note + optional instances via `writeNotePlan`.
+`bwrb new` has an early native-document-fork path plus four ordinary creation
+flows (interactive/JSON × owned/pooled). The command handler in
+`src/commands/new.ts` selects the path, delegates ordinary creation to the
+interactive or JSON module, resolves ownership, and finally writes the note +
+optional instances via `writeNotePlan`.
 
 Key decisions:
 
 - `--json` switches to non-interactive JSON mode.
+- `--fork <target>` enters native fork mode before ordinary type/template/
+  ownership flow. It resolves an exact source note, copies it beside the source,
+  assigns a fresh `id`, writes `forked-from`, and honors field
+  `reset_on_fork`.
 - Template selection is controlled by `--template`, `--no-template`, or interactive selection when multiple templates exist.
 - Ownership is controlled by `--owner`, `--standalone`, or interactive ownership prompts.
 - Instance scaffolding is controlled by `--no-instances`.
@@ -23,7 +31,11 @@ Key decisions:
 
 ```mermaid
 flowchart TD
-  Start([bwrb new]) --> JsonMode{--json provided?}
+  Start([bwrb new]) --> ForkMode{--fork provided?}
+  ForkMode -->|yes| ResolveFork[Resolve exact path, name, alias, or UUID]
+  ResolveFork --> CopyFork[Copy document beside source; fresh id + forked-from]
+  CopyFork --> ForkDone[Return fork path and lineage metadata]
+  ForkMode -->|no| JsonMode{--json provided?}
   JsonMode -->|yes| RequireType[Type path required]
   JsonMode -->|no| ResolveType[Resolve type path
 (positional/--type or prompt)]
@@ -57,6 +69,22 @@ flowchart TD
 ---
 
 ## Flow details
+
+### Native document fork
+
+Use `--fork <target>` to create a lineage-aware copy of an existing document.
+Fork mode is separate from ordinary typed note creation: type, template,
+ownership, instance, and frontmatter-JSON flags are rejected. `--name` or
+`--label` supplies the new name; non-interactive/JSON output requires one.
+
+The fork remains beside its source, receives a fresh system `id`, and stores the
+source UUID in reserved `forked-from`. Fields marked `reset_on_fork: true` are
+omitted so schema defaults can repopulate them. Implementation lives in
+`src/commands/new/fork.ts`.
+
+```bash
+bwrb new --fork "Briefs/Launch Brief" --label concise --output json
+```
 
 ### Interactive + owned
 

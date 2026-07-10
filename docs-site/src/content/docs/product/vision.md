@@ -41,7 +41,8 @@ Start minimal. Add types as patterns emerge. Migrate when ready.
 
 ### Consistency Above All
 
-Small command surface. Consistent flags. JSON mode everywhere.
+Small command surface. Consistent flags. Machine-readable modes where each
+command explicitly documents them.
 
 ## What Bowerbird Is NOT
 

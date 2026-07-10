@@ -22,7 +22,8 @@ bwrb finds the vault in this order:
 1. `--vault <path>` flag
 2. Find-up nearest ancestor containing `.bwrb/schema.json`
 3. `BWRB_VAULT` environment variable
-4. Current working directory (error if not a vault)
+4. Bounded find-down beneath the current directory: one candidate is selected;
+   multiple candidates prompt in a TTY or error in non-interactive/JSON mode
 
 Always verify you're targeting the correct vault before operations.
 
@@ -35,6 +36,7 @@ Create a new bwrb vault with `init`:
 bwrb init --yes
 
 # Initialize at specific path
+mkdir -p /path/to/vault
 bwrb init /path/to/vault --yes
 
 # Reinitialize existing vault (destructive)
@@ -44,11 +46,14 @@ bwrb init --force --yes
 bwrb init --yes --output json
 ```
 
+The target directory must already exist. `init` creates `.bwrb/` inside it; it
+does not create the vault directory itself.
+
 The command creates `.bwrb/schema.json` with:
 - Version 2 format
 - Default `wikilink` link format
 - Auto-detected Obsidian vault name (if `.obsidian/` exists)
-- Empty `types: {}` (add types with `bwrb schema type new`)
+- Empty `types: {}` (add types with `bwrb schema new type`)
 
 ## Schema Discovery
 
@@ -92,11 +97,21 @@ bwrb supports vault-wide configuration in `.bwrb/schema.json` under the `config`
 |--------|--------|---------|-------------|
 | `link_format` | `wikilink`, `markdown` | `wikilink` | Format for relation field links |
 | `date_format` | Pattern string | `YYYY-MM-DD` | Format for date fields |
+| `date_granularity` | `day`, `month`, `year` | `day` | Vault default for allowed partial-date precision |
 | `calendars` | Object | `{}` | Custom calendar registry for non-Gregorian date fields |
 | `open_with` | `system`, `editor`, `visual`, `obsidian` | `system` | Default --open behavior |
 | `editor` | Command string | `$EDITOR` | Terminal editor command |
 | `visual` | Command string | `$VISUAL` | GUI editor command |
+| `obsidian_vault` | String | auto | Obsidian vault name for URI opening |
+| `default_dashboard` | String | none | Dashboard run with no name |
 | `excluded_directories` | `string[]` | `[]` | Directory prefixes to exclude from discovery/targeting |
+| `mention_fuzzy_threshold` | Integer `0`–`5` | `2` | Fuzzy edit-distance cap for mention suggestions |
+| `mention_corpus_calibration` | Boolean | `true` | Dampen vault-common single-word targets |
+| `mention_corpus_min_notes` | Integer | `3` | Corpus damping minimum note count |
+| `mention_corpus_noncanonical_ratio` | Number `0`–`1` | `0.5` | Corpus damping casing threshold |
+| `mention_link_once` | Boolean | `false` | Limit auto-fixes to one link per note/target pair |
+| `mention_exclude_types` | `string[]` | `[]` | Types excluded from mention target indexing |
+| `mention_exclude_paths` | `string[]` | `[]` | Globs excluded from mention target indexing |
 
 ### Date Format
 
@@ -133,7 +148,7 @@ with `calendar` or type-level `calendar_default`:
 ```
 
 Calendar date strings use `<eraShort> <year>-<month>-<day> [<hour>:<minute>]`,
-for example `AR 3019-09-02 266:50`. JSON list output expands these fields as
+for example `AR 3019-01-02 266:50` for the one-month calendar above. JSON list output expands these fields as
 `{ value, calendar, linear }`; sort and `--where` compare the linear value.
 For calendar-anchored relative-date chains, `d` means the calendar's
 `hoursInDay`; `w` is rejected.
@@ -142,20 +157,28 @@ For calendar-anchored relative-date chains, `d` means the calendar's
 # View current config
 bwrb config list
 
-# Edit config option
-bwrb config edit date_format  # Interactive
-bwrb config edit date_format --json '"MM/DD/YYYY"'  # Non-interactive
+# Edit a command-supported config option
+bwrb config edit open_with --json '"editor"'
 
 # Exclude directories globally
 bwrb config edit excluded_directories --json '["Archive","Templates"]'
 ```
 
+`config list/edit` currently supports only `link_format`, `editor`, `visual`,
+`open_with`, `obsidian_vault`, `default_dashboard`, `excluded_directories`,
+`mention_exclude_types`, `mention_exclude_paths`, and `mention_link_once`.
+`date_format`, `date_granularity`, `calendars`, `mention_fuzzy_threshold`, and
+the `mention_corpus_*` keys are valid schema settings but are **schema-only**:
+edit `.bwrb/schema.json` and run `bwrb schema validate`. Do not send them to
+`bwrb config edit` (tracked in
+[#809](https://github.com/3mdistal/bwrb/issues/809)).
+
 ## Built-in Frontmatter Fields
 
-Some fields are written by bwrb regardless of schema:
+Some fields are recognized by bwrb regardless of schema:
 
 - `id`: reserved/system-managed UUID created by `bwrb new` and should not be edited.
-- `name`: written by `bwrb new` as the note title; `bwrb audit` does not treat it as an unknown field even if the schema does not declare it.
+- `name`: always allowed and used as an explicit identity when present. JSON creation persists the input `name`; interactive creation currently derives `_name` from the filename without persisting this key ([#813](https://github.com/3mdistal/bwrb/issues/813)).
 - `forked-from`: reserved immediate-source UUID for document lineage. It is not a wikilink. Agents may encounter hand-authored values, but must not set or modify it through ordinary `new --json`, `edit`, or template input.
 
 Create a document fork when preserving an earlier draft matters:
@@ -217,9 +240,13 @@ bwrb list --name "Projects/Duplicate.md" --open --app print --picker none
 # Target by stable id
 bwrb list --id "<uuid>" --output json
 
-# Full-text search in note content
+# Full-text search in the serialized Markdown file (including frontmatter today)
 bwrb list --body "search term" --output json
 ```
+
+Despite the historical `--body` name, current content matching includes YAML
+frontmatter. Use `--where` when you need a field-specific predicate; body-only
+masking is tracked in [#812](https://github.com/3mdistal/bwrb/issues/812).
 
 ### Relative-Date Fields
 
@@ -258,7 +285,18 @@ bwrb new task --json '{"name": "Task", "_body": "## Notes\n\n- Captured from a s
 bwrb new task --template epic --no-instances --json '{"name": "Ship feature"}'
 ```
 
-Some templates and schema types define **instance scaffolding** (child notes created alongside the main note). By default, `bwrb new` creates those instances; pass `--no-instances` to skip child creation.
+Some templates define **instance scaffolding** (child notes created alongside
+the main note). By default, `bwrb new` creates those instances; pass
+`--no-instances` to skip child creation. Every child is filed in its own type's
+configured `output_dir`, not beside the parent unless those directories happen
+to match.
+
+Instance defaults on fields whose resolved schema prompt is `date` evaluate the
+same relative date expressions as the parent (`@today+3d`, `today() + '7d'`).
+Date-looking defaults on non-date fields remain literal. Instance `defaults`
+and an explicit instance `filename` do **not** interpolate parent placeholders
+such as `{name}`; use literal child values or the child type's own filename
+pattern.
 
 When `bwrb new --json` runs instance scaffolding, the response includes an `instances` object with the created, skipped, and error lists. This object is omitted when `--no-instances` is set.
 
@@ -485,7 +523,7 @@ bwrb dashboard list --output json  # JSON output for scripting
 
 ## Best Practices
 
-1. **Always use `--output json`** for list/search/audit when parsing output
+1. **Use canonical `list --output json`** for note discovery and `audit --output json` for validation; avoid starting new automation on hidden compatibility `search`/`open`
 2. **Always use `--picker none`** to prevent interactive prompts blocking automation
 3. **Query schema first** before creating notes to understand required fields
 4. **Use `--json` input** for `new` and `edit` to avoid interactive prompts

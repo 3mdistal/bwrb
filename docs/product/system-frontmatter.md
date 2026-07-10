@@ -4,10 +4,12 @@ This document defines bwrb-managed frontmatter fields that are not required to b
 
 ## System-managed fields
 
-These fields are written by bwrb and are always allowed in frontmatter:
+These fields are recognized by bwrb and are always allowed in frontmatter:
 
-- `id`
-- `name`
+- `id` (written by ordinary creation and forks)
+- `name` (persisted from JSON creation when supplied; interactive creation
+  currently derives the effective name from the filename without writing the
+  key, tracked in [#813](https://github.com/3mdistal/bwrb/issues/813))
 - `forked-from` (immediate source note UUID, written by `bwrb new --fork`)
 
 Audit/validation behavior:

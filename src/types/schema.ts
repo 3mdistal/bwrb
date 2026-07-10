@@ -140,7 +140,7 @@ export const FieldSchema = z.object({
     .union([z.string(), z.array(z.string())])
     .optional()
     .describe(
-      'Type name(s) for relation and relative-date prompts. When a relation\'s value is ambiguous because two notes share a name, path-qualify the link (e.g. `[[contexts/Betson]]`); see the search command docs for the shortest-unambiguous-form rule.'
+      'Type name(s) for relation and relative-date prompts. When a relation\'s value is ambiguous because two notes share a name, path-qualify the link (e.g. `[[contexts/Betson]]`); see the canonical list resolution docs for the shortest-unambiguous-form rule.'
     ),
   // Filter conditions for type-based source queries
   // Applies frontmatter conditions to filter results (e.g., { status: { not_in: ["settled"] } })

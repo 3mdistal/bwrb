@@ -7,24 +7,27 @@ This guide walks you through creating a vault with a schema and your first note.
 
 ## 1. Create a Vault
 
-A vault is any directory with a `.bwrb/schema.json` file:
+A vault is any directory with a `.bwrb/schema.json` file. Initialize one with
+the shipped non-interactive defaults:
 
 ```bash
 mkdir my-vault
 cd my-vault
-mkdir -p .bwrb
+bwrb init --yes
 ```
 
 ## 2. Define a Schema
 
-Create `.bwrb/schema.json`. Here's a minimal schema with two types:
+Replace the generated `.bwrb/schema.json` with this minimal schema containing
+two types:
 
 ```json
 {
+  "version": 2,
   "types": {
     "idea": {
       "output_dir": "Ideas",
-      "frontmatter": {
+      "fields": {
         "type": { "value": "idea" },
         "created": { "value": "$NOW" },
         "status": {
@@ -32,11 +35,12 @@ Create `.bwrb/schema.json`. Here's a minimal schema with two types:
           "options": ["raw", "developing", "mature"],
           "default": "raw"
         }
-      }
+      },
+      "field_order": ["type", "created", "status"]
     },
     "task": {
       "output_dir": "Tasks",
-      "frontmatter": {
+      "fields": {
         "type": { "value": "task" },
         "created": { "value": "$NOW" },
         "status": {
@@ -49,7 +53,8 @@ Create `.bwrb/schema.json`. Here's a minimal schema with two types:
           "options": ["low", "medium", "high"],
           "default": "medium"
         }
-      }
+      },
+      "field_order": ["type", "created", "status", "priority"]
     }
   }
 }
@@ -78,11 +83,17 @@ The result is a properly-structured markdown file:
 ```markdown
 ---
 type: idea
+id: 550e8400-e29b-41d4-a716-446655440000
 created: 2025-01-07 14:30
 status: raw
 ---
 
 ```
+
+Interactive creation derives the effective note name from the filename and does
+not currently persist a `name` key. JSON creation persists `name` from its input;
+the creation-mode mismatch is tracked in
+[#813](https://github.com/3mdistal/bwrb/issues/813).
 
 ## 4. List Your Notes
 
@@ -180,25 +191,40 @@ Special values:
 
 ### Hierarchical Types
 
-Types can have subtypes for nested categorization:
+Types form a flat map. A child type points to its parent with `extends`:
 
 ```json
 {
   "types": {
     "objective": {
-      "subtypes": {
-        "task": { "output_dir": "Objectives/Tasks", ... },
-        "milestone": { "output_dir": "Objectives/Milestones", ... }
+      "output_dir": "Objectives",
+      "fields": {
+        "type": { "value": "objective" }
+      }
+    },
+    "task": {
+      "extends": "objective",
+      "output_dir": "Objectives/Tasks",
+      "fields": {
+        "type": { "value": "task" }
+      }
+    },
+    "milestone": {
+      "extends": "objective",
+      "output_dir": "Objectives/Milestones",
+      "fields": {
+        "type": { "value": "milestone" }
       }
     }
   }
 }
 ```
 
-Access subtypes with slash notation:
+Use the child name directly, or slash notation where a command accepts a type
+path:
 
 ```bash
-bwrb new objective/task
+bwrb new task
 bwrb list objective          # Lists all objectives (tasks + milestones)
 bwrb list objective/task     # Lists only tasks
 ```
@@ -237,6 +263,7 @@ export BWRB_VAULT=~/notes
 | `bwrb bulk --type <type> --set key=value` | Apply frontmatter changes in bulk |
 | `bwrb template list [type]` | List templates for a type |
 | `bwrb dashboard [name]` | Run a saved query |
+| `bwrb init [path] --yes` | Initialize a vault with version 2 defaults |
 | `bwrb config list` | Show vault config values |
 | `bwrb completion <shell>` | Generate shell completion script |
 

@@ -1,0 +1,22 @@
+NON-BLOCKING
+
+## Summary
+
+The diff is internally consistent on every high-risk axis I checked: the explicit-key inheritance-merge rewrite is applied identically across `docs-site/concepts/types-and-inheritance.md`, `docs-site/concepts/migrations.md`, `docs-site/reference/schema.md`, `docs/product/migrations.md`, `docs/product/type-system.md`, and `docs/technical/inheritance.md`; the completion command list (`new, edit, list, recent, audit, bulk, schema, template, dashboard, delete, completion, config` + the #810 `init` omission) is identical in README, `installation.md`, `shell-completion.md`, and `completion.md`; the command-specific JSON story (shapes table, raw-array `list`, raw lineage object, `new --fork` envelope) matches between `json-mode.md` and `docs/product/cli-output-contract.md`; the config editable-subset (10 keys) vs schema-only keys split matches across `config.md`, `reference/schema.md`, and `SKILL.md`; #809–#813 are described consistently and accurately as disclosed gaps, not misstated. The `src/types/schema.ts` change is description-string-only and its text is byte-identical in `schema.schema.json` and `docs-site/public/schema.json` — acceptable as generated-contract prose, not an accidental product change. The new `init` reference page exists, is in the sidebar in help order, and agrees with SKILL/README/quick-start on "directory must pre-exist."
+
+## Non-blocking items to verify before merge
+
+1. **CHANGELOG.md, 0.2.0 header** — "78 PRs" → "80 non-release PRs" while the same hunk adds three previously undocumented PR references (#741, #744, #745). The count is of merged PRs, not changelog entries, so this is not a provable contradiction, but 78→80 alongside +3 entries invites the suspicion the number was reverse-engineered. Verify 80 against `git log v0.1.9..v0.2.0` excluding release PRs; correct if it is 81 (or any other value).
+2. **CHANGELOG.md, 0.2.3 headline** — the summary now attributes "canonical list/search/open consolidation" and "JSON-mode exit reliability" to 0.2.3. The visible 0.2.3 Added section does not show those entries (they may sit in an unshown Changed/Fixed hunk). Confirm both actually landed within the 0.2.3 window rather than 0.2.1/0.2.2; changelog headlines are historical claims.
+3. **docs/product/cli-output-contract.md** — the rewrite silently drops the previously documented exception that `bwrb audit --fix --auto` exits `0` when unambiguous fixes were applied but issues remain. If that behavior still ships, the exception should be restated (the new "success exits 0; failure exits non-zero" prose is arguably compatible but loses a real, consumer-relevant nuance). Restore the note or confirm the behavior changed.
+4. **docs-site/concepts/custom-calendars.md + docs/skill/SKILL.md calendar examples** — the example dates (`AR 3019-02-02` vs `AR 3019-01-02`) and the new `linear` value (`4057466.8333333335`) are unverifiable from the diff alone. The tester matrix reportedly passed; confirm these figures were produced by the shipped resolver, not hand-computed.
+5. **docs/product/cli-output-contract.md `JsonError`** — the interface excerpt now includes `data?: unknown`. Confirm this matches the actual `src/lib/output.ts` declaration; the doc no longer says "defined in," but showing a TS block that diverges from source would be misleading.
+
+## Optional editorial suggestions
+
+- **docs-site/getting-started/quick-start.md** — Step 1 now runs `bwrb init --yes` (which creates a schema with empty `types`), but Step 2 still says "Create `.bwrb/schema.json`." Say "Replace the generated `.bwrb/schema.json`" to avoid confusing users who just watched init create one.
+- **docs-site/getting-started/quick-start.md** — the example output places `id` between `type` and `created`; verify this matches the actual serialization order given `field_order: ["type", "created", "status"]` plus system-field insertion.
+- **docs/technical/inheritance.md** — the closing line ("Fossils are charming in museums; less so in technical contracts") is a tonal outlier for a maintainer note; harmless but consider trimming.
+- **docs-site/reference/targeting.md** — the blanket claim "`-o` … is never shorthand for `--output`" is strong; it is consistent with `edit.md`'s `-o, --open`, but double-check no command registers `-o` for `--output` before asserting "never."
+
+No blocking accuracy problems found in what the diff itself asserts.

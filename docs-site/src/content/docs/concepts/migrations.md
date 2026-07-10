@@ -180,19 +180,16 @@ inherits the field via `extends` — e.g. removing a `phase` option on `objectiv
 (or removing the `phase` field entirely) also cleans `task` notes when
 `task extends objective`.
 
-A same-named field on the descendant does **not** automatically shield it. The
-schema resolver applies a *restricted merge* to an inherited field: a child may
-override only metadata (`default` / `value` / `description` / `granularity`) — its
-raw structural keys (`options` / `multiple` / `required` / `source`) are **ignored**
-and the parent's structure wins. So a descendant whose raw entry merely re-declares
-an inherited field (a metadata-only override) is still governed by the parent and is
-cleaned/widened alongside it. A descendant is shielded **only** when the field is its
-own genuine, non-inherited definition — i.e. it does not inherit that field from the
-parent at all.
+A same-named child field explicitly key-merges onto the inherited definition.
+Every declared key wins, including structural keys such as `options`, `multiple`,
+`required`, and `source`; omitted keys stay inherited. Migrations compare each
+concrete type's old and new **effective** field, so a parent change fans out only
+where it changes that descendant's effective schema. A child structural override
+can shield it from the corresponding parent structural change, while inherited
+keys the child omitted still follow the parent. Editing the child override itself
+is a real child-scoped migration whenever its effective field changes.
 
-Conversely, editing only such an ignored raw override (while the parent is unchanged)
-leaves the effective schema identical and produces **no** migration op, so valid note
-values are never deleted. Also, an absent `multiple` is treated as `false`, so adding
+An absent `multiple` is treated as `false`, so adding
 or removing an explicit `multiple: false` is a no-op (no review, no version bump).
 :::
 

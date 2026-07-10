@@ -46,7 +46,7 @@ is always available.
 | `-t, --type <type>` | Filter by type path (e.g., `idea`, `objective/task`) |
 | `-p, --path <glob>` | Filter by file path glob (e.g., `Projects/**`, `Ideas/`) |
 | `-w, --where <expr>` | Filter with expression (repeatable, ANDed together) |
-| `-b, --body <query>` | Filter by body content search |
+| `-b, --body <query>` | Filter by file content; current matching includes YAML frontmatter ([#812](https://github.com/3mdistal/bwrb/issues/812)) |
 
 ### Output
 
