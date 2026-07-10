@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+output: /Users/alicemoore/Developer/bwrb-worktrees/issue-807-lineage-lock/.task-sweep/logs/claude-fable-5-review-remediation-output-20260710-115000-issue-807.md
+chars: 2834 words: 394
+preview: NO BLOCKERS\n\n## SPEC FIDELITY\n\n**Windows spawn fix (setup.ts):** Correct. `node_modules/.bin/tsx` is a POSIX shell shim (a `.cmd` on Windows, which `spawn` cannot exec without `shell: true`). Invoking `process.execPath` with `tsx/dist/cli.mjs` as the script is fully portable, pins the child to the same Node binary running the tests, and preserves the dist/source mode split exactly (`USE_DIST` → `dist/index.js`, else tsx + `src/index.ts`). Both call sites (`runCLI`, `runCLIWithOpenStdin`) were updated consistently.\n\n**Windows timeout fix (lineage-lock test):** Correct in intent and preserves test integrity. The prior interactive flow (`stdin.end('y\n')` + `waitForOutput` on the prompt) was the Windows-flaky observer; the interactive prompt itself is not the property under test — the propert
