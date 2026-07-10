@@ -35,7 +35,11 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 
 | Context | Completion |
 |---------|------------|
-| `bwrb <TAB>` | Commands: `new`, `edit`, `list`, `recent`, `audit`, `bulk`, `schema`, `template`, `lineage`, `dashboard`, `delete`, `completion`, `config` |
+| `bwrb <TAB>` | Visible commands: `new`, `edit`, `delete`, `list`, `recent`, `schema`, `audit`, `bulk`, `template`, `lineage`, `dashboard`, `init`, `config`, `completion` |
+| `bwrb schema <TAB>` | Subcommands: `types`, `fields`, `validate`, `discover`, `new`, `edit`, `delete`, `list`, `diff`, `migrate`, `history` |
+| `bwrb template <TAB>` | Subcommands: `list`, `validate`, `new`, `edit`, `delete` |
+| `bwrb lineage <TAB>` | Subcommand: `adopt` |
+| `bwrb recent -<TAB>` | Options including `--open`, `--app`, `--save-as`, and `--force` |
 | `bwrb list -<TAB>` | Options: `--type`, `--path`, `--where`... |
 | `bwrb new <TAB>` | Types from schema: `task`, `idea`... |
 | `bwrb list --path <TAB>` | Directories: `Ideas/`, `Projects/`... |
@@ -48,10 +52,10 @@ Completions are context-aware:
 - Paths come from your vault's directory structure
 - No hard-coded values
 
-`bwrb --help` also shows `init`, but generated root completion currently omits
-it ([#810](https://github.com/3mdistal/bwrb/issues/810)). The hidden
-compatibility commands `open` and `search` remain callable but are intentionally
-not taught as canonical root candidates.
+Root command and maintained subcommand candidates are contract-tested against
+the built CLI help surface. The hidden compatibility commands `open` and
+`search` remain callable but are intentionally not taught as canonical root
+candidates.
 
 ## See Also
 

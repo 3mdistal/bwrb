@@ -60,8 +60,8 @@ const COMMANDS_WITH_SUBCOMMANDS = ['schema', 'template', 'dashboard', 'lineage',
  * Subcommands for each parent command.
  */
 const SUBCOMMANDS: Record<string, string[]> = {
-  schema: ['list', 'new', 'edit', 'delete', 'validate', 'diff', 'migrate', 'history'],
-  template: ['list', 'show', 'new', 'edit', 'delete', 'validate'],
+  schema: ['types', 'fields', 'validate', 'discover', 'new', 'edit', 'delete', 'list', 'diff', 'migrate', 'history'],
+  template: ['list', 'validate', 'new', 'edit', 'delete'],
   dashboard: ['list', 'new', 'edit', 'delete'],
   lineage: ['adopt'],
   completion: ['bash', 'zsh', 'fish'],
@@ -247,17 +247,18 @@ export async function getPathCompletions(
 const COMMANDS = [
   'new',
   'edit',
+  'delete',
   'list',
   'recent',
+  'schema',
   'audit',
   'bulk',
-  'schema',
   'template',
   'lineage',
   'dashboard',
-  'delete',
-  'completion',
+  'init',
   'config',
+  'completion',
 ];
 
 async function resolveVaultDirForCompletion(options: { vault?: string }): Promise<string> {
@@ -274,7 +275,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
   new: ['--type', '-t', '--vault', '-v', '--non-interactive', '--template', '--no-template', '--no-instances', '--owner', '--standalone', '--json', '--open', '-o', '--fork', '--label', '--name', '--output', '--help'],
   edit: ['--type', '-t', '--path', '-p', '--where', '-w', '--id', '--body', '-b', '--picker', '--json', '--output', '--open', '--app', '--vault', '-v', '--non-interactive', '--help'],
   list: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--name', '--fuzzy', '--matches', '--threshold', '--context', '-C', '--no-context', '--case-sensitive', '-S', '--regex', '-E', '--text', '--id', '--lineage', '--fields', '--sort', '--desc', '--limit', '--count', '--output', '--open', '-o', '--app', '--picker', '--preview', '--vault', '-v', '--non-interactive', '--json', '--help'],
-  recent: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--limit', '--output', '--vault', '-v', '--non-interactive', '--help'],
+  recent: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--limit', '--output', '--open', '-o', '--app', '--save-as', '--force', '--vault', '-v', '--non-interactive', '--help'],
   open: ['--type', '-t', '--path', '-p', '--where', '-w', '--id', '--body', '-b', '--app', '-a', '--picker', '--output', '--preview', '--vault', '-v', '--non-interactive', '--help'],
   search: ['--type', '-t', '--path', '-p', '--path-glob', '--where', '-w', '--body', '-b', '--text', '--fuzzy', '--threshold', '--context', '-C', '--no-context', '--case-sensitive', '-S', '--regex', '-E', '--limit', '-l', '--output', '--wikilink', '--path-output', '--content', '--open', '-o', '--edit', '--json', '--app', '--picker', '--preview', '--vault', '-v', '--non-interactive', '--help'],
   audit: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--text', '--all', '-a', '--strict', '--only', '--ignore', '--output', '--fix', '--auto', '--dry-run', '--execute', '--allow-field', '--vault', '-v', '--non-interactive', '--help'],
@@ -519,8 +520,8 @@ export async function handleCompletionRequest(
       return filterByPrefix(SUBCOMMANDS['template'] ?? [], ctx.current);
     }
     
-    // For subcommands that take [type] [name]: show, edit, delete
-    if (['show', 'edit', 'delete'].includes(ctx.subcommand)) {
+    // For subcommands that take [type] [name]: list, edit, delete
+    if (['list', 'edit', 'delete'].includes(ctx.subcommand)) {
       try {
         const vaultDir = await resolveVaultDirForCompletion(options);
         const schema = await loadSchema(vaultDir);
@@ -543,8 +544,8 @@ export async function handleCompletionRequest(
       }
     }
     
-    // For subcommands that take [type]: list, validate, new
-    if (['list', 'validate', 'new'].includes(ctx.subcommand)) {
+    // For subcommands that take [type]: validate, new
+    if (['validate', 'new'].includes(ctx.subcommand)) {
       if (ctx.positionalIndex === 0) {
         try {
           const vaultDir = await resolveVaultDirForCompletion(options);
