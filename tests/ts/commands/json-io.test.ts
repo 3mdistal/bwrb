@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { readFile, mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { ExitCodes } from '../../../src/lib/output.js';
 
 describe('JSON I/O', () => {
   let vaultDir: string;
@@ -695,6 +696,9 @@ defaults:
       expect(json.success).toBe(true);
       // Filename should be the date (YYYY-MM-DD format)
       expect(json.path).toMatch(/Ideas\/\d{4}-\d{2}-\d{2}\.md$/);
+      const content = await readFile(join(vaultDir, json.path), 'utf-8');
+      const dateName = json.path.replace(/^Ideas\//, '').replace(/\.md$/, '');
+      expect(content).toContain(`name: ${dateName}`);
     });
 
     it('should use filename from pattern with frontmatter field', async () => {
@@ -723,6 +727,31 @@ defaults:
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
       expect(json.path).toBe('Ideas/My Great Idea.md');
+    });
+
+    it('rejects an invalid explicit name even when the filename pattern resolves', async () => {
+      await mkdir(join(vaultDir, '.bwrb/templates/idea'), { recursive: true });
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/idea', 'dated-invalid-name.md'),
+        `---
+type: template
+template-for: idea
+filename-pattern: "{date}"
+defaults:
+  status: raw
+---
+`
+      );
+
+      const result = await runCLI(
+        ['new', 'idea', '--json', '{"name":42}', '--template', 'dated-invalid-name'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
+      const json = JSON.parse(result.stdout);
+      expect(json.success).toBe(false);
+      expect(json.error).toContain("Missing or invalid 'name' field");
     });
 
     it('should report filename transformations from filename patterns', async () => {
@@ -755,6 +784,43 @@ defaults:
         sanitized: 'AB Test',
         filename: 'AB Test.md',
       });
+      const content = await readFile(join(vaultDir, json.path), 'utf-8');
+      expect(content).toContain('name: A/B  Test?');
+    });
+
+    it('preserves an explicit identity when a pattern determines the filename', async () => {
+      await addIdeaTitleField();
+      await mkdir(join(vaultDir, '.bwrb/templates/idea'), { recursive: true });
+      await writeFile(
+        join(vaultDir, '.bwrb/templates/idea', 'identity-and-path.md'),
+        `---
+type: template
+template-for: idea
+filename-pattern: "{title}"
+defaults:
+  status: raw
+---
+`
+      );
+
+      const result = await runCLI(
+        [
+          'new',
+          'idea',
+          '--json',
+          '{"name":"Canonical Identity","title":"Pattern / Path?"}',
+          '--template',
+          'identity-and-path',
+        ],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.path).toBe('Ideas/Pattern Path.md');
+      const content = await readFile(join(vaultDir, json.path), 'utf-8');
+      expect(content).toContain('name: Canonical Identity');
+      expect(content).not.toContain('name: Pattern / Path?');
     });
 
     it('should use filename from combined pattern', async () => {

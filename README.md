@@ -172,7 +172,7 @@ Type properties include:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `extends` | No | Parent type name; defaults to the implicit `meta` root |
-| `output_dir` | Yes for `new` | Directory relative to vault root. Schema inspection can report a computed fallback, but current note creation still requires an explicit value ([#811](https://github.com/3mdistal/bwrb/issues/811)) |
+| `output_dir` | No | Directory relative to vault root. If omitted, creation uses the computed pluralized type hierarchy reported by schema inspection; an explicit type or ancestor directory takes precedence |
 | `fields` | No | Field definitions, merged with inherited fields |
 | `field_order` | No | Array specifying effective field order |
 | `body_sections` | No | Array of section definitions |

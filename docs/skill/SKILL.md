@@ -190,7 +190,7 @@ exactly once. `date_granularity` accepts `day`, `month`, or `year`.
 Some fields are recognized by bwrb regardless of schema:
 
 - `id`: reserved/system-managed UUID created by `bwrb new` and should not be edited.
-- `name`: always allowed and used as an explicit identity when present. JSON creation persists the input `name`; interactive creation currently derives `_name` from the filename without persisting this key ([#813](https://github.com/3mdistal/bwrb/issues/813)).
+- `name`: always allowed and persisted by both interactive and JSON creation. It is the note identity and remains unchanged when the physical filename is normalized or pattern-derived.
 - `forked-from`: reserved immediate-source UUID for document lineage. It is not a wikilink. Agents must not set or modify it through ordinary `new --json`, `edit`, template input, schema defaults, or audit fixes. Use guarded `lineage adopt` for known historical derivation between existing notes.
 
 Create a document fork when preserving an earlier draft matters:

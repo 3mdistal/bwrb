@@ -104,6 +104,94 @@ describe('new command', () => {
     });
   });
 
+  describe('output directory resolution', () => {
+    it('creates pooled notes in the computed hierarchy when output_dir is omitted', async () => {
+      const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+      const rawSchema = JSON.parse(await readFile(schemaPath, 'utf-8')) as {
+        types: Record<string, Record<string, unknown>>;
+      };
+      rawSchema.types.topic = {
+        plural: 'Topics',
+        fields: { type: { value: 'topic' } },
+        field_order: ['type'],
+      };
+      rawSchema.types.entry = {
+        extends: 'topic',
+        plural: 'Entries',
+        fields: { type: { value: 'entry' } },
+        field_order: ['type'],
+      };
+      await writeFile(schemaPath, JSON.stringify(rawSchema, null, 2), 'utf-8');
+
+      const result = await runCLI(
+        ['new', 'topic/entry', '--json', '{"name":"Computed Entry"}', '--no-template'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+      const output = JSON.parse(result.stdout);
+      expect(output.path).toBe('Topics/Entries/Computed Entry.md');
+      const content = await readFile(join(vaultDir, output.path), 'utf-8');
+      expect(content).toContain('name: Computed Entry');
+      expect(content).toMatch(/^type: topic\/entry\nid: [^\n]+\nname: Computed Entry$/m);
+    });
+
+    it('continues to prefer an explicit output_dir over the computed hierarchy', async () => {
+      const result = await runCLI(
+        ['new', 'idea', '--json', '{"name":"Explicit Directory"}', '--no-template'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+      const output = JSON.parse(result.stdout);
+      expect(output.path).toBe('Ideas/Explicit Directory.md');
+    });
+
+    it('inherits an explicit ancestor output_dir before computing a hierarchy', async () => {
+      const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+      const rawSchema = JSON.parse(await readFile(schemaPath, 'utf-8')) as {
+        types: Record<string, Record<string, unknown>>;
+      };
+      rawSchema.types.collection = {
+        output_dir: 'Library',
+        fields: { type: { value: 'collection' } },
+        field_order: ['type'],
+      };
+      rawSchema.types.entry = {
+        extends: 'collection',
+        fields: { type: { value: 'entry' } },
+        field_order: ['type'],
+      };
+      await writeFile(schemaPath, JSON.stringify(rawSchema, null, 2), 'utf-8');
+
+      const result = await runCLI(
+        ['new', 'collection/entry', '--json', '{"name":"Inherited Directory"}', '--no-template'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+      const output = JSON.parse(result.stdout);
+      expect(output.path).toBe('Library/Inherited Directory.md');
+    });
+
+    it('resolves slash-notation paths through the canonical type name', async () => {
+      const result = await runCLI(
+        [
+          'new',
+          'objective/task',
+          '--json',
+          '{"name":"Slash Path","status":"backlog"}',
+          '--no-template',
+        ],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+      const output = JSON.parse(result.stdout);
+      expect(output.path).toBe('Objectives/Tasks/Slash Path.md');
+    });
+  });
+
   describe('template flags (JSON mode)', () => {
     it('rejects reserved fork provenance in JSON input', async () => {
       const result = await runCLI(

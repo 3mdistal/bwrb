@@ -86,14 +86,13 @@ type: idea
 id: 550e8400-e29b-41d4-a716-446655440000
 created: 2025-01-07 14:30
 status: raw
+name: My Great Idea
 ---
 
 ```
 
-Interactive creation derives the effective note name from the filename and does
-not currently persist a `name` key. JSON creation persists `name` from its input;
-the creation-mode mismatch is tracked in
-[#813](https://github.com/3mdistal/bwrb/issues/813).
+Interactive and JSON creation both persist the built-in `name`. The identity
+stays as entered even when Bowerbird normalizes unsafe filename characters.
 
 ## 4. List Your Notes
 

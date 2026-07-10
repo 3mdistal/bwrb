@@ -7,9 +7,8 @@ This document defines bwrb-managed frontmatter fields that are not required to b
 These fields are recognized by bwrb and are always allowed in frontmatter:
 
 - `id` (written by ordinary creation and forks)
-- `name` (persisted from JSON creation when supplied; interactive creation
-  currently derives the effective name from the filename without writing the
-  key, tracked in [#813](https://github.com/3mdistal/bwrb/issues/813))
+- `name` (written by ordinary interactive and JSON creation; preserves the
+  note identity even when its filename is normalized or pattern-derived)
 - `forked-from` (immediate source note UUID, written by `bwrb new --fork` or the
   guarded `bwrb lineage adopt` operation)
 

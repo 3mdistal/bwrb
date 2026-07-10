@@ -179,8 +179,17 @@ async function buildInteractiveNoteContent(
     const patternResult = resolveFilenamePattern(filenamePattern, content.frontmatter, schema.config.dateFormat);
 
     if (patternResult.resolved && patternResult.filename) {
+      // Filename patterns are sanitized during resolution. Keep the resolved,
+      // pre-sanitization value as the note's identity while using the safe
+      // filename for its path.
       return {
         ...content,
+        frontmatter: {
+          ...content.frontmatter,
+          name: content.frontmatter.name
+            ?? patternResult.nameTransformed?.original
+            ?? patternResult.filename,
+        },
         itemName: patternResult.filename,
         ...(patternResult.nameTransformed ? { nameTransformed: patternResult.nameTransformed } : {}),
       };
@@ -197,6 +206,7 @@ async function buildInteractiveNoteContent(
 
     return {
       ...content,
+      frontmatter: { ...content.frontmatter, name: prompted },
       itemName: prompted,
     };
   }
@@ -209,6 +219,7 @@ async function buildInteractiveNoteContent(
   const content = await buildNoteContent(schema, vaultDir, typePath, typeDef, templateResolution);
   return {
     ...content,
+    frontmatter: { ...content.frontmatter, name: prompted },
     itemName: prompted,
   };
 }
