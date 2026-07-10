@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+output: /Users/alicemoore/Developer/bwrb-worktrees/issue-820-edit-concurrency/.task-sweep/logs/claude-fable-5-review-context-output-20260710-124500-issue-820.md
+chars: 3252 words: 434
+preview: NO BLOCKERS\n\n## SPEC FIDELITY\n\nThe prior review's spec conclusions hold, and the follow-up delta resolves both open items:\n\n1. **Docs ambiguity fixed** — all three surfaces now state "up to three total attempts (the initial attempt plus at most two retries)": `json-mode.md`, `edit.md`, and `SKILL.md`. This matches `JSON_EDIT_ATTEMPTS = 3` and `data.attempts: 3` exactly. No remaining drift.\n2. **Test barrier gate fixed** — `waitForEditCommitBarrier` now requires both `BWRB_TEST_EDIT_BARRIER_ENABLED === '1'` and `BWRB_TEST_EDIT_BARRIER_DIR`, and the test spawner sets both. The prior risk (a leaked dir var hanging every JSON edit 20s/attempt) is closed; accidental activation now requires two deliberate env settings. Barrier placement remains correct: before lock acquisition, so no lock is hel
