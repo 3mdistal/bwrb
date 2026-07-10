@@ -37,6 +37,7 @@ function spawnCli(args: string[], cwd: string, barrierDir: string): RunningCli {
     env: withTestCliNodeOptions({
       ...process.env,
       NO_COLOR: '1',
+      BWRB_TEST_EDIT_BARRIER_ENABLED: '1',
       BWRB_TEST_EDIT_BARRIER_DIR: barrierDir,
     }, { useDist: USE_DIST }),
     stdio: ['ignore', 'pipe', 'pipe'],

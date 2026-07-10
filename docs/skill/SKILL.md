@@ -399,7 +399,7 @@ bwrb edit --type task --where "status == 'active'" "Deploy" --json '{"status": "
 Notes:
 - If multiple notes share the same name, `bwrb edit` errors and lists candidates. Disambiguate with `--type`, `--path`, or a vault-relative path.
 - `bwrb new --json` rejects unknown frontmatter fields after merging template defaults. `bwrb edit --json` rejects unknown fields in the patch.
-- Edit commits coordinate with fork/adopt lineage writes. JSON patches replay from fresh bytes up to three times; on exhaustion, retry only when JSON has numeric `code: 2`, `data.reason: "note-modified-concurrently"`, and `data.retryable: true`. Interactive edits do not replay answers gathered from stale values.
+- Edit commits coordinate with fork/adopt lineage writes. JSON patches make up to three total attempts (the initial attempt plus at most two retries) from fresh bytes; on exhaustion, retry only when JSON has numeric `code: 2`, `data.reason: "note-modified-concurrently"`, and `data.retryable: true`. Interactive edits do not replay answers gathered from stale values.
 
 ### Deleting Notes
 

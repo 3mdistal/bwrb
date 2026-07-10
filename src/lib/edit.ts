@@ -486,6 +486,7 @@ export async function editNoteInteractive(
 
 /** File handshake used only by cross-process race tests. */
 async function waitForEditCommitBarrier(attempt: number, filePath: string): Promise<void> {
+  if (process.env.BWRB_TEST_EDIT_BARRIER_ENABLED !== '1') return;
   const barrierDir = process.env.BWRB_TEST_EDIT_BARRIER_DIR;
   if (!barrierDir) return;
 

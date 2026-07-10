@@ -65,13 +65,14 @@ bwrb edit -t task --where "status == 'active'" "Deploy" --json '{"priority":"hig
 
 The final edit commit shares the note's lineage mutation lock with `new --fork`
 and `lineage adopt`. Bowerbird compares the note's exact raw bytes after taking
-the lock. A JSON patch that became stale is replayed against the latest note up
-to three times, so a concurrent `id` backfill or `forked-from` edge is preserved.
+the lock. A JSON patch that became stale is retried against the latest note for
+up to three total attempts, so a concurrent `id` backfill or `forked-from` edge
+is preserved.
 Interactive answers are never replayed against unseen values; the command asks
 you to retry instead.
 
-If all JSON retries become stale, JSON output uses numeric exit code `2` and
-stable retry context:
+If all three JSON attempts become stale, JSON output uses numeric exit code `2`
+and stable retry context:
 
 ```json
 {
