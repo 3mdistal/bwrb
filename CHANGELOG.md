@@ -4,11 +4,25 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-07-09
+
+Patch release for document forking, lineage inspection, and fork-safe deletion.
+
 ### Added
 
+- **Relative-date fields** — schema-defined `relative-date` values position notes before, after, or equal to other notes, with query-time resolution and audit warnings for invalid chains (#789).
+- **Custom calendars** — vault schemas can define fictional or alternative calendars for native date validation, sorting, comparisons, JSON output, audit, and relative-date anchors (#792).
 - **Document forks** — `bwrb new --fork <target>` creates a sibling document with a fresh stable ID and immutable `forked-from` provenance while preserving the source body and prior work.
 - **Fork lineage inspection** — `bwrb list --lineage <target>` renders the complete connected fork component—including sibling and cousin branches—in tree, paths, link, content, or JSON form, resolving targets by exact path, name, alias, or case-insensitive UUID.
 - **Fork-safe deletion** — `bwrb delete` refuses notes with direct fork children or duplicate identities unless `--force` is supplied; forced deletion leaves child `forked-from` provenance intact for audit.
+
+### Changed
+
+- **Unified note discovery** — `bwrb list` is now the canonical surface for finding, filtering, inspecting, linking, and opening notes; `search` and `open` remain available as hidden compatibility commands (#801).
+
+### Fixed
+
+- **JSON-mode command completion** — resolved-target edits and prompt-mode commands now exit cleanly when stdin remains open, while `edit --json --open` emits one coherent JSON result with consistent open metadata (#794, #797, #798, #800).
 
 ## [0.2.2] - 2026-07-04
 
