@@ -146,6 +146,22 @@ describe('bwrb completion command', () => {
       expect(completions).toContain('new');
       expect(completions).toContain('edit');
       expect(completions).toContain('completion');
+      expect(completions).toContain('lineage');
+    });
+
+    it('completes lineage adopt and its guarded mutation options', async () => {
+      const subcommands = (await runCliOutput([
+        '--completions', 'bwrb', 'lineage', '',
+      ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
+      expect(subcommands).toContain('adopt');
+
+      const options = (await runCliOutput([
+        '--completions', 'bwrb', 'lineage', 'adopt', '--',
+      ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
+      expect(options).toEqual(expect.arrayContaining([
+        '--from', '--dry-run', '--execute', '--output', '--vault', '--help',
+      ]));
+      expect(options).not.toContain('--force');
     });
 
     it('should return option completions when current word starts with -', async () => {

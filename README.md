@@ -115,6 +115,10 @@ bwrb list --id "<uuid>" --open --app print
 bwrb new --fork "Briefs/Launch Brief" --label concise --output json
 bwrb list --lineage "Briefs/Launch Brief" --output tree
 
+# Adopt two existing same-type notes after previewing the exact guarded change
+bwrb lineage adopt "Launch Brief v2" --from "Launch Brief" --dry-run --output json
+bwrb lineage adopt "Launch Brief v2" --from "Launch Brief" --execute --output json
+
 # Help
 bwrb --help
 bwrb list --help
@@ -603,7 +607,7 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 ### What Gets Completed
 
 - **Commands**: `bwrb <TAB>` shows `new`, `edit`, `list`, `recent`, `audit`,
-  `bulk`, `schema`, `template`, `dashboard`, `delete`, `completion`, and `config`.
+  `bulk`, `schema`, `template`, `lineage`, `dashboard`, `delete`, `completion`, and `config`.
   `init` appears in `bwrb --help` but is currently missing from generated root
   completion candidates ([#810](https://github.com/3mdistal/bwrb/issues/810)).
 - **Options**: `bwrb list -<TAB>` shows `--type`, `--path`, `--where`, etc.

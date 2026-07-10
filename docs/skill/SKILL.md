@@ -179,7 +179,7 @@ Some fields are recognized by bwrb regardless of schema:
 
 - `id`: reserved/system-managed UUID created by `bwrb new` and should not be edited.
 - `name`: always allowed and used as an explicit identity when present. JSON creation persists the input `name`; interactive creation currently derives `_name` from the filename without persisting this key ([#813](https://github.com/3mdistal/bwrb/issues/813)).
-- `forked-from`: reserved immediate-source UUID for document lineage. It is not a wikilink. Agents may encounter hand-authored values, but must not set or modify it through ordinary `new --json`, `edit`, or template input.
+- `forked-from`: reserved immediate-source UUID for document lineage. It is not a wikilink. Agents must not set or modify it through ordinary `new --json`, `edit`, template input, schema defaults, or audit fixes. Use guarded `lineage adopt` for known historical derivation between existing notes.
 
 Create a document fork when preserving an earlier draft matters:
 
@@ -193,6 +193,23 @@ always provide `--name` or `--label` and use `--output json`; the result contain
 `path`, the child's fresh `id`, `forked_from`, and `warnings`. Do not combine
 fork mode with a type, template, `--json`, instance, or ownership-selection
 flag. The child is a normal note beside its source, not a hidden snapshot.
+
+Adopt two existing notes only when their immediate derivation is known. Always
+preview first and inspect the exact paths, IDs, changes, warnings, and body
+hashes before executing:
+
+```bash
+bwrb lineage adopt "Child note" --from "Parent note" --dry-run --output json
+bwrb lineage adopt "Child note" --from "Parent note" --execute --output json
+```
+
+Targets are exact UUID, path, basename, name, or alias matches and must have the
+same resolved type. Adoption has no force or bulk mode, refuses an existing
+child edge and unsafe/cyclic graph state, and changes only missing target IDs
+plus the child's `forked-from`. A successful JSON result has `mode`, `child`,
+`parent`, `changes`, `warnings`, and `body_invariance`; require both
+`body_invariance.*.unchanged` values to be `true`. IDs shown as generated in a
+dry run are provisional until execute revalidates under locks.
 
 Deleting a document with direct fork children refuses unless `--force` is
 supplied. With `--force`, bwrb deletes only the selected document: children keep

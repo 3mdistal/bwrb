@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+output: .task-sweep/logs/claude-fable-5-plan-output-20260709-212938.md
+chars: 9605 words: 1290
+preview: # Planning advice: `bwrb lineage adopt`\n\n## 1. Namespace answer\n\nKeep `bwerb lineage adopt` as a new top-level `lineage` command group. Rationale: `new` semantics are "create a note" (fork creates the child); `edit` is explicitly forbidden from touching `forked-from` by policy, and grafting an escape hatch into `edit` weakens the immutability story the audit/system-field policy depends on. A dedicated `lineage` namespace also gives a natural home for future read subcommands. Register it in `src/index.ts` in the schema/management or utility block — decide by looking at where `audit`/lock-adjacent commands sit; do not disturb the documented registration order for existing commands.\n\n## Root cause and files to inspect\n\n- **Root cause:** immutability of `forked-from` is enforced across all mut

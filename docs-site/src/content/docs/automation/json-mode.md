@@ -30,6 +30,7 @@ complete JSON value, but success shapes differ by workflow:
 | `list --body ... --matches --output json` | Match report with `success`, `data`, `totalMatches`, and `truncated` |
 | `list --lineage ... --output json` | Raw `{ "target", "nodes", "warnings" }` object |
 | `new --fork ... --output json` | `{ "success": true, "path", "id", "forked_from", "warnings" }` |
+| `lineage adopt ... --output json` | `{ "success": true, "mode", "child", "parent", "changes", "warnings", "body_invariance" }` |
 
 Normal list output is intentionally a raw array:
 
@@ -49,6 +50,12 @@ Lineage output is a raw graph object, not a `data` envelope:
 ```bash
 bwrb list --lineage "Briefs/Launch Brief" --output json | jq '.nodes[]'
 ```
+
+Adoption output uses a success envelope because it describes a planned or
+applied mutation. Preview is the default; require `mode == "dry-run"`, review
+the paths and changes, and then rerun with `--execute`. Generated preview IDs
+are provisional. Both `body_invariance.child.unchanged` and
+`body_invariance.parent.unchanged` should be `true`.
 
 ## JSON input
 
