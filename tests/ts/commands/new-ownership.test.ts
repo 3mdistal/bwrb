@@ -83,7 +83,6 @@ A test project for ownership testing.
       field_order: ['type', 'status', 'songs'],
     };
     customSchema.types.track = {
-      output_dir: 'Tracks',
       fields: {
         type: { value: 'track' },
       },
@@ -116,6 +115,8 @@ Owned folder placement test.
     expect(result.stderr).toBe('');
     const output = JSON.parse(result.stdout);
     expect(output.success).toBe(true);
+    // Owned placement bypasses the pooled directory resolver, even though the
+    // track type has no explicit output_dir and would otherwise use "tracks".
     expect(output.path).toContain('Albums/Best Album/songs/Opening Track.md');
 
     const notePath = join(vaultDir, output.path);

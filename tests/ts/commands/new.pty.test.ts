@@ -96,6 +96,19 @@ const INSTANCE_SCAFFOLD_SCHEMA = {
   },
 };
 
+const COMPUTED_OUTPUT_SCHEMA = {
+  version: 2,
+  types: {
+    event: {
+      plural: 'Events',
+      fields: {
+        type: { value: 'event' },
+      },
+      field_order: ['type'],
+    },
+  },
+};
+
 describePty('bwrb new command PTY tests', () => {
   beforeAll(() => {
     expect(existsSync(TEST_VAULT_PATH)).toBe(true);
@@ -108,7 +121,7 @@ describePty('bwrb new command PTY tests', () => {
         async (proc, vaultPath) => {
           // Wait for name prompt
           await proc.waitFor('Name', 10000);
-          await proc.typeAndEnter('Complete Flow Test');
+          await proc.typeAndEnter('Complete / Flow? Test');
 
           // Status selection - options: (skip), raw, backlog, in-flight, settled
           // So '3' = backlog
@@ -133,8 +146,27 @@ describePty('bwrb new command PTY tests', () => {
           expect(content).toContain('type: idea');
           expect(content).toContain('status: backlog');
           expect(content).toContain('priority: high');
+          expect(content).toContain('name: Complete / Flow? Test');
+          expect(content).toMatch(/^type: idea\nid: [^\n]+\nstatus: backlog\npriority: high\nname: Complete \/ Flow\? Test$/m);
         },
         { schema: FULL_SCHEMA }
+      );
+    }, 30000);
+
+    it('should create interactively in a computed output directory', async () => {
+      await withTempVault(
+        ['new', 'event'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Name', 10000);
+          await proc.typeAndEnter('Computed Event');
+          await proc.waitFor('Created:', 5000);
+
+          expect(await vaultFileExists(vaultPath, 'Events/Computed Event.md')).toBe(true);
+          const content = await readVaultFile(vaultPath, 'Events/Computed Event.md');
+          expect(content).toContain('type: event');
+          expect(content).toContain('name: Computed Event');
+        },
+        { schema: COMPUTED_OUTPUT_SCHEMA }
       );
     }, 30000);
 
@@ -728,6 +760,7 @@ defaults:
             const content = await readVaultFile(vaultPath, filename);
             expect(content).toContain('type: idea');
             expect(content).toContain('status: raw');
+            expect(content).toContain(`name: ${dateMatch[1]}`);
             expect(content).toContain('## Today\'s Ideas');
           }
         },
@@ -761,7 +794,7 @@ defaults:
 
           // Should then prompt for Name as fallback
           await proc.waitFor('Name', 10000);
-          await proc.typeAndEnter('Fallback Name Test');
+          await proc.typeAndEnter('Fallback / Name? Test');
 
           // Should create file with fallback name
           await proc.waitForStable(200);
@@ -769,8 +802,51 @@ defaults:
 
           const exists = await vaultFileExists(vaultPath, 'Ideas/Fallback Name Test.md');
           expect(exists).toBe(true);
+          const content = await readVaultFile(vaultPath, 'Ideas/Fallback Name Test.md');
+          expect(content).toContain('name: Fallback / Name? Test');
         },
         { schema: FULL_SCHEMA, files: [missingFieldTemplate] }
+      );
+    }, 30000);
+
+    it('preserves a template-defaulted identity when a pattern chooses the path', async () => {
+      const identityTemplate: TempVaultFile = {
+        path: '.bwrb/templates/idea/identity.md',
+        content: `---
+type: template
+template-for: idea
+filename-pattern: "{slug}"
+defaults:
+  name: Stable Identity
+  slug: "Pattern / Path?"
+---
+`,
+      };
+      const schemaWithIdentity = {
+        version: 2,
+        types: {
+          idea: {
+            output_dir: 'Ideas',
+            fields: {
+              type: { value: 'idea' },
+              name: { prompt: 'text' },
+              slug: { prompt: 'text' },
+            },
+            field_order: ['type', 'name', 'slug'],
+          },
+        },
+      };
+
+      await withTempVault(
+        ['new', 'idea', '--template', 'identity'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Created:', 10000);
+          expect(await vaultFileExists(vaultPath, 'Ideas/Pattern Path.md')).toBe(true);
+          const content = await readVaultFile(vaultPath, 'Ideas/Pattern Path.md');
+          expect(content).toContain('name: Stable Identity');
+          expect(content).not.toContain('name: Pattern / Path?');
+        },
+        { schema: schemaWithIdentity, files: [identityTemplate] }
       );
     }, 30000);
   });

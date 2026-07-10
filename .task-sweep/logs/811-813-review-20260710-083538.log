@@ -1,0 +1,7 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: length
+output: .task-sweep/logs/811-813-review-output-20260710-083538.md
+chars: 0 words: 0
+warning: response content was empty/null; inspect finish_reason and increase --max-tokens if needed.
+preview:

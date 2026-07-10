@@ -84,6 +84,11 @@ async function buildJsonNoteContent(
   const resolvedFrontmatter = applyDefaults(schema, typePath, mergedInput);
 
   const itemNameResult = resolveJsonItemName(schema, typeDef, resolvedFrontmatter, template);
+  if (resolvedFrontmatter.name === undefined) {
+    // Pattern resolution sanitizes its filename. Preserve the resolved source
+    // string as identity when the caller did not supply an explicit name.
+    resolvedFrontmatter.name = itemNameResult.nameTransformed?.original ?? itemNameResult.itemName;
+  }
   const body = generateBodyForJson(typeDef, resolvedFrontmatter, template, bodyInput, schema.config.dateFormat);
   const orderedFields = resolveOrderedFields(typeDef, resolvedFrontmatter);
 
@@ -263,6 +268,14 @@ function resolveJsonItemName(
   frontmatter: Record<string, unknown>,
   template?: Template | null
 ): Pick<PlannedNoteContent, 'itemName' | 'nameTransformed'> {
+  const suppliedName = frontmatter.name;
+  if (
+    suppliedName !== undefined
+    && (typeof suppliedName !== 'string' || suppliedName.trim().length === 0)
+  ) {
+    throwJsonError(jsonError("Missing or invalid 'name' field"), ExitCodes.VALIDATION_ERROR);
+  }
+
   const filenamePattern = getFilenamePattern(template ?? null, typeDef);
 
   if (filenamePattern) {

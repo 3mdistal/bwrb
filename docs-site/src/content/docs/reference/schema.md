@@ -71,7 +71,7 @@ Types define categories of notes. Each type has a name (the object key) and a de
 | `extends` | string | `"meta"` | Parent type name (single-inheritance) |
 | `traits` | array | — | Trait names composed into this type (see [Traits](#traits)) |
 | `description` | string | — | What this type is for and when to use it. Surfaced by `bwrb schema list` |
-| `output_dir` | string | required for `new` | Vault-relative folder where this type's notes live (e.g., `"Objectives/Tasks"`). Schema inspection reports a computed fallback when omitted, but current creation still requires an explicit value; see [Output directories](#output-directories) |
+| `output_dir` | string | no | Vault-relative folder where this type's notes live (e.g., `"Objectives/Tasks"`). When omitted, creation uses the computed pluralized type hierarchy; see [Output directories](#output-directories) |
 | `fields` | object | `{}` | Field definitions |
 | `field_order` | array | — | Order of fields in frontmatter |
 | `body_sections` | array | — | Body structure after frontmatter |
@@ -108,10 +108,10 @@ A nested note whose declared `type` does not match the folder it sits in is stil
 discoverable, but `bwrb audit` reports it as `wrong-directory` — discovery and the
 audit's directory check use the same subtree rule.
 
-`schema validate` currently permits an omitted `output_dir` and reports its
-computed hierarchy-based fallback as a warning. Ordinary `bwrb new` does not yet
-use that fallback and refuses creation until the type declares `output_dir`
-explicitly ([#811](https://github.com/3mdistal/bwrb/issues/811)).
+`schema validate` permits an omitted `output_dir` and reports its computed
+hierarchy-based fallback as a warning. Ordinary `bwrb new` uses that same
+resolved directory. Resolution prefers an explicit directory on the type, then
+an explicit ancestor directory, and finally the pluralized type hierarchy.
 
 ### Inheritance
 

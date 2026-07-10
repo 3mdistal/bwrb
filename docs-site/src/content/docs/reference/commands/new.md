@@ -142,6 +142,9 @@ If the note name or resolved filename pattern contains characters that are not p
 }
 ```
 
+The persisted `name` remains the original note identity. Only the physical
+filename is normalized.
+
 Paths longer than 200 characters include `pathLengthWarning` in JSON mode and print a warning in interactive mode. Paths longer than 260 characters are rejected.
 
 JSON output for templates with instances includes an `instances` object:
@@ -201,11 +204,13 @@ only be forked when its owner's field permits multiple children.
 1. **Type resolution**: Prompts for type if not specified (with subtype navigation)
 2. **Template loading**: Loads matching template if available (unless `--no-template`)
 3. **Field prompts**: Prompts for each field defined in schema/template
-4. **File creation**: Creates file in the type's `output_dir`
-5. **Built-in fields**: Writes system-managed `id`. JSON creation also persists
-   its input `name`; interactive creation currently derives the effective name
-   from the filename without writing that key
-   ([#813](https://github.com/3mdistal/bwrb/issues/813)). The reserved
+4. **File creation**: Creates pooled files in the type's resolved output
+   directory: an explicit type directory wins, then an explicit ancestor
+   directory, then the computed pluralized type hierarchy. Owned notes still
+   live beneath their owner
+5. **Built-in fields**: Writes system-managed `id` and `name` in both
+   interactive and JSON creation. `name` preserves the note identity even when
+   filename normalization or a filename pattern produces a different path. The reserved
    `forked-from` provenance field cannot be supplied through `--json`, templates,
    or schema fields/defaults; `new --fork` is the lineage-aware workflow that
    injects it

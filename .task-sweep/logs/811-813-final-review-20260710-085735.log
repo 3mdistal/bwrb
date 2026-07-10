@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+output: .task-sweep/logs/811-813-final-review-output-20260710-085735.md
+chars: 4151 words: 466
+preview: NO BLOCKERS\n\nAll six prior risks are resolved in the final diff.\n\n**Risk-by-risk verification**\n\n1. **Identity precedence parity** — Resolved. Interactive pattern path (`src/commands/new/interactive.ts:~182-192`) uses `content.frontmatter.name ?? nameTransformed?.original ?? filename`; JSON path (`src/commands/new/json-mode.ts:87-91`) backfills only when `resolvedFrontmatter.name === undefined`, preserving explicit/template-defaulted names identically. Both are pinned by tests: `tests/ts/commands/json-io.test.ts` ("preserves an explicit identity when a pattern determines the filename", asserts `name: Canonical Identity`, path `Ideas/Pattern Path.md`) and `tests/ts/commands/new.pty.test.ts` ("preserves a template-defaulted identity when a pattern chooses the path", asserts `name: Stable Ide

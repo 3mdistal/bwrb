@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+output: .task-sweep/logs/811-813-review-output-20260710-083538-retry.md
+chars: 3254 words: 408
+preview: NON-BLOCKING\n\n**Verdict rationale:** The core contracts look correctly implemented: pooled creation now routes through the shared `getOutputDir` computed-fallback (src/commands/new/write-plan.ts:25–35, 43), owned placement still short-circuits first (write-plan.ts:31–33), and both creation modes persist raw identity separately from sanitized filenames (src/commands/new/interactive.ts:179–186, 201–204, 214–217; src/commands/new/json-mode.ts:87–91). Early name validation in JSON mode (json-mode.ts:271–277) fires before pattern resolution, so an invalid explicit `name` is rejected even when the pattern would have resolved — covered by tests/ts/commands/json-io.test.ts:732–755. Docs updates match the new behavior. No concrete correctness or release blocker found.\n\n**Non-blocking notes:**\n\n1. *

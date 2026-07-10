@@ -9,11 +9,11 @@ import {
   registerIssuedNoteId,
 } from '../../lib/note-id.js';
 import { cleanRelationLink, ensureOwnedOutputDir } from '../../lib/vault.js';
-import { getTypeDefByPath } from '../../lib/schema.js';
+import { getOutputDir } from '../../lib/schema.js';
 import { normalizeDateFields } from '../../lib/validation.js';
 import { ExitCodes, jsonError } from '../../lib/output.js';
 import { printWarning } from '../../lib/prompt.js';
-import type { NoteCreationResult, WritePlanArgs, FileExistsStrategy, OwnershipMode, CreationMode } from './types.js';
+import type { NoteCreationResult, WritePlanArgs, FileExistsStrategy, OwnershipMode } from './types.js';
 import { buildNotePath } from './paths.js';
 import { throwJsonError } from './errors.js';
 import { handleInstanceScaffolding } from './scaffolding.js';
@@ -22,31 +22,17 @@ import type { LoadedSchema } from '../../types/schema.js';
 const PORTABLE_PATH_WARNING_LENGTH = 200;
 const PORTABLE_PATH_MAX_LENGTH = 260;
 
-function getOutputDirForType(schema: LoadedSchema, typePath: string): string | undefined {
-  const typeDef = getTypeDefByPath(schema, typePath);
-  return typeDef?.outputDir;
-}
-
 async function resolveOutputDir(
   schema: LoadedSchema,
   vaultDir: string,
-  typePath: string,
-  ownership: OwnershipMode,
-  mode: CreationMode
+  typeName: string,
+  ownership: OwnershipMode
 ): Promise<string> {
   if (ownership.kind === 'owned') {
     return ensureOwnedOutputDir(ownership.owner.ownerPath, ownership.fieldName);
   }
 
-  const outputDir = getOutputDirForType(schema, typePath);
-  if (!outputDir) {
-    if (mode === 'json') {
-      throwJsonError(jsonError(`No output_dir defined for type: ${typePath}`), ExitCodes.SCHEMA_ERROR);
-    }
-    throw new Error(`No output_dir defined for type: ${typePath}`);
-  }
-
-  return join(vaultDir, outputDir);
+  return join(vaultDir, getOutputDir(schema, typeName));
 }
 
 export async function writeNotePlan(
@@ -54,7 +40,7 @@ export async function writeNotePlan(
   fileExistsStrategy: FileExistsStrategy,
   skipInstances: boolean
 ): Promise<NoteCreationResult> {
-  const outputDir = await resolveOutputDir(args.schema, args.vaultDir, args.typePath, args.ownership, args.mode);
+  const outputDir = await resolveOutputDir(args.schema, args.vaultDir, args.typeDef.name, args.ownership);
   const pathResult = buildNotePath(outputDir, args.content.itemName, args.mode, args.content.nameTransformed);
   const filePath = pathResult.path;
   const relativePath = relative(args.vaultDir, filePath);

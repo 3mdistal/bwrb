@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+output: .task-sweep/logs/811-813-plan-output-20260710-081444.md
+chars: 5499 words: 754
+preview: ## Implementation plan\n\n### Minimal shared contract\n\nTwo invariants, one per issue:\n\n1. **Placement (#811):** Pooled note placement in `new` must use the same resolution as schema tooling: explicit `output_dir` option > owned-note placement via `ensureOwnedOutputDir` (existing bypass, unchanged) > `getOutputDir(schema, typeName)` (explicit type dir → ancestor explicit dir → `computeDefaultOutputDir` pluralized hierarchy). The "no outputDir → error" path disappears.\n2. **Identity (#813):** `frontmatter.name` is always persisted and always equals the *pre-sanitization* identity string. Sanitization in `paths.ts` remains a filename-only concern and must never feed back into frontmatter (it already doesn't mutate — keep that property; the fix is to assign `name` upstream).\n\n### Exact likely ed

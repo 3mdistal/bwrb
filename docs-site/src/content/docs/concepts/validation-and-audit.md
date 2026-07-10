@@ -34,10 +34,9 @@ Audit catches:
 - Malformed frontmatter
 
 Built-in fields recognized by bwrb (`id`, `name`, and `forked-from`) are always
-allowed and never reported as `unknown-field`. Ordinary creation writes `id`;
-JSON creation also persists its input `name`, while interactive creation
-currently derives the effective name from the filename without writing a `name`
-key ([#813](https://github.com/3mdistal/bwrb/issues/813)).
+allowed and never reported as `unknown-field`. Ordinary interactive and JSON
+creation writes `id` and `name`; the name remains the note identity even when
+the physical filename is normalized or pattern-derived.
 
 ## Fixing Issues
 

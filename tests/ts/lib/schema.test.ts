@@ -27,6 +27,7 @@ import {
   getFieldsByOrigin,
   getFieldOrderForOrigin,
   getAllOwnFieldNames,
+  getOutputDir,
 } from '../../../src/lib/schema.js';
 import { createTestVault, cleanupTestVault, TEST_SCHEMA } from '../fixtures/setup.js';
 import type { LoadedSchema } from '../../../src/types/schema.js';
@@ -53,6 +54,43 @@ describe('schema', () => {
 
     it('should throw on missing schema file', async () => {
       await expect(loadSchema('/nonexistent/path')).rejects.toThrow();
+    });
+  });
+
+  describe('getOutputDir total resolution contract', () => {
+    it('always returns a directory for explicit, inherited, computed, and unknown types', async () => {
+      const tempDir = await mkdtemp(join(tmpdir(), 'bwrb-output-dir-total-'));
+      try {
+        await mkdir(join(tempDir, '.bwrb'), { recursive: true });
+        await writeFile(
+          join(tempDir, '.bwrb/schema.json'),
+          JSON.stringify({
+            version: 2,
+            types: {
+              collection: {
+                output_dir: 'Library',
+                fields: { type: { value: 'collection' } },
+              },
+              entry: {
+                extends: 'collection',
+                fields: { type: { value: 'entry' } },
+              },
+              event: {
+                plural: 'Events',
+                fields: { type: { value: 'event' } },
+              },
+            },
+          })
+        );
+        const resolved = await loadSchema(tempDir);
+
+        expect(getOutputDir(resolved, 'collection')).toBe('Library');
+        expect(getOutputDir(resolved, 'entry')).toBe('Library');
+        expect(getOutputDir(resolved, 'event')).toBe('Events');
+        expect(getOutputDir(resolved, 'mystery')).toBe('mysteries');
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
     });
   });
 
