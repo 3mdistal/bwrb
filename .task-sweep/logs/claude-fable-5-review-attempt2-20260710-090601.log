@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+output: .task-sweep/logs/claude-fable-5-review-output-attempt2-20260710-090601.md
+chars: 3555 words: 451
+preview: NON-BLOCKING\n\nNo blockers found. The confirmed stale-lock race fix is sound: the naive mtime/unconditional-unlink lock in `src/commands/new/fork.ts` (removed lines ~271–305) is replaced by `withOwnershipFileLock` built on the existing token/inode/heartbeat/recovery primitive in `src/lib/lineage-lock.ts`, and `tests/ts/lib/note-id-lock.test.ts` directly regresses the original failure mode (old holder releasing a successor's lock at the same pathname, plus heartbeat-vs-stale-reap). Lock ordering is consistent across flows (lineage → assignment → registry), so no deadlock cycle: adopt (`src/commands/lineage/adopt.ts` ~86–105), fork (`ensureSourceId`), and registry mutations in `src/lib/note-id.ts` all follow it.\n\nNon-blocking notes:\n\n1. **adopt/delete race coverage is probabilistic and near-v
