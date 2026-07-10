@@ -22,7 +22,7 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `-t, --type <type>` | Filter by type path |
 | `-p, --path <glob>` | Filter by file path pattern |
 | `-w, --where <expr>` | Filter by frontmatter expression (repeatable) |
-| `-b, --body <query>` | Filter by file content; current matching includes YAML frontmatter ([#812](https://github.com/3mdistal/bwrb/issues/812)) |
+| `-b, --body <query>` | Filter by Markdown body content; YAML frontmatter is excluded |
 | `-a, --all` | Target all files (explicit vault-wide selector) |
 
 ### Issue Filtering

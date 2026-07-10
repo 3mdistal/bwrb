@@ -28,7 +28,7 @@ Delete operates in three modes:
 | `-t, --type <type>` | Filter by type |
 | `-p, --path <glob>` | Filter by path glob |
 | `-w, --where <expr>` | Filter by frontmatter expression (repeatable) |
-| `-b, --body <query>` | Filter by file content; current matching includes YAML frontmatter ([#812](https://github.com/3mdistal/bwrb/issues/812)) |
+| `-b, --body <query>` | Filter by Markdown body content; YAML frontmatter is excluded |
 | `--id <uuid>` | Filter by stable note id |
 | `-a, --all` | Select all notes (required for bulk delete without other targeting) |
 

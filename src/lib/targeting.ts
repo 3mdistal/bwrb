@@ -204,7 +204,7 @@ export { filterByPath };
  * 1. Discovers files based on type (or all files if no type)
  * 2. Filters by path glob
  * 3. Parses frontmatter and filters by --where expressions
- * 4. Filters by content search (--text)
+ * 4. Filters by Markdown body search (--body)
  *
  * All selectors compose via AND.
  */

@@ -196,8 +196,8 @@ context notes and collapsing a redundant `scope` field into it — see
 
 ### Body (`-b, --body <query>`)
 
-Filter by literal file content (full-text search via ripgrep). The option keeps
-its historical `--body` name, but current matching includes YAML frontmatter.
+Filter by literal Markdown body content (full-text search via ripgrep). YAML
+frontmatter is excluded.
 
 ```bash
 bwrb list --body "TODO"
@@ -206,8 +206,8 @@ bwrb list --body "meeting notes" --matches --type task
 ```
 
 **Behavior:**
-- Searches the serialized Markdown file, including YAML frontmatter; body-only
-  masking is tracked in [#812](https://github.com/3mdistal/bwrb/issues/812)
+- Searches Markdown body content only; use `--where` for frontmatter fields
+- Detailed matches keep original file line numbers and body-only context
 - Uses ripgrep under the hood for performance
 - Case-insensitive by default
 

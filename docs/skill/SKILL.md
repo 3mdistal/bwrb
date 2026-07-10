@@ -240,13 +240,13 @@ bwrb list --name "Projects/Duplicate.md" --open --app print --picker none
 # Target by stable id
 bwrb list --id "<uuid>" --output json
 
-# Full-text search in the serialized Markdown file (including frontmatter today)
+# Full-text search in Markdown body content (YAML frontmatter excluded)
 bwrb list --body "search term" --output json
 ```
 
-Despite the historical `--body` name, current content matching includes YAML
-frontmatter. Use `--where` when you need a field-specific predicate; body-only
-masking is tracked in [#812](https://github.com/3mdistal/bwrb/issues/812).
+`--body` searches only the Markdown body. Use `--where` when you need a
+frontmatter field predicate. Detailed `--matches` line numbers still refer to
+the original file, and displayed context never crosses into YAML frontmatter.
 
 ### Relative-Date Fields
 

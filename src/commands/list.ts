@@ -483,7 +483,7 @@ Targeting Selectors (compose via AND):
   --where <expr>       Filter by frontmatter expression (can repeat)
   --id <uuid>          Filter by stable note id
   --lineage <target>   Show a document's complete fork lineage
-  --body <query>       Filter by body content (uses ripgrep)
+  --body <query>       Filter by Markdown body content (uses ripgrep)
   --name <query>       Resolve notes by name, path, or alias
   --fuzzy <query>      Rank approximate name and alias matches with scores
   --sort <field>       Sort by frontmatter field, name, _name, _path,
@@ -553,7 +553,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .argument('[mode]', 'App mode for --open: system, editor, visual, obsidian, print')
   .option('-t, --type <type>', 'Filter by type path (e.g., idea, objective/task)')
   .option('-p, --path <glob>', 'Filter by file path glob (e.g., Projects/**, Ideas/)')
-  .option('-b, --body <query>', 'Filter by body content search')
+  .option('-b, --body <query>', 'Filter by Markdown body content')
   .option('--name <query>', 'Resolve notes by name, path, or alias')
   .option('--fuzzy <query>', 'Rank approximate name and alias matches with scores')
   .option('--matches', 'Show detailed body matches instead of filtering note rows')

@@ -107,7 +107,7 @@ bwrb list --output paths --fields=status objective  # Combine paths + fields
 bwrb list --name "My Note"                   # Resolve by name, path, or alias
 bwrb list --name "My Note" --output link     # Output: [[My Note]]
 bwrb list --fuzzy "My Nte" --output json      # Ranked matches with scores
-bwrb list --body "TODO" --matches             # Detailed file matches (frontmatter included today)
+bwrb list --body "TODO" --matches             # Detailed Markdown body matches
 bwrb list --name "My Note" --open --app editor
 bwrb list --id "<uuid>" --open --app print
 

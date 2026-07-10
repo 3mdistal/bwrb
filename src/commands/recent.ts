@@ -103,7 +103,7 @@ Targeting Selectors (compose via AND):
   --type <type>        Filter by type (e.g., task, objective/milestone)
   --path <glob>        Filter by file path (e.g., Projects/**, Ideas/)
   --where <expr>       Filter by frontmatter expression (can repeat)
-  --body <query>       Filter by body content (uses ripgrep)
+  --body <query>       Filter by Markdown body content (uses ripgrep)
   --limit <n>          Show only the first n notes (default ${DEFAULT_RECENT_LIMIT})
 
 Open Options:

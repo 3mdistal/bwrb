@@ -1,5 +1,5 @@
 /**
- * Content search module - full-text search across vault notes using ripgrep.
+ * Content search module - full-text search across Markdown note bodies.
  *
  * This module provides content-based search functionality, complementing
  * the existing name/path-based search in navigation.ts.
@@ -99,6 +99,106 @@ interface RgJsonMessage {
     line_number?: number;
     submatches?: Array<{ match: { text: string }; start: number; end: number }>;
   };
+}
+
+interface SearchableFileSource {
+  /** Original file lines, used to preserve file-relative match line numbers. */
+  lines: string[];
+  /** Zero-based index of the first Markdown body line. */
+  bodyStartIndex: number;
+}
+
+/**
+ * Find the first Markdown body line without renumbering the source file.
+ *
+ * Bowerbird frontmatter is a top-of-file YAML block delimited by `---` lines.
+ * A BOM and trailing delimiter whitespace are accepted. If no complete block is
+ * present, the whole file remains searchable rather than hiding malformed
+ * content behind an inferred boundary.
+ */
+export function findMarkdownBodyStartIndex(lines: string[]): number {
+  const firstLine = (lines[0] ?? '').replace(/^\uFEFF/, '');
+  if (!/^---[\t ]*$/.test(firstLine)) return 0;
+
+  for (let index = 1; index < lines.length; index++) {
+    if (/^---[\t ]*$/.test(lines[index] ?? '')) {
+      return index + 1;
+    }
+  }
+
+  return 0;
+}
+
+async function loadSearchableFileSources(
+  files: string[],
+  vaultDir: string
+): Promise<Map<string, SearchableFileSource>> {
+  const sources = new Map<string, SearchableFileSource>();
+
+  await Promise.all(files.map(async (relativePath) => {
+    const content = await readFile(join(vaultDir, relativePath), 'utf8');
+    const lines = content.split(/\r?\n/);
+    // A final newline terminates the preceding line; `split` otherwise creates
+    // an extra empty element that is not a real file line and must not appear
+    // as context beyond EOF.
+    if (content.endsWith('\n')) lines.pop();
+    sources.set(relativePath, {
+      lines,
+      bodyStartIndex: findMarkdownBodyStartIndex(lines),
+    });
+  }));
+
+  return sources;
+}
+
+/**
+ * Remove frontmatter matches and rebuild context from the original file.
+ *
+ * Rebuilding context here keeps ripgrep and the Node fallback identical and
+ * prevents a body match near the opening boundary from displaying YAML lines.
+ */
+function restrictMatchesToMarkdownBody(
+  matchesByFile: Map<string, LineMatch[]>,
+  sources: Map<string, SearchableFileSource>,
+  contextLines: number
+): Map<string, LineMatch[]> {
+  const bodyMatchesByFile = new Map<string, LineMatch[]>();
+
+  for (const [relativePath, matches] of matchesByFile) {
+    const source = sources.get(relativePath);
+    if (!source) continue;
+
+    const bodyMatches = matches
+      .filter(match => match.line - 1 >= source.bodyStartIndex)
+      .map((match): LineMatch => {
+        const matchIndex = match.line - 1;
+        const normalized: LineMatch = {
+          line: match.line,
+          text: source.lines[matchIndex] ?? match.text,
+        };
+
+        if (contextLines > 0) {
+          const before = source.lines.slice(
+            Math.max(source.bodyStartIndex, matchIndex - contextLines),
+            matchIndex
+          );
+          const after = source.lines.slice(
+            matchIndex + 1,
+            Math.min(source.lines.length, matchIndex + contextLines + 1)
+          );
+          if (before.length > 0) normalized.contextBefore = before;
+          if (after.length > 0) normalized.contextAfter = after;
+        }
+
+        return normalized;
+      });
+
+    if (bodyMatches.length > 0) {
+      bodyMatchesByFile.set(relativePath, bodyMatches);
+    }
+  }
+
+  return bodyMatchesByFile;
 }
 
 /**
@@ -336,7 +436,7 @@ function parseRipgrepOutput(output: string): Map<string, LineMatch[]> {
 // ============================================================================
 
 /**
- * Search vault content using ripgrep.
+ * Search Markdown note bodies using ripgrep when available.
  *
  * @param options Search options including pattern, vault dir, and filters
  * @returns Search results with matching files and line matches
@@ -394,11 +494,16 @@ export async function searchContent(
     const searchImpl = await isRipgrepAvailable() ? runRipgrep : runNodeFallbackSearch;
 
     // Run content search
-    const rgResults = await searchImpl(pattern, filePaths, vaultDir, {
+    const rawResults = await searchImpl(pattern, filePaths, vaultDir, {
       contextLines,
       caseSensitive,
       regex,
     });
+    // Only raw matches need boundary inspection. This avoids reading every
+    // candidate file into memory (and double-reading it after ripgrep) for a
+    // sparse or zero-match query.
+    const sources = await loadSearchableFileSources([...rawResults.keys()], vaultDir);
+    const bodyResults = restrictMatchesToMarkdownBody(rawResults, sources, contextLines);
 
     // Convert to ContentMatch array
     const results: ContentMatch[] = [];
@@ -410,7 +515,7 @@ export async function searchContent(
       fileMap.set(file.relativePath, file);
     }
 
-    for (const [relativePath, matches] of rgResults.entries()) {
+    for (const [relativePath, matches] of bodyResults.entries()) {
       const file = fileMap.get(relativePath);
       if (file) {
         results.push({ file, matches });

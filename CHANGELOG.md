@@ -4,6 +4,10 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Body-only content targeting** — `--body` now excludes YAML frontmatter in both note filtering and detailed match reports while preserving original file line numbers and body-only context (#812).
+
 ## [0.2.3] - 2026-07-09
 
 Patch release for relative dates and custom calendars, canonical list/search/open
