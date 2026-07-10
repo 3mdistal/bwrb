@@ -1,0 +1,8 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+output: .task-sweep/logs/812-review-output-20260710-082230.md
+chars: 3027
+words: 386
+verdict: NON-BLOCKING
+

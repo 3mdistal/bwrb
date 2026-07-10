@@ -35,7 +35,7 @@ rejected.
 | `-t, --type <type>` | Filter by type path (e.g., `idea`, `objective/task`) |
 | `-p, --path <glob>` | Filter by file path glob (e.g., `Projects/**`, `Ideas/`) |
 | `-w, --where <expr>` | Filter with expression (repeatable, ANDed together) |
-| `-b, --body <query>` | Filter by file content; current matching includes YAML frontmatter ([#812](https://github.com/3mdistal/bwrb/issues/812)) |
+| `-b, --body <query>` | Filter by Markdown body content; YAML frontmatter is excluded |
 | `--name <query>` | Resolve by note name, path, or declared alias |
 | `--fuzzy <query>` | Rank approximate name and alias matches |
 | `--matches` | Show detailed body matches instead of filtering note rows |
@@ -239,7 +239,7 @@ bwrb list --type task --where "priority < 3 && !isEmpty(deadline)"
 # By date
 bwrb list --type task --where "deadline < today() + '7d'"
 
-# By file content (including frontmatter today)
+# By Markdown body content (YAML frontmatter excluded)
 bwrb list --body "TODO" --where "status == 'draft'"
 
 # By path

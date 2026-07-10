@@ -27,7 +27,14 @@ describe('list as the canonical query/search/open surface', () => {
       sample.replace(
         '---\n',
         '---\nid: 11111111-1111-4111-8111-111111111111\naliases:\n  - Seed Thought\n'
-      )
+      ) + '\nBody status raw marker.\nShared body marker.\n'
+    );
+
+    const anotherPath = join(vaultDir, 'Ideas', 'Another Idea.md');
+    const another = await readFile(anotherPath, 'utf-8');
+    await writeFile(
+      anotherPath,
+      another + '\nBody status backlog marker.\nShared body marker.\n'
     );
 
     const writeRegressionNote = async (
@@ -178,7 +185,7 @@ describe('list as the canonical query/search/open surface', () => {
     ], vaultDir);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.toLowerCase()).toContain('status');
+    expect(result.stdout).toContain('Body status raw marker.');
     expect(result.stdout).not.toContain('Objectives/');
   });
 
@@ -214,7 +221,7 @@ describe('list as the canonical query/search/open surface', () => {
       'list', '--body', 'status', '--matches', '--path', 'Ideas/**', '--output', 'json',
     ], vaultDir);
 
-    expect(text.stdout).toMatch(/Ideas\/Sample Idea\.md:\d+:status: raw/);
+    expect(text.stdout).toMatch(/Ideas\/Sample Idea\.md:\d+:Body status raw marker\./);
     expect(content.stdout).toContain('type: idea');
     expect(content.stdout).toContain('status: raw');
     expect(content.stdout).not.toMatch(/Ideas\/Sample Idea\.md:\d+:/);
@@ -223,6 +230,26 @@ describe('list as the canonical query/search/open surface', () => {
     };
     expect(json.data.every(result => result.matches.length > 0)).toBe(true);
     expect(json.data.some(result => result.path === 'Ideas/Sample Idea.md')).toBe(true);
+  });
+
+  it('excludes frontmatter-only terms in list rows and canonical/compatibility match reports', async () => {
+    const filtered = await runCLI([
+      'list', '--body', '11111111-1111-4111-8111-111111111111', '--output', 'json',
+    ], vaultDir);
+    const canonical = await runCLI([
+      'list', '--body', '11111111-1111-4111-8111-111111111111', '--matches', '--output', 'json',
+    ], vaultDir);
+    const compatibility = await runCLI([
+      'search', '11111111-1111-4111-8111-111111111111', '--body', '--output', 'json',
+    ], vaultDir);
+
+    expect(filtered.exitCode).toBe(0);
+    expect(JSON.parse(filtered.stdout)).toEqual([]);
+    for (const result of [canonical, compatibility]) {
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ success: true, data: [], totalMatches: 0 });
+    }
+    expect(compatibility.stderr).toContain('bwrb search is deprecated');
   });
 
   it('prints full Markdown content through list output', async () => {

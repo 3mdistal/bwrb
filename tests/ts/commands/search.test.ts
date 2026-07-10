@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
-import { writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 
 describe('search command', () => {
@@ -8,6 +8,19 @@ describe('search command', () => {
 
   beforeAll(async () => {
     vaultDir = await createTestVault();
+
+    const bodyFixtures: Array<[string, string]> = [
+      ['Ideas/Sample Idea.md', 'body status raw'],
+      ['Ideas/Another Idea.md', 'body status backlog'],
+      ['Objectives/Tasks/Sample Task.md', 'body status in-flight'],
+      ['Objectives/Milestones/Active Milestone.md', 'body status in-flight'],
+      ['Objectives/Milestones/Settled Milestone.md', 'body status settled'],
+    ];
+    await Promise.all(bodyFixtures.map(async ([relativePath, bodyLine]) => {
+      const path = join(vaultDir, relativePath);
+      const content = await readFile(path, 'utf8');
+      await writeFile(path, `${content}\n${bodyLine}\n`);
+    }));
   });
 
   afterAll(async () => {
@@ -193,7 +206,7 @@ describe('search command', () => {
     // --path-glob with no signal. We now warn that --path wins (issue #705).
     it('should warn when both --path and --path-glob are provided, and --path wins', async () => {
       const result = await runCLI([
-        'search', 'status', '--body',
+        'search', 'body status', '--body',
         '--path', 'Ideas/*',
         '--path-glob', 'Objectives/**',
         '--output', 'json',
@@ -521,12 +534,12 @@ Some content
   });
 
   describe('content search (--body)', () => {
-    it('should search file contents with --body flag', async () => {
-      const result = await runCLI(['search', 'type', '--body'], vaultDir);
+    it('should search Markdown body content with --body flag', async () => {
+      const result = await runCLI(['search', 'body status', '--body'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      // Should find "type:" in frontmatter
-      expect(result.stdout).toContain('type:');
+      expect(result.stdout).toContain('body status');
+      expect(result.stdout).not.toContain('type:');
     });
 
     it('should require a pattern for content search', async () => {
@@ -537,7 +550,7 @@ Some content
     });
 
     it('should filter by type with --type flag', async () => {
-      const result = await runCLI(['search', 'status', '--body', '--type', 'idea'], vaultDir);
+      const result = await runCLI(['search', 'body status', '--body', '--type', 'idea'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       // Should only find matches in Ideas directory
@@ -549,7 +562,7 @@ Some content
     });
 
     it('should output JSON with matches', async () => {
-      const result = await runCLI(['search', 'status', '--body', '--output', 'json'], vaultDir);
+      const result = await runCLI(['search', 'body status', '--body', '--output', 'json'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
@@ -563,7 +576,7 @@ Some content
     });
 
     it('should show context lines by default', async () => {
-      const result = await runCLI(['search', 'status', '--body'], vaultDir);
+      const result = await runCLI(['search', 'body status', '--body'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       // Context lines use - as separator, match lines use :
@@ -575,7 +588,7 @@ Some content
     });
 
     it('should hide context with --no-context', async () => {
-      const result = await runCLI(['search', 'status', '--body', '--no-context'], vaultDir);
+      const result = await runCLI(['search', 'body status', '--body', '--no-context'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       // All lines should be match lines (with :line:)
@@ -587,7 +600,7 @@ Some content
     });
 
     it('should be case-insensitive by default', async () => {
-      const result = await runCLI(['search', 'STATUS', '--body', '--no-context'], vaultDir);
+      const result = await runCLI(['search', 'BODY STATUS', '--body', '--no-context'], vaultDir);
 
       expect(result.exitCode).toBe(0);
       // Should find matches even though we searched uppercase
@@ -595,26 +608,25 @@ Some content
     });
 
     it('should respect --case-sensitive flag', async () => {
-      const resultInsensitive = await runCLI(['search', 'STATUS', '--body', '--no-context'], vaultDir);
-      const resultSensitive = await runCLI(['search', 'STATUS', '--body', '--no-context', '--case-sensitive'], vaultDir);
+      const resultInsensitive = await runCLI(['search', 'BODY STATUS', '--body', '--no-context'], vaultDir);
+      const resultSensitive = await runCLI(['search', 'BODY STATUS', '--body', '--no-context', '--case-sensitive'], vaultDir);
 
       // Case-insensitive should find matches
       expect(resultInsensitive.stdout.trim().length).toBeGreaterThan(0);
-      // Case-sensitive should not find "STATUS" (files have lowercase "status")
+      // Case-sensitive should not find uppercase text in lowercase body lines.
       expect(resultSensitive.stdout.trim()).toBe('');
     });
 
     it('should support regex with --regex flag', async () => {
-      const result = await runCLI(['search', 'status:.*', '--body', '--no-context', '--regex'], vaultDir);
+      const result = await runCLI(['search', 'body status .*', '--body', '--no-context', '--regex'], vaultDir);
 
       expect(result.exitCode).toBe(0);
-      // Should find "status: raw", "status: backlog", etc.
-      expect(result.stdout).toContain('status:');
+      expect(result.stdout).toContain('body status raw');
     });
 
     it('should filter results with --where expression', async () => {
       const result = await runCLI([
-        'search', 'status', '--body', '--type', 'idea',
+        'search', 'body status', '--body', '--type', 'idea',
         '--where', "status == 'raw'",
         '--no-context'
       ], vaultDir);
@@ -629,7 +641,7 @@ Some content
 
     it('should filter results with --where expression', async () => {
       const result = await runCLI([
-        'search', 'status', '--body', '--type', 'idea',
+        'search', 'body status', '--body', '--type', 'idea',
         '--where', "status == 'raw'",
         '--no-context'
       ], vaultDir);
@@ -644,7 +656,7 @@ Some content
 
     it('should filter results with negation using --where', async () => {
       const result = await runCLI([
-        'search', 'status', '--body', '--type', 'idea',
+        'search', 'body status', '--body', '--type', 'idea',
         '--where', "status != 'raw'",
         '--no-context'
       ], vaultDir);
@@ -765,7 +777,7 @@ Some content
     describe('--path filtering with --body (issue #675)', () => {
       it('should filter content-search results with canonical --path', async () => {
         const result = await runCLI([
-          'search', 'status', '--body', '--path', 'Ideas/*', '--output', 'json'
+          'search', 'body status', '--body', '--path', 'Ideas/*', '--output', 'json'
         ], vaultDir);
 
         expect(result.exitCode).toBe(0);
@@ -783,7 +795,7 @@ Some content
 
       it('should support -p short flag with --body', async () => {
         const result = await runCLI([
-          'search', 'status', '--body', '-p', 'Ideas/*', '--output', 'json'
+          'search', 'body status', '--body', '-p', 'Ideas/*', '--output', 'json'
         ], vaultDir);
 
         expect(result.exitCode).toBe(0);
@@ -796,7 +808,7 @@ Some content
 
       it('should still filter with deprecated --path-glob alias', async () => {
         const result = await runCLI([
-          'search', 'status', '--body', '--path-glob', 'Ideas/*', '--output', 'json'
+          'search', 'body status', '--body', '--path-glob', 'Ideas/*', '--output', 'json'
         ], vaultDir);
 
         expect(result.exitCode).toBe(0);
@@ -814,10 +826,10 @@ Some content
 
       it('should produce identical results for --path and --path-glob', async () => {
         const withPath = await runCLI([
-          'search', 'status', '--body', '--path', 'Objectives/**', '--output', 'json'
+          'search', 'body status', '--body', '--path', 'Objectives/**', '--output', 'json'
         ], vaultDir);
         const withGlob = await runCLI([
-          'search', 'status', '--body', '--path-glob', 'Objectives/**', '--output', 'json'
+          'search', 'body status', '--body', '--path-glob', 'Objectives/**', '--output', 'json'
         ], vaultDir);
 
         expect(withPath.exitCode).toBe(0);
@@ -910,7 +922,7 @@ Some content
     describe('--where validation with --type', () => {
       it('should accept valid --where with --type', async () => {
         const result = await runCLI([
-          'search', 'status', '--body', '--type', 'idea',
+          'search', 'body status', '--body', '--type', 'idea',
           '--where', "status == 'raw'", '--no-context'
         ], vaultDir);
 
@@ -923,7 +935,7 @@ Some content
 
       it('should fail for invalid field in --where when --type is provided', async () => {
         const result = await runCLI([
-          'search', 'status', '--body', '--type', 'idea',
+          'search', 'body status', '--body', '--type', 'idea',
           '--where', "unknown_field == 'raw'"
         ], vaultDir);
 
@@ -934,7 +946,7 @@ Some content
 
       it('should return JsonError for invalid field in --where with --output json', async () => {
         const result = await runCLI([
-          'search', 'status', '--body', '--type', 'idea',
+          'search', 'body status', '--body', '--type', 'idea',
           '--where', "unknown_field == 'raw'",
           '--output', 'json'
         ], vaultDir);
@@ -947,7 +959,7 @@ Some content
 
       it('should allow unknown where fields without --type (permissive mode)', async () => {
         const result = await runCLI([
-          'search', 'status', '--body',
+          'search', 'body status', '--body',
           '--where', "unknown_field == 'raw'"
         ], vaultDir);
 
@@ -956,7 +968,7 @@ Some content
 
       it('should fail on invalid where syntax in text mode', async () => {
         const result = await runCLI([
-          'search', 'status', '--body',
+          'search', 'body status', '--body',
           '--where', "status == 'raw' &&"
         ], vaultDir);
 
@@ -967,7 +979,7 @@ Some content
 
       it('should fail on where runtime errors in json mode', async () => {
         const result = await runCLI([
-          'search', 'status', '--body',
+          'search', 'body status', '--body',
           '--where', 'missingFn(status)',
           '--output', 'json'
         ], vaultDir);

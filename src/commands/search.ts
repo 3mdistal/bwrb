@@ -3,7 +3,7 @@
  *
  * Two modes:
  * 1. Name search (default): Resolves a query to notes by name/path
- * 2. Content search (--body): Full-text search using ripgrep
+ * 2. Content search (--body): Markdown body search using ripgrep
  */
 
 import { Command } from 'commander';
@@ -161,7 +161,7 @@ export const searchCommand = new Command('search')
   .option('--preview', 'Show file preview in fzf picker (requires fzf)')
   .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
   // Content search options
-  .option('-b, --body', 'Full-text content search (uses ripgrep)')
+  .option('-b, --body', 'Search Markdown body content (uses ripgrep)')
   .option('--text', 'DEPRECATED: use --body')
   .option('-t, --type <type>', 'Restrict search to a type (e.g., idea, objective/task)')
   .option('-p, --path <pattern>', 'Filter by file path glob pattern, e.g. "Projects/**" (works in name, --fuzzy, and --body modes)')
@@ -215,7 +215,8 @@ Fuzzy Search (--fuzzy):
   consume scores programmatically.
 
 Content Search (--body):
-  Full-text search across note contents using ripgrep.
+  Full-text search across Markdown note bodies using ripgrep. YAML frontmatter
+  is excluded; displayed line numbers still refer to the original file.
   
   Options:
     -b, --body           Enable content search mode
