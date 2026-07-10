@@ -2,6 +2,10 @@ import { randomUUID } from 'crypto';
 import { mkdir, open, readFile, rename, stat, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
 import { basename, dirname, join, relative, resolve } from 'path';
+import {
+  type OwnershipFileLockOptions,
+  withOwnershipFileLock,
+} from './lineage-lock.js';
 
 const ID_REGISTRY_RELATIVE_PATH = '.bwrb/ids.jsonl';
 const ID_ASSIGNMENT_LOCK = '.bwrb/locks/fork-source-id.lock';
@@ -11,6 +15,14 @@ const MAX_ID_GENERATION_ATTEMPTS = 1000;
 const LOCK_RETRY_MS = 20;
 const LOCK_ATTEMPTS = 250;
 const STALE_LOCK_MS = 30_000;
+const HEARTBEAT_MS = 10_000;
+
+const NOTE_ID_LOCK_OPTIONS: OwnershipFileLockOptions = {
+  retryMs: LOCK_RETRY_MS,
+  attempts: LOCK_ATTEMPTS,
+  staleMs: STALE_LOCK_MS,
+  heartbeatMs: HEARTBEAT_MS,
+};
 
 /** Return whether a value is a UUID-shaped stable note ID. */
 export function isValidNoteId(value: unknown): value is string {
@@ -99,7 +111,7 @@ export async function registerIssuedNoteIds(
   registrations: NoteIdRegistration[]
 ): Promise<void> {
   if (registrations.length === 0) return;
-  await withRegistryLock(vaultDir, async () => {
+  await withNoteIdRegistryLock(vaultDir, async () => {
     const registryPath = getIdRegistryPath(vaultDir);
     const current = await readFile(registryPath, 'utf-8').catch(error => {
       if (isFileMissingError(error)) return '';
@@ -120,7 +132,7 @@ export async function unregisterIssuedNotePath(
   vaultDir: string,
   relativePath: string
 ): Promise<void> {
-  await withRegistryLock(vaultDir, async () => {
+  await withNoteIdRegistryLock(vaultDir, async () => {
     const registryPath = getIdRegistryPath(vaultDir);
     if (!existsSync(registryPath)) return;
 
@@ -149,12 +161,14 @@ export async function unregisterIssuedNotePath(
 /** Serialize legacy ID backfills across fork and lineage-adoption flows. */
 export async function withNoteIdAssignmentLock<T>(
   vaultDir: string,
-  task: () => Promise<T>
+  task: () => Promise<T>,
+  optionOverrides: Partial<OwnershipFileLockOptions> = {}
 ): Promise<T> {
-  return withFileLock(
+  return withOwnershipFileLock(
     resolve(vaultDir, ID_ASSIGNMENT_LOCK),
-    'Timed out waiting to assign a note ID; retry the command.',
-    task
+    task,
+    { ...NOTE_ID_LOCK_OPTIONS, ...optionOverrides },
+    'Timed out waiting to assign a note ID; retry the command.'
   );
 }
 
@@ -163,47 +177,17 @@ export function ensureIdInFieldOrder(order: string[]): string[] {
   return ['id', ...order];
 }
 
-async function withRegistryLock<T>(vaultDir: string, task: () => Promise<T>): Promise<T> {
-  return withFileLock(
-    resolve(vaultDir, ID_REGISTRY_LOCK),
-    'Timed out waiting to update the note ID registry; retry the command.',
-    task
-  );
-}
-
-async function withFileLock<T>(
-  lockPath: string,
-  timeoutMessage: string,
-  task: () => Promise<T>
+export async function withNoteIdRegistryLock<T>(
+  vaultDir: string,
+  task: () => Promise<T>,
+  optionOverrides: Partial<OwnershipFileLockOptions> = {}
 ): Promise<T> {
-  await mkdir(dirname(lockPath), { recursive: true });
-
-  for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
-    try {
-      const handle = await open(lockPath, 'wx');
-      const heartbeat = setInterval(() => {
-        const now = new Date();
-        void handle.utimes(now, now).catch(() => undefined);
-      }, Math.max(1, STALE_LOCK_MS / 3));
-      heartbeat.unref();
-      try {
-        await handle.writeFile(`${process.pid}\n`, 'utf-8');
-        return await task();
-      } finally {
-        clearInterval(heartbeat);
-        await handle.close().catch(() => undefined);
-        await unlink(lockPath).catch(() => undefined);
-      }
-    } catch (error) {
-      if (!isFileExistsError(error)) throw error;
-      if (await isStaleLock(lockPath)) {
-        await unlink(lockPath).catch(() => undefined);
-        continue;
-      }
-      await delay(LOCK_RETRY_MS);
-    }
-  }
-  throw new Error(timeoutMessage);
+  return withOwnershipFileLock(
+    resolve(vaultDir, ID_REGISTRY_LOCK),
+    task,
+    { ...NOTE_ID_LOCK_OPTIONS, ...optionOverrides },
+    'Timed out waiting to update the note ID registry; retry the command.'
+  );
 }
 
 async function writeRegistryAtomic(registryPath: string, content: string): Promise<void> {
@@ -227,23 +211,6 @@ async function writeRegistryAtomic(registryPath: string, content: string): Promi
   }
 }
 
-async function isStaleLock(lockPath: string): Promise<boolean> {
-  try {
-    const info = await stat(lockPath);
-    return Date.now() - info.mtimeMs > STALE_LOCK_MS;
-  } catch {
-    return false;
-  }
-}
-
-function isFileExistsError(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'EEXIST';
-}
-
 function isFileMissingError(error: unknown): boolean {
   return error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT';
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolveDelay => setTimeout(resolveDelay, ms));
 }
