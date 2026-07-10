@@ -13,6 +13,7 @@ For the complete changelog with all details, see [CHANGELOG.md](https://github.c
 
 - **Existing-note lineage adoption** — `bwrb lineage adopt <child> --from <parent>` adds a dry-run-first, lock-coordinated path for recording known derivation between existing same-type notes without rewriting their bodies or ordinary metadata
 - **Portable lineage mutation locking** — fork, adopt, delete, and note-ID coordination now have real cross-process stress coverage, a focused Windows CI lane, and stable retryable output when a non-force delete target disappears while waiting for its lock
+- **Edit/lineage concurrency** — edit commits now share fork/adopt path locks, replay stale JSON patches from fresh bytes, and return stable retryable output without overwriting newer identity or provenance writes
 
 ### 0.2.3
 

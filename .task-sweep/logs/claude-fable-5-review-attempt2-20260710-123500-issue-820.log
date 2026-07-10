@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: length
+output: /Users/alicemoore/Developer/bwrb-worktrees/issue-820-edit-concurrency/.task-sweep/logs/claude-fable-5-review-output-attempt2-20260710-123500-issue-820.md
+chars: 2702 words: 343
+preview: NO BLOCKERS\n\n## SPEC FIDELITY\n\nAll five acceptance criteria are substantively met by the embedded diff:\n\n1. **Conflict detection** — `src/lib/note-write-concurrency.ts` provides `assertNoteBytesUnchanged`, wired into edit's guarded commit (`src/lib/edit.ts:351-368, 462-474`), fork source-ID backfill (`src/new/fork.ts:216`), and adopt's pre-write phase (`src/commands/lineage/adopt.ts:273-282`). Edit's barrier/lock ordering is correct: the read/validation is unlocked, the lock is taken only for the commit phase, and interactive prompts (and the test barrier) occur *before* lock acquisition — consistent with "do not hold lineage locks across human prompts."\n2. **Stable typed output** — `ConcurrentNoteModificationError` maps to numeric `code: 2` + `data.{reason,retryable,path,attempts}` in edi

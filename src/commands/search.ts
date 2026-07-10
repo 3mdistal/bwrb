@@ -47,7 +47,8 @@ import {
 } from '../lib/fuzzy-search.js';
 import { parseNote } from '../lib/frontmatter.js';
 import { applyWhereExpressions } from '../lib/where-targeting.js';
-import { UserCancelledError } from '../lib/errors.js';
+import { ConcurrentNoteModificationError, UserCancelledError } from '../lib/errors.js';
+import { concurrentModificationData } from '../lib/note-write-concurrency.js';
 import { resolveTargets, type TargetingOptions } from '../lib/targeting.js';
 
 // ============================================================================
@@ -311,6 +312,7 @@ export async function runSearchCommand(
     // Resolve output format from deprecated flags and new --output option
     const outputFormat = resolveSearchOutputFormat(options);
     const jsonMode = outputFormat === 'json';
+    let resolvedVaultDir: string | undefined;
 
     // App-mode precedence: an explicit --app flag wins over the positional
     // [mode] (the convenience form). Fold the resolved value back into
@@ -387,6 +389,7 @@ export async function runSearchCommand(
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
+      resolvedVaultDir = vaultDir;
       const schema = await loadSchema(vaultDir);
 
       if (globalOpts.nonInteractive && options.edit && !options.json) {
@@ -408,6 +411,17 @@ export async function runSearchCommand(
         await handleNameSearch(query, effectiveOptions, vaultDir, schema, jsonMode, outputFormat);
       }
     } catch (err) {
+      if (err instanceof ConcurrentNoteModificationError) {
+        if (jsonMode) {
+          printJson(jsonError(err.message, {
+            code: ExitCodes.IO_ERROR,
+            data: concurrentModificationData(resolvedVaultDir ?? process.cwd(), err),
+          }));
+          process.exit(ExitCodes.IO_ERROR);
+        }
+        printError(err.message);
+        process.exit(ExitCodes.IO_ERROR);
+      }
       if (err instanceof UserCancelledError) {
         if (jsonMode) {
           printJson(jsonError('Cancelled', { code: ExitCodes.VALIDATION_ERROR }));

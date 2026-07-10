@@ -23,7 +23,8 @@ import {
   type InheritedTemplateResolution,
 } from '../lib/template.js';
 import type { LoadedSchema, Template } from '../types/schema.js';
-import { UserCancelledError } from '../lib/errors.js';
+import { ConcurrentNoteModificationError, UserCancelledError } from '../lib/errors.js';
+import { concurrentModificationData } from '../lib/note-write-concurrency.js';
 import { createNoteFromJson } from './new/json-mode.js';
 import { resolveTypePath } from './new/type-selection.js';
 import { createNoteInteractive } from './new/interactive.js';
@@ -93,6 +94,7 @@ Template management:
     const forkJsonMode = forkMode && options.output === 'json';
     const jsonMode = options.json !== undefined || forkJsonMode;
     const typePath = options.type ?? positionalType;
+    let resolvedVaultDir: string | undefined;
 
     try {
       const globalOpts = getGlobalOpts(cmd);
@@ -103,6 +105,7 @@ Template management:
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
+      resolvedVaultDir = vaultDir;
       const schema = await loadSchema(vaultDir);
 
       validateForkOptions(positionalType, options);
@@ -240,6 +243,17 @@ Template management:
         await openNote(vaultDir, filePath, resolveAppMode(undefined, schema.config), schema.config, false);
       }
     } catch (err) {
+      if (err instanceof ConcurrentNoteModificationError) {
+        if (jsonMode) {
+          printJson(jsonError(err.message, {
+            code: ExitCodes.IO_ERROR,
+            data: concurrentModificationData(resolvedVaultDir ?? process.cwd(), err),
+          }));
+          process.exit(ExitCodes.IO_ERROR);
+        }
+        printError(err.message);
+        process.exit(ExitCodes.IO_ERROR);
+      }
       if (err instanceof JsonCommandError) {
         if (!err.result.success) {
           err.result.code = err.exitCode;

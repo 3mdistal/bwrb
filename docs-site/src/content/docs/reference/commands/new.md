@@ -182,7 +182,11 @@ bwrb new --fork "Launch Brief" --label alternate --output json
 Targets are exact: bwrb never substitutes a fuzzy near-match. Duplicate names
 or aliases must be disambiguated with a path or UUID. A legacy source without an
 `id` receives one before the fork is written; an invalid existing ID is rejected
-without modification.
+without modification. Source-ID backfill and ordinary `bwrb edit` commits share
+a path lock and compare their authoritative raw-byte snapshots before writing,
+so a stale writer cannot erase the other operation. A detected conflict is
+retryable; JSON uses `data.reason: "note-modified-concurrently"` and numeric
+`code: 2`.
 
 The child copies the source body and frontmatter, then:
 

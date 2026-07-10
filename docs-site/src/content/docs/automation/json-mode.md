@@ -32,6 +32,13 @@ complete JSON value, but success shapes differ by workflow:
 | `new --fork ... --output json` | `{ "success": true, "path", "id", "forked_from", "warnings" }` |
 | `lineage adopt ... --output json` | `{ "success": true, "mode", "child", "parent", "changes", "warnings", "body_invariance" }` |
 
+Guarded note writers use numeric top-level error codes. If edit, fork, or
+adoption observes newer note bytes, exit code `2` includes
+`data.reason: "note-modified-concurrently"`, `data.retryable: true`, the
+vault-relative `data.path`, and `data.attempts`. JSON edit makes up to three
+total attempts (the initial attempt plus at most two retries) before returning
+that error.
+
 Normal list output is intentionally a raw array:
 
 ```bash

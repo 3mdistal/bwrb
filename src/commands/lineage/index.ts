@@ -5,6 +5,8 @@ import { getGlobalOpts } from '../../lib/command.js';
 import { ExitCodes, jsonError, printJson } from '../../lib/output.js';
 import { printError, printInfo, printSuccess } from '../../lib/prompt.js';
 import { adoptLineage } from './adopt.js';
+import { ConcurrentNoteModificationError } from '../../lib/errors.js';
+import { concurrentModificationData } from '../../lib/note-write-concurrency.js';
 
 interface AdoptCommandOptions {
   from?: string;
@@ -27,6 +29,7 @@ Examples:
 `)
   .action(async (child: string, options: AdoptCommandOptions, command: Command) => {
     const jsonMode = options.output === 'json';
+    let resolvedVaultDir: string | undefined;
     try {
       if (options.output !== 'text' && options.output !== 'json') {
         throw new Error('--output must be text or json.');
@@ -44,6 +47,7 @@ Examples:
         allowFindDown: true,
         jsonMode,
       });
+      resolvedVaultDir = vaultDir;
       const schema = await loadSchema(vaultDir);
       const result = await adoptLineage(schema, vaultDir, {
         child,
@@ -73,6 +77,18 @@ Examples:
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (error instanceof ConcurrentNoteModificationError) {
+        if (jsonMode) {
+          printJson(jsonError(message, {
+            code: ExitCodes.IO_ERROR,
+            data: concurrentModificationData(resolvedVaultDir ?? process.cwd(), error),
+          }));
+        } else {
+          printError(message);
+        }
+        process.exitCode = ExitCodes.IO_ERROR;
+        return;
+      }
       if (jsonMode) {
         printJson(jsonError(message, { code: ExitCodes.VALIDATION_ERROR }));
       } else {

@@ -223,6 +223,13 @@ plus the child's `forked-from`. A successful JSON result has `mode`, `child`,
 `body_invariance.*.unchanged` values to be `true`. IDs shown as generated in a
 dry run are provisional until execute revalidates under locks.
 
+Fork, adoption, and ordinary edit commits share path locks. If a guarded
+identity/provenance write observes changed raw bytes, JSON reports numeric
+`code: 2` with `data.reason: "note-modified-concurrently"`,
+`data.retryable: true`, `data.path`, and `data.attempts`. Re-resolve and retry;
+never work around the conflict by attempting to set `id` or `forked-from`
+through ordinary edit.
+
 Deleting a document with direct fork children refuses unless `--force` is
 supplied. With `--force`, bwrb deletes only the selected document: children keep
 their `forked-from` value, which surfaces as `dangling-forked-from` in
@@ -392,6 +399,7 @@ bwrb edit --type task --where "status == 'active'" "Deploy" --json '{"status": "
 Notes:
 - If multiple notes share the same name, `bwrb edit` errors and lists candidates. Disambiguate with `--type`, `--path`, or a vault-relative path.
 - `bwrb new --json` rejects unknown frontmatter fields after merging template defaults. `bwrb edit --json` rejects unknown fields in the patch.
+- Edit commits coordinate with fork/adopt lineage writes. JSON patches make up to three total attempts (the initial attempt plus at most two retries) from fresh bytes; on exhaustion, retry only when JSON has numeric `code: 2`, `data.reason: "note-modified-concurrently"`, and `data.retryable: true`. Interactive edits do not replay answers gathered from stale values.
 
 ### Deleting Notes
 

@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+output: /Users/alicemoore/Developer/bwrb-worktrees/issue-820-edit-concurrency/.task-sweep/logs/claude-fable-5-plan-output-20260710-121000-issue-820.md
+chars: 9356 words: 1335
+preview: # Plan — #820 edit-vs-lineage write race\n\n## 1. Architecture choice\n\n| Option | Verdict |\n|---|---|\n| Wrap whole JSON/interactive edit in the lineage path lock | ❌ Interactive edit holds a cross-process lock through human prompts; JSON edit holds it through vault-wide scans (context validation, cycle check, snapshot builds). Long holds + 30s acquisition timeout = spurious failures. |\n| Commit-phase lock + exact raw-byte stale detection | ✅ Core of the fix. Smallest surface, honest guarantee. |\n| Bounded auto-retry (JSON) / stable retryable error (interactive) | ✅ Layer on top of the above for behavior on staleness. |\n\n**Recommended shape** (all in `src/lib/edit.ts`):\n\n1. `parseNote` already returns `raw` — keep the snapshot's `raw` bytes from the initial read.\n2. At commit time, wrap the f

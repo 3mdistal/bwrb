@@ -61,6 +61,38 @@ bwrb edit -t task --where "status == 'active'" "Deploy" --json '{"priority":"hig
 
 `--json` mode rejects patch fields that are not defined for the resolved note type. Existing legacy or unknown fields in the note are preserved unless the patch changes them.
 
+## Concurrent lineage changes
+
+The final edit commit shares the note's lineage mutation lock with `new --fork`
+and `lineage adopt`. Bowerbird compares the note's exact raw bytes after taking
+the lock. A JSON patch that became stale is retried against the latest note for
+up to three total attempts, so a concurrent `id` backfill or `forked-from` edge
+is preserved.
+Interactive answers are never replayed against unseen values; the command asks
+you to retry instead.
+
+If all three JSON attempts become stale, JSON output uses numeric exit code `2`
+and stable retry context:
+
+```json
+{
+  "success": false,
+  "error": "Note changed on disk during a guarded write; newer bytes were preserved. Retry the command.",
+  "code": 2,
+  "data": {
+    "reason": "note-modified-concurrently",
+    "retryable": true,
+    "path": "Ideas/My Note.md",
+    "attempts": 3
+  }
+}
+```
+
+This coordination covers Bowerbird edit, fork, and adoption processes. The
+raw-byte check also detects an external editor change that lands before the
+guarded comparison, but Bowerbird cannot lock unrelated editors; retry if an
+external writer remains active.
+
 ### Edit and Open
 
 ```bash
@@ -105,4 +137,5 @@ When multiple notes match your query:
 
 - [bwrb list](/reference/commands/list/) — Find or open notes without editing
 - [bwrb bulk](/reference/commands/bulk/) — Batch frontmatter changes
+- [bwrb lineage](/reference/commands/lineage/) — Guarded document provenance
 - [Targeting Model](/reference/targeting/) — Selector reference

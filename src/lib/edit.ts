@@ -6,7 +6,8 @@
  * - `search --edit` (unified interface)
  */
 
-import { relative } from 'path';
+import { access, mkdir, writeFile } from 'fs/promises';
+import { join, relative } from 'path';
 import {
   getTypeDefByPath,
   resolveTypePathFromFrontmatter,
@@ -43,11 +44,13 @@ import {
   ExitCodes,
 } from './output.js';
 import { type LoadedSchema, type Field, type BodySection, getOptionValues } from '../types/schema.js';
-import { UserCancelledError } from './errors.js';
+import { ConcurrentNoteModificationError, UserCancelledError } from './errors.js';
 import { expandStaticValue } from './local-date.js';
 import { prepareRecurrenceFastPath, commitRecurrenceFastPath } from './recurrence-fast-path.js';
 import { validateRelativeDateCalendarOffsetsForWrite } from './relative-date.js';
 import { isBwrbReservedFrontmatterField } from './frontmatter/systemFields.js';
+import { withLineageMutationLocks } from './lineage-lock.js';
+import { assertNoteBytesUnchanged } from './note-write-concurrency.js';
 
 // ============================================================================
 // Types
@@ -66,7 +69,11 @@ export interface EditFromJsonOptions {
 export interface EditInteractiveOptions {
   /** Whether to check for missing body sections */
   checkSections?: boolean;
+  /** Internal dependency hook for deterministic commit-race tests. */
+  beforeCommit?: () => Promise<void>;
 }
+
+const JSON_EDIT_ATTEMPTS = 3;
 
 // ============================================================================
 // JSON Edit Mode (Non-Interactive)
@@ -117,8 +124,41 @@ export async function editNoteFromJson(
     throw new Error(error);
   }
 
+  for (let attempt = 1; attempt <= JSON_EDIT_ATTEMPTS; attempt++) {
+    try {
+      return await editNoteFromJsonAttempt(
+        schema,
+        vaultDir,
+        filePath,
+        patchData,
+        jsonMode,
+        attempt
+      );
+    } catch (error) {
+      if (
+        error instanceof ConcurrentNoteModificationError &&
+        attempt < JSON_EDIT_ATTEMPTS
+      ) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new ConcurrentNoteModificationError(filePath, JSON_EDIT_ATTEMPTS);
+}
+
+async function editNoteFromJsonAttempt(
+  schema: LoadedSchema,
+  vaultDir: string,
+  filePath: string,
+  patchData: Record<string, unknown>,
+  jsonMode: boolean,
+  attempt: number
+): Promise<EditResult> {
+
   // Parse existing note
-  const { frontmatter, body } = await parseNote(filePath);
+  const { frontmatter, body, raw } = await parseNote(filePath);
 
   // Resolve type path from existing frontmatter
   const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
@@ -308,27 +348,25 @@ export async function editNoteFromJson(
   const fieldOrder = getFrontmatterOrder(typeDef);
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(resolvedFrontmatter);
 
-  // Recurrence fast path (atomicity, #107): VALIDATE + COMPUTE the successor
-  // BEFORE mutating the predecessor. If this completion would spawn a successor
-  // but the spawn can't succeed (missing template, partial/unparseable offset
-  // base), prepare throws here and we abort WITHOUT writing the predecessor —
-  // never leaving it `done` with no successor.
-  const fastPathPlan = await prepareRecurrenceFastPath(
-    schema,
-    vaultDir,
-    typeDef.name,
-    filePath,
-    frontmatter,
-    resolvedFrontmatter,
-    body
-  );
+  await waitForEditCommitBarrier(attempt, filePath);
 
-  // Write updated note (predecessor status change is now safe to commit).
-  await writeNote(filePath, resolvedFrontmatter, body, orderedFields);
+  await withLineageMutationLocks(vaultDir, [filePath], async () => {
+    await assertNoteBytesUnchanged(filePath, raw, attempt);
 
-  // Commit the prepared spawn (create successor + back-link `next`). Identical
-  // result to the audit backstop, which shares the same engine.
-  await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+    // Recurrence prepare, predecessor write, and successor/back-link commit are
+    // one guarded commit phase. A retry always re-prepares from fresh bytes.
+    const fastPathPlan = await prepareRecurrenceFastPath(
+      schema,
+      vaultDir,
+      typeDef.name,
+      filePath,
+      frontmatter,
+      resolvedFrontmatter,
+      body
+    );
+    await writeNote(filePath, resolvedFrontmatter, body, orderedFields);
+    await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+  });
 
   return { updatedFields, path: filePath };
 }
@@ -351,9 +389,9 @@ export async function editNoteInteractive(
   filePath: string,
   options: EditInteractiveOptions = {}
 ): Promise<void> {
-  const { checkSections = true } = options;
+  const { checkSections = true, beforeCommit } = options;
   
-  const { frontmatter, body } = await parseNote(filePath);
+  const { frontmatter, body, raw } = await parseNote(filePath);
   const fileName = filePath.split('/').pop() ?? filePath;
 
   printInfo(`\n=== Editing: ${fileName} ===`);
@@ -421,25 +459,22 @@ export async function editNoteInteractive(
     }
   }
 
-  // Recurrence fast path (atomicity, #107): VALIDATE + COMPUTE before mutating
-  // the predecessor (see editNoteFromJson). Interactive edit reconstructs the
-  // full frontmatter, so `frontmatter` (read at the top) is the old state.
-  const fastPathPlan = await prepareRecurrenceFastPath(
-    schema,
-    vaultDir,
-    typeDef.name,
-    filePath,
-    frontmatter,
-    newFrontmatter,
-    updatedBody
-  );
-
-  // Write updated file (predecessor change is now safe to commit).
-  await writeNote(filePath, newFrontmatter, updatedBody, orderedFields);
+  await beforeCommit?.();
+  const fastPath = await withLineageMutationLocks(vaultDir, [filePath], async () => {
+    await assertNoteBytesUnchanged(filePath, raw);
+    const fastPathPlan = await prepareRecurrenceFastPath(
+      schema,
+      vaultDir,
+      typeDef.name,
+      filePath,
+      frontmatter,
+      newFrontmatter,
+      updatedBody
+    );
+    await writeNote(filePath, newFrontmatter, updatedBody, orderedFields);
+    return commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+  });
   printSuccess(`\n✓ Updated: ${filePath}`);
-
-  // Commit the prepared spawn.
-  const fastPath = await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
   if (fastPath.successorPath) {
     printSuccess(`✓ Spawned recurrence successor: ${fastPath.successorPath}`);
   }
@@ -448,6 +483,29 @@ export async function editNoteInteractive(
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/** File handshake used only by cross-process race tests. */
+async function waitForEditCommitBarrier(attempt: number, filePath: string): Promise<void> {
+  if (process.env.BWRB_TEST_EDIT_BARRIER_ENABLED !== '1') return;
+  const barrierDir = process.env.BWRB_TEST_EDIT_BARRIER_DIR;
+  if (!barrierDir) return;
+
+  await mkdir(barrierDir, { recursive: true });
+  const readyPath = join(barrierDir, `edit-read-${attempt}.ready`);
+  const commitPath = join(barrierDir, `edit-commit-${attempt}.go`);
+  await writeFile(readyPath, `${filePath}\n`, 'utf-8');
+
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    try {
+      await access(commitPath);
+      return;
+    } catch {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+  }
+  throw new Error(`Timed out waiting for edit test barrier: ${commitPath}`);
+}
 
 function mergeFrontmatter(
   existing: Record<string, unknown>,
