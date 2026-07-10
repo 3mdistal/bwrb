@@ -9,11 +9,15 @@ For the complete changelog with all details, see [CHANGELOG.md](https://github.c
 
 ## Recent Highlights
 
-### Unreleased
+### 0.2.3
 
+- **Relative-date fields** — position notes before, after, or equal to other notes, with query-time resolution and audit warnings for invalid chains
+- **Custom calendars** — define fictional or alternative calendars for date validation, sorting, comparisons, JSON output, audit, and relative-date anchors
 - **Document forks** — `bwrb new --fork <target>` creates an ordinary sibling note with a fresh ID and immutable immediate-source provenance
 - **Fork lineage inspection** — `bwrb list --lineage <target>` renders the complete connected fork component, including sibling and cousin branches, as a tree, paths, links, content, or structured JSON
 - **Fork-safe deletion** — `bwrb delete` refuses notes with direct fork children or duplicate identities unless forced, preserving child provenance for audit when the parent is deliberately removed
+- **Unified note discovery** — `bwrb list` is the canonical surface for finding, filtering, inspecting, linking, and opening notes; `search` and `open` remain available for compatibility
+- **JSON-mode reliability** — edit, open, and prompt-mode commands exit cleanly with one coherent JSON result even when stdin remains open
 
 ### 0.2.2
 
