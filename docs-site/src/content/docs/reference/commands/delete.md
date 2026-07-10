@@ -101,6 +101,36 @@ not deleted or reparented, and their `forked-from` value stays intact. A later
 `bwrb audit` reports that retained provenance as `dangling-forked-from`, so the
 source can still be restored deliberately.
 
+### Concurrent target disappearance
+
+Without `--force`, bwrb selects the requested notes and then rechecks them while
+holding the same lineage locks used by fork and adoption. If another process
+deletes a selected target before that authoritative recheck, the command stops
+without deleting any of the remaining selected notes and returns exit code `2`:
+
+```text
+Error: Delete target disappeared while waiting for the lineage lock; retry the command: Ideas/Launch Brief.md
+```
+
+JSON output keeps the numeric exit-code contract and adds stable retry context:
+
+```json
+{
+  "success": false,
+  "error": "Delete target disappeared while waiting for the lineage lock; retry the command: Ideas/Launch Brief.md",
+  "data": {
+    "reason": "target-disappeared",
+    "retryable": true,
+    "paths": ["Ideas/Launch Brief.md"]
+  },
+  "code": 2
+}
+```
+
+Re-resolve the target set before retrying. This is distinct from an initial
+not-found result: the note existed during selection but vanished while the
+command was coordinating its write.
+
 ## Examples
 
 ### Single-file Mode

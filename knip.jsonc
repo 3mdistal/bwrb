@@ -3,7 +3,11 @@
 
   // Vitest plugin doesn't auto-detect globalTeardown from config
   "vitest": {
-    "entry": ["tests/ts/teardown.ts"]
+    "entry": [
+      "tests/ts/teardown.ts",
+      // Spawned as a real child process by the cross-process lock suite.
+      "tests/ts/fixtures/lineage-lock-worker.ts"
+    ]
   },
 
   // Ignore intentional public API exports and separate projects

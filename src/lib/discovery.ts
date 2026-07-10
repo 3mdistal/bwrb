@@ -328,7 +328,7 @@ export async function collectAllMarkdownFiles(
   
   for (const entry of entries) {
     const fullPath = join(dir, entry.name);
-    const relativePath = relative(baseDir, fullPath);
+    const relativePath = toPosixPath(relative(baseDir, fullPath));
     
     // Skip hidden directories (starting with .)
     if (entry.isDirectory() && entry.name.startsWith('.')) continue;
@@ -1164,7 +1164,7 @@ export async function collectPooledFiles(
   ignoreMatcher: Ignore | null,
   boundaries?: PooledScanBoundaries
 ): Promise<ManagedFile[]> {
-  const normalizedOutputDir = outputDir.replace(/\/$/, '');
+  const normalizedOutputDir = toPosixPath(outputDir).replace(/\/$/, '');
   const rootDir = join(vaultDir, normalizedOutputDir);
   if (!existsSync(rootDir)) return [];
 
@@ -1178,7 +1178,7 @@ export async function collectPooledFiles(
     const entries = await readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
-      const entryRel = join(relDir, entry.name);
+      const entryRel = toPosixPath(join(relDir, entry.name));
 
       if (entry.isDirectory()) {
         // Never descend into hidden/system directories.
@@ -1231,7 +1231,7 @@ async function collectOwnedFiles(
   const ownerOutputDir = getOutputDirFromSchema(schema, ownerTypeName);
   if (!ownerOutputDir) return [];
 
-  const normalizedOwnerOutputDir = ownerOutputDir.replace(/\/$/, '');
+  const normalizedOwnerOutputDir = toPosixPath(ownerOutputDir).replace(/\/$/, '');
   const files: ManagedFile[] = [];
   const fullOwnerDir = join(vaultDir, normalizedOwnerOutputDir);
 
@@ -1248,22 +1248,24 @@ async function collectOwnedFiles(
     // Skip hidden directories
     if (entry.name.startsWith('.')) continue;
 
-    const ownerFolderRel = join(normalizedOwnerOutputDir, entry.name);
+    const ownerFolderRel = toPosixPath(join(normalizedOwnerOutputDir, entry.name));
     if (shouldExcludePath(ownerFolderRel, excluded, ignoreMatcher, true)) continue;
 
     // Check if this folder has an owner note (e.g., drafts/My Novel/My Novel.md)
     const ownerNotePath = join(fullOwnerDir, entry.name, `${entry.name}.md`);
-    const ownerNoteRel = join(normalizedOwnerOutputDir, entry.name, `${entry.name}.md`);
+    const ownerNoteRel = toPosixPath(
+      join(normalizedOwnerOutputDir, entry.name, `${entry.name}.md`)
+    );
 
     if (shouldExcludePath(ownerNoteRel, excluded, ignoreMatcher)) continue;
     if (!existsSync(ownerNotePath)) continue;
 
     // For each owned field, look for the owned field subfolder
     for (const ownedField of ownedFields) {
-      const ownedFieldFolderRel = getOwnedChildFolderFromOwnerDir(
+      const ownedFieldFolderRel = toPosixPath(getOwnedChildFolderFromOwnerDir(
         join(normalizedOwnerOutputDir, entry.name),
         ownedField.fieldName
-      );
+      ));
       if (shouldExcludePath(ownedFieldFolderRel, excluded, ignoreMatcher, true)) continue;
 
       const ownedFieldFolder = getOwnedChildFolderFromOwnerDir(
@@ -1277,11 +1279,11 @@ async function collectOwnedFiles(
       for (const childEntry of childEntries) {
         if (!childEntry.isFile() || !childEntry.name.endsWith('.md')) continue;
 
-        const relativePath = getOwnedChildFolderFromOwnerDir(
+        const relativePath = toPosixPath(getOwnedChildFolderFromOwnerDir(
           join(normalizedOwnerOutputDir, entry.name),
           ownedField.fieldName
-        );
-        const ownedRelativePath = join(relativePath, childEntry.name);
+        ));
+        const ownedRelativePath = toPosixPath(join(relativePath, childEntry.name));
         if (shouldExcludePath(ownedRelativePath, excluded, ignoreMatcher)) continue;
 
         files.push({

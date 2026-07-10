@@ -229,6 +229,12 @@ their `forked-from` value, which surfaces as `dangling-forked-from` in
 `bwrb audit`. Use `bwrb list --lineage <target> --output json` before forcing a
 parent deletion when an agent needs to enumerate the affected family.
 
+For non-force deletion, another process can remove a selected target while the
+command waits for its lineage lock. JSON reports numeric `code: 2` with
+`data.reason: "target-disappeared"`, `data.retryable: true`, and the selected
+`data.paths`. Re-resolve those paths before retrying; do not treat this as a
+successful or ordinary initial not-found result.
+
 ## Core Commands for Agents
 
 ### Querying Notes

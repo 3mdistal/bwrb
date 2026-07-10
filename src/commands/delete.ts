@@ -270,6 +270,11 @@ Note: Deletion is permanent. The file is removed from the filesystem.
         return;
       }
 
+      if (err instanceof DeleteTargetDisappearedError) {
+        reportDeleteTargetDisappeared(err, jsonMode);
+        return;
+      }
+
       const message = err instanceof Error ? err.message : String(err);
 
       // Handle specific error types
@@ -677,7 +682,7 @@ async function handleBulkDelete(
   } else {
     try {
       await withLineageMutationLocks(vaultDir, files.map(file => file.path), async () => {
-        const assessment = await assessCurrentDeleteLineage(schema, vaultDir, files);
+        const assessment = await assessCurrentDeleteLineage(schema, vaultDir, files, true);
         if (assessment.length > 0) throw new LineageDeleteRefusalError(assessment);
         await deleteFiles();
       });
@@ -860,7 +865,7 @@ async function deleteResolvedFile({
   } else {
     try {
       await withLineageMutationLocks(vaultDir, [fullPath], async () => {
-        const assessment = await assessCurrentDeleteLineage(schema, vaultDir, [file]);
+        const assessment = await assessCurrentDeleteLineage(schema, vaultDir, [file], true);
         if (assessment.length > 0) throw new LineageDeleteRefusalError(assessment);
         await unlink(fullPath);
         await unregisterIssuedNotePath(vaultDir, relativePath);
@@ -899,23 +904,56 @@ class LineageDeleteRefusalError extends Error {
   }
 }
 
+class DeleteTargetDisappearedError extends Error {
+  constructor(readonly paths: string[]) {
+    super(paths.length === 1
+      ? `Delete target disappeared while waiting for the lineage lock; retry the command: ${paths[0]}`
+      : `Delete targets disappeared while waiting for lineage locks; retry the command: ${paths.join(', ')}`);
+    this.name = 'DeleteTargetDisappearedError';
+  }
+}
+
 async function assessCurrentDeleteLineage(
   schema: Awaited<ReturnType<typeof loadSchema>>,
   vaultDir: string,
-  files: ManagedFile[]
+  files: ManagedFile[],
+  classifyMissingAsDisappeared = false
 ): Promise<DeleteLineageBlock[]> {
   const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
   const assessment = assessDeleteLineage(snapshot, files.map(file => file.path));
   if (assessment.missing.length > 0) {
+    const missingPaths = assessment.missing.map(
+      path => files.find(file => file.path === path)?.relativePath ?? path
+    );
+    if (classifyMissingAsDisappeared) {
+      throw new DeleteTargetDisappearedError(missingPaths);
+    }
     const error = new Error(
-      `File not found or no longer managed: ${assessment.missing
-        .map(path => files.find(file => file.path === path)?.relativePath ?? path)
-        .join(', ')}`
+      `File not found or no longer managed: ${missingPaths.join(', ')}`
     ) as NodeJS.ErrnoException;
     error.code = 'ENOENT';
     throw error;
   }
   return assessment.blocked;
+}
+
+function reportDeleteTargetDisappeared(
+  error: DeleteTargetDisappearedError,
+  jsonMode: boolean
+): void {
+  if (jsonMode) {
+    printJson(jsonError(error.message, {
+      code: ExitCodes.IO_ERROR,
+      data: {
+        reason: 'target-disappeared',
+        retryable: true,
+        paths: error.paths,
+      },
+    }));
+  } else {
+    printError(error.message);
+  }
+  process.exitCode = ExitCodes.IO_ERROR;
 }
 
 function reportLineageRefusal(
