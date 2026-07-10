@@ -23,6 +23,10 @@ import {
   getLineageMutationLockPath,
   withLineageMutationLocks,
 } from '../../lib/lineage-lock.js';
+import {
+  assertNoteBytesUnchanged,
+  rollbackNoteIfUnchanged,
+} from '../../lib/note-write-concurrency.js';
 
 export type LineageAdoptMode = 'dry-run' | 'execute';
 
@@ -266,21 +270,43 @@ async function applyPreparedAdoption(
   let childWritten = false;
   try {
     if (prepared.parentNextRaw !== prepared.parentOriginal.raw) {
+      await assertNoteBytesUnchanged(
+        prepared.parent.file.path,
+        prepared.parentOriginal.raw
+      );
       await writeFileAtomic(prepared.parent.file.path, prepared.parentNextRaw);
       parentWritten = true;
     }
+    await assertNoteBytesUnchanged(
+      prepared.child.file.path,
+      prepared.childOriginal.raw
+    );
     await writeFileAtomic(prepared.child.file.path, prepared.childNextRaw);
     childWritten = true;
     await registerIds(vaultDir, prepared.registrations);
   } catch (error) {
     const rollbackErrors: string[] = [];
     if (childWritten) {
-      await writeFileAtomic(prepared.child.file.path, prepared.childOriginal.raw)
-        .catch(rollbackError => rollbackErrors.push(formatError(rollbackError)));
+      await rollbackNoteIfUnchanged(
+        prepared.child.file.path,
+        prepared.childNextRaw,
+        prepared.childOriginal.raw
+      ).then(rolledBack => {
+        if (!rolledBack) {
+          rollbackErrors.push(`${prepared.child.file.relativePath} changed again; newer bytes left as-is`);
+        }
+      }).catch(rollbackError => rollbackErrors.push(formatError(rollbackError)));
     }
     if (parentWritten) {
-      await writeFileAtomic(prepared.parent.file.path, prepared.parentOriginal.raw)
-        .catch(rollbackError => rollbackErrors.push(formatError(rollbackError)));
+      await rollbackNoteIfUnchanged(
+        prepared.parent.file.path,
+        prepared.parentNextRaw,
+        prepared.parentOriginal.raw
+      ).then(rolledBack => {
+        if (!rolledBack) {
+          rollbackErrors.push(`${prepared.parent.file.relativePath} changed again; newer bytes left as-is`);
+        }
+      }).catch(rollbackError => rollbackErrors.push(formatError(rollbackError)));
     }
     if (rollbackErrors.length > 0) {
       throw new Error(

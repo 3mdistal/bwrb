@@ -265,6 +265,36 @@ describe('lineage adopt', () => {
     expect(await readFile(registryPath, 'utf-8').catch(() => null)).toBe(registryBefore);
   });
 
+  it('never rolls adoption back over bytes written after its own child write', async () => {
+    const childPath = join(vaultDir, 'Ideas/Rollback Race Child.md');
+    const parentPath = join(vaultDir, 'Ideas/Rollback Race Parent.md');
+    const childRaw = noteRaw({ body: 'Original child bytes\n' });
+    const parentRaw = noteRaw({ body: 'Original parent bytes\n' });
+    const newerChildRaw = noteRaw({
+      id: C,
+      extra: 'provider: { newer: true }\n',
+      body: 'Newer child bytes\n',
+    });
+    await writeFile(childPath, childRaw);
+    await writeFile(parentPath, parentRaw);
+    const schema = await loadSchema(vaultDir);
+
+    await expect(adoptLineage(
+      schema,
+      vaultDir,
+      { child: 'Rollback Race Child', parent: 'Rollback Race Parent', execute: true },
+      {
+        registerIds: async () => {
+          await writeFile(childPath, newerChildRaw);
+          throw new Error('injected registry failure after a newer writer');
+        },
+      }
+    )).rejects.toThrow('newer bytes left as-is');
+
+    expect(await readFile(childPath, 'utf-8')).toBe(newerChildRaw);
+    expect(await readFile(parentPath, 'utf-8')).toBe(parentRaw);
+  });
+
   it('refuses cycles and ambiguous or missing exact targets', async () => {
     await writeFile(join(vaultDir, 'Ideas/Cycle Root.md'), noteRaw({ id: A }));
     await writeFile(join(vaultDir, 'Ideas/Cycle Child.md'), noteRaw({ id: B, parent: A }));

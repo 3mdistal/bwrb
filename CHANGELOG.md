@@ -10,6 +10,7 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Fixed
 
+- **Edit/lineage write races** — ordinary edit commits now coordinate with fork/adopt path locks and compare exact raw-byte snapshots; JSON patches replay safely from fresh bytes, exhausted or unsafe conflicts return stable retryable text/JSON output, and fork/adopt pre-write plus rollback guards preserve newer note bytes (#820).
 - **Portable lineage mutation locking** — lineage and note-ID locks now fail closed on Windows sharing/permission errors, have deterministic real-process stress coverage plus a focused Windows CI lane, and return stable retryable text/JSON context when a non-force delete target disappears before its authoritative under-lock recheck (#807).
 - **Body-only content targeting** — `--body` now excludes YAML frontmatter in both note filtering and detailed match reports while preserving original file line numbers and body-only context (#812).
 

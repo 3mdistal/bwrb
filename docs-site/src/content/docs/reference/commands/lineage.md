@@ -52,14 +52,20 @@ ID, execute mode assigns a fresh UUID and records it in `.bwrb/ids.jsonl` as
 part of the guarded operation. Parent and child paths are locked together, the
 notes and graph are re-read under those locks, and ID assignment shares the
 same lock used by `new --fork`. Concurrent fork, non-force delete, and adoption
-operations therefore serialize on every path they share.
+operations therefore serialize on every path they share. Ordinary `bwrb edit`
+now joins those path locks for its short commit phase and replays a stale JSON
+patch from fresh bytes, preventing an edit from erasing a newly assigned ID or
+provenance edge.
 
 Only the missing `id` fields and the child's new `forked-from` field may change.
 The writer inserts plain scalars without reserializing YAML, and verifies that
 the parsed bodies and all ordinary frontmatter remain unchanged. Filenames,
 aliases, provider metadata, bodies, and other frontmatter are not rewritten.
 If the two-note write or registry update fails, changed note bytes are rolled
-back before the command reports failure.
+back before the command reports failure. Rollback restores a note only when it
+still contains adoption's own write; bytes from a newer writer are left intact.
+A pre-write byte conflict is retryable and uses numeric JSON `code: 2` with
+`data.reason: "note-modified-concurrently"`.
 
 ## Examples
 

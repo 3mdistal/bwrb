@@ -26,7 +26,8 @@ import {
   type OpenResultData,
 } from './open.js';
 import { resolveTargets, hasAnyTargeting, type TargetingOptions } from '../lib/targeting.js';
-import { UserCancelledError } from '../lib/errors.js';
+import { ConcurrentNoteModificationError, UserCancelledError } from '../lib/errors.js';
+import { concurrentModificationData } from '../lib/note-write-concurrency.js';
 import type { ResolvedConfig } from '../types/schema.js';
 
 // ============================================================================
@@ -163,6 +164,7 @@ Precedence (for --open app mode):
     // rather than silently falling back to the default app.
     const appModeInput = options.app ?? mode;
     let jsonMode = patchMode;
+    let resolvedVaultDir: string | undefined;
     try {
       const globalOpts = getGlobalOpts(cmd);
       jsonMode = resolveEditJsonMode(options, globalOpts.output);
@@ -179,6 +181,7 @@ Precedence (for --open app mode):
       const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
       if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
+      resolvedVaultDir = vaultDir;
       const schema = await loadSchema(vaultDir);
 
       if (globalOpts.nonInteractive && !patchMode) {
@@ -374,6 +377,17 @@ Precedence (for --open app mode):
         return;
       }
     } catch (err) {
+      if (err instanceof ConcurrentNoteModificationError) {
+        if (jsonMode) {
+          printJson(jsonError(err.message, {
+            code: ExitCodes.IO_ERROR,
+            data: concurrentModificationData(resolvedVaultDir ?? process.cwd(), err),
+          }));
+          process.exit(ExitCodes.IO_ERROR);
+        }
+        printError(err.message);
+        process.exit(ExitCodes.IO_ERROR);
+      }
       if (err instanceof UserCancelledError) {
         if (jsonMode) {
           printJson(jsonError('Cancelled', { code: ExitCodes.VALIDATION_ERROR }));

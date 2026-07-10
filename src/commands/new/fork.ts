@@ -28,6 +28,10 @@ import { promptInput } from '../../lib/prompt.js';
 import { UserCancelledError } from '../../lib/errors.js';
 import { resolveExactNoteTarget } from '../../lib/exact-note-target.js';
 import { withLineageMutationLocks } from '../../lib/lineage-lock.js';
+import {
+  assertNoteBytesUnchanged,
+  rollbackNoteIfUnchanged,
+} from '../../lib/note-write-concurrency.js';
 
 const PORTABLE_PATH_WARNING_LENGTH = 200;
 const PORTABLE_PATH_MAX_LENGTH = 260;
@@ -209,15 +213,26 @@ async function ensureSourceId(
       throw new Error('Generated source ID collides with an existing note; retry the command.');
     }
     const nextRaw = insertFrontmatterScalarPreservingBytes(parsed.raw, 'id', id);
+    await assertNoteBytesUnchanged(sourcePath, parsed.raw);
     await writeFileAtomic(sourcePath, nextRaw);
     try {
       await registerIssuedNoteId(vaultDir, id, sourcePath);
     } catch (error) {
-      await writeFileAtomic(sourcePath, parsed.raw);
+      const rolledBack = await rollbackNoteIfUnchanged(sourcePath, nextRaw, parsed.raw);
+      if (!rolledBack) {
+        throw new Error(
+          `Source ID registration failed (${formatError(error)}) and rollback was skipped because ` +
+          'the source changed again; newer bytes were preserved.'
+        );
+      }
       throw error;
     }
     return id;
   });
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function assertSourceIdUnique(

@@ -21,3 +21,20 @@ export class UserCancelledError extends Error {
     this.name = 'UserCancelledError';
   }
 }
+
+/**
+ * A note changed after a command's authoritative read but before its guarded
+ * write. Callers must retry from a fresh snapshot rather than overwriting the
+ * newer bytes.
+ */
+export class ConcurrentNoteModificationError extends Error {
+  readonly path: string;
+  readonly attempts: number;
+
+  constructor(path: string, attempts = 1) {
+    super('Note changed on disk during a guarded write; newer bytes were preserved. Retry the command.');
+    this.name = 'ConcurrentNoteModificationError';
+    this.path = path;
+    this.attempts = attempts;
+  }
+}
