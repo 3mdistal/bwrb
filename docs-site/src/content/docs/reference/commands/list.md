@@ -379,6 +379,7 @@ bwrb list --type task --where '!isEmpty(deadline)'
 
 - [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — When to use `--force`
 - [Targeting Model](/reference/targeting/) — Full selector reference
+- [bwrb lineage](/reference/commands/lineage/) — Adopt known existing revisions into lineage
 - [bwrb dashboard](/reference/commands/dashboard/) — Run saved queries
 - [`search` compatibility command](/reference/commands/search/) — Legacy invocation mappings
 - [`open` compatibility command](/reference/commands/open/) — Legacy invocation mappings

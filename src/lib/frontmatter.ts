@@ -53,17 +53,22 @@ export interface ParsedNote {
   raw: string;
 }
 
-/**
- * Parse a markdown file's frontmatter and body.
- */
-export async function parseNote(filePath: string): Promise<ParsedNote> {
-  const content = await readFile(filePath, 'utf-8');
+/** Parse an in-memory markdown note using the same normalization as parseNote. */
+export function parseNoteContent(content: string): ParsedNote {
   const { data, content: body } = matter(content);
   return {
     frontmatter: normalizeMatterValue(data) as Record<string, unknown>,
     body,
     raw: content,
   };
+}
+
+/**
+ * Parse a markdown file's frontmatter and body.
+ */
+export async function parseNote(filePath: string): Promise<ParsedNote> {
+  const content = await readFile(filePath, 'utf-8');
+  return parseNoteContent(content);
 }
 
 /**

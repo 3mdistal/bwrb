@@ -33,6 +33,7 @@ describe('help output contract snapshots', () => {
       'audit',
       'bulk',
       'template',
+      'lineage',
       'dashboard',
       'init',
       'config',

@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+output: .task-sweep/logs/810-review-output-20260710-080100.md
+chars: 2438
+words: 270

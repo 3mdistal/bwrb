@@ -29,8 +29,6 @@ exist:
   checked from the same contracts
 - Stabilize machine-readable command-specific output shapes and exit behavior
 - Keep migrations and audit fixes conservative as schemas grow more expressive
-- Improve completion parity (including the current `init` omission, tracked in
-  [#810](https://github.com/3mdistal/bwrb/issues/810))
 
 ## Genuinely future
 

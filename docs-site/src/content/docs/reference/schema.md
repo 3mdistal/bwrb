@@ -720,13 +720,14 @@ editing are unchanged by this marker.
 ### Built-in lineage metadata
 
 `forked-from` is a reserved built-in frontmatter field containing the UUID of a
-note's immediate source. It is a UUID string, never a wikilink. Hand-authored
-lineage is allowed and audited, but normal JSON creation, edit, and template
-input cannot set or modify this system-managed field. Do not declare
+note's immediate source. It is a UUID string, never a wikilink. Existing
+lineage is audited, but normal JSON creation, edit, template input, schema
+defaults, and audit fixes cannot set or modify this system-managed field. Use
+`bwrb new --fork` for a newly created child or guarded
+[`bwrb lineage adopt`](/reference/commands/lineage/) for two existing notes. Do not declare
 `forked-from` in a type or trait's `fields`: schema loading and schema field
 creation reject the reserved name, including declarations with `default` or
-static `value` entries. A native fork workflow injects provenance after ordinary
-creation defaults have been resolved.
+static `value` entries.
 
 ---
 
