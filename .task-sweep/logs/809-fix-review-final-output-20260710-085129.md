@@ -1,0 +1,5 @@
+BLOCKERS
+
+One correctness blocker remains in canonical ISO normalization for years 0001–0099. In `normalizeToIsoDate` (validation.ts), the configured-pattern path builds the stored value as `${year}-${month}-${day}` with `getFullYear()` un-padded, while month/day get `padStart(2,'0')`. For year 0099, `parseDateWithPattern` correctly preserves the year via `setFullYear`, but normalization then emits `99-07-10` — non-canonical ISO that will fail subsequent validation/audit round-trips, negating the low-year fix. Year needs `String(year).padStart(4, '0')`. Tests cover `parseDateWithPattern` low years but not normalization of low years, so this gap is untested.
+
+Otherwise: strict format precedence (configured pattern before format-agnostic guessing, ISO/partials still accepted), deterministic `DD.MM.YYYY` config→$TODAY→new→audit test, and docs/schema descriptions are correct.

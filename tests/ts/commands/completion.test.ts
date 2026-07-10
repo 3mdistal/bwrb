@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'child_process';
 import path from 'path';
 
-import { runCLI } from '../fixtures/setup';
+import { CLI_PATH, runCLI } from '../fixtures/setup';
+import { extractHelpCommands } from '../helpers/help';
 
 const VAULT_DIR = path.join(__dirname, '../../fixtures/vault');
 
@@ -19,6 +20,30 @@ async function runCliOutput(
 
   const result = await runCLI(args, undefined, undefined, { cwd, env });
   return result.stdout;
+}
+
+function runBuiltCliOutput(args: string[]): string {
+  return execFileSync(process.execPath, [CLI_PATH, ...args], {
+    cwd: VAULT_DIR,
+    encoding: 'utf-8',
+    env: { ...process.env, NO_COLOR: '1', BWRB_VAULT: VAULT_DIR },
+  }).trim();
+}
+
+function lines(output: string): string[] {
+  return output.split('\n').filter((line) => line.trim());
+}
+
+function extractHelpOptionFlags(helpOutput: string): string[] {
+  const optionLines = helpOutput
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .filter((line) => /^  -/.test(line));
+
+  return optionLines.flatMap((line) => {
+    const signature = line.trim().split(/\s{2,}/, 1)[0] ?? '';
+    return signature.match(/-{1,2}[a-z][a-z0-9-]*/gi) ?? [];
+  });
 }
 
 describe('bwrb completion command', () => {
@@ -73,6 +98,34 @@ describe('bwrb completion command', () => {
   });
 
   describe('--completions flag', () => {
+    it('matches the visible built root command surface exactly', () => {
+      const helpCommands = extractHelpCommands(runBuiltCliOutput(['--help']))
+        .filter((command) => command !== 'help');
+      const completions = lines(runBuiltCliOutput(['--completions', 'bwrb', '']));
+
+      expect(completions).toEqual(helpCommands);
+      expect(completions).not.toContain('open');
+      expect(completions).not.toContain('search');
+    });
+
+    it.each(['schema', 'template'])('matches the visible built %s subcommand surface exactly', (command) => {
+      const helpCommands = extractHelpCommands(runBuiltCliOutput([command, '--help']))
+        .filter((candidate) => candidate !== 'help');
+      const completions = lines(runBuiltCliOutput(['--completions', 'bwrb', command, '']));
+
+      expect(completions).toEqual(helpCommands);
+    });
+
+    it('includes every built recent option except the generic help short flag', () => {
+      const helpOptions = extractHelpOptionFlags(runBuiltCliOutput(['recent', '--help']))
+        .filter((option) => option !== '-h');
+      const completions = lines(runBuiltCliOutput(['--completions', 'bwrb', 'recent', '-']));
+      const expectedOptions = [...helpOptions, '--vault', '-v', '--non-interactive'];
+
+      expect(completions).toHaveLength(new Set(completions).size);
+      expect(new Set(completions)).toEqual(new Set(expectedOptions));
+    });
+
     it('should return type completions after --type', async () => {
       const output = await runCliOutput(['--completions', 'bwrb', 'list', '--type', ''], {
         vault: VAULT_DIR,
@@ -146,6 +199,22 @@ describe('bwrb completion command', () => {
       expect(completions).toContain('new');
       expect(completions).toContain('edit');
       expect(completions).toContain('completion');
+      expect(completions).toContain('lineage');
+    });
+
+    it('completes lineage adopt and its guarded mutation options', async () => {
+      const subcommands = (await runCliOutput([
+        '--completions', 'bwrb', 'lineage', '',
+      ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
+      expect(subcommands).toContain('adopt');
+
+      const options = (await runCliOutput([
+        '--completions', 'bwrb', 'lineage', 'adopt', '--',
+      ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
+      expect(options).toEqual(expect.arrayContaining([
+        '--from', '--dry-run', '--execute', '--output', '--vault', '--help',
+      ]));
+      expect(options).not.toContain('--force');
     });
 
     it('should return option completions when current word starts with -', async () => {

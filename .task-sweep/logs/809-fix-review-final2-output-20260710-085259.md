@@ -1,0 +1,3 @@
+NO BLOCKERS
+
+`parseDateWithPattern` validates exactly-once tokens, escapes literals, calendar-validates components, and `setFullYear` correctly preserves years 0001–0099 (unit + normalization tests to `0099-07-10` confirm four-digit ISO padding). Configured-pattern parsing is inserted after ISO/partial handling, so canonical ISO and permitted partials keep precedence while non-ISO input must match the explicit format — tested both directions. Scalar and list paths thread `date_format` identically. The e2e test is deterministic (dotted format unparseable agnostically; before/after timestamps bracket midnight) and covers config→$TODAY→new→audit. Docs, JSON schemas, Zod description, and SKILL.md are consistent.

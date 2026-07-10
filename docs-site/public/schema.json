@@ -90,7 +90,7 @@
         },
         "date_format": {
           "type": "string",
-          "description": "Date format for date fields (YYYY, MM, DD tokens), e.g. YYYY-MM-DD (default), MM/DD/YYYY, DD-MM-YYYY"
+          "description": "Generated full-date and parsing pattern (YYYY, MM, DD tokens); Gregorian date fields are stored canonically as ISO, e.g. YYYY-MM-DD (default), MM/DD/YYYY, DD-MM-YYYY"
         },
         "date_granularity": {
           "type": "string",

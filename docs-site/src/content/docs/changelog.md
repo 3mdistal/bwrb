@@ -9,6 +9,10 @@ For the complete changelog with all details, see [CHANGELOG.md](https://github.c
 
 ## Recent Highlights
 
+### Unreleased
+
+- **Existing-note lineage adoption** — `bwrb lineage adopt <child> --from <parent>` adds a dry-run-first, lock-coordinated path for recording known derivation between existing same-type notes without rewriting their bodies or ordinary metadata
+
 ### 0.2.3
 
 - **Relative-date fields** — position notes before, after, or equal to other notes, with query-time resolution and audit warnings for invalid chains

@@ -1,0 +1,6 @@
+- requested_model: `anthropic/claude-fable-5`
+- returned_backend: `anthropic/claude-5-fable-20260609`
+- finish_reason: `stop`
+- output: `.task-sweep/logs/809-fix-review-final-output-20260710-085129.md`
+- response_size: 884 characters, 100 words
+- verdict: `BLOCKERS`; low-year canonical padding fixed before final retry
