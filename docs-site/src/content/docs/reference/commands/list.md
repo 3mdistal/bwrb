@@ -35,7 +35,7 @@ rejected.
 | `-t, --type <type>` | Filter by type path (e.g., `idea`, `objective/task`) |
 | `-p, --path <glob>` | Filter by file path glob (e.g., `Projects/**`, `Ideas/`) |
 | `-w, --where <expr>` | Filter with expression (repeatable, ANDed together) |
-| `-b, --body <query>` | Filter by body content search |
+| `-b, --body <query>` | Filter by file content; current matching includes YAML frontmatter ([#812](https://github.com/3mdistal/bwrb/issues/812)) |
 | `--name <query>` | Resolve by note name, path, or declared alias |
 | `--fuzzy <query>` | Rank approximate name and alias matches |
 | `--matches` | Show detailed body matches instead of filtering note rows |
@@ -102,10 +102,10 @@ bwrb list --name "Ideas/My Note.md" --output link --picker none
 # Ranked approximate matches, including aliases
 bwrb list --fuzzy "Stephen Yeg" --threshold 0.7 --output json
 
-# Filter note rows by a literal, case-insensitive body query
+# Filter note rows by a literal, case-insensitive file-content query
 bwrb list --body "TODO" --path "Projects/**"
 
-# Inspect exact body matches with grep-style context and regex controls
+# Inspect exact file matches with grep-style context and regex controls
 bwrb list --body "TODO|FIXME" --matches --regex --context 0
 ```
 
@@ -239,7 +239,7 @@ bwrb list --type task --where "priority < 3 && !isEmpty(deadline)"
 # By date
 bwrb list --type task --where "deadline < today() + '7d'"
 
-# By body content
+# By file content (including frontmatter today)
 bwrb list --body "TODO" --where "status == 'draft'"
 
 # By path

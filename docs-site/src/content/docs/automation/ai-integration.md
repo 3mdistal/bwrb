@@ -7,7 +7,9 @@ Bowerbird is designed to work seamlessly with AI coding assistants.
 
 ## JSON Mode
 
-Every command supports `--output json` and `--json` input, making Bowerbird fully scriptable by AI:
+Machine-readable support is command-specific: use `--output json` and `--json`
+only where that command's help lists them. The canonical discovery workflow and
+the main note mutation workflows are scriptable:
 
 ```bash
 # AI reads vault state

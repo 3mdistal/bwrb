@@ -1,0 +1,7 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: length
+max_tokens: 6000
+output_chars: 0
+output_words: 0
+result: incomplete; rerun required with a larger output allowance

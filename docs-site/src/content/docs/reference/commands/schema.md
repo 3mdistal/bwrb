@@ -219,7 +219,7 @@ Validates the schema.json file against the expected structure:
 
 - Required fields are present
 - Field types are valid
-- Enum values are properly defined
+- Select options are properly defined inline on their fields
 - Type hierarchies are consistent
 - Types missing `output_dir` emit a warning (computed directory included)
 
@@ -389,7 +389,7 @@ Compares the current schema.json against the last migration snapshot to show:
 - Fields added to types
 - Fields removed from types
 - Field definitions changed
-- Enum values changed
+- Select options changed
 
 ### Examples
 
@@ -437,7 +437,7 @@ Migrations update existing notes when the schema changes:
 - Add new required fields with default values
 - Remove deleted fields
 - Rename fields
-- Update enum values
+- Update select options
 - Move files to new output directories
 
 ### Safety

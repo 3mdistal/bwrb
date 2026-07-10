@@ -44,18 +44,21 @@ Opt a date field into a calendar:
 {
   "types": {
     "event": {
+      "output_dir": "Events",
       "calendar_default": "tmi",
       "fields": {
         "name": { "prompt": "text", "required": true },
-        "when": { "prompt": "date" },
-        "gregorian": { "prompt": "date", "calendar": "earth" }
+        "when": { "prompt": "date" }
       }
     }
   }
 }
 ```
 
-`calendar_default` applies to date fields on the type that do not declare their own `calendar`. A `calendar` key is valid only on `prompt: "date"` fields. Unknown calendar ids are schema errors.
+`calendar_default` applies to date fields on the type that do not declare their
+own `calendar`. Instead of a type default, an individual date field can opt in
+with `"calendar": "tmi"`. A `calendar` key is valid only on `prompt: "date"`
+fields, and every referenced calendar id must exist in `config.calendars`.
 
 ## Date Format
 
@@ -68,7 +71,7 @@ The canonical format is:
 Examples:
 
 ```yaml
-when: "AR 3019-09-02 266:50"
+when: "AR 3019-02-02 266:50"
 origin: "BH 12-01-01"
 ```
 
@@ -81,9 +84,9 @@ Text table output displays the canonical string. JSON output expands calendar da
 ```json
 {
   "when": {
-    "value": "AR 3019-09-02 266:50",
+    "value": "AR 3019-02-02 266:50",
     "calendar": "tmi",
-    "linear": 24324338.833333332
+    "linear": 4057466.8333333335
   }
 }
 ```

@@ -1,0 +1,10 @@
+NO BLOCKERS
+
+The resolution diff is internally consistent and aligns with the cited verification evidence:
+
+- **Quick Start**: Now uses `bwrb init --yes`, instructs replacing the generated schema (matching the restored guidance), uses version 2 schema syntax (`version`, `fields`, `field_order`), documents the flat `extends` model with `bwrb new task` plus slash-notation type paths for `list`, and discloses the interactive-vs-JSON `name` persistence mismatch with an issue link. The sample output including `id` doesn't contradict the "name not persisted" note, and targeting's "`name` falls back to filename" system-field description remains consistent with it.
+- **Targeting**: The `-o` guidance now correctly scopes `--open` to note workflows and names `schema migrate` and `dashboard run` as `-o = --output` exceptions, matching the corrected source inspection. The `--body` section honestly documents that matching includes frontmatter (tracked in #812) rather than claiming body-only search, and the `content` format row matches `list` plus compatibility `search`. The strict-validation line drops the stale "enum" wording in favor of select values.
+- **CLI output contract**: JsonError is documented with `data?: unknown` exactly as declared in `src/lib/output.ts`. The audit exception correctly states `--fix --auto` exits `0` even with remaining issues (matching source evidence) while distinguishing interactive `--fix` behavior. The command-specific success shapes table explicitly preserves legacy raw shapes rather than falsely claiming a universal envelope, and the "one JSON value on stdout" rule is compatible with raw arrays/objects. Exit codes 0/1/2/3 are retained.
+- **Inheritance notes**: The rewrite defers user-facing contracts to canonical docs-site pages, describes the resolver precedence (own > traits > inherited) with the trait-full-replacement vs. parent explicit-key-merge distinction, and points at `computeEffectiveFields` and the migration diff behavior. No claims contradict the other documents in the diff.
+
+No remaining accuracy or contract contradictions found in the resolution diff.

@@ -83,7 +83,8 @@ bwrb list idea --fields=status,priority
 
 ### JSON Mode for Automation
 
-Every command supports `--output json` for scripting and AI integration:
+Commands advertise their machine-readable modes explicitly. Use `--output json`
+or `--json` only where that command's help lists it:
 
 ```bash
 bwrb list task --output json | jq '.[] | select(.status == "active")'

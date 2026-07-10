@@ -65,7 +65,7 @@ bwrb audit --where "isEmpty(tags)"
 - System fields are always available: `name` (falls back to filename) and `id`.
 
 **Type-checking behavior:**
-- With `--type`: strict validation (error on unknown fields and invalid enum/select values)
+- With `--type`: strict validation (error on unknown fields and invalid select values)
 - Without `--type`: unknown fields are permissive (no unknown-field validation)
 - In all modes: invalid expression syntax and runtime expression errors are hard errors
 
@@ -196,7 +196,8 @@ context notes and collapsing a redundant `scope` field into it — see
 
 ### Body (`-b, --body <query>`)
 
-Filter by body content (full-text search via ripgrep).
+Filter by literal file content (full-text search via ripgrep). The option keeps
+its historical `--body` name, but current matching includes YAML frontmatter.
 
 ```bash
 bwrb list --body "TODO"
@@ -205,7 +206,8 @@ bwrb list --body "meeting notes" --matches --type task
 ```
 
 **Behavior:**
-- Searches note body content (not frontmatter)
+- Searches the serialized Markdown file, including YAML frontmatter; body-only
+  masking is tracked in [#812](https://github.com/3mdistal/bwrb/issues/812)
 - Uses ripgrep under the hood for performance
 - Case-insensitive by default
 
@@ -302,7 +304,11 @@ See also: [CLI Safety and Flags](/concepts/cli-safety-and-flags/)
 
 ## Output Formats
 
-Use `--output <format>` (or `-o`) to control how results are displayed:
+Use the long `--output <format>` option when you want portable command syntax.
+On note workflows such as `new`, `edit`, `list`, and `recent`, `-o` means
+`--open`. A few management subcommands, including `schema migrate` and
+`dashboard run`, use `-o` for `--output`; check the command's help before using
+the short form.
 
 | Format | Description |
 |--------|-------------|
@@ -311,7 +317,7 @@ Use `--output <format>` (or `-o`) to control how results are displayed:
 | `paths` | File paths only |
 | `link` | Wikilinks (`[[Note Name]]`) |
 | `tree` | Hierarchical tree view (list only) |
-| `content` | Full file contents (search only) |
+| `content` | Full file contents (`list` and compatibility `search`) |
 
 ```bash
 bwrb list --type task --output json

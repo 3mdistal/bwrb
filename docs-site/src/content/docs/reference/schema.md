@@ -71,11 +71,12 @@ Types define categories of notes. Each type has a name (the object key) and a de
 | `extends` | string | `"meta"` | Parent type name (single-inheritance) |
 | `traits` | array | — | Trait names composed into this type (see [Traits](#traits)) |
 | `description` | string | — | What this type is for and when to use it. Surfaced by `bwrb schema list` |
-| `output_dir` | string | auto | Vault-relative folder where this type's notes live (e.g., `"Objectives/Tasks"`). See [Output directories](#output-directories) |
+| `output_dir` | string | required for `new` | Vault-relative folder where this type's notes live (e.g., `"Objectives/Tasks"`). Schema inspection reports a computed fallback when omitted, but current creation still requires an explicit value; see [Output directories](#output-directories) |
 | `fields` | object | `{}` | Field definitions |
 | `field_order` | array | — | Order of fields in frontmatter |
 | `body_sections` | array | — | Body structure after frontmatter |
 | `recursive` | boolean | `false` | Whether type can contain instances of itself |
+| `calendar_default` | string | — | Default id from `config.calendars` for this type's `date` fields that do not declare `calendar` |
 | `plural` | string | auto | Custom plural for folder naming (e.g., `"research"` instead of `"researchs"`) |
 
 ### Output directories
@@ -106,6 +107,11 @@ Boundaries are respected so notes are never misassigned:
 A nested note whose declared `type` does not match the folder it sits in is still
 discoverable, but `bwrb audit` reports it as `wrong-directory` — discovery and the
 audit's directory check use the same subtree rule.
+
+`schema validate` currently permits an omitted `output_dir` and reports its
+computed hierarchy-based fallback as a warning. Ordinary `bwrb new` does not yet
+use that fallback and refuses creation until the type declares `output_dir`
+explicitly ([#811](https://github.com/3mdistal/bwrb/issues/811)).
 
 ### Inheritance
 
@@ -145,7 +151,9 @@ A `task` inherits:
 **Inheritance rules:**
 - Type names must be unique across the entire schema
 - No cycles allowed (a type cannot extend its own descendant)
-- Child types commonly override inherited `default` values. `bwrb schema validate` currently also accepts broader inherited field overrides, so use structural overrides deliberately.
+- A child re-declaration explicitly key-merges onto the inherited field. Every
+  declared key wins, including `prompt`, `options`, `multiple`, `required`, and
+  `source`; omitted keys keep their inherited values.
 
 ### Recursive Types
 
@@ -248,13 +256,16 @@ own type fields  >  traits  >  inherited (parent chain)
 - **Traits** are composed next, in the order the type lists them. A trait field **fully replaces** an inherited field of the same name (all keys — `prompt`, `options`, `label`, everything), and a **later trait in the array fully replaces an earlier one** (last-wins).
 - **Own fields** are applied last, and how they override depends on where the colliding field came from:
   - **vs a trait field** → own **fully replaces** it (all keys). This is the "own wins over traits" guarantee: own's `prompt`, `options`, and `label` all win, and validation uses own's options. Because a trait already fully replaced any inherited field of that name, a field that arrived through a trait is always full-overridden here — no trait values leak through.
-  - **vs an inherited field** (parent chain, no trait involved) → only the `default`, `value`, `description`, and `granularity` properties merge onto the inherited definition; structural keys (`prompt`, `options`, `label`, …) stay as inherited. This is the long-standing inheritance override behavior and is unchanged.
+  - **vs an inherited field** (parent chain, no trait involved) → the own field
+    explicitly key-merges onto the inherited definition. Declared metadata and
+    structural keys (`prompt`, `options`, `multiple`, `required`, `source`,
+    `label`, and so on) win; omitted keys remain inherited.
 
 Worked example — `status` defined in three places:
 
 | Setup | Resolved `status` |
 |-------|-------------------|
-| `base.status` + `task` own `status` (no trait) | inherited definition with only `default`/`value`/`description`/`granularity` merged from own |
+| `base.status` + `task` own `status` (no trait) | inherited definition with every explicitly declared own key merged over it |
 | `actionable.status` (trait) + `task` own `status` | own definition, in full (trait's `options`/`label` dropped) |
 | `base.status` + `actionable.status` (trait), no own | trait definition, in full (inherited dropped) |
 | `base.status` + `actionable.status` (trait) + `task` own `status` | own definition, in full (the trait first fully replaced `base`, then own fully replaced the trait — no inherited or trait leak) |
@@ -674,6 +685,7 @@ Complete list of field properties:
 | `required` | boolean | prompted | Whether field must have a value (default: `false`) |
 | `default` | string | prompted | Default value if user skips prompt |
 | `granularity` | string | `date` | Coarsest precision allowed: `day` (default), `month`, or `year`. Overrides `date_granularity` |
+| `calendar` | string | `date` | Calendar id from `config.calendars`. Overrides the type's `calendar_default`; invalid on non-date fields |
 | `options` | array | `select` | Allowed values: bare strings or `{ value, description }` objects |
 | `multiple` | boolean | `select`, `relation` | Allow multiple values (default: `false`) |
 | `source` | string | `relation`, `relative-date` | Type name to filter anchor/picker candidates, or `"any"` |
@@ -773,7 +785,10 @@ Vault-wide settings:
     "open_with": "obsidian",
     "editor": "nvim",
     "visual": "code",
-    "obsidian_vault": "My Vault"
+    "obsidian_vault": "My Vault",
+    "default_dashboard": "inbox",
+    "excluded_directories": ["Archive", "Templates"],
+    "mention_link_once": true
   }
 }
 ```
@@ -785,8 +800,25 @@ Vault-wide settings:
 | `editor` | string | `$EDITOR` | Terminal editor command |
 | `visual` | string | `$VISUAL` | GUI editor command |
 | `obsidian_vault` | string | auto | Obsidian vault name for URI scheme |
+| `default_dashboard` | string | — | Dashboard to run when `bwrb dashboard` has no name |
+| `excluded_directories` | array | `[]` | Vault-relative directory prefixes excluded from discovery and targeting |
 | `date_format` | string | `"YYYY-MM-DD"` | Display/parse format for date fields (`YYYY`, `MM`, `DD` tokens) |
 | `date_granularity` | string | `"day"` | Default coarsest date precision for all date fields: `day`, `month`, or `year`. Per-field [`granularity`](#partial-dates-and-granularity) overrides it |
+| `calendars` | object | `{}` | Named custom-calendar definitions available to type `calendar_default` and field `calendar`; see [Custom Calendars](/concepts/custom-calendars/) |
+| `mention_fuzzy_threshold` | integer | `2` | Maximum fuzzy edit distance for `unlinked-mention` suggestions (`0` disables fuzzy matching; range `0`–`5`) |
+| `mention_corpus_calibration` | boolean | `true` | Damp vault-common single-word mention targets using corpus casing statistics |
+| `mention_corpus_min_notes` | integer | `3` | Minimum distinct non-self notes required before corpus damping can apply |
+| `mention_corpus_noncanonical_ratio` | number | `0.5` | Strict non-canonical-case share threshold for corpus damping (`0`–`1`) |
+| `mention_link_once` | boolean | `false` | During `audit --fix --auto`, write at most one new link per note/target pair; CLI flags can override per run |
+| `mention_exclude_types` | array | `[]` | Type names excluded as mention targets; matching notes are still scanned as source documents |
+| `mention_exclude_paths` | array | `[]` | Vault-relative globs excluded as mention targets; matching notes are still scanned as source documents |
+
+`bwrb config list/edit` currently exposes only a subset of these keys. Date
+formats, date granularity, calendar definitions, and corpus/fuzzy tuning are
+currently schema-only settings; edit `.bwrb/schema.json` and validate it with
+`bwrb schema validate`. See [bwrb config](/reference/commands/config/) for the
+editable subset and [#809](https://github.com/3mdistal/bwrb/issues/809) for the
+tracked command/schema mismatch.
 
 ---
 

@@ -47,9 +47,11 @@ position:
 | `field` | Optional anchor field. If omitted, Bowerbird uses the anchor's date field, then its relative-date field |
 | `offset` | Optional signed duration using `min`, `h`, `d`, or `w` |
 
-Offsets are parsed internally as `{ amount, unit, mode }` so future calendar-aware resolvers can preserve the unit instead of inheriting a millisecond-only value.
+Offsets preserve `{ amount, unit, mode }`, allowing custom-calendar chains to
+interpret `d` using that calendar's `hoursInDay` instead of flattening every
+offset to Gregorian milliseconds.
 
-For fictional or alternative timekeeping, define a [custom calendar](/concepts/custom-calendars/) and anchor relative-date chains on calendar date fields.
+For fictional or alternative timekeeping, define [Custom Calendars](/concepts/custom-calendars/) and anchor relative-date chains on calendar date fields.
 
 ## Resolution
 

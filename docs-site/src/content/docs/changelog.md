@@ -13,6 +13,7 @@ For the complete changelog with all details, see [CHANGELOG.md](https://github.c
 
 - **Relative-date fields** — position notes before, after, or equal to other notes, with query-time resolution and audit warnings for invalid chains
 - **Custom calendars** — define fictional or alternative calendars for date validation, sorting, comparisons, JSON output, audit, and relative-date anchors
+- **Lineage foundation** — reserved `forked-from`, per-field `reset_on_fork`, and audit checks for malformed IDs, dangling provenance, duplicate identities, and cycles establish the shared document-history contract (#802)
 - **Document forks** — `bwrb new --fork <target>` creates an ordinary sibling note with a fresh ID and immutable immediate-source provenance
 - **Fork lineage inspection** — `bwrb list --lineage <target>` renders the complete connected fork component, including sibling and cousin branches, as a tree, paths, links, content, or structured JSON
 - **Fork-safe deletion** — `bwrb delete` refuses notes with direct fork children or duplicate identities unless forced, preserving child provenance for audit when the parent is deliberately removed

@@ -84,7 +84,10 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 
 ### What Gets Completed
 
-- **Commands**: `bwrb <TAB>` shows `new`, `edit`, `delete`, `list`, `open`, `search`, `schema`, `audit`, `bulk`, `template`, `dashboard`, `config`, `completion`.
+- **Commands**: `bwrb <TAB>` shows `new`, `edit`, `list`, `recent`, `audit`,
+  `bulk`, `schema`, `template`, `dashboard`, `delete`, `completion`, and
+  `config`. `init` is visible in help but currently missing from completion
+  candidates ([#810](https://github.com/3mdistal/bwrb/issues/810)).
 - **Options**: `bwrb list -<TAB>` shows `--type`, `--path`, `--where`, etc.
 - **Types**: `bwrb list --type <TAB>` shows types from your schema
 - **Paths**: `bwrb list --path <TAB>` shows vault directories

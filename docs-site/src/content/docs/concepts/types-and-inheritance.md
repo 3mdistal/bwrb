@@ -60,7 +60,10 @@ A `task` note gets:
 1. **Single inheritance** — Each type has exactly one parent
 2. **Unique names** — Type names must be unique across the entire schema
 3. **No cycles** — A type cannot extend its own descendant
-4. **Override defaults by convention** — Child types commonly override `default` values. Broader inherited field overrides are currently accepted by validation, so use structural changes deliberately.
+4. **Explicit-key field overrides** — When a child re-declares an inherited
+   field, every key it declares wins, including structural keys such as
+   `prompt`, `options`, `multiple`, `required`, and `source`. Keys it omits stay
+   inherited.
 
 ## Traits — composition alongside inheritance
 
@@ -97,7 +100,11 @@ own type fields  >  traits  >  inherited (parent chain)
 
 The override is **full** at the trait boundary: a trait field fully replaces an inherited field of the same name (every key, not just `default`), a **later trait in the array fully replaces an earlier one**, and an **own field fully replaces a trait field** — own's `prompt`, `options`, and `label` all win, with no trait values leaking through.
 
-The one place the override is *partial* is **own-vs-parent inheritance** (no trait involved): there an own field only merges `default`, `value`, `description`, and `granularity` onto the inherited definition, leaving structural keys as inherited. This is the long-standing inheritance behavior and is unchanged by traits.
+At the **own-vs-parent inheritance** boundary (no trait involved), the override
+is an explicit-key merge. The child keeps every inherited key it omits and
+replaces every key it declares. This applies equally to metadata and structure:
+`default`, `description`, `prompt`, `options`, `multiple`, `required`, `source`,
+and other declared properties all win locally.
 
 A type composing an unknown trait is a deterministic error.
 

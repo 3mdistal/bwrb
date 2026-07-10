@@ -32,7 +32,7 @@ Shows pending changes between the current schema and the last-applied snapshot.
 
 ```bash
 bwrb schema diff
-bwrb schema diff --json
+bwrb schema diff --output json
 ```
 
 Output categorizes changes as:
@@ -121,7 +121,7 @@ Shows migration history.
 
 ```bash
 bwrb schema history
-bwrb schema history --json
+bwrb schema history --output json
 ```
 
 ## Migration Types
@@ -163,17 +163,14 @@ inherited `legacy` field from `task` notes too, when `task` extends `objective`)
 descendant that defines its **own** same-named field still resolves to that field
 after the parent's removal, so it is correctly left untouched.
 
-This includes descendants that re-declare the inherited field. The schema
-resolver applies a *restricted merge* to an inherited field: a child may override
-only metadata (`default`/`value`/`description`/`granularity`) — its raw structural
-keys (`options`/`multiple`/`required`/`source`) are **ignored**, and the parent's
-structure wins. Because a child therefore cannot structurally fork an inherited
-field, every inheriting descendant — even one whose raw entry re-declares
-`options` — is governed by the parent's structure and is cleaned/widened under its
-own concrete type when the parent changes. Conversely, editing only such an
-ignored raw override (while the parent is unchanged) leaves the effective schema
-identical and produces **no** migration op, so valid note values are never
-deleted.
+This includes descendants that re-declare the inherited field, but only to the
+extent that their **effective** field changes. The resolver explicit-key-merges
+a child's raw declaration onto the inherited field: every declared key wins,
+including structural keys (`options`, `multiple`, `required`, `source`), while
+omitted keys stay inherited. A child structural override can therefore shield
+that child from the corresponding parent structural change. Parent keys the
+child omitted still flow through, and editing the child's override produces a
+child-scoped migration when it changes the child's effective field.
 
 Note: only the *effective* value of `multiple` matters — an absent `multiple` is
 treated as `false`. Adding or removing an explicit `multiple: false` is therefore
@@ -233,8 +230,8 @@ status line, but the displayed schema is never sourced from the snapshot.
 
 ## Version Suggestion Logic
 
-- **Major bump** (1.0.0 -> 2.0.0): Breaking changes like type/field/enum removals
-- **Minor bump** (1.0.0 -> 1.1.0): Additions (new types, fields, enum values)
+- **Major bump** (1.0.0 -> 2.0.0): Breaking changes like type/field/select-option removals
+- **Minor bump** (1.0.0 -> 1.1.0): Additions (new types, fields, select options)
 - **Patch bump** (1.0.0 -> 1.0.1): No structural changes (rare)
 
 ## Best Practices

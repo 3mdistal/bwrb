@@ -120,8 +120,9 @@ The CLI should be predictable and learnable.
 
 - Small command surface (target: <15 top-level commands)
 - Consistent flags across commands
-- JSON mode for every command (AI/scripting friendly)
-- No hidden modes or surprising behavior
+- Machine-readable modes on commands that explicitly advertise them
+- Hidden compatibility commands stay documented as compatibility surfaces, not
+  presented as canonical workflows
 - Selection prompts use consistent input rules: number keys (1-9, 0) select and submit, arrow keys move selection, Enter submits the highlighted option
 - `audit --fix` behavior is conservative and documented (see `docs/product/audit-fix-policy.md`)
 
@@ -172,7 +173,7 @@ Bowerbird fails if:
 
 ## Inheritance Model
 
-Bowerbird uses strict type inheritance (design in progress).
+Bowerbird ships strict single-parent type inheritance.
 
 **Principles:**
 - All types inherit from `meta` (global fields)
@@ -216,11 +217,16 @@ Target: <15 top-level commands that cover all use cases.
 - `bwrb new` — Create notes with schema-driven prompts
 - `bwrb edit` — Modify existing note frontmatter
 - `bwrb list` — Query, resolve, search, and open notes
+- `bwrb recent` — List recently modified notes
 - `bwrb delete` — Remove notes with backlink warnings
 - `bwrb audit` — Validate notes against schema
 - `bwrb bulk` — Batch frontmatter operations
 - `bwrb schema` — Inspect and manage schema
 - `bwrb template` — Manage note templates
+- `bwrb dashboard` — Run and manage saved list queries
+- `bwrb init` — Initialize a vault
+- `bwrb config` — Manage the command-editable config subset
+- `bwrb completion` — Generate shell completion scripts
 
 **Schema and Template use unified verbs:**
 
@@ -245,13 +251,15 @@ bwrb template list [type] [name]   # List all, or show details if both provided
 - `search` and `open` remain hidden compatibility commands for existing scripts.
 - `edit` remains the canonical mutation surface; compatibility `search --edit`
   retains its established meaning.
-- The AI safety-net primitives (`list --fuzzy`, `audit: unlinked-mention`) are deferred to post-V1.0
+- The AI safety-net primitives (`list --fuzzy`, `unlinked-mention`,
+  `frequent-unlinked-term`, `schema discover`, and recurrence) are shipped.
 
 ### Design Principles
 
 1. **Consistent flags** — Same flag means same thing everywhere
 2. **Unified verbs** — `new`, `edit`, `delete`, and `list` carry the main note workflows
-3. **JSON mode everywhere** — `--output json` on all commands (see `docs/product/cli-output-contract.md`)
+3. **Explicit automation contracts** — command-specific `--output json` and
+   `--json` support with documented shapes (see `docs/product/cli-output-contract.md`)
 4. **Dry-run default for destructive ops** — `--execute` to apply (including auto audit fixes); use `--dry-run` to preview interactive audit fixes
 5. **Discoverable prompts** — Missing required info prompts, doesn't error
 
@@ -266,7 +274,8 @@ In short: docs-site is canonical for user-facing CLI behavior; `docs/product/` i
 Commands in `bwrb --help` are ordered to reflect the product's priority model and guide users through a logical workflow:
 
 1. **CRUD operations** — `new`, `edit`, `delete` (core note actions)
-2. **Query operations** — `list`, `open`, `search` (discovery and navigation)
+2. **Query operations** — `list`, `recent` (canonical discovery and navigation;
+   `open`/`search` are hidden compatibility commands)
 3. **Schema and management** — `schema`, `audit`, `bulk`, `template` (schema enforcement and maintenance)
 4. **Saved queries** — `dashboard` (saved configurations, follows template conceptually)
 5. **Meta/utility** — `init`, `config`, `completion`, `help` (one-time setup and operational commands)
@@ -282,15 +291,15 @@ This ordering presents commands as a guided path: create notes → find notes �
 1. **Schema enforcement** — Hard on CLI, soft audit on drift
 2. **Inheritance model** — Full, consistent type inheritance
 3. **Core commands** — new, edit, list, audit, bulk, schema, template
-4. **JSON mode** — Every command scriptable
+4. **Automation contracts** — Machine-readable support and exact shapes are
+   documented per command
 5. **Migration tooling** — Rename fields, change select options, refactor types
 
 ### Post-V1.0
 
-- Schema expressiveness — aliases, traits, hierarchical scope
-- Ingest safety net — `list --fuzzy`, `audit: unlinked-mention` / `frequent-unlinked-term`, daily-note sweep
-- `schema discover` — deterministic field-usage facts over a folder
-- Task system — event-driven recurrence + offset templating
+- Further contract hardening and schema ergonomics
+- Completion and config/schema parity
+- Conservative audit and migration expansion as new schema capabilities ship
 
 ---
 

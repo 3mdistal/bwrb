@@ -1,46 +1,47 @@
 ---
 title: Roadmap
-description: Bowerbird development priorities
+description: Bowerbird shipped foundation and current development priorities
 ---
 
-## V1.0 (Current Focus)
+## Shipped foundation
 
-### Core Features
+Bowerbird remains pre-1.0, but the major product layers described in the older
+roadmap are implemented:
 
-- **Schema enforcement** — Hard on CLI, soft audit on drift
-- **Inheritance model** — Full, consistent type inheritance
-- **Core commands** — new, edit, list, search, audit, bulk, schema, template
-- **JSON mode** — Every command scriptable
-- **Migration tooling** — Rename fields, change select options, refactor types
+- Version 2 flat schemas with inheritance, traits, ownership, recursive types,
+  schema management, effective-schema migrations, and audit enforcement
+- Dashboards, `list --save-as`, aliases, hierarchical scope with `under()`,
+  partial and relative dates, and custom calendars
+- Canonical `list` discovery with name, fuzzy, body-match, content, open, and
+  lineage modes; hidden `search` and `open` remain compatibility commands
+- Deterministic agent safety nets: unlinked mentions, frequent unlinked terms,
+  daily-note coverage queries, `schema discover`, and event-driven recurrence
+- Native document forks, immutable lineage metadata, lineage inspection, and
+  fork-safe deletion
+- A live documentation site and generated public schema
 
-### Exit Criteria
+## Current pre-1.0 focus
 
-- [ ] Schema enforcement complete
-- [ ] Type inheritance implemented
-- [ ] All core commands stable
-- [ ] Migration system working
-- [ ] Documentation website live (you're reading it!)
+The remaining work is hardening rather than waiting for those foundations to
+exist:
 
-## Post-V1.0
+- Keep command help, completion, schemas, agent guidance, and docs generated or
+  checked from the same contracts
+- Stabilize machine-readable command-specific output shapes and exit behavior
+- Keep migrations and audit fixes conservative as schemas grow more expressive
+- Improve completion parity (including the current `init` omission, tracked in
+  [#810](https://github.com/3mdistal/bwrb/issues/810))
+- Align the config command with valid schema settings (tracked in
+  [#809](https://github.com/3mdistal/bwrb/issues/809))
 
-### Near Term — Schema Expressiveness
+## Genuinely future
 
-A richer schema so the AI agent uses it correctly:
-
-- Aliases — first-class alias field role
-- Traits — composition alongside inheritance
-- Hierarchical scope — contexts as real notes + `under` join
-
-### Future — AI Safety Net
-
-bwrb is the deterministic safety net *under* the AI agent, never an LLM caller:
-
-- `list --fuzzy` — scored candidate lookup before writing
-- `audit: unlinked-mention` — flag known entities mentioned but not linked
-- Daily-note sweep — coverage bookkeeping
-- `schema discover` — deterministic field-usage facts over a folder
-- Task recurrence — event-driven spawn + offset templating
+Future work should deepen reliability and ergonomics without turning bwrb into
+an LLM client, sync service, database, or writing application. Planned work is
+tracked in GitHub issues and feature plans; an item belongs in evergreen docs
+only after it ships.
 
 ---
 
-*For the detailed roadmap, see [docs/product/roadmap.md](https://github.com/3mdistal/bwrb/blob/main/docs/product/roadmap.md) in the repository.*
+*For rationale and issue links, see
+[docs/product/roadmap.md](https://github.com/3mdistal/bwrb/blob/main/docs/product/roadmap.md).*

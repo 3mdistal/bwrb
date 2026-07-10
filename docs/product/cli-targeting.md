@@ -113,7 +113,8 @@ bwrb list --type task --where "under(context, '[[career]]')"
 
 ### 4. Body (`--body <query>`)
 
-Filter by body content (full-text search via ripgrep).
+Filter by literal file content (full-text search via ripgrep). The option keeps
+its historical `--body` name, but current matching includes YAML frontmatter.
 
 ```bash
 bwrb list --body "TODO"
@@ -122,7 +123,8 @@ bwrb list --body "meeting notes" --matches --type task
 ```
 
 **Behavior:**
-- Searches note body content (not frontmatter)
+- Searches the serialized Markdown file, including YAML frontmatter; body-only
+  masking is tracked in [#812](https://github.com/3mdistal/bwrb/issues/812)
 - Uses ripgrep under the hood for performance
 - Case-insensitive by default
 
@@ -205,8 +207,9 @@ Commands that operate on note sets support the core selectors. Some commands als
 **Notes:**
 - `list` is the canonical query/search/open surface; `open` and `search` are
   compatibility commands.
-- `edit` is an alias for `search --edit`
-- Both aliases gain full targeting support automatically
+- `edit` is the canonical mutation command. The hidden compatibility form
+  `search --edit` delegates to the edit workflow and retains its established
+  behavior for existing scripts.
 
 ---
 
@@ -302,7 +305,7 @@ Bowerbird recognizes multiple exclusion mechanisms:
 
 ### When Exclusion Rules Apply
 
-Excluded directories apply to **all bwrb operations** consistently. If a file is excluded, it does not enter the candidate set for `list`, `search`/`open`/`edit`, or `audit`.
+Excluded directories apply to **all bwrb operations** consistently. If a file is excluded, it does not enter the candidate set for canonical `list`/`edit`, compatibility `search`/`open`, or `audit`.
 
 ### Example
 

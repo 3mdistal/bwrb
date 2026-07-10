@@ -26,7 +26,7 @@ third excess positional is rejected.
 | `-t, --type <type>` | Filter by note type |
 | `-p, --path <glob>` | Filter by path pattern |
 | `-w, --where <expr>` | Filter by frontmatter expression (repeatable) |
-| `-b, --body <pattern>` | Filter by body content |
+| `-b, --body <pattern>` | Filter by file content; current matching includes YAML frontmatter ([#812](https://github.com/3mdistal/bwrb/issues/812)) |
 | `--json <patch>` | Non-interactive patch/merge mode |
 | `-o, --open` | Open the note after editing |
 | `--app <mode>` | App mode for `--open`: `system`, `editor`, `visual`, `obsidian`, `print` |

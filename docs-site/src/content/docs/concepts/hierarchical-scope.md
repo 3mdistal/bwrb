@@ -61,7 +61,7 @@ A `context` type is an ordinary entity with a **self-referential `parent` relati
       "recursive": true,
       "fields": {
         "type": { "value": "context" },
-        "parent": { "prompt": "relation", "source": "context", "format": "quoted-wikilink" },
+        "parent": { "prompt": "relation", "source": "context" },
         "aliases": { "prompt": "list", "alias": true, "list_format": "yaml-array", "default": [] }
       },
       "field_order": ["type", "parent", "aliases"]
@@ -71,13 +71,16 @@ A `context` type is an ordinary entity with a **self-referential `parent` relati
       "fields": {
         "type": { "value": "task" },
         "status": { "prompt": "select", "options": ["backlog", "active", "done"], "default": "backlog", "required": true },
-        "context": { "prompt": "relation", "source": "context", "format": "quoted-wikilink" }
+        "context": { "prompt": "relation", "source": "context" }
       },
       "field_order": ["type", "status", "context"]
     }
   }
 }
 ```
+
+Relation storage uses the vault-wide `config.link_format` (`wikilink` by
+default); field-level `format` is not part of the version 2 field schema.
 
 ## Querying at any altitude
 
