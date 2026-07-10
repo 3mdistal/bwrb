@@ -107,13 +107,17 @@ bwrb list --output paths --fields=status objective  # Combine paths + fields
 bwrb list --name "My Note"                   # Resolve by name, path, or alias
 bwrb list --name "My Note" --output link     # Output: [[My Note]]
 bwrb list --fuzzy "My Nte" --output json      # Ranked matches with scores
-bwrb list --body "TODO" --matches             # Detailed file matches (frontmatter included today)
+bwrb list --body "TODO" --matches             # Detailed Markdown body matches
 bwrb list --name "My Note" --open --app editor
 bwrb list --id "<uuid>" --open --app print
 
 # Preserve a revision as a native document fork, then inspect its family
 bwrb new --fork "Briefs/Launch Brief" --label concise --output json
 bwrb list --lineage "Briefs/Launch Brief" --output tree
+
+# Adopt two existing same-type notes after previewing the exact guarded change
+bwrb lineage adopt "Launch Brief v2" --from "Launch Brief" --dry-run --output json
+bwrb lineage adopt "Launch Brief v2" --from "Launch Brief" --execute --output json
 
 # Help
 bwrb --help
@@ -602,11 +606,13 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 
 ### What Gets Completed
 
-- **Commands**: `bwrb <TAB>` shows `new`, `edit`, `list`, `recent`, `audit`,
-  `bulk`, `schema`, `template`, `dashboard`, `delete`, `completion`, and `config`.
-  `init` appears in `bwrb --help` but is currently missing from generated root
-  completion candidates ([#810](https://github.com/3mdistal/bwrb/issues/810)).
+- **Commands**: `bwrb <TAB>` shows every visible top-level command: `new`,
+  `edit`, `delete`, `list`, `recent`, `schema`, `audit`, `bulk`, `template`,
+  `lineage`, `dashboard`, `init`, `config`, and `completion`.
 - **Options**: `bwrb list -<TAB>` shows `--type`, `--path`, `--where`, etc.
+- **Subcommands**: `bwrb schema <TAB>`, `bwrb template <TAB>`, and
+  `bwrb lineage <TAB>` follow the
+  commands shown in their current help output.
 - **Types**: `bwrb list --type <TAB>` shows types from your schema (task, idea, etc.)
 - **Paths**: `bwrb list --path <TAB>` shows vault directories (Ideas/, Objectives/, etc.)
 

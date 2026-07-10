@@ -96,7 +96,7 @@ bwrb supports vault-wide configuration in `.bwrb/schema.json` under the `config`
 | Option | Values | Default | Description |
 |--------|--------|---------|-------------|
 | `link_format` | `wikilink`, `markdown` | `wikilink` | Format for relation field links |
-| `date_format` | Pattern string | `YYYY-MM-DD` | Format for date fields |
+| `date_format` | Pattern string | `YYYY-MM-DD` | Pattern for generated full dates and unambiguous parsing |
 | `date_granularity` | `day`, `month`, `year` | `day` | Vault default for allowed partial-date precision |
 | `calendars` | Object | `{}` | Custom calendar registry for non-Gregorian date fields |
 | `open_with` | `system`, `editor`, `visual`, `obsidian` | `system` | Default --open behavior |
@@ -115,15 +115,21 @@ bwrb supports vault-wide configuration in `.bwrb/schema.json` under the `config`
 
 ### Date Format
 
-The `date_format` option controls how dates are written to frontmatter:
+The `date_format` option controls generated full-date values and disambiguates
+matching input:
 
 - `YYYY-MM-DD` - ISO 8601 (default, recommended)
 - `MM/DD/YYYY` - US format
 - `DD/MM/YYYY` - EU format
 - `DD-MM-YYYY` - EU format with dashes
 
-**Validation is format-agnostic**: bwrb accepts any unambiguous date format during audit/validation.
-Ambiguous dates like `01/02/2026` (where both parts are ≤12) are rejected.
+Gregorian date fields are canonicalized to `YYYY-MM-DD` when written; partial
+dates remain ISO (`YYYY-MM` or `YYYY`). A value that exactly matches the
+configured format can be parsed without guessing, so `01/02/2026` is January 2
+under `MM/DD/YYYY` and February 1 under `DD/MM/YYYY`. Without an explicit
+`date_format`, legacy unambiguous slash/dash input remains accepted. Once a
+format is explicitly configured, non-ISO full dates must match it; canonical
+`YYYY-MM-DD` and permitted ISO partials remain accepted.
 
 ### Custom Calendars
 
@@ -160,18 +166,24 @@ bwrb config list
 # Edit a command-supported config option
 bwrb config edit open_with --json '"editor"'
 
+# Set date writing and partial-date defaults
+bwrb config edit date_format --json '"DD/MM/YYYY"'
+bwrb config edit date_granularity --json '"month"'
+
 # Exclude directories globally
 bwrb config edit excluded_directories --json '["Archive","Templates"]'
 ```
 
-`config list/edit` currently supports only `link_format`, `editor`, `visual`,
-`open_with`, `obsidian_vault`, `default_dashboard`, `excluded_directories`,
-`mention_exclude_types`, `mention_exclude_paths`, and `mention_link_once`.
-`date_format`, `date_granularity`, `calendars`, `mention_fuzzy_threshold`, and
-the `mention_corpus_*` keys are valid schema settings but are **schema-only**:
-edit `.bwrb/schema.json` and run `bwrb schema validate`. Do not send them to
-`bwrb config edit` (tracked in
-[#809](https://github.com/3mdistal/bwrb/issues/809)).
+`config list/edit` supports `link_format`, `editor`, `visual`, `open_with`,
+`obsidian_vault`, `default_dashboard`, `excluded_directories`, `date_format`,
+`date_granularity`, `mention_exclude_types`, `mention_exclude_paths`, and
+`mention_link_once`. `calendars`, `mention_fuzzy_threshold`, and the
+`mention_corpus_*` keys remain **schema-only**: edit `.bwrb/schema.json` and run
+`bwrb schema validate`. Guided calendar authoring is tracked in
+[#790](https://github.com/3mdistal/bwrb/issues/790).
+
+For command edits, `date_format` must contain each of `YYYY`, `MM`, and `DD`
+exactly once. `date_granularity` accepts `day`, `month`, or `year`.
 
 ## Built-in Frontmatter Fields
 
@@ -179,7 +191,7 @@ Some fields are recognized by bwrb regardless of schema:
 
 - `id`: reserved/system-managed UUID created by `bwrb new` and should not be edited.
 - `name`: always allowed and persisted by both interactive and JSON creation. It is the note identity and remains unchanged when the physical filename is normalized or pattern-derived.
-- `forked-from`: reserved immediate-source UUID for document lineage. It is not a wikilink. Agents may encounter hand-authored values, but must not set or modify it through ordinary `new --json`, `edit`, or template input.
+- `forked-from`: reserved immediate-source UUID for document lineage. It is not a wikilink. Agents must not set or modify it through ordinary `new --json`, `edit`, template input, schema defaults, or audit fixes. Use guarded `lineage adopt` for known historical derivation between existing notes.
 
 Create a document fork when preserving an earlier draft matters:
 
@@ -193,6 +205,23 @@ always provide `--name` or `--label` and use `--output json`; the result contain
 `path`, the child's fresh `id`, `forked_from`, and `warnings`. Do not combine
 fork mode with a type, template, `--json`, instance, or ownership-selection
 flag. The child is a normal note beside its source, not a hidden snapshot.
+
+Adopt two existing notes only when their immediate derivation is known. Always
+preview first and inspect the exact paths, IDs, changes, warnings, and body
+hashes before executing:
+
+```bash
+bwrb lineage adopt "Child note" --from "Parent note" --dry-run --output json
+bwrb lineage adopt "Child note" --from "Parent note" --execute --output json
+```
+
+Targets are exact UUID, path, basename, name, or alias matches and must have the
+same resolved type. Adoption has no force or bulk mode, refuses an existing
+child edge and unsafe/cyclic graph state, and changes only missing target IDs
+plus the child's `forked-from`. A successful JSON result has `mode`, `child`,
+`parent`, `changes`, `warnings`, and `body_invariance`; require both
+`body_invariance.*.unchanged` values to be `true`. IDs shown as generated in a
+dry run are provisional until execute revalidates under locks.
 
 Deleting a document with direct fork children refuses unless `--force` is
 supplied. With `--force`, bwrb deletes only the selected document: children keep
@@ -240,13 +269,13 @@ bwrb list --name "Projects/Duplicate.md" --open --app print --picker none
 # Target by stable id
 bwrb list --id "<uuid>" --output json
 
-# Full-text search in the serialized Markdown file (including frontmatter today)
+# Full-text search in Markdown body content (YAML frontmatter excluded)
 bwrb list --body "search term" --output json
 ```
 
-Despite the historical `--body` name, current content matching includes YAML
-frontmatter. Use `--where` when you need a field-specific predicate; body-only
-masking is tracked in [#812](https://github.com/3mdistal/bwrb/issues/812).
+`--body` searches only the Markdown body. Use `--where` when you need a
+frontmatter field predicate. Detailed `--matches` line numbers still refer to
+the original file, and displayed context never crosses into YAML frontmatter.
 
 ### Relative-Date Fields
 

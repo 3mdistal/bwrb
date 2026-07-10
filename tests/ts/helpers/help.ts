@@ -8,6 +8,7 @@ const CANONICAL_HELP_COMMAND_ORDER = [
   'audit',
   'bulk',
   'template',
+  'lineage',
   'dashboard',
   'init',
   'config',

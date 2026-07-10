@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+output: .task-sweep/logs/812-plan-output-20260710-075057.md
+chars: 5357
+words: 769

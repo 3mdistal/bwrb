@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import {
   searchContent,
   isRipgrepAvailable,
+  findMarkdownBodyStartIndex,
   formatResultsText,
   formatResultsJson,
   type ContentSearchResult,
@@ -122,6 +123,32 @@ status: done
 All tests have been written and are passing.
 `
     );
+
+    await writeFile(
+      join(vaultDir, 'Notes', 'Boundary Match.md'),
+      `---
+type: note
+status: boundary-token
+---
+boundary-token appears on the first body line.
+Second body line for context.
+`
+    );
+
+    await writeFile(
+      join(vaultDir, 'Notes', 'AAA Limit Decoy.md'),
+      `---
+type: note
+status: boundary-token
+---
+No matching term in this body.
+`
+    );
+
+    await writeFile(
+      join(vaultDir, 'Notes', 'CRLF Match.md'),
+      '---\r\ntype: note\r\nstatus: crlf-token\r\n---\r\ncrlf-token appears in the body.\r\nCRLF context line.\r\n'
+    );
   });
 
   afterAll(async () => {
@@ -133,6 +160,22 @@ All tests have been written and are passing.
       const available = await isRipgrepAvailable();
       // This test assumes ripgrep is installed in the test environment
       expect(available).toBe(true);
+    });
+  });
+
+  describe('findMarkdownBodyStartIndex', () => {
+    it('handles BOM, CRLF-split lines, and delimiter whitespace', () => {
+      expect(findMarkdownBodyStartIndex([
+        '\uFEFF---',
+        'type: note',
+        '---  ',
+        'Body',
+      ])).toBe(3);
+    });
+
+    it('keeps the whole file searchable without a complete frontmatter block', () => {
+      expect(findMarkdownBodyStartIndex(['# Note', '', 'Body'])).toBe(0);
+      expect(findMarkdownBodyStartIndex(['---', 'type: note', 'Body'])).toBe(0);
     });
   });
 
@@ -174,6 +217,55 @@ All tests have been written and are passing.
       expect(result.success).toBe(true);
       expect(result.results.length).toBe(0);
       expect(result.totalMatches).toBe(0);
+    });
+
+    it('excludes frontmatter-only matches', async () => {
+      const result = await searchContent({
+        pattern: 'status: archived',
+        vaultDir,
+        schema,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.results).toEqual([]);
+      expect(result.totalMatches).toBe(0);
+    });
+
+    it('filters frontmatter hits before a small limit and preserves body line numbers and context', async () => {
+      const result = await searchContent({
+        pattern: 'boundary-token',
+        vaultDir,
+        schema,
+        contextLines: 2,
+        limit: 1,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.totalMatches).toBe(1);
+      expect(result.results).toHaveLength(1);
+      expect(result.results[0]?.file.relativePath).toBe('Notes/Boundary Match.md');
+      expect(result.results[0]?.matches).toEqual([{
+        line: 5,
+        text: 'boundary-token appears on the first body line.',
+        contextAfter: ['Second body line for context.'],
+      }]);
+    });
+
+    it('handles actual CRLF frontmatter, original line numbers, and context end to end', async () => {
+      const result = await searchContent({
+        pattern: 'crlf-token',
+        vaultDir,
+        schema,
+        contextLines: 2,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.totalMatches).toBe(1);
+      expect(result.results[0]?.matches).toEqual([{
+        line: 5,
+        text: 'crlf-token appears in the body.',
+        contextAfter: ['CRLF context line.'],
+      }]);
     });
 
     it('should be case-insensitive by default', async () => {
@@ -259,7 +351,7 @@ All tests have been written and are passing.
 
     it('should respect limit option', async () => {
       const result = await searchContent({
-        pattern: 'type',
+        pattern: 'deployment',
         vaultDir,
         schema: schema,
         limit: 2,
@@ -271,7 +363,7 @@ All tests have been written and are passing.
 
     it('should indicate when results are truncated', async () => {
       const result = await searchContent({
-        pattern: 'type',
+        pattern: 'deployment',
         vaultDir,
         schema: schema,
         limit: 1,
@@ -281,7 +373,7 @@ All tests have been written and are passing.
       if (result.results.length === 1) {
         // Check if there would have been more results
         const fullResult = await searchContent({
-          pattern: 'type',
+          pattern: 'deployment',
           vaultDir,
           schema: schema,
           limit: 100,

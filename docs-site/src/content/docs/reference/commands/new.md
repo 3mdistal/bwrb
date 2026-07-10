@@ -212,8 +212,9 @@ only be forked when its owner's field permits multiple children.
    interactive and JSON creation. `name` preserves the note identity even when
    filename normalization or a filename pattern produces a different path. The reserved
    `forked-from` provenance field cannot be supplied through `--json`, templates,
-   or schema fields/defaults; `new --fork` is the lineage-aware workflow that
-   injects it
+   or schema fields/defaults; `new --fork` creates new lineage, while
+   [`lineage adopt`](/reference/commands/lineage/) is the guarded in-place path
+   for two existing documents
 6. **Output**: Returns path to created file
 
 ## Template Discovery
@@ -228,3 +229,4 @@ Templates are stored in `.bwrb/templates/{type}/{subtype}/*.md`:
 - [Templates Overview](/templates/overview/) — Template system concepts
 - [bwrb template](/reference/commands/template/) — Template management
 - [Schema](/concepts/schema/) — Schema structure and field types
+- [bwrb lineage](/reference/commands/lineage/) — Adopt existing notes into lineage

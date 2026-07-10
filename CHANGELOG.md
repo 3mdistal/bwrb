@@ -4,6 +4,14 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Existing-note lineage adoption** — `bwrb lineage adopt <child> --from <parent>` previews by default and requires `--execute` to attach one exact, same-type existing note under another. It safely backfills missing IDs, refuses ambiguous, duplicate, malformed, dishonest, or cyclic edges, coordinates with fork/delete lineage locks, preserves bodies and ordinary metadata byte-for-byte, and returns agent-friendly change and body-hash evidence in JSON.
+
+### Fixed
+
+- **Body-only content targeting** — `--body` now excludes YAML frontmatter in both note filtering and detailed match reports while preserving original file line numbers and body-only context (#812).
+
 ## [0.2.3] - 2026-07-09
 
 Patch release for relative dates and custom calendars, canonical list/search/open

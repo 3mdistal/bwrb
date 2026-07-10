@@ -720,13 +720,14 @@ editing are unchanged by this marker.
 ### Built-in lineage metadata
 
 `forked-from` is a reserved built-in frontmatter field containing the UUID of a
-note's immediate source. It is a UUID string, never a wikilink. Hand-authored
-lineage is allowed and audited, but normal JSON creation, edit, and template
-input cannot set or modify this system-managed field. Do not declare
+note's immediate source. It is a UUID string, never a wikilink. Existing
+lineage is audited, but normal JSON creation, edit, template input, schema
+defaults, and audit fixes cannot set or modify this system-managed field. Use
+`bwrb new --fork` for a newly created child or guarded
+[`bwrb lineage adopt`](/reference/commands/lineage/) for two existing notes. Do not declare
 `forked-from` in a type or trait's `fields`: schema loading and schema field
 creation reject the reserved name, including declarations with `default` or
-static `value` entries. A native fork workflow injects provenance after ordinary
-creation defaults have been resolved.
+static `value` entries.
 
 ---
 
@@ -802,7 +803,7 @@ Vault-wide settings:
 | `obsidian_vault` | string | auto | Obsidian vault name for URI scheme |
 | `default_dashboard` | string | — | Dashboard to run when `bwrb dashboard` has no name |
 | `excluded_directories` | array | `[]` | Vault-relative directory prefixes excluded from discovery and targeting |
-| `date_format` | string | `"YYYY-MM-DD"` | Display/parse format for date fields (`YYYY`, `MM`, `DD` tokens) |
+| `date_format` | string | `"YYYY-MM-DD"` | Generated full-date and parsing pattern (`YYYY`, `MM`, `DD` tokens); Gregorian date fields are stored canonically as ISO |
 | `date_granularity` | string | `"day"` | Default coarsest date precision for all date fields: `day`, `month`, or `year`. Per-field [`granularity`](#partial-dates-and-granularity) overrides it |
 | `calendars` | object | `{}` | Named custom-calendar definitions available to type `calendar_default` and field `calendar`; see [Custom Calendars](/concepts/custom-calendars/) |
 | `mention_fuzzy_threshold` | integer | `2` | Maximum fuzzy edit distance for `unlinked-mention` suggestions (`0` disables fuzzy matching; range `0`–`5`) |
@@ -813,12 +814,13 @@ Vault-wide settings:
 | `mention_exclude_types` | array | `[]` | Type names excluded as mention targets; matching notes are still scanned as source documents |
 | `mention_exclude_paths` | array | `[]` | Vault-relative globs excluded as mention targets; matching notes are still scanned as source documents |
 
-`bwrb config list/edit` currently exposes only a subset of these keys. Date
-formats, date granularity, calendar definitions, and corpus/fuzzy tuning are
-currently schema-only settings; edit `.bwrb/schema.json` and validate it with
-`bwrb schema validate`. See [bwrb config](/reference/commands/config/) for the
-editable subset and [#809](https://github.com/3mdistal/bwrb/issues/809) for the
-tracked command/schema mismatch.
+`bwrb config list/edit` exposes the common scalar settings above, including
+`date_format` and `date_granularity`. Calendar definitions and advanced
+corpus/fuzzy tuning remain schema-only settings; edit `.bwrb/schema.json` and
+validate it with `bwrb schema validate`. See
+[bwrb config](/reference/commands/config/) for the exact editable subset and
+[#790](https://github.com/3mdistal/bwrb/issues/790) for guided calendar
+authoring.
 
 ---
 

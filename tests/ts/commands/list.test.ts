@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { writeFile, mkdir, mkdtemp, rm } from 'fs/promises';
+import { readFile, writeFile, mkdir, mkdtemp, rm } from 'fs/promises';
 import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
@@ -357,19 +357,38 @@ describe('list command', () => {
 
   describe('--body filtering', () => {
     it('should fall back when ripgrep is unavailable', async () => {
-      const nodeBinDir = dirname(process.execPath);
-      const result = await runCLI(
-        ['list', '--type', 'idea', '--body', 'status', '--output', 'json'],
-        vaultDir,
-        undefined,
-        { env: { PATH: `${nodeBinDir}:/usr/bin:/bin` } }
-      );
+      const samplePath = join(vaultDir, 'Ideas', 'Sample Idea.md');
+      const anotherPath = join(vaultDir, 'Ideas', 'Another Idea.md');
+      const sample = await readFile(samplePath, 'utf8');
+      const another = await readFile(anotherPath, 'utf8');
+      await writeFile(samplePath, `${sample}\nFallback body marker.\n`);
+      await writeFile(anotherPath, `${another}\nFallback body marker.\n`);
 
-      expect(result.exitCode).toBe(0);
-      const json = JSON.parse(result.stdout);
-      expect(json).toHaveLength(2);
-      expect(json[0]).toHaveProperty('_path', 'Ideas/Another Idea.md');
-      expect(json[1]).toHaveProperty('_path', 'Ideas/Sample Idea.md');
+      const nodeBinDir = dirname(process.execPath);
+      try {
+        const bodyResult = await runCLI(
+          ['list', '--type', 'idea', '--body', 'Fallback body marker', '--output', 'json'],
+          vaultDir,
+          undefined,
+          { env: { PATH: `${nodeBinDir}:/usr/bin:/bin` } }
+        );
+        const frontmatterResult = await runCLI(
+          ['list', '--type', 'idea', '--body', 'status:', '--output', 'json'],
+          vaultDir,
+          undefined,
+          { env: { PATH: `${nodeBinDir}:/usr/bin:/bin` } }
+        );
+
+        expect(bodyResult.exitCode).toBe(0);
+        const json = JSON.parse(bodyResult.stdout);
+        expect(json).toHaveLength(2);
+        expect(json[0]).toHaveProperty('_path', 'Ideas/Another Idea.md');
+        expect(json[1]).toHaveProperty('_path', 'Ideas/Sample Idea.md');
+        expect(JSON.parse(frontmatterResult.stdout)).toEqual([]);
+      } finally {
+        await writeFile(samplePath, sample);
+        await writeFile(anotherPath, another);
+      }
     });
   });
 

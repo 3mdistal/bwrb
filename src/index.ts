@@ -13,6 +13,7 @@ import { auditCommand } from './commands/audit.js';
 import { bulkCommand } from './commands/bulk.js';
 import { templateCommand } from './commands/template.js';
 import { completionCommand } from './commands/completion.js';
+import { lineageCommand } from './commands/lineage/index.js';
 import { configCommand } from './commands/config.js';
 import { dashboardCommand } from './commands/dashboard.js';
 import { initCommand } from './commands/init.js';
@@ -77,6 +78,7 @@ if (completionsIndex !== -1) {
   program.addCommand(auditCommand);
   program.addCommand(bulkCommand);
   program.addCommand(templateCommand);
+  program.addCommand(lineageCommand);
 
   // Saved queries
   program.addCommand(dashboardCommand);

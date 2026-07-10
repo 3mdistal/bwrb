@@ -135,6 +135,7 @@ describe("completion", () => {
       expect(commands).toContain("new");
       expect(commands).toContain("edit");
       expect(commands).toContain("list");
+      expect(commands).toContain("init");
       expect(commands).not.toContain("open");
       expect(commands).not.toContain("search");
       expect(commands).toContain("audit");
@@ -175,6 +176,16 @@ describe("completion", () => {
 
       expect(options).toContain("--type");
       expect(options).toContain("-t");
+    });
+
+    it("returns current workflow options for recent command", () => {
+      const options = getOptionCompletions("recent");
+
+      expect(options).toContain("--open");
+      expect(options).toContain("-o");
+      expect(options).toContain("--app");
+      expect(options).toContain("--save-as");
+      expect(options).toContain("--force");
     });
 
     it("can be filtered by prefix", () => {
@@ -454,14 +465,14 @@ describe("completion", () => {
       await cleanupTestVault(vaultDir);
     });
 
-    it("completes template subcommands including delete", async () => {
+    it("completes the registered template subcommands", async () => {
       const completions = await handleCompletionRequest(
         ["template", ""],
         { vault: vaultDir }
       );
 
       expect(completions).toContain("list");
-      expect(completions).toContain("show");
+      expect(completions).not.toContain("show");
       expect(completions).toContain("new");
       expect(completions).toContain("edit");
       expect(completions).toContain("delete");
@@ -509,16 +520,6 @@ Weekly task template
       expect(completions).toContain("weekly");
     });
 
-    it("completes type names for template show first positional", async () => {
-      const completions = await handleCompletionRequest(
-        ["template", "show", ""],
-        { vault: vaultDir }
-      );
-
-      expect(completions).toContain("task");
-      expect(completions).toContain("idea");
-    });
-
     it("completes type names for template delete first positional", async () => {
       const completions = await handleCompletionRequest(
         ["template", "delete", ""],
@@ -537,6 +538,26 @@ Weekly task template
 
       expect(completions).toContain("task");
       expect(completions).toContain("idea");
+    });
+
+    it("completes template names for template list second positional", async () => {
+      await mkdir(join(vaultDir, ".bwrb", "templates", "task"), { recursive: true });
+      await writeFile(
+        join(vaultDir, ".bwrb", "templates", "task", "daily.md"),
+        `---
+type: template
+template-for: task
+---
+Daily task template
+`
+      );
+
+      const completions = await handleCompletionRequest(
+        ["template", "list", "task", ""],
+        { vault: vaultDir }
+      );
+
+      expect(completions).toContain("daily");
     });
 
     it("completes type names for template validate first positional", async () => {
@@ -588,6 +609,9 @@ Research template
       );
 
       expect(completions).toContain("list");
+      expect(completions).toContain("types");
+      expect(completions).toContain("fields");
+      expect(completions).toContain("discover");
       expect(completions).toContain("new");
       expect(completions).toContain("edit");
       expect(completions).toContain("delete");

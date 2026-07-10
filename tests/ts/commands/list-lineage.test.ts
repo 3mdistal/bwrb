@@ -367,13 +367,13 @@ B body
       .not.toContain('dangling-forked-from');
   });
 
-  it('documents lineage on list help without adding a top-level command', async () => {
+  it('documents lineage reading on list help and lineage mutation as a top-level command', async () => {
     const listHelp = await runCLI(['list', '--help'], vaultDir);
     expect(listHelp.exitCode).toBe(0);
     expect(listHelp.stdout).toContain('--lineage <target>');
 
     const topHelp = await runCLI(['--help'], vaultDir);
     expect(topHelp.exitCode).toBe(0);
-    expect(topHelp.stdout).not.toMatch(/^\s+lineage(?:\s|$)/m);
+    expect(topHelp.stdout).toMatch(/^\s+lineage(?:\s|$)/m);
   });
 });

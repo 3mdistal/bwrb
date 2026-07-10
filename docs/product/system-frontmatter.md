@@ -9,7 +9,8 @@ These fields are recognized by bwrb and are always allowed in frontmatter:
 - `id` (written by ordinary creation and forks)
 - `name` (written by ordinary interactive and JSON creation; preserves the
   note identity even when its filename is normalized or pattern-derived)
-- `forked-from` (immediate source note UUID, written by `bwrb new --fork`)
+- `forked-from` (immediate source note UUID, written by `bwrb new --fork` or the
+  guarded `bwrb lineage adopt` operation)
 
 Audit/validation behavior:
 
@@ -29,6 +30,10 @@ Reserved fields cannot be supplied through ordinary JSON creation, JSON or
 interactive edit, or template defaults/prompt fields. Audit fixes also leave
 them untouched. Schema defaults and static values cannot author
 `forked-from`; `bwrb new --fork` injects it after ordinary defaults are resolved.
+The only in-place exception is `bwrb lineage adopt`, which revalidates two exact
+existing notes under lineage locks, refuses reparenting, cycles, and unsafe
+graph state, and can add only missing `id` fields plus the child's
+`forked-from` value.
 
 ## Policy
 

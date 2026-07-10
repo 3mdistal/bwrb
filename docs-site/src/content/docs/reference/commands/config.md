@@ -29,16 +29,32 @@ bwrb config <subcommand>
 | `obsidian_vault` | Obsidian vault name for URI scheme | String |
 | `default_dashboard` | Dashboard used when no name is passed | Dashboard name or empty string |
 | `excluded_directories` | Directory prefixes excluded from discovery and targeting | JSON string array |
+| `date_format` | Pattern for generated full dates and unambiguous parsing | String using `YYYY`, `MM`, and `DD` tokens |
+| `date_granularity` | Default coarsest precision for date fields | `day`, `month`, `year` |
 | `mention_exclude_types` | Types excluded as mention targets | JSON string array |
 | `mention_exclude_paths` | Path globs excluded as mention targets | JSON string array |
 | `mention_link_once` | Limit auto-fixes to one link per note/target pair | Boolean |
 
-This is the command's complete editable subset. Other valid schema settings —
-including `date_format`, `date_granularity`, `calendars`,
-`mention_fuzzy_threshold`, and the `mention_corpus_*` keys — must currently be
-edited directly in `.bwrb/schema.json` and checked with
-`bwrb schema validate`. The difference is tracked in
-[#809](https://github.com/3mdistal/bwrb/issues/809).
+This is the command's complete editable subset. Nested `calendars` definitions
+remain a schema workflow while guided calendar authoring is tracked in
+[#790](https://github.com/3mdistal/bwrb/issues/790). Advanced
+`mention_fuzzy_threshold` and `mention_corpus_*` tuning also remains
+schema-only. Edit those settings directly in `.bwrb/schema.json` and check the
+result with `bwrb schema validate`.
+
+When unset, `date_format` is `YYYY-MM-DD` and `date_granularity` is `day`.
+Through `config edit`, `date_format` requires each of `YYYY`, `MM`, and `DD`
+exactly once. Supported patterns include `YYYY-MM-DD`, `MM/DD/YYYY`,
+`DD/MM/YYYY`, and `DD-MM-YYYY`.
+
+Gregorian date fields are canonicalized to `YYYY-MM-DD` when written, while
+partial dates remain ISO (`YYYY-MM` or `YYYY`). The configured pattern lets
+Bowerbird parse matching generated or user-supplied full dates without guessing
+their month/day order. It also applies to generated date placeholders outside
+date frontmatter fields. Once `date_format` is explicitly set, non-ISO full-date
+input must match that pattern; canonical `YYYY-MM-DD` and permitted ISO partials
+remain accepted. Without an explicit setting, legacy unambiguous slash/dash
+input remains accepted.
 
 ## Configuration Location
 
@@ -77,6 +93,7 @@ bwrb config list
 # Show specific option
 bwrb config list open_with
 bwrb config list link_format
+bwrb config list date_format
 
 # JSON output
 bwrb config list --output json
@@ -118,6 +135,7 @@ bwrb config edit
 # Edit specific option
 bwrb config edit open_with
 bwrb config edit link_format
+bwrb config edit date_granularity
 ```
 
 #### Non-interactive (JSON) Mode
@@ -128,6 +146,10 @@ bwrb config edit open_with --json '"editor"'
 
 # Set complex value
 bwrb config edit obsidian_vault --json '"My Vault"'
+
+# Set date writing and partial-date defaults
+bwrb config edit date_format --json '"DD/MM/YYYY"'
+bwrb config edit date_granularity --json '"month"'
 
 # Set arrays and booleans
 bwrb config edit excluded_directories --json '["Archive","Templates"]'

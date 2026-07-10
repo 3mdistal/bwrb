@@ -496,7 +496,7 @@ export const ConfigSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Date format for date fields (YYYY, MM, DD tokens), e.g. YYYY-MM-DD (default), MM/DD/YYYY, DD-MM-YYYY'
+      'Generated full-date and parsing pattern (YYYY, MM, DD tokens); Gregorian date fields are stored canonically as ISO, e.g. YYYY-MM-DD (default), MM/DD/YYYY, DD-MM-YYYY'
     ),
   // Default coarsest date precision allowed for all `date` fields.
   // - day (default): full YYYY-MM-DD only

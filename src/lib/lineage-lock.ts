@@ -8,7 +8,7 @@ const STALE_LOCK_MS = 30_000;
 const HEARTBEAT_MS = 10_000;
 const LOCK_VERSION = 1;
 
-interface LineageLockOptions {
+export interface OwnershipFileLockOptions {
   retryMs: number;
   attempts: number;
   staleMs: number;
@@ -33,7 +33,7 @@ interface LockSnapshot {
   size: number;
 }
 
-const DEFAULT_OPTIONS: LineageLockOptions = {
+const DEFAULT_OPTIONS: OwnershipFileLockOptions = {
   retryMs: LOCK_RETRY_MS,
   attempts: LOCK_ATTEMPTS,
   staleMs: STALE_LOCK_MS,
@@ -51,7 +51,7 @@ export async function withLineageMutationLocks<T>(
   vaultDir: string,
   sourcePaths: string[],
   task: () => Promise<T>,
-  optionOverrides: Partial<LineageLockOptions> = {}
+  optionOverrides: Partial<OwnershipFileLockOptions> = {}
 ): Promise<T> {
   const options = { ...DEFAULT_OPTIONS, ...optionOverrides };
   const lockPaths = Array.from(new Set(
@@ -61,13 +61,39 @@ export async function withLineageMutationLocks<T>(
   const releases: Array<() => Promise<void>> = [];
   try {
     for (const lockPath of lockPaths) {
-      releases.push(await acquireLock(lockPath, options));
+      releases.push(await acquireLock(
+        lockPath,
+        options,
+        'Timed out waiting for a fork-lineage mutation lock; retry the command.'
+      ));
     }
     return await task();
   } finally {
     for (let index = releases.length - 1; index >= 0; index--) {
       await releases[index]!();
     }
+  }
+}
+
+/**
+ * Run one task while holding an ownership-safe lock at an existing lock path.
+ *
+ * This is shared by lineage-edge locks and the fixed note-ID coordination
+ * locks. Recovery and release are token/inode aware, so an old holder cannot
+ * remove a successor that has taken over the same pathname.
+ */
+export async function withOwnershipFileLock<T>(
+  lockPath: string,
+  task: () => Promise<T>,
+  optionOverrides: Partial<OwnershipFileLockOptions> = {},
+  timeoutMessage = 'Timed out waiting for a file lock; retry the command.'
+): Promise<T> {
+  const options = { ...DEFAULT_OPTIONS, ...optionOverrides };
+  const release = await acquireLock(resolve(lockPath), options, timeoutMessage);
+  try {
+    return await task();
+  } finally {
+    await release();
   }
 }
 
@@ -92,7 +118,8 @@ export function getLineageMutationLockPath(vaultDir: string, sourcePath: string)
 
 async function acquireLock(
   lockPath: string,
-  options: LineageLockOptions
+  options: OwnershipFileLockOptions,
+  timeoutMessage: string
 ): Promise<() => Promise<void>> {
   await mkdir(dirname(lockPath), { recursive: true });
   const recoveryPath = `${lockPath}.recovery`;
@@ -148,14 +175,14 @@ async function acquireLock(
     }
   }
 
-  throw new Error('Timed out waiting for a fork-lineage mutation lock; retry the command.');
+  throw new Error(timeoutMessage);
 }
 
 function createRelease(
   lockPath: string,
   handle: Awaited<ReturnType<typeof open>>,
   metadata: LockMetadata,
-  options: LineageLockOptions
+  options: OwnershipFileLockOptions
 ): () => Promise<void> {
   let released = false;
   let heartbeatRunning = false;
@@ -194,7 +221,7 @@ async function heartbeatOwnedLock(
 async function recoverStaleLock(
   lockPath: string,
   recoveryPath: string,
-  options: LineageLockOptions
+  options: OwnershipFileLockOptions
 ): Promise<void> {
   const recovery = await acquireRecoveryMarker(recoveryPath, options);
   if (!recovery) return;
@@ -220,7 +247,7 @@ async function recoverStaleLock(
 
 async function acquireRecoveryMarker(
   recoveryPath: string,
-  options: LineageLockOptions
+  options: OwnershipFileLockOptions
 ): Promise<(() => Promise<void>) | null> {
   const token = randomUUID();
   const now = Date.now();
@@ -255,7 +282,7 @@ async function acquireRecoveryMarker(
 
 async function recoveryIsInProgress(
   recoveryPath: string,
-  options: LineageLockOptions
+  options: OwnershipFileLockOptions
 ): Promise<boolean> {
   const snapshot = await readLockSnapshot(recoveryPath);
   if (!snapshot) return false;
