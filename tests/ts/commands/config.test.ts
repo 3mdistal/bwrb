@@ -4,6 +4,18 @@ import { join } from 'path';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { CONFIG_OPTION_KEYS } from '../../../src/commands/config.js';
+import { ConfigSchema, type Config } from '../../../src/types/schema.js';
+
+const INTENTIONALLY_UNEXPOSED_CONFIG_KEYS = [
+  // Calendar objects need guided authoring rather than a flat config editor (#790).
+  'calendars',
+  // Advanced mention tuning remains schema-only; dedicated command UX has not been designed.
+  'mention_fuzzy_threshold',
+  'mention_corpus_calibration',
+  'mention_corpus_min_notes',
+  'mention_corpus_noncanonical_ratio',
+] as const satisfies readonly (keyof Config)[];
 
 describe('config command', () => {
   let vaultDir: string;
@@ -32,6 +44,8 @@ describe('config command', () => {
       expect(result.stdout).toContain('open_with');
       expect(result.stdout).toContain('obsidian_vault');
       expect(result.stdout).toContain('excluded_directories');
+      expect(result.stdout).toContain('date_format');
+      expect(result.stdout).toContain('date_granularity');
     });
 
     it('should show default values when config is not set', async () => {
@@ -53,6 +67,8 @@ describe('config command', () => {
       expect(json.data).toBeDefined();
       expect(json.data.link_format).toBe('wikilink');
       expect(json.data.excluded_directories).toEqual([]);
+      expect(json.data.date_format).toBe('YYYY-MM-DD');
+      expect(json.data.date_granularity).toBe('day');
       // open_with should be one of the valid options
       expect(['system', 'editor', 'visual', 'obsidian']).toContain(json.data.open_with);
     });
@@ -70,6 +86,8 @@ describe('config command', () => {
             link_format: 'markdown',
             open_with: 'obsidian',
             editor: 'nvim',
+            date_format: 'DD/MM/YYYY',
+            date_granularity: 'month',
           },
         })
       );
@@ -82,6 +100,8 @@ describe('config command', () => {
         expect(json.data.link_format).toBe('markdown');
         expect(json.data.open_with).toBe('obsidian');
         expect(json.data.editor).toBe('nvim');
+        expect(json.data.date_format).toBe('DD/MM/YYYY');
+        expect(json.data.date_granularity).toBe('month');
       } finally {
         await rm(tempVaultDir, { recursive: true, force: true });
       }
@@ -89,6 +109,32 @@ describe('config command', () => {
   });
 
   describe('config list <option> (specific option)', () => {
+    it('should list date settings with their effective defaults', async () => {
+      const textResult = await runCLI(['config', 'list', 'date_granularity'], vaultDir);
+      const formatResult = await runCLI(['config', 'list', 'date_format', '--output', 'json'], vaultDir);
+      const granularityResult = await runCLI(
+        ['config', 'list', 'date_granularity', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(textResult.exitCode).toBe(0);
+      expect(textResult.stdout).toContain('Date Granularity (date_granularity)');
+      expect(textResult.stdout).toContain('Value: day');
+      expect(textResult.stdout).toContain('Options: day, month, year');
+      expect(formatResult.exitCode).toBe(0);
+      expect(JSON.parse(formatResult.stdout).data).toMatchObject({
+        key: 'date_format',
+        value: 'YYYY-MM-DD',
+        default: 'YYYY-MM-DD',
+      });
+      expect(granularityResult.exitCode).toBe(0);
+      expect(JSON.parse(granularityResult.stdout).data).toMatchObject({
+        key: 'date_granularity',
+        value: 'day',
+        default: 'day',
+      });
+    });
+
     it('should show details for a specific option', async () => {
       const result = await runCLI(['config', 'list', 'link_format'], vaultDir);
 
@@ -203,6 +249,150 @@ describe('config command', () => {
       expect(json.data.value).toEqual(['Archive', 'Templates']);
     });
 
+    it('should set date_format and date_granularity values', async () => {
+      const formatResult = await runCLI(
+        ['config', 'edit', 'date_format', '--json', '"DD/MM/YYYY"', '--output', 'json'],
+        tempVaultDir
+      );
+      const granularityResult = await runCLI(
+        ['config', 'edit', 'date_granularity', '--json', '"month"', '--output', 'json'],
+        tempVaultDir
+      );
+
+      expect(formatResult.exitCode).toBe(0);
+      expect(JSON.parse(formatResult.stdout)).toEqual({
+        success: true,
+        data: { key: 'date_format', value: 'DD/MM/YYYY' },
+      });
+      expect(granularityResult.exitCode).toBe(0);
+      expect(JSON.parse(granularityResult.stdout)).toEqual({
+        success: true,
+        data: { key: 'date_granularity', value: 'month' },
+      });
+
+      const schema = JSON.parse(
+        await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8')
+      );
+      expect(schema.config.date_format).toBe('DD/MM/YYYY');
+      expect(schema.config.date_granularity).toBe('month');
+    });
+
+    it('should round-trip configured $TODAY defaults through new and audit', async () => {
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+      await writeFile(
+        schemaPath,
+        JSON.stringify({
+          version: 2,
+          types: {
+            release: {
+              output_dir: 'Releases',
+              fields: {
+                type: { value: 'release' },
+                today: { value: '$TODAY', prompt: 'date' },
+                shipped: { prompt: 'date' },
+              },
+              field_order: ['type', 'today', 'shipped'],
+            },
+          },
+        })
+      );
+
+      expect(
+        (
+          await runCLI(
+            // Dots make this deterministic on every day of the month: the
+            // format-agnostic parser does not accept DD.MM.YYYY, so only the
+            // configured-pattern path can make the generated value round-trip.
+            ['config', 'edit', 'date_format', '--json', '"DD.MM.YYYY"'],
+            tempVaultDir
+          )
+        ).exitCode
+      ).toBe(0);
+      expect(
+        (
+          await runCLI(
+            ['config', 'edit', 'date_granularity', '--json', '"month"'],
+            tempVaultDir
+          )
+        ).exitCode
+      ).toBe(0);
+
+      const beforeCreate = new Date();
+      const create = await runCLI(
+        [
+          'new',
+          'release',
+          '--json',
+          '{"name":"Configured dates","shipped":"2026-05"}',
+          '--no-template',
+        ],
+        tempVaultDir
+      );
+      const afterCreate = new Date();
+      expect(create.exitCode).toBe(0);
+      const created = JSON.parse(create.stdout);
+      const content = await readFile(join(tempVaultDir, created.path), 'utf-8');
+      const storedToday = content.match(/^today: (\d{4}-\d{2}-\d{2})$/m)?.[1];
+      const expectedToday = (date: Date) =>
+        `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+          date.getDate()
+        ).padStart(2, '0')}`;
+      expect(new Set([expectedToday(beforeCreate), expectedToday(afterCreate)])).toContain(
+        storedToday
+      );
+      expect(content).toContain('shipped: 2026-05');
+
+      const audit = await runCLI(
+        ['audit', '--path', created.path, '--output', 'json'],
+        tempVaultDir
+      );
+      expect(audit.exitCode).toBe(0);
+      expect(JSON.parse(audit.stdout).summary.totalErrors).toBe(0);
+    });
+
+    it('should reject invalid date settings without writing', async () => {
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+      const before = await readFile(schemaPath, 'utf-8');
+
+      const invalidFormat = await runCLI(
+        ['config', 'edit', 'date_format', '--json', '42', '--output', 'json'],
+        tempVaultDir
+      );
+      expect(invalidFormat.exitCode).toBe(1);
+      expect(JSON.parse(invalidFormat.stdout).success).toBe(false);
+      expect(await readFile(schemaPath, 'utf-8')).toBe(before);
+
+      const incompleteFormat = await runCLI(
+        ['config', 'edit', 'date_format', '--json', '"YYYY-MM"', '--output', 'json'],
+        tempVaultDir
+      );
+      expect(incompleteFormat.exitCode).toBe(1);
+      expect(JSON.parse(incompleteFormat.stdout).error).toContain(
+        'date_format must contain YYYY, MM, and DD exactly once each'
+      );
+      expect(await readFile(schemaPath, 'utf-8')).toBe(before);
+
+      const invalidGranularity = await runCLI(
+        ['config', 'edit', 'date_granularity', '--json', '"week"', '--output', 'json'],
+        tempVaultDir
+      );
+      expect(invalidGranularity.exitCode).toBe(1);
+      expect(JSON.parse(invalidGranularity.stdout).error).toContain(
+        'Valid options: day, month, year'
+      );
+      expect(await readFile(schemaPath, 'utf-8')).toBe(before);
+    });
+
+    it('should leave calendar objects to the dedicated schema workflow', async () => {
+      const result = await runCLI(
+        ['config', 'edit', 'calendars', '--json', '{}', '--output', 'json'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout).error).toContain('Unknown config option: calendars');
+    });
+
     it('should reject unknown mention_exclude_types without writing', async () => {
       const before = await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf-8');
       const result = await runCLI(
@@ -281,6 +471,20 @@ describe('config command', () => {
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
       expect(json.error).toContain('Invalid value');
+    });
+  });
+
+  describe('config option contract', () => {
+    it('classifies every schema config key as exposed or intentionally unexposed', () => {
+      const schemaKeys = Object.keys(ConfigSchema.shape).sort();
+      const classifiedKeys = [
+        ...CONFIG_OPTION_KEYS,
+        ...INTENTIONALLY_UNEXPOSED_CONFIG_KEYS,
+      ].sort();
+
+      expect(new Set(CONFIG_OPTION_KEYS).size).toBe(CONFIG_OPTION_KEYS.length);
+      expect(new Set(classifiedKeys).size).toBe(classifiedKeys.length);
+      expect(classifiedKeys).toEqual(schemaKeys);
     });
   });
 

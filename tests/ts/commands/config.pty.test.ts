@@ -109,6 +109,26 @@ describePty('config command PTY tests', () => {
       );
     }, 20000);
 
+    it('should edit date_granularity interactively', async () => {
+      await withTempVault(
+        ['config', 'edit', 'date_granularity'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Date Granularity', 10000);
+          proc.write(Keys.DOWN); // month
+          await proc.waitFor('month', 2000);
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Set date_granularity', 5000);
+          await proc.waitForExit(5000);
+
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
+          const schema = JSON.parse(schemaContent);
+          expect(schema.config.date_granularity).toBe('month');
+        },
+        { schema: CONFIG_TEST_SCHEMA }
+      );
+    }, 20000);
+
     it('should cancel on Ctrl+C during option selection', async () => {
       await withTempVault(
         ['config', 'edit', 'link_format'],
@@ -183,6 +203,30 @@ describePty('config command PTY tests', () => {
           expect(schema.config.editor).toBeUndefined();
         },
         { schema: schemaWithEditor }
+      );
+    }, 20000);
+
+    it('should edit date_format interactively', async () => {
+      await withTempVault(
+        ['config', 'edit', 'date_format'],
+        async (proc, vaultPath) => {
+          await proc.waitFor('Date Format', 10000);
+          await proc.waitFor('enter new value', 2000);
+          proc.write(Keys.DOWN); // clear
+          proc.write(Keys.DOWN); // enter new value
+          proc.write(Keys.ENTER);
+          await proc.waitFor('Enter date_format', 5000);
+          proc.write('DD/MM/YYYY');
+          proc.write(Keys.ENTER);
+
+          await proc.waitFor('Set date_format', 5000);
+          await proc.waitForExit(5000);
+
+          const schemaContent = await readVaultFile(vaultPath, '.bwrb/schema.json');
+          const schema = JSON.parse(schemaContent);
+          expect(schema.config.date_format).toBe('DD/MM/YYYY');
+        },
+        { schema: CONFIG_TEST_SCHEMA }
       );
     }, 20000);
   });

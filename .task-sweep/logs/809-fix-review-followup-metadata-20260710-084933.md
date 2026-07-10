@@ -1,0 +1,6 @@
+- requested_model: `anthropic/claude-fable-5`
+- returned_backend: `anthropic/claude-5-fable-20260609`
+- finish_reason: `stop`
+- output: `.task-sweep/logs/809-fix-review-followup-output-20260710-084933.md`
+- response_size: 1359 characters, 176 words
+- verdict: `NO BLOCKERS`

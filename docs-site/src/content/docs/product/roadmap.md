@@ -29,8 +29,6 @@ exist:
   checked from the same contracts
 - Stabilize machine-readable command-specific output shapes and exit behavior
 - Keep migrations and audit fixes conservative as schemas grow more expressive
-- Align the config command with valid schema settings (tracked in
-  [#809](https://github.com/3mdistal/bwrb/issues/809))
 
 ## Genuinely future
 

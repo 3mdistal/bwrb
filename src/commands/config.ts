@@ -78,6 +78,19 @@ const CONFIG_OPTIONS: ConfigOptionMeta[] = [
     default: [],
   },
   {
+    key: 'date_format',
+    label: 'Date Format',
+    description: 'Format for date fields using YYYY, MM, and DD tokens',
+    default: 'YYYY-MM-DD',
+  },
+  {
+    key: 'date_granularity',
+    label: 'Date Granularity',
+    description: 'Default coarsest precision allowed for date fields',
+    options: ['day', 'month', 'year'],
+    default: 'day',
+  },
+  {
     key: 'mention_exclude_types',
     label: 'Mention Exclude Types',
     description: 'Type names to exclude as targets from unlinked-mention and frequent-term audit suggestions',
@@ -96,6 +109,13 @@ const CONFIG_OPTIONS: ConfigOptionMeta[] = [
     default: false,
   },
 ];
+
+/**
+ * Config keys intentionally exposed by the command. This remains an explicit
+ * allowlist: nested calendars and advanced mention tuning require dedicated
+ * UX or direct schema editing rather than becoming writable by accident.
+ */
+export const CONFIG_OPTION_KEYS = CONFIG_OPTIONS.map((option) => option.key);
 
 export const configCommand = new Command('config')
   .description('Manage vault-wide configuration');
@@ -357,6 +377,10 @@ function getConfigValue(config: Partial<Config>, key: keyof Config, vaultDir: st
     case 'mention_exclude_types':
     case 'mention_exclude_paths':
       return [];
+    case 'date_format':
+      return 'YYYY-MM-DD';
+    case 'date_granularity':
+      return 'day';
     case 'mention_link_once':
       return false;
     default:
@@ -418,6 +442,17 @@ function validateConfigValue(meta: ConfigOptionMeta, value: unknown): void {
       throw new Error(`Invalid value for ${String(meta.key)}. Valid options: ${meta.options.join(', ')}`);
     }
     return;
+  }
+
+  if (meta.key === 'date_format') {
+    const requiredTokens = ['YYYY', 'MM', 'DD'];
+    const hasEachTokenExactlyOnce =
+      typeof value === 'string' &&
+      requiredTokens.every(token => value.split(token).length === 2);
+
+    if (!hasEachTokenExactlyOnce) {
+      throw new Error('date_format must contain YYYY, MM, and DD exactly once each');
+    }
   }
 
   if (

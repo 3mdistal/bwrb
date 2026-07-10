@@ -152,6 +152,72 @@ export interface ParsedDate {
   error?: string;
 }
 
+/** Escape a literal fragment for use inside a regular expression. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Parse a full date using an explicit YYYY/MM/DD token pattern.
+ *
+ * Unlike {@link parseDate}, an explicit pattern can safely disambiguate values
+ * such as `10/07/2026`: `DD/MM/YYYY` means 10 July, while `MM/DD/YYYY` means
+ * October 7. Each token must occur exactly once. Literal separators and text
+ * are matched exactly, and component ranges are calendar-validated.
+ */
+export function parseDateWithPattern(value: string, format: string): ParsedDate {
+  const tokens = ['YYYY', 'MM', 'DD'] as const;
+  const hasValidTokens =
+    typeof format === 'string' &&
+    tokens.every((token) => format.split(token).length === 2);
+
+  if (!hasValidTokens) {
+    return {
+      valid: false,
+      error: 'Date format must contain YYYY, MM, and DD exactly once each',
+    };
+  }
+
+  const captureOrder: Array<(typeof tokens)[number]> = [];
+  let source = '^';
+  let cursor = 0;
+
+  for (const match of format.matchAll(/YYYY|MM|DD/g)) {
+    const token = match[0] as (typeof tokens)[number];
+    const index = match.index ?? cursor;
+    source += escapeRegExp(format.slice(cursor, index));
+    source += token === 'YYYY' ? '(\\d{4})' : '(\\d{2})';
+    captureOrder.push(token);
+    cursor = index + token.length;
+  }
+
+  source += `${escapeRegExp(format.slice(cursor))}$`;
+  const match = value.trim().match(new RegExp(source));
+  if (!match) {
+    return { valid: false, error: `Date does not match configured format ${format}` };
+  }
+
+  const parts: Partial<Record<(typeof tokens)[number], number>> = {};
+  captureOrder.forEach((token, index) => {
+    parts[token] = Number(match[index + 1]);
+  });
+
+  const year = parts.YYYY!;
+  const month = parts.MM!;
+  const day = parts.DD!;
+  const validationError = validateDateComponents(year, month, day);
+  if (validationError) {
+    return { valid: false, error: validationError };
+  }
+
+  const date = new Date(year, month - 1, day);
+  // JavaScript's multi-argument Date constructor remaps years 0-99 to
+  // 1900-1999. Restore the parsed year so the accepted 0001-0099 range does not
+  // silently change during canonicalization.
+  date.setFullYear(year);
+  return { valid: true, date };
+}
+
 /**
  * Parse a date string in a format-agnostic way.
  *
