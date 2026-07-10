@@ -29,7 +29,7 @@ bwrb config <subcommand>
 | `obsidian_vault` | Obsidian vault name for URI scheme | String |
 | `default_dashboard` | Dashboard used when no name is passed | Dashboard name or empty string |
 | `excluded_directories` | Directory prefixes excluded from discovery and targeting | JSON string array |
-| `date_format` | Format used when writing dates | Pattern string using `YYYY`, `MM`, and `DD` tokens |
+| `date_format` | Pattern for generated full dates and unambiguous parsing | String using `YYYY`, `MM`, and `DD` tokens |
 | `date_granularity` | Default coarsest precision for date fields | `day`, `month`, `year` |
 | `mention_exclude_types` | Types excluded as mention targets | JSON string array |
 | `mention_exclude_paths` | Path globs excluded as mention targets | JSON string array |
@@ -46,6 +46,15 @@ When unset, `date_format` is `YYYY-MM-DD` and `date_granularity` is `day`.
 Through `config edit`, `date_format` requires each of `YYYY`, `MM`, and `DD`
 exactly once. Supported patterns include `YYYY-MM-DD`, `MM/DD/YYYY`,
 `DD/MM/YYYY`, and `DD-MM-YYYY`.
+
+Gregorian date fields are canonicalized to `YYYY-MM-DD` when written, while
+partial dates remain ISO (`YYYY-MM` or `YYYY`). The configured pattern lets
+Bowerbird parse matching generated or user-supplied full dates without guessing
+their month/day order. It also applies to generated date placeholders outside
+date frontmatter fields. Once `date_format` is explicitly set, non-ISO full-date
+input must match that pattern; canonical `YYYY-MM-DD` and permitted ISO partials
+remain accepted. Without an explicit setting, legacy unambiguous slash/dash
+input remains accepted.
 
 ## Configuration Location
 

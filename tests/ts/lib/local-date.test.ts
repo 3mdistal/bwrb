@@ -5,6 +5,7 @@ import {
   expandStaticValue,
   formatDateWithPattern,
   parseDate,
+  parseDateWithPattern,
   isValidDate,
   parsePartialIsoDate,
   isPrecisionAllowed,
@@ -315,6 +316,44 @@ describe('local-date', () => {
       const customDate = new Date(2026, 0, 7); // Jan 7, 2026
       const result = expandStaticValue('$TODAY', customDate);
       expect(result).toBe('2026-01-07');
+    });
+  });
+
+  describe('parseDateWithPattern', () => {
+    it('uses an explicit token order to resolve ambiguous dates', () => {
+      const eu = parseDateWithPattern('10/07/2026', 'DD/MM/YYYY');
+      const us = parseDateWithPattern('10/07/2026', 'MM/DD/YYYY');
+
+      expect(eu.valid).toBe(true);
+      expect(eu.date).toEqual(new Date(2026, 6, 10));
+      expect(us.valid).toBe(true);
+      expect(us.date).toEqual(new Date(2026, 9, 7));
+    });
+
+    it('supports escaped literal separators and text', () => {
+      const result = parseDateWithPattern('2026.(07)+10', 'YYYY.(MM)+DD');
+
+      expect(result.valid).toBe(true);
+      expect(result.date).toEqual(new Date(2026, 6, 10));
+    });
+
+    it('calendar-validates components', () => {
+      expect(parseDateWithPattern('29/02/2024', 'DD/MM/YYYY').valid).toBe(true);
+      expect(parseDateWithPattern('29/02/2025', 'DD/MM/YYYY').valid).toBe(false);
+      expect(parseDateWithPattern('31/13/2026', 'DD/MM/YYYY').valid).toBe(false);
+    });
+
+    it('preserves years below 100 instead of applying the Date constructor offset', () => {
+      const result = parseDateWithPattern('10/07/0099', 'DD/MM/YYYY');
+
+      expect(result.valid).toBe(true);
+      expect(result.date?.getFullYear()).toBe(99);
+    });
+
+    it('rejects mismatches and malformed token patterns', () => {
+      expect(parseDateWithPattern('2026-07-10', 'DD/MM/YYYY').valid).toBe(false);
+      expect(parseDateWithPattern('10/07/2026', 'YYYY-MM').valid).toBe(false);
+      expect(parseDateWithPattern('10/07/2026', 'DD/MM/YYYY/YYYY').valid).toBe(false);
     });
   });
 

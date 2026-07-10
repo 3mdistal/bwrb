@@ -96,7 +96,7 @@ bwrb supports vault-wide configuration in `.bwrb/schema.json` under the `config`
 | Option | Values | Default | Description |
 |--------|--------|---------|-------------|
 | `link_format` | `wikilink`, `markdown` | `wikilink` | Format for relation field links |
-| `date_format` | Pattern string | `YYYY-MM-DD` | Format for date fields |
+| `date_format` | Pattern string | `YYYY-MM-DD` | Pattern for generated full dates and unambiguous parsing |
 | `date_granularity` | `day`, `month`, `year` | `day` | Vault default for allowed partial-date precision |
 | `calendars` | Object | `{}` | Custom calendar registry for non-Gregorian date fields |
 | `open_with` | `system`, `editor`, `visual`, `obsidian` | `system` | Default --open behavior |
@@ -115,15 +115,21 @@ bwrb supports vault-wide configuration in `.bwrb/schema.json` under the `config`
 
 ### Date Format
 
-The `date_format` option controls how dates are written to frontmatter:
+The `date_format` option controls generated full-date values and disambiguates
+matching input:
 
 - `YYYY-MM-DD` - ISO 8601 (default, recommended)
 - `MM/DD/YYYY` - US format
 - `DD/MM/YYYY` - EU format
 - `DD-MM-YYYY` - EU format with dashes
 
-**Validation is format-agnostic**: bwrb accepts any unambiguous date format during audit/validation.
-Ambiguous dates like `01/02/2026` (where both parts are ≤12) are rejected.
+Gregorian date fields are canonicalized to `YYYY-MM-DD` when written; partial
+dates remain ISO (`YYYY-MM` or `YYYY`). A value that exactly matches the
+configured format can be parsed without guessing, so `01/02/2026` is January 2
+under `MM/DD/YYYY` and February 1 under `DD/MM/YYYY`. Without an explicit
+`date_format`, legacy unambiguous slash/dash input remains accepted. Once a
+format is explicitly configured, non-ISO full dates must match it; canonical
+`YYYY-MM-DD` and permitted ISO partials remain accepted.
 
 ### Custom Calendars
 

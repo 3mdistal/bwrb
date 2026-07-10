@@ -277,6 +277,79 @@ describe('config command', () => {
       expect(schema.config.date_granularity).toBe('month');
     });
 
+    it('should round-trip configured $TODAY defaults through new and audit', async () => {
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+      await writeFile(
+        schemaPath,
+        JSON.stringify({
+          version: 2,
+          types: {
+            release: {
+              output_dir: 'Releases',
+              fields: {
+                type: { value: 'release' },
+                today: { value: '$TODAY', prompt: 'date' },
+                shipped: { prompt: 'date' },
+              },
+              field_order: ['type', 'today', 'shipped'],
+            },
+          },
+        })
+      );
+
+      expect(
+        (
+          await runCLI(
+            // Dots make this deterministic on every day of the month: the
+            // format-agnostic parser does not accept DD.MM.YYYY, so only the
+            // configured-pattern path can make the generated value round-trip.
+            ['config', 'edit', 'date_format', '--json', '"DD.MM.YYYY"'],
+            tempVaultDir
+          )
+        ).exitCode
+      ).toBe(0);
+      expect(
+        (
+          await runCLI(
+            ['config', 'edit', 'date_granularity', '--json', '"month"'],
+            tempVaultDir
+          )
+        ).exitCode
+      ).toBe(0);
+
+      const beforeCreate = new Date();
+      const create = await runCLI(
+        [
+          'new',
+          'release',
+          '--json',
+          '{"name":"Configured dates","shipped":"2026-05"}',
+          '--no-template',
+        ],
+        tempVaultDir
+      );
+      const afterCreate = new Date();
+      expect(create.exitCode).toBe(0);
+      const created = JSON.parse(create.stdout);
+      const content = await readFile(join(tempVaultDir, created.path), 'utf-8');
+      const storedToday = content.match(/^today: (\d{4}-\d{2}-\d{2})$/m)?.[1];
+      const expectedToday = (date: Date) =>
+        `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+          date.getDate()
+        ).padStart(2, '0')}`;
+      expect(new Set([expectedToday(beforeCreate), expectedToday(afterCreate)])).toContain(
+        storedToday
+      );
+      expect(content).toContain('shipped: 2026-05');
+
+      const audit = await runCLI(
+        ['audit', '--path', created.path, '--output', 'json'],
+        tempVaultDir
+      );
+      expect(audit.exitCode).toBe(0);
+      expect(JSON.parse(audit.stdout).summary.totalErrors).toBe(0);
+    });
+
     it('should reject invalid date settings without writing', async () => {
       const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
       const before = await readFile(schemaPath, 'utf-8');

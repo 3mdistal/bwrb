@@ -14,6 +14,7 @@ import {
 import {
   expandStaticValue,
   parseDate,
+  parseDateWithPattern,
   parsePartialIsoDate,
   isPrecisionAllowed,
   type DatePrecision,
@@ -43,11 +44,14 @@ function describeGranularityRequirement(granularity: DatePrecision): string {
  * Full dates accept ISO, ISO datetime, and unambiguous US/EU formats and are
  * stored as YYYY-MM-DD. Partial dates (YYYY, YYYY-MM) are accepted only when the
  * field's `granularity` permits them, and are stored verbatim (ISO partials sort
- * lexically). `granularity` defaults to 'day' (full date required).
+ * lexically). An explicitly configured date pattern disambiguates matching full
+ * dates before canonicalization and takes precedence over format guessing.
+ * `granularity` defaults to 'day' (full date required).
  */
 function normalizeToIsoDate(
   value: string,
-  granularity: DatePrecision = 'day'
+  granularity: DatePrecision = 'day',
+  dateFormat?: string
 ): NormalizedDateResult {
   const trimmed = value.trim();
 
@@ -84,6 +88,21 @@ function normalizeToIsoDate(
       : { valid: false, error: parsed.error ?? 'Invalid date' };
   }
 
+  // The configured format disambiguates generated/user-entered values such as
+  // 10/07/2026 before the format-agnostic parser deliberately rejects them.
+  // Storage remains canonical ISO after parsing.
+  if (dateFormat !== undefined) {
+    const configured = parseDateWithPattern(trimmed, dateFormat);
+    if (!configured.valid) {
+      return { valid: false, error: configured.error ?? `Date does not match ${dateFormat}` };
+    }
+
+    const year = String(configured.date!.getFullYear()).padStart(4, '0');
+    const month = String(configured.date!.getMonth() + 1).padStart(2, '0');
+    const day = String(configured.date!.getDate()).padStart(2, '0');
+    return { valid: true, value: `${year}-${month}-${day}` };
+  }
+
   // Format-agnostic date validation
   // Accepts ISO (YYYY-MM-DD), US (MM/DD/YYYY), EU (DD/MM/YYYY) formats
   // Rejects ambiguous dates where month and day are both <= 12 for non-ISO formats
@@ -116,6 +135,7 @@ function formatUtcDate(date: Date): string {
  * For each field whose schema `prompt` is `date`, the value is normalized via
  * {@link normalizeToIsoDate} using the field's resolved granularity:
  * - Unambiguous slash-format dates (e.g. `12/25/2026`) become `2026-12-25`.
+ * - Dates matching `config.date_format` are parsed without month/day guessing.
  * - ISO datetimes are truncated to their date part.
  * - Valid partial dates (`2026`, `2026-05`) are preserved verbatim when the
  *   field's granularity permits them.
@@ -161,12 +181,16 @@ export function normalizeDateFields(
     // in `validateFieldType` (#707).
     if (field.multiple && Array.isArray(value)) {
       normalized[fieldName] = value.map((element) =>
-        normalizeDateValue(element, granularity)
+        normalizeDateValue(element, granularity, schema.raw.config?.date_format)
       );
       continue;
     }
 
-    normalized[fieldName] = normalizeDateValue(value, granularity);
+    normalized[fieldName] = normalizeDateValue(
+      value,
+      granularity,
+      schema.raw.config?.date_format
+    );
   }
 
   return normalized;
@@ -181,7 +205,11 @@ export function normalizeDateFields(
  * (formatted from UTC), a non-coercible non-string, or fails normalization — in
  * the last case the validation layer surfaces a clear error.
  */
-function normalizeDateValue(value: unknown, granularity: DatePrecision): unknown {
+function normalizeDateValue(
+  value: unknown,
+  granularity: DatePrecision,
+  dateFormat?: string
+): unknown {
   // A blank value (null/undefined/empty/whitespace-only) is "unset"; leave it
   // untouched so it isn't normalized into a bogus date (#707).
   if (isBlankScalar(value)) return value;
@@ -197,7 +225,7 @@ function normalizeDateValue(value: unknown, granularity: DatePrecision): unknown
   const dateValue = typeof value === 'number' ? String(value) : value;
   if (typeof dateValue !== 'string') return value;
 
-  const result = normalizeToIsoDate(dateValue, granularity);
+  const result = normalizeToIsoDate(dateValue, granularity, dateFormat);
   return result.valid ? result.value : value;
 }
 
@@ -374,7 +402,10 @@ export function validateFrontmatter(
         value,
         field,
         granularity,
-        calendarId ? { id: calendarId, calendar: schema.config.calendars[calendarId]! } : undefined
+        calendarId
+          ? { id: calendarId, calendar: schema.config.calendars[calendarId]! }
+          : undefined,
+        schema.raw.config?.date_format
       );
       if (typeError) {
         errors.push(typeError);
@@ -476,7 +507,8 @@ function validateDateValue(
   value: unknown,
   granularity: DatePrecision,
   calendarContext?: { id: string; calendar: Calendar },
-  listIndex?: number
+  listIndex?: number,
+  dateFormat?: string
 ): ValidationError | null {
   // Accept Date objects surfaced by YAML parsing for Gregorian dates, normalize elsewhere.
   if (value instanceof Date && !calendarContext) {
@@ -513,7 +545,7 @@ function validateDateValue(
     return null;
   }
 
-  const normalized = normalizeToIsoDate(dateValue, granularity);
+  const normalized = normalizeToIsoDate(dateValue, granularity, dateFormat);
   if (!normalized.valid) {
     return {
       type: 'invalid_date',
@@ -532,7 +564,8 @@ function validateFieldType(
   value: unknown,
   field: Field,
   granularity: DatePrecision = 'day',
-  calendarContext?: { id: string; calendar: Calendar }
+  calendarContext?: { id: string; calendar: Calendar },
+  dateFormat?: string
 ): ValidationError | null {
   // Alias-role fields: enforce Obsidian `aliases` format regardless of prompt
   // type — an array of non-empty, unique strings.
@@ -566,13 +599,20 @@ function validateFieldType(
         // reported separately. Shared `isBlankScalar` rule keeps this in step
         // with the scalar paths (#707).
         if (isBlankScalar(element)) continue;
-        const elementError = validateDateValue(fieldName, element, granularity, calendarContext, index);
+        const elementError = validateDateValue(
+          fieldName,
+          element,
+          granularity,
+          calendarContext,
+          index,
+          dateFormat
+        );
         if (elementError) return elementError;
       }
       return null;
     }
 
-    return validateDateValue(fieldName, value, granularity, calendarContext);
+    return validateDateValue(fieldName, value, granularity, calendarContext, undefined, dateFormat);
   }
 
   if (field.prompt === 'relative-date') {

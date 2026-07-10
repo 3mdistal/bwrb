@@ -7,6 +7,7 @@ import {
   validateContextFields,
   applyDefaults,
   validateSelectOptionValue,
+  normalizeDateFields,
   suggestOptionValue,
   suggestFieldName,
   formatValidationErrors,
@@ -393,11 +394,15 @@ describe('validation', () => {
     function buildSchema(opts: {
       fieldGranularity?: 'day' | 'month' | 'year';
       configGranularity?: 'day' | 'month' | 'year';
+      dateFormat?: string;
     }) {
       return resolveSchema({
         version: 1,
-        ...(opts.configGranularity && {
-          config: { date_granularity: opts.configGranularity },
+        ...((opts.configGranularity || opts.dateFormat) && {
+          config: {
+            ...(opts.configGranularity && { date_granularity: opts.configGranularity }),
+            ...(opts.dateFormat && { date_format: opts.dateFormat }),
+          },
         }),
         types: {
           note: {
@@ -430,6 +435,47 @@ describe('validation', () => {
       const s = buildSchema({ configGranularity: 'month' });
       expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026-05' }).valid).toBe(true);
       expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026' }).valid).toBe(false);
+    });
+
+    it('uses the configured format to validate and canonicalize ambiguous full dates', () => {
+      const s = buildSchema({ dateFormat: 'DD/MM/YYYY' });
+      const frontmatter = { type: 'note', when: '10/07/2026' };
+
+      expect(validateFrontmatter(s, 'note', frontmatter).valid).toBe(true);
+      expect(normalizeDateFields(s, 'note', frontmatter).when).toBe('2026-07-10');
+    });
+
+    it('does not let a configured format mask invalid calendar components', () => {
+      const s = buildSchema({ dateFormat: 'DD/MM/YYYY' });
+
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '29/02/2025' }).valid).toBe(
+        false
+      );
+    });
+
+    it('canonicalizes configured dates with years below 100 to four-digit ISO', () => {
+      const s = buildSchema({ dateFormat: 'DD/MM/YYYY' });
+
+      expect(
+        normalizeDateFields(s, 'note', { type: 'note', when: '10/07/0099' }).when
+      ).toBe('0099-07-10');
+    });
+
+    it('gives an explicit format precedence while retaining canonical ISO and partials', () => {
+      const s = buildSchema({ dateFormat: 'MM/DD/YYYY', configGranularity: 'month' });
+
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '12/25/2026' }).valid).toBe(
+        true
+      );
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '25/12/2026' }).valid).toBe(
+        false
+      );
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026-12-25' }).valid).toBe(
+        true
+      );
+      expect(validateFrontmatter(s, 'note', { type: 'note', when: '2026-12' }).valid).toBe(
+        true
+      );
     });
 
     it('per-field granularity overrides the global default', () => {

@@ -802,7 +802,7 @@ Vault-wide settings:
 | `obsidian_vault` | string | auto | Obsidian vault name for URI scheme |
 | `default_dashboard` | string | — | Dashboard to run when `bwrb dashboard` has no name |
 | `excluded_directories` | array | `[]` | Vault-relative directory prefixes excluded from discovery and targeting |
-| `date_format` | string | `"YYYY-MM-DD"` | Display/parse format for date fields (`YYYY`, `MM`, `DD` tokens) |
+| `date_format` | string | `"YYYY-MM-DD"` | Generated full-date and parsing pattern (`YYYY`, `MM`, `DD` tokens); Gregorian date fields are stored canonically as ISO |
 | `date_granularity` | string | `"day"` | Default coarsest date precision for all date fields: `day`, `month`, or `year`. Per-field [`granularity`](#partial-dates-and-granularity) overrides it |
 | `calendars` | object | `{}` | Named custom-calendar definitions available to type `calendar_default` and field `calendar`; see [Custom Calendars](/concepts/custom-calendars/) |
 | `mention_fuzzy_threshold` | integer | `2` | Maximum fuzzy edit distance for `unlinked-mention` suggestions (`0` disables fuzzy matching; range `0`–`5`) |
