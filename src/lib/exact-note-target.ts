@@ -19,7 +19,7 @@ export interface ResolvedExactNoteTarget {
 
 export interface ExactNoteTargetOptions {
   /** Noun used in resolution errors. Fork mode keeps its established wording. */
-  purpose?: 'fork' | 'lineage';
+  purpose?: 'fork' | 'lineage' | 'adoption child' | 'adoption parent';
 }
 
 /**
@@ -42,7 +42,7 @@ export async function resolveExactNoteTarget(
   let snapshot: VaultNoteSnapshot | undefined;
   let index: NoteIndex;
 
-  if (purpose === 'lineage') {
+  if (purpose !== 'fork') {
     // Lineage needs a graph-wide snapshot anyway. Build resolution maps from
     // that snapshot and parse only the selected target's body afterward.
     snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
@@ -139,7 +139,7 @@ function resolveExactFile(
   vaultDir: string,
   target: string,
   frontmatterByPath: Map<string, Record<string, unknown>>,
-  purpose: 'fork' | 'lineage' = 'fork'
+  purpose: NonNullable<ExactNoteTargetOptions['purpose']> = 'fork'
 ): ManagedFile | undefined {
   if (isAbsolute(target)) {
     const absolute = resolve(target);
@@ -218,7 +218,7 @@ function exactMapMatches(
 function throwAmbiguousTarget(
   target: string,
   files: ManagedFile[],
-  purpose: 'fork' | 'lineage' = 'fork'
+  purpose: NonNullable<ExactNoteTargetOptions['purpose']> = 'fork'
 ): never {
   const candidates = files.map(file => file.relativePath).sort().join(', ');
   throw new Error(`Ambiguous ${purpose} target "${target}"; matches: ${candidates}`);

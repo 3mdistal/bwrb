@@ -5,7 +5,7 @@
  * - Type name completion (--type/-t)
  * - Path completion (--path/-p)
  * - Command and option completion
- * - Subcommand completion (schema, template, dashboard, completion)
+ * - Subcommand completion (schema, template, lineage, dashboard, completion)
  * - Entity name completion (dashboard names, template names)
  * 
  * The completion system works via a runtime callback model:
@@ -54,7 +54,7 @@ export interface CompletionContext {
 /**
  * Commands that have subcommands.
  */
-const COMMANDS_WITH_SUBCOMMANDS = ['schema', 'template', 'dashboard', 'completion'];
+const COMMANDS_WITH_SUBCOMMANDS = ['schema', 'template', 'dashboard', 'lineage', 'completion'];
 
 /**
  * Subcommands for each parent command.
@@ -63,6 +63,7 @@ const SUBCOMMANDS: Record<string, string[]> = {
   schema: ['list', 'new', 'edit', 'delete', 'validate', 'diff', 'migrate', 'history'],
   template: ['list', 'show', 'new', 'edit', 'delete', 'validate'],
   dashboard: ['list', 'new', 'edit', 'delete'],
+  lineage: ['adopt'],
   completion: ['bash', 'zsh', 'fish'],
 };
 
@@ -252,6 +253,7 @@ const COMMANDS = [
   'bulk',
   'schema',
   'template',
+  'lineage',
   'dashboard',
   'delete',
   'completion',
@@ -318,6 +320,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
     '--help',
   ],
   template: ['--vault', '-v', '--non-interactive', '--help'],
+  lineage: ['--from', '--dry-run', '--execute', '-x', '--output', '--vault', '-v', '--non-interactive', '--help'],
   dashboard: ['--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
   delete: [
     '--type', '-t',
@@ -379,6 +382,7 @@ function isValueOption(option: string): boolean {
     '--output', '-o',
     '--template',
     '--fork',
+    '--from',
     '--label',
     '--name',
     '--app',
@@ -593,6 +597,14 @@ export async function handleCompletionRequest(
     return [];
   }
   
+  // === Lineage command ===
+  if (ctx.command === 'lineage') {
+    if (!ctx.subcommand && ctx.positionalIndex === 0) {
+      return filterByPrefix(SUBCOMMANDS['lineage'] ?? [], ctx.current);
+    }
+    return [];
+  }
+
   // === Completion command ===
   if (ctx.command === 'completion') {
     if (!ctx.subcommand && ctx.positionalIndex === 0) {

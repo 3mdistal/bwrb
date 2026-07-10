@@ -77,6 +77,7 @@ export default defineConfig({
 								{ slug: 'reference/commands/audit' },
 								{ slug: 'reference/commands/bulk' },
 								{ slug: 'reference/commands/template' },
+								{ slug: 'reference/commands/lineage' },
 								{ slug: 'reference/commands/dashboard' },
 								{ slug: 'reference/commands/init' },
 								{ slug: 'reference/commands/config' },

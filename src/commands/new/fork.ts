@@ -1,4 +1,4 @@
-import { mkdir, open, stat, unlink } from 'fs/promises';
+import { unlink } from 'fs/promises';
 import { basename, dirname, relative, resolve } from 'path';
 import type { LoadedSchema } from '../../types/schema.js';
 import type { ManagedFile } from '../../lib/navigation.js';
@@ -14,6 +14,7 @@ import {
   isValidNoteId,
   normalizeNoteId,
   registerIssuedNoteId,
+  withNoteIdAssignmentLock,
 } from '../../lib/note-id.js';
 import {
   getAliasFieldName,
@@ -28,10 +29,6 @@ import { UserCancelledError } from '../../lib/errors.js';
 import { resolveExactNoteTarget } from '../../lib/exact-note-target.js';
 import { withLineageMutationLocks } from '../../lib/lineage-lock.js';
 
-const SOURCE_ID_LOCK = '.bwrb/locks/fork-source-id.lock';
-const LOCK_RETRY_MS = 20;
-const LOCK_ATTEMPTS = 250;
-const STALE_LOCK_MS = 30_000;
 const PORTABLE_PATH_WARNING_LENGTH = 200;
 const PORTABLE_PATH_MAX_LENGTH = 260;
 const STRUCTURAL_FIELDS = new Set(['type', 'id', 'name', 'forked-from', 'prev', 'next']);
@@ -195,7 +192,7 @@ async function ensureSourceId(
   vaultDir: string,
   sourcePath: string
 ): Promise<string> {
-  return withSourceIdLock(vaultDir, async () => {
+  return withNoteIdAssignmentLock(vaultDir, async () => {
     const parsed = await parseNote(sourcePath);
     const existing = parsed.frontmatter.id;
     if (existing !== undefined) {
@@ -268,41 +265,6 @@ async function findNotesWithId(
   return matches;
 }
 
-async function withSourceIdLock<T>(vaultDir: string, task: () => Promise<T>): Promise<T> {
-  const lockPath = resolve(vaultDir, SOURCE_ID_LOCK);
-  await mkdir(dirname(lockPath), { recursive: true });
-
-  for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
-    try {
-      const handle = await open(lockPath, 'wx');
-      try {
-        await handle.writeFile(`${process.pid}\n`, 'utf-8');
-        return await task();
-      } finally {
-        await handle.close().catch(() => undefined);
-        await unlink(lockPath).catch(() => undefined);
-      }
-    } catch (error) {
-      if (!isFileExistsError(error)) throw error;
-      if (await isStaleLock(lockPath)) {
-        await unlink(lockPath).catch(() => undefined);
-        continue;
-      }
-      await delay(LOCK_RETRY_MS);
-    }
-  }
-  throw new Error('Timed out waiting to assign the fork source ID; retry the command.');
-}
-
-async function isStaleLock(lockPath: string): Promise<boolean> {
-  try {
-    const info = await stat(lockPath);
-    return Date.now() - info.mtimeMs > STALE_LOCK_MS;
-  } catch {
-    return false;
-  }
-}
-
 function buildForkFrontmatter(
   schema: LoadedSchema,
   typeName: string,
@@ -370,8 +332,4 @@ function buildForkFieldOrder(
 
 function isFileExistsError(error: unknown): boolean {
   return error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'EEXIST';
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolveDelay => setTimeout(resolveDelay, ms));
 }
