@@ -160,18 +160,24 @@ bwrb config list
 # Edit a command-supported config option
 bwrb config edit open_with --json '"editor"'
 
+# Set date writing and partial-date defaults
+bwrb config edit date_format --json '"DD/MM/YYYY"'
+bwrb config edit date_granularity --json '"month"'
+
 # Exclude directories globally
 bwrb config edit excluded_directories --json '["Archive","Templates"]'
 ```
 
-`config list/edit` currently supports only `link_format`, `editor`, `visual`,
-`open_with`, `obsidian_vault`, `default_dashboard`, `excluded_directories`,
-`mention_exclude_types`, `mention_exclude_paths`, and `mention_link_once`.
-`date_format`, `date_granularity`, `calendars`, `mention_fuzzy_threshold`, and
-the `mention_corpus_*` keys are valid schema settings but are **schema-only**:
-edit `.bwrb/schema.json` and run `bwrb schema validate`. Do not send them to
-`bwrb config edit` (tracked in
-[#809](https://github.com/3mdistal/bwrb/issues/809)).
+`config list/edit` supports `link_format`, `editor`, `visual`, `open_with`,
+`obsidian_vault`, `default_dashboard`, `excluded_directories`, `date_format`,
+`date_granularity`, `mention_exclude_types`, `mention_exclude_paths`, and
+`mention_link_once`. `calendars`, `mention_fuzzy_threshold`, and the
+`mention_corpus_*` keys remain **schema-only**: edit `.bwrb/schema.json` and run
+`bwrb schema validate`. Guided calendar authoring is tracked in
+[#790](https://github.com/3mdistal/bwrb/issues/790).
+
+For command edits, `date_format` must contain each of `YYYY`, `MM`, and `DD`
+exactly once. `date_granularity` accepts `day`, `month`, or `year`.
 
 ## Built-in Frontmatter Fields
 

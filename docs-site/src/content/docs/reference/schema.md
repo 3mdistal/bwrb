@@ -813,12 +813,13 @@ Vault-wide settings:
 | `mention_exclude_types` | array | `[]` | Type names excluded as mention targets; matching notes are still scanned as source documents |
 | `mention_exclude_paths` | array | `[]` | Vault-relative globs excluded as mention targets; matching notes are still scanned as source documents |
 
-`bwrb config list/edit` currently exposes only a subset of these keys. Date
-formats, date granularity, calendar definitions, and corpus/fuzzy tuning are
-currently schema-only settings; edit `.bwrb/schema.json` and validate it with
-`bwrb schema validate`. See [bwrb config](/reference/commands/config/) for the
-editable subset and [#809](https://github.com/3mdistal/bwrb/issues/809) for the
-tracked command/schema mismatch.
+`bwrb config list/edit` exposes the common scalar settings above, including
+`date_format` and `date_granularity`. Calendar definitions and advanced
+corpus/fuzzy tuning remain schema-only settings; edit `.bwrb/schema.json` and
+validate it with `bwrb schema validate`. See
+[bwrb config](/reference/commands/config/) for the exact editable subset and
+[#790](https://github.com/3mdistal/bwrb/issues/790) for guided calendar
+authoring.
 
 ---
 

@@ -31,8 +31,6 @@ exist:
 - Keep migrations and audit fixes conservative as schemas grow more expressive
 - Improve completion parity (including the current `init` omission, tracked in
   [#810](https://github.com/3mdistal/bwrb/issues/810))
-- Align the config command with valid schema settings (tracked in
-  [#809](https://github.com/3mdistal/bwrb/issues/809))
 
 ## Genuinely future
 
