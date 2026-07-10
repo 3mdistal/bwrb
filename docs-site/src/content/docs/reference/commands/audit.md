@@ -86,7 +86,7 @@ Delete semantics in repair mode:
 | `owned-ambiguous-owner` | A note whose basename is declared as **owned by two or more distinct owners for an owned field whose child type matches the note's own type** (error; **never auto-fixable**). Ownership is genuinely ambiguous, so the note is **not** auto-restored under a guessed owner — `--fix --auto --execute` leaves it untouched and reports it for **manual resolution** (remove the duplicate `owned` declaration, or rename the note so each owner's declaration is unique). A correctly-filed note of a *different* type that merely shares a basename with such a declaration is **not** flagged — the matching declarations don't apply to it |
 | `invalid-forked-from` | Reserved `forked-from` provenance is not a UUID string (error; flag-only) |
 | `missing-lineage-id` | A note declares `forked-from` but lacks its own valid UUID `id` (error; flag-only) |
-| `dangling-forked-from` | `forked-from` references a UUID not present on any discovered note (warning; flag-only). Provenance is retained because the source may be restored later |
+| `dangling-forked-from` | `forked-from` references a UUID not present on any discovered note (warning; flag-only). Provenance is retained because the source may be restored later; this is also the deliberate result of deleting a fork parent with `bwrb delete --force` |
 | `duplicate-note-id` | Two or more notes use the same stable UUID `id` (error; flag-only) |
 | `fork-cycle` | Following immediate `forked-from` references forms a cycle (error; flag-only). Traversal is cycle-safe and always terminates |
 | `format-violation` | Field value doesn't match expected format (wikilink, etc.) |

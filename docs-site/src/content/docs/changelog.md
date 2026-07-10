@@ -13,6 +13,7 @@ For the complete changelog with all details, see [CHANGELOG.md](https://github.c
 
 - **Document forks** — `bwrb new --fork <target>` creates an ordinary sibling note with a fresh ID and immutable immediate-source provenance
 - **Fork lineage inspection** — `bwrb list --lineage <target>` renders the complete connected fork component, including sibling and cousin branches, as a tree, paths, links, content, or structured JSON
+- **Fork-safe deletion** — `bwrb delete` refuses notes with direct fork children or duplicate identities unless forced, preserving child provenance for audit when the parent is deliberately removed
 
 ### 0.2.2
 

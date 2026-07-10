@@ -47,6 +47,8 @@ export interface JsonSuccess<T = unknown> {
 export interface JsonError {
   success: false;
   error: string;
+  /** Optional machine-readable context for structured validation failures. */
+  data?: unknown;
   errors?: Array<{
     field: string;
     value?: unknown;

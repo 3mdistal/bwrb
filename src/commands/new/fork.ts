@@ -26,6 +26,7 @@ import { buildNotePath } from './paths.js';
 import { promptInput } from '../../lib/prompt.js';
 import { UserCancelledError } from '../../lib/errors.js';
 import { resolveExactNoteTarget } from '../../lib/exact-note-target.js';
+import { withLineageMutationLocks } from '../../lib/lineage-lock.js';
 
 const SOURCE_ID_LOCK = '.bwrb/locks/fork-source-id.lock';
 const LOCK_RETRY_MS = 20;
@@ -80,75 +81,81 @@ export async function forkNote(
 
   const sourceName = resolveSourceName(source);
   const childName = await resolveChildName(sourceName, options);
-  const sourceId = await ensureSourceId(schema, vaultDir, source.file.path);
 
-  // Re-read after a possible ID backfill so the child copies the source's
-  // current frontmatter rather than a stale pre-lock snapshot.
-  const current = await parseNote(source.file.path);
-  const currentType = resolveTypeFromFrontmatter(schema, current.frontmatter);
-  if (!currentType) {
-    throw new Error(`Fork source no longer has a valid schema type: ${source.file.relativePath}`);
-  }
+  return withLineageMutationLocks(vaultDir, [source.file.path], async () => {
+    // The path-keyed lock begins before legacy ID backfill and remains held
+    // through the child registry append. A concurrent non-force delete either
+    // removes the source first or observes this completed child.
+    const sourceId = await ensureSourceId(schema, vaultDir, source.file.path);
 
-  const warnings = collectSchemaDriftWarnings(schema, currentType, current.frontmatter);
-  const frontmatter = normalizeDateFields(
-    schema,
-    currentType,
-    buildForkFrontmatter(
+    // Re-read after a possible ID backfill so the child copies the source's
+    // current frontmatter rather than a stale pre-lock snapshot.
+    const current = await parseNote(source.file.path);
+    const currentType = resolveTypeFromFrontmatter(schema, current.frontmatter);
+    if (!currentType) {
+      throw new Error(`Fork source no longer has a valid schema type: ${source.file.relativePath}`);
+    }
+
+    const warnings = collectSchemaDriftWarnings(schema, currentType, current.frontmatter);
+    const frontmatter = normalizeDateFields(
       schema,
       currentType,
-      current.frontmatter,
-      childName,
-      sourceId
-    )
-  );
-  const childId = await generateUniqueNoteId(vaultDir);
-  frontmatter.id = childId;
-
-  const pathResult = buildNotePath(dirname(source.file.path), childName, 'interactive');
-  const relativePath = relative(vaultDir, pathResult.path);
-  if (relativePath.length > PORTABLE_PATH_MAX_LENGTH) {
-    throw new Error(
-      `Note path is ${relativePath.length} characters, exceeding the portable limit of ${PORTABLE_PATH_MAX_LENGTH}: ${relativePath}`
+      buildForkFrontmatter(
+        schema,
+        currentType,
+        current.frontmatter,
+        childName,
+        sourceId
+      )
     );
-  }
+    const childId = await generateUniqueNoteId(vaultDir);
+    frontmatter.id = childId;
 
-  const pathLengthWarning = relativePath.length > PORTABLE_PATH_WARNING_LENGTH
-    ? {
-        path: relativePath,
-        length: relativePath.length,
-        threshold: PORTABLE_PATH_WARNING_LENGTH,
-        max: PORTABLE_PATH_MAX_LENGTH,
-      }
-    : undefined;
-
-  const orderedFields = buildForkFieldOrder(current.frontmatter, frontmatter);
-  try {
-    await writeNoteExclusive(pathResult.path, frontmatter, current.body, orderedFields);
-  } catch (error) {
-    if (isFileExistsError(error)) {
-      throw new Error(`File already exists: ${relativePath}`);
+    const pathResult = buildNotePath(dirname(source.file.path), childName, 'interactive');
+    const relativePath = relative(vaultDir, pathResult.path);
+    if (relativePath.length > PORTABLE_PATH_MAX_LENGTH) {
+      throw new Error(
+        `Note path is ${relativePath.length} characters, exceeding the portable limit of ${PORTABLE_PATH_MAX_LENGTH}: ${relativePath}`
+      );
     }
-    throw error;
-  }
 
-  try {
-    await registerIssuedNoteId(vaultDir, childId, pathResult.path);
-  } catch (error) {
-    // A note without a registry row is not a completed creation. Roll it back;
-    // the source ID backfill intentionally remains durable.
-    await unlink(pathResult.path).catch(() => undefined);
-    throw error;
-  }
+    const pathLengthWarning = relativePath.length > PORTABLE_PATH_WARNING_LENGTH
+      ? {
+          path: relativePath,
+          length: relativePath.length,
+          threshold: PORTABLE_PATH_WARNING_LENGTH,
+          max: PORTABLE_PATH_MAX_LENGTH,
+        }
+      : undefined;
 
-  return {
-    path: pathResult.path,
-    id: childId,
-    forkedFrom: sourceId,
-    warnings,
-    ...(pathResult.nameTransformed ? { nameTransformed: pathResult.nameTransformed } : {}),
-    ...(pathLengthWarning ? { pathLengthWarning } : {}),
-  };
+    const orderedFields = buildForkFieldOrder(current.frontmatter, frontmatter);
+    try {
+      await writeNoteExclusive(pathResult.path, frontmatter, current.body, orderedFields);
+    } catch (error) {
+      if (isFileExistsError(error)) {
+        throw new Error(`File already exists: ${relativePath}`);
+      }
+      throw error;
+    }
+
+    try {
+      await registerIssuedNoteId(vaultDir, childId, pathResult.path);
+    } catch (error) {
+      // A note without a registry row is not a completed creation. Roll it
+      // back; the source ID backfill intentionally remains durable.
+      await unlink(pathResult.path).catch(() => undefined);
+      throw error;
+    }
+
+    return {
+      path: pathResult.path,
+      id: childId,
+      forkedFrom: sourceId,
+      warnings,
+      ...(pathResult.nameTransformed ? { nameTransformed: pathResult.nameTransformed } : {}),
+      ...(pathLengthWarning ? { pathLengthWarning } : {}),
+    };
+  });
 }
 
 async function resolveForkSource(

@@ -41,6 +41,12 @@ import {
   type TargetingOptions,
 } from '../lib/targeting.js';
 import { unregisterIssuedNotePath } from '../lib/note-id.js';
+import { buildVaultNoteSnapshot } from '../lib/discovery.js';
+import {
+  assessDeleteLineage,
+  type DeleteLineageBlock,
+} from '../lib/delete-lineage-guard.js';
+import { withLineageMutationLocks } from '../lib/lineage-lock.js';
 
 // ============================================================================
 // Types
@@ -146,7 +152,7 @@ export const deleteCommand = new Command('delete')
   .option('-x, --execute', 'Actually delete files (default is dry-run for bulk operations)')
   .option('--dry-run', 'Preview deletions without removing files')
   // Original options
-  .option('-f, --force', 'Skip confirmation prompt (single-file mode)')
+  .option('-f, --force', 'Skip confirmation and fork-lineage safety checks')
   .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
   .option('--output <format>', 'Output format: text (default) or json')
   .addHelpText('after', `
@@ -188,6 +194,8 @@ Examples:
   bwrb delete --output json --force "My Note"   # Scripting mode (single file)
 
 Note: Deletion is permanent. The file is removed from the filesystem.
+      Notes with direct fork children refuse deletion unless --force is used.
+      Forced deletion leaves child forked-from provenance dangling for audit.
       Use version control (git) to recover deleted notes if needed.`)
   .action(async (query: string | undefined, options: DeleteOptions, cmd: Command) => {
     const jsonMode = options.output === 'json';
@@ -374,6 +382,7 @@ async function handleSingleDelete(
   await deleteResolvedFile({
     file: result.file,
     vaultDir,
+    schema,
     options,
     jsonMode,
     dryRun: !!options.dryRun,
@@ -493,6 +502,7 @@ async function handleScopedDelete(
   await deleteResolvedFile({
     file: resolution.file,
     vaultDir,
+    schema,
     options,
     jsonMode,
     dryRun: isDryRun,
@@ -558,6 +568,14 @@ async function handleBulkDelete(
     }
     process.exitCode = ExitCodes.SUCCESS;
     return;
+  }
+
+  if (!options.force) {
+    const assessment = await assessCurrentDeleteLineage(schema, vaultDir, files);
+    if (assessment.length > 0) {
+      reportLineageRefusal(assessment, jsonMode, true);
+      return;
+    }
   }
 
   // Dry-run mode: show what would be deleted
@@ -641,14 +659,34 @@ async function handleBulkDelete(
   const deleted: string[] = [];
   const errors: Array<{ path: string; error: string }> = [];
 
-  for (const file of files) {
+  const deleteFiles = async (): Promise<void> => {
+    for (const file of files) {
+      try {
+        await unlink(file.path);
+        await unregisterIssuedNotePath(vaultDir, file.relativePath);
+        deleted.push(file.relativePath);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        errors.push({ path: file.relativePath, error: message });
+      }
+    }
+  };
+
+  if (options.force) {
+    await deleteFiles();
+  } else {
     try {
-      await unlink(file.path);
-      await unregisterIssuedNotePath(vaultDir, file.relativePath);
-      deleted.push(file.relativePath);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      errors.push({ path: file.relativePath, error: message });
+      await withLineageMutationLocks(vaultDir, files.map(file => file.path), async () => {
+        const assessment = await assessCurrentDeleteLineage(schema, vaultDir, files);
+        if (assessment.length > 0) throw new LineageDeleteRefusalError(assessment);
+        await deleteFiles();
+      });
+    } catch (error) {
+      if (error instanceof LineageDeleteRefusalError) {
+        reportLineageRefusal(error.blocked, jsonMode, true);
+        return;
+      }
+      throw error;
     }
   }
 
@@ -718,12 +756,14 @@ function buildNoteIndexFromFiles(files: ManagedFile[]): NoteIndex {
 async function deleteResolvedFile({
   file,
   vaultDir,
+  schema,
   options,
   jsonMode,
   dryRun,
 }: {
   file: ManagedFile;
   vaultDir: string;
+  schema: Awaited<ReturnType<typeof loadSchema>>;
   options: DeleteOptions;
   jsonMode: boolean;
   dryRun: boolean;
@@ -741,6 +781,14 @@ async function deleteResolvedFile({
     printError(error);
     process.exitCode = ExitCodes.VALIDATION_ERROR;
     return;
+  }
+
+  if (!options.force) {
+    const assessment = await assessCurrentDeleteLineage(schema, vaultDir, [file]);
+    if (assessment.length > 0) {
+      reportLineageRefusal(assessment, jsonMode, false);
+      return;
+    }
   }
 
   if (dryRun) {
@@ -804,9 +852,27 @@ async function deleteResolvedFile({
     }
   }
 
-  // Delete the file
-  await unlink(fullPath);
-  await unregisterIssuedNotePath(vaultDir, relativePath);
+  // Delete the file. Non-force deletion rechecks under the same path-keyed
+  // lock used by `new --fork`, after every prompt and backlink scan has ended.
+  if (options.force) {
+    await unlink(fullPath);
+    await unregisterIssuedNotePath(vaultDir, relativePath);
+  } else {
+    try {
+      await withLineageMutationLocks(vaultDir, [fullPath], async () => {
+        const assessment = await assessCurrentDeleteLineage(schema, vaultDir, [file]);
+        if (assessment.length > 0) throw new LineageDeleteRefusalError(assessment);
+        await unlink(fullPath);
+        await unregisterIssuedNotePath(vaultDir, relativePath);
+      });
+    } catch (error) {
+      if (error instanceof LineageDeleteRefusalError) {
+        reportLineageRefusal(error.blocked, jsonMode, false);
+        return;
+      }
+      throw error;
+    }
+  }
 
   // Success output
   if (jsonMode) {
@@ -824,4 +890,65 @@ async function deleteResolvedFile({
       printWarning(`Note: ${backlinks.length} note(s) still contain links to this file.`);
     }
   }
+}
+
+class LineageDeleteRefusalError extends Error {
+  constructor(readonly blocked: DeleteLineageBlock[]) {
+    super('Fork-lineage deletion refused');
+    this.name = 'LineageDeleteRefusalError';
+  }
+}
+
+async function assessCurrentDeleteLineage(
+  schema: Awaited<ReturnType<typeof loadSchema>>,
+  vaultDir: string,
+  files: ManagedFile[]
+): Promise<DeleteLineageBlock[]> {
+  const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
+  const assessment = assessDeleteLineage(snapshot, files.map(file => file.path));
+  if (assessment.missing.length > 0) {
+    const error = new Error(
+      `File not found or no longer managed: ${assessment.missing
+        .map(path => files.find(file => file.path === path)?.relativePath ?? path)
+        .join(', ')}`
+    ) as NodeJS.ErrnoException;
+    error.code = 'ENOENT';
+    throw error;
+  }
+  return assessment.blocked;
+}
+
+function reportLineageRefusal(
+  blocked: DeleteLineageBlock[],
+  jsonMode: boolean,
+  bulk: boolean
+): void {
+  const message = blocked.length === 1
+    ? `Refusing to delete ${blocked[0]!.path}: fork lineage would be orphaned`
+    : `Refusing to delete ${blocked.length} notes: fork lineage would be orphaned`;
+
+  if (jsonMode) {
+    printJson(jsonError(message, {
+      code: ExitCodes.VALIDATION_ERROR,
+      data: bulk ? { blocked } : blocked[0],
+    }));
+  } else {
+    printError(message);
+    for (const item of blocked) {
+      if (item.reason === 'has-fork-children') {
+        console.error(`  ${item.path}: ${item.childCount} direct fork child${item.childCount === 1 ? '' : 'ren'}`);
+        for (const child of item.children ?? []) {
+          console.error(`    - ${child.path}`);
+        }
+      } else {
+        console.error(`  ${item.path}: note id ${item.id} is duplicated`);
+        for (const duplicate of item.duplicates ?? []) {
+          console.error(`    - ${duplicate}`);
+        }
+      }
+    }
+    console.error('Use --force to delete anyway; child fork provenance will be left dangling.');
+  }
+
+  process.exitCode = ExitCodes.VALIDATION_ERROR;
 }
