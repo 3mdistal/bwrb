@@ -47,9 +47,10 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 
 | Context | Completions |
 |---------|-------------|
-| `bwrb <TAB>` | Visible commands: `new`, `edit`, `delete`, `list`, `recent`, `schema`, `audit`, `bulk`, `template`, `dashboard`, `init`, `config`, `completion` |
+| `bwrb <TAB>` | Visible commands: `new`, `edit`, `delete`, `list`, `recent`, `schema`, `audit`, `bulk`, `template`, `lineage`, `dashboard`, `init`, `config`, `completion` |
 | `bwrb schema <TAB>` | Schema subcommands, including `types`, `fields`, and `discover` |
 | `bwrb template <TAB>` | Template subcommands: `list`, `validate`, `new`, `edit`, `delete` |
+| `bwrb lineage <TAB>` | Subcommand: `adopt` |
 | `bwrb recent -<TAB>` | Options including `--open`, `--app`, `--save-as`, and `--force` |
 | `bwrb list -<TAB>` | Options: `--type`, `--path`, `--where`, etc. |
 | `bwrb new <TAB>` | Types from your schema |

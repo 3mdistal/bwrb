@@ -86,7 +86,7 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 
 - **Commands**: `bwrb <TAB>` shows every visible top-level command: `new`,
   `edit`, `delete`, `list`, `recent`, `schema`, `audit`, `bulk`, `template`,
-  `dashboard`, `init`, `config`, and `completion`.
+  `lineage`, `dashboard`, `init`, `config`, and `completion`.
 - **Options**: `bwrb list -<TAB>` shows `--type`, `--path`, `--where`, etc.
 - **Types**: `bwrb list --type <TAB>` shows types from your schema
 - **Paths**: `bwrb list --path <TAB>` shows vault directories
