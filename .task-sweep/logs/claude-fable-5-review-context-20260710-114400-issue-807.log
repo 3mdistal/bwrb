@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: stop
+output: /Users/alicemoore/Developer/bwrb-worktrees/issue-807-lineage-lock/.task-sweep/logs/claude-fable-5-review-context-output-20260710-114400-issue-807.md
+chars: 3888 words: 489
+preview: NO BLOCKERS\n\n## SPEC FIDELITY\n\nAll three follow-up requirements are implemented and consistent with the acceptance evidence:\n\n- **Windows coverage**: additive `windows_lock_tests` job (`.github/workflows/ci.yml:151–177`) builds then runs the focused lock/delete suites; job name is new so required checks (`Test`, `PTY Tests`, `Vercel`) are untouched, per TaskSweep.\n- **Deterministic real cross-process stress**: `tests/ts/fixtures/lineage-lock-worker.ts` + `tests/ts/lib/lineage-lock-cross-process.test.ts` use real `spawn`, NDJSON handshakes (not sleeps), sentinel-based overlap detection, dead-holder crash/recovery, successor protection, and artifact cleanup assertions.\n- **Disappearance classification**: `DeleteTargetDisappearedError` (`src/commands/delete.ts:907–914`) is thrown only from th

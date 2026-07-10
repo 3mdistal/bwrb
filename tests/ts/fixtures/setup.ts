@@ -9,7 +9,7 @@ import { BASELINE_SCHEMA } from './schemas.js';
 export const PROJECT_ROOT = process.cwd();
 export const CLI_PATH = join(PROJECT_ROOT, 'dist/index.js');
 const CLI_SRC_PATH = join(PROJECT_ROOT, 'src/index.ts');
-const TSX_BIN = join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx');
+const TSX_CLI = join(PROJECT_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 
 const USE_DIST = process.env.BWRB_TEST_DIST === '1';
 const NODE_DEP0205_SUPPRESSION = '--disable-warning=DEP0205';
@@ -431,8 +431,10 @@ export async function runCLI(
     retries = RUN_CLI_RETRIES,
   } = options;
 
-  const cliCommand = USE_DIST ? 'node' : TSX_BIN;
-  const cliArgs = USE_DIST ? [CLI_PATH, ...fullArgs] : [CLI_SRC_PATH, ...fullArgs];
+  const cliCommand = process.execPath;
+  const cliArgs = USE_DIST
+    ? [CLI_PATH, ...fullArgs]
+    : [TSX_CLI, CLI_SRC_PATH, ...fullArgs];
 
   const childEnv: Record<string, string> = Object.fromEntries(
     Object.entries(process.env).filter(
@@ -485,8 +487,10 @@ export async function runCLIWithOpenStdin(
   }: Pick<RunCLIOptions, 'cwd' | 'env' | 'timeoutMs'> = {}
 ): Promise<CLIResult> {
   const fullArgs = vaultDir ? ['--vault', vaultDir, ...args] : args;
-  const cliCommand = USE_DIST ? 'node' : TSX_BIN;
-  const cliArgs = USE_DIST ? [CLI_PATH, ...fullArgs] : [CLI_SRC_PATH, ...fullArgs];
+  const cliCommand = process.execPath;
+  const cliArgs = USE_DIST
+    ? [CLI_PATH, ...fullArgs]
+    : [TSX_CLI, CLI_SRC_PATH, ...fullArgs];
   const mergedEnv = withTestCliNodeOptions({
     ...process.env,
     NO_COLOR: '1',

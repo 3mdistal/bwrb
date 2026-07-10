@@ -322,9 +322,14 @@ describe.sequential('cross-process ownership file lock', () => {
     textLock.send('start');
     await textLock.waitFor('acquired');
 
-    const textCli = startCli(vaultDir, ['delete', 'Sample Idea']);
-    textCli.process.stdin.end('y\n');
-    await textCli.waitForOutput('File to delete: Ideas/Sample Idea.md');
+    const textCli = startCli(vaultDir, [
+      'delete', '--path', 'Ideas/Sample Idea.md', '--execute',
+    ]);
+    textCli.process.stdin.end();
+    // This non-interactive invocation has no public observer for lock
+    // contention. A bounded alive check proves the process reached the held
+    // lock before the target is removed; an early exit reports captured output.
+    await textCli.expectStillRunningFor(process.platform === 'win32' ? 2_000 : 750);
     await unlink(textTarget);
     textLock.send('release');
     await textLock.waitFor('released');

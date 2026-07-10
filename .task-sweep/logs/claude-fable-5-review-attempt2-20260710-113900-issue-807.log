@@ -1,0 +1,7 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: length
+output: /Users/alicemoore/Developer/bwrb-worktrees/issue-807-lineage-lock/.task-sweep/logs/claude-fable-5-review-output-attempt2-20260710-113900-issue-807.md
+chars: 0 words: 0
+warning: response content was empty/null; inspect finish_reason and increase --max-tokens if needed.
+preview: 

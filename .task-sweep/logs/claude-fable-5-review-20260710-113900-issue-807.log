@@ -1,0 +1,6 @@
+model_requested: anthropic/claude-fable-5
+model_returned: anthropic/claude-5-fable-20260609
+finish_reason: length
+output: /Users/alicemoore/Developer/bwrb-worktrees/issue-807-lineage-lock/.task-sweep/logs/claude-fable-5-review-output-20260710-113900-issue-807.md
+chars: 1995 words: 218
+preview: BLOCKERS\n\n## SPEC FIDELITY\n\n**Blocker**\n1. **Unrequested scope: committed agent artifacts.** `.task-sweep/logs/claude-fable-5-plan-20260710-103418-issue-807.log`, `...-plan-output-...md`, and `...-plan-prompt-...md` are internal planning logs/prompts (including the full planning packet and repo internals) committed into the repo. Nothing in the spec or repo conventions calls for shipping these; they are accidental artifacts and should be removed before merge.\n\n**Met**\n- Windows CI lane: additive `windows_lock_tests` job (`.github/workflows/ci.yml:151-176`); does not rename required checks, Node 22 / pnpm 10.11.0 per standards.\n- Deterministic real cross-process harness: `tests/ts/fixtures/lineage-lock-worker.ts` + `tests/ts/lib/lineage-lock-cross-process.test.ts` cover live-holder protecti
