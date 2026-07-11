@@ -4,9 +4,21 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-07-10
+
+Patch release for guarded existing-note lineage adoption, safer concurrent
+lineage mutations, and CLI parity across creation, search, configuration, and
+shell completion.
+
 ### Added
 
-- **Existing-note lineage adoption** — `bwrb lineage adopt <child> --from <parent>` previews by default and requires `--execute` to attach one exact, same-type existing note under another. It safely backfills missing IDs, refuses ambiguous, duplicate, malformed, dishonest, or cyclic edges, coordinates with fork/delete lineage locks, preserves bodies and ordinary metadata byte-for-byte, and returns agent-friendly change and body-hash evidence in JSON.
+- **Existing-note lineage adoption** — `bwrb lineage adopt <child> --from <parent>` previews by default and requires `--execute` to attach one exact, same-type existing note under another. It safely backfills missing IDs, refuses ambiguous, duplicate, malformed, dishonest, or cyclic edges, coordinates with fork/delete lineage locks, preserves bodies and ordinary metadata byte-for-byte, and returns agent-friendly change and body-hash evidence in JSON (#817).
+
+### Changed
+
+- **Creation placement and identity parity** — interactive and JSON creation now share canonical output-directory resolution and persist the supplied note identity consistently while preserving explicit, owned, template, fork, and filename-pattern precedence (#811, #813).
+- **Completion parity** — generated shell completion now tracks the visible Commander surface, including real schema/template subcommands and the complete `recent` workflow, while hidden compatibility commands stay hidden (#810).
+- **Date settings in config** — `config list/edit` now exposes validated `date_format` and `date_granularity`, and explicitly configured full-date formats normalize deterministically to canonical ISO storage (#809).
 
 ### Fixed
 
