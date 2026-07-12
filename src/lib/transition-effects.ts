@@ -18,7 +18,7 @@ import { normalizeDateFields } from './validation.js';
 import { validateRelativeDateCalendarOffsetsForWrite } from './relative-date.js';
 import { relative } from 'path';
 import { isBwrbReservedFrontmatterField } from './frontmatter/systemFields.js';
-import { parseTransitionTrigger } from './transition-guards.js';
+import { getTransitionGuardsForType, parseTransitionTrigger } from './transition-guards.js';
 import { expandStaticValue } from './local-date.js';
 
 export interface PreparedTransitionEffect {
@@ -54,7 +54,13 @@ export function validateTransitionEffects(schema: LoadedSchema, typeName: string
       errors.push(`Transition effect '${effect.on}' relation '${effect.relation}' must be an effective scalar relation field.`);
     }
     const sources = Array.isArray(relation?.source) ? relation.source : relation?.source ? [relation.source] : [];
-    const targetTypes = sources.includes('any') ? [] : sources.flatMap((source) => [source, ...getDescendants(schema, source)]);
+    // An unconstrained relation can resolve to any note, so validation must be
+    // conservative across every type rather than silently skipping target
+    // checks. Effects stay deliberately non-cascading and therefore may not
+    // advance a target through one of its guarded transitions.
+    const targetTypes = sources.length === 0 || sources.includes('any')
+      ? [...schema.types.keys()]
+      : sources.flatMap((source) => [source, ...getDescendants(schema, source)]);
     for (const [field, value] of Object.entries(effect.set)) {
       if (isBwrbReservedFrontmatterField(field)) {
         errors.push(`Transition effect '${effect.on}' cannot modify system-managed field '${field}'.`);
@@ -64,6 +70,12 @@ export function validateTransitionEffects(schema: LoadedSchema, typeName: string
         if (!targetField) {
           errors.push(`Transition effect '${effect.on}' patch references unknown field '${field}' on relation target type '${targetType}'.`);
           continue;
+        }
+        const guardedTrigger = getTransitionGuardsForType(schema, targetType).some((guard) =>
+          parseTransitionTrigger(guard.on)?.field === field
+        );
+        if (guardedTrigger) {
+          errors.push(`Transition effect '${effect.on}' cannot modify guarded transition field '${targetType}.${field}'.`);
         }
         if (targetField.prompt === 'select' && targetField.options?.length && !['$ACTOR', '$NOW', '$TODAY'].includes(value) && !getOptionValues(targetField.options).includes(value)) {
           errors.push(`Transition effect '${effect.on}' value '${value}' is not an option for '${targetType}.${field}'.`);

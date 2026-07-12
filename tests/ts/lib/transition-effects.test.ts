@@ -42,6 +42,28 @@ async function inheritedFixture() {
 }
 
 describe('transition effects', () => {
+  it('rejects effects that would bypass a target transition guard', () => {
+    expect(() => resolveSchema({ version: 2, traits: {
+      advancing: { transition_effects: [{ on: 'status = accepted', relation: 'task', set: { status: 'done' } }] },
+      guarded: { transition_guards: [{ on: 'status = done', requires: [{ relation: 'requirements', all: { field: 'status', equals: 'satisfied' } }] }] },
+    }, types: {
+      candidate: { traits: ['advancing'], fields: { status: { prompt: 'select', options: ['implementing', 'accepted'] }, task: { prompt: 'relation', source: 'task' } } },
+      task: { traits: ['guarded'], fields: { status: { prompt: 'select', options: ['open', 'done'] }, requirements: { prompt: 'relation', source: 'requirement', multiple: true } } },
+      requirement: { fields: { status: { prompt: 'select', options: ['pending', 'satisfied'] } } },
+    }})).toThrow("cannot modify guarded transition field 'task.status'");
+  });
+
+  it('checks every possible target type for unconstrained effect relations', () => {
+    expect(() => resolveSchema({ version: 2, traits: {
+      advancing: { transition_effects: [{ on: 'status = accepted', relation: 'target', set: { status: 'done' } }] },
+      guarded: { transition_guards: [{ on: 'status = done', requires: [{ relation: 'requirements', all: { field: 'status', equals: 'satisfied' } }] }] },
+    }, types: {
+      candidate: { traits: ['advancing'], fields: { status: { prompt: 'select', options: ['implementing', 'accepted'] }, target: { prompt: 'relation', source: 'any' } } },
+      task: { traits: ['guarded'], fields: { status: { prompt: 'select', options: ['open', 'done'] }, requirements: { prompt: 'relation', source: 'requirement', multiple: true } } },
+      requirement: { fields: { status: { prompt: 'select', options: ['pending', 'satisfied'] } } },
+    }})).toThrow("cannot modify guarded transition field 'task.status'");
+  });
+
   it('inherits effects from traits composed by an ancestor type', async () => {
     const { vault, schema, source, target } = await inheritedFixture();
     await editNoteFromJson(schema, vault, source, '{"status":"accepted"}');
