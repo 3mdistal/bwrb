@@ -615,6 +615,57 @@ describe('validation', () => {
       expect(result.priority).toBe('high');
     });
 
+    it('evaluates schema defaults only for date-typed fields, including scoped restoration', () => {
+      const dateSchema = resolveSchema({
+        version: 2,
+        types: {
+          note: {
+            fields: {
+              due: { prompt: 'date', default: '@today' },
+              caption: { prompt: 'text', default: '@today' },
+            },
+          },
+        },
+      });
+
+      const result = applyDefaults(dateSchema, 'note', { due: '   ' }, new Set(['due']));
+      expect(result.due).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(result).not.toHaveProperty('caption');
+      expect(applyDefaults(dateSchema, 'note', {}).caption).toBe('@today');
+    });
+
+    it('rejects malformed schema date expressions before they can be persisted', () => {
+      const dateSchema = resolveSchema({
+        version: 2,
+        types: {
+          note: { fields: { due: { prompt: 'date', default: '@today+3x' } } },
+        },
+      });
+
+      expect(() => applyDefaults(dateSchema, 'note', {})).toThrow(/Invalid date expression/);
+    });
+
+    it('rejects Gregorian date expressions for custom-calendar schema defaults', () => {
+      const dateSchema = resolveSchema({
+        version: 2,
+        config: {
+          calendars: {
+            tmi: {
+              months: [{ name: 'First', days: 10 }],
+              eras: [{ name: 'After', shortName: 'AR' }],
+            },
+          },
+        },
+        types: {
+          note: { fields: { due: { prompt: 'date', calendar: 'tmi', default: '@today' } } },
+        },
+      });
+
+      expect(() => applyDefaults(dateSchema, 'note', {})).toThrow(
+        /not supported for custom-calendar field 'due'.*literal tmi date/
+      );
+    });
+
     it('should not override existing values', () => {
       const result = applyDefaults(schema, 'idea', {
         status: 'in-flight',

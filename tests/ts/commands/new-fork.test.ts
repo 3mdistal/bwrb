@@ -7,6 +7,7 @@ import {
   runCLI,
 } from '../fixtures/setup.js';
 import { parseNote } from '../../../src/lib/frontmatter.js';
+import { formatLocalDate } from '../../../src/lib/local-date.js';
 
 const SOURCE_ID = 'ABCDEF12-3456-4789-ABCD-EF1234567890';
 
@@ -82,10 +83,10 @@ Words worth keeping.
     expect(fork.body).toBe('## Draft\n\nWords worth keeping.\n');
   });
 
-  it('normalizes reset date defaults exactly like ordinary new and stays audit-clean', async () => {
+  it('evaluates dynamic schema date defaults for new, edit restoration, and fork, and stays audit-clean', async () => {
     const schemaPath = join(vaultDir, '.bwrb/schema.json');
     const schema = JSON.parse(await readFile(schemaPath, 'utf-8')) as any;
-    schema.types.task.fields.deadline.default = '12/25/2026';
+    schema.types.task.fields.deadline.default = '@today';
     schema.types.task.fields.deadline.reset_on_fork = true;
     await writeFile(schemaPath, JSON.stringify(schema, null, 2));
 
@@ -105,8 +106,16 @@ Words worth keeping.
     const forkOutput = JSON.parse(forked.stdout);
     const ordinaryNote = await parseNote(join(vaultDir, ordinaryOutput.path));
     const forkNote = await parseNote(join(vaultDir, forkOutput.path));
-    expect(ordinaryNote.frontmatter.deadline).toBe('2026-12-25');
+    const expected = formatLocalDate(new Date());
+    expect(ordinaryNote.frontmatter.deadline).toBe(expected);
     expect(forkNote.frontmatter.deadline).toBe(ordinaryNote.frontmatter.deadline);
+
+    const edited = await runCLI([
+      'edit', ordinaryOutput.path, '--json', '{"deadline":"   "}',
+    ], vaultDir);
+    expect(edited.exitCode, edited.stderr || edited.stdout).toBe(0);
+    const editedNote = await parseNote(join(vaultDir, ordinaryOutput.path));
+    expect(editedNote.frontmatter.deadline).toBe(expected);
 
     for (const notePath of [ordinaryOutput.path, forkOutput.path]) {
       const audit = await runCLI(['audit', '--path', notePath, '--output', 'json'], vaultDir);

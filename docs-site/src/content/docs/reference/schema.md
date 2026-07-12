@@ -683,7 +683,7 @@ Complete list of field properties:
 | `label` | string | prompted | Custom label shown during prompting (the imperative prompt text) |
 | `description` | string | any | What this field is for and when to use it. Surfaced by `bwrb schema list`; distinct from `label` |
 | `required` | boolean | prompted | Whether field must have a value (default: `false`) |
-| `default` | string | prompted | Default value if user skips prompt |
+| `default` | string | prompted | Default value if user skips prompt. Date fields also accept creation-time expressions such as `@today` and `@today+7d` |
 | `granularity` | string | `date` | Coarsest precision allowed: `day` (default), `month`, or `year`. Overrides `date_granularity` |
 | `calendar` | string | `date` | Calendar id from `config.calendars`. Overrides the type's `calendar_default`; invalid on non-date fields |
 | `options` | array | `select` | Allowed values: bare strings or `{ value, description }` objects |
@@ -716,6 +716,16 @@ The rule is deliberately mechanical: fork-aware copying omits the stored field,
 then normal schema defaults may populate it. BWRB does not infer meaning from
 names such as `status`, `published`, or `approved`. Ordinary note creation and
 editing are unchanged by this marker.
+
+For fields with `prompt: "date"`, schema defaults accept the same creation-time
+date expressions as template defaults, including `@today`, `@today+7d`, and
+`today() + '7d'`. They evaluate when the default is materialized by ordinary
+creation, scoped blank-value restoration during `edit`, or `new --fork` after a
+`reset_on_fork` field is omitted. Non-date fields keep these strings literally,
+and malformed expressions fail before a note is written. Gregorian expressions
+are not supported for custom-calendar fields because custom calendars do not
+define a mapping from the current Gregorian date; use a literal date in that
+calendar instead.
 
 ### Built-in lineage metadata
 

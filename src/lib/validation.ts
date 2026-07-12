@@ -21,6 +21,7 @@ import {
 } from './local-date.js';
 import { validateRelativeDateValue } from './relative-date.js';
 import { parseCalendarDate } from './calendar-date.js';
+import { evaluateTemplateDefault } from './date-expression.js';
 
 export type NormalizedDateResult =
   | { valid: true; value: string }
@@ -441,7 +442,9 @@ export function validateFrontmatter(
 }
 
 /**
- * Apply defaults to frontmatter for missing fields.
+ * Apply defaults to frontmatter for missing fields. Date-typed schema defaults
+ * use the same creation-time expression evaluator as template defaults;
+ * non-date defaults remain literal.
  * Also injects the 'type' field with the type name.
  *
  * When `keyScope` is provided, ONLY those field names are considered for default
@@ -481,7 +484,18 @@ export function applyDefaults(
     const hasValue = !isBlankScalar(value);
 
     if (!hasValue && field.default !== undefined) {
-      result[fieldName] = field.default;
+      const evaluatedDefault = evaluateTemplateDefault(
+        field.default,
+        schema.config.dateFormat,
+        field.prompt
+      );
+      const calendarId = resolveDateCalendar(schema, typeName, fieldName, field);
+      if (calendarId && evaluatedDefault !== field.default) {
+        throw new Error(
+          `Date expressions are not supported for custom-calendar field '${fieldName}' (${calendarId}); use a literal ${calendarId} date instead.`
+        );
+      }
+      result[fieldName] = evaluatedDefault;
     }
 
     // Handle static values
