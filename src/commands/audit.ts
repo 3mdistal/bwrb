@@ -37,6 +37,7 @@ import {
 } from '../lib/audit/types.js';
 import {
   runAudit,
+  runAuditDetailed,
   discoverManagedFiles,
   auditFile,
 } from '../lib/audit/detection.js';
@@ -379,7 +380,7 @@ Examples:
         : undefined;
 
       // Run audit with unified targeting options
-      const results = await runAudit(schema, vaultDir, {
+      const { results, filesChecked } = await runAuditDetailed(schema, vaultDir, {
         typePath,
         strict: options.strict ?? false,
         pathFilter: pathGlob,
@@ -437,7 +438,7 @@ Examples:
       }
 
       // Output results (report mode)
-      const summary = calculateSummary(results);
+      const summary = calculateSummary(results, filesChecked);
 
       // Optional schema documentation coverage check (opt-in).
       const undocumented = options.checkSchemaDocs
@@ -497,6 +498,7 @@ export {
   
   // Detection functions
   runAudit,
+  runAuditDetailed,
   discoverManagedFiles,
   auditFile,
   
