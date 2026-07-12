@@ -342,6 +342,24 @@ export const TransitionEffectSchema = z.object({
 });
 export type TransitionEffect = z.infer<typeof TransitionEffectSchema>;
 
+/** A type-local, explicit policy for records that have reached their end of life. */
+export const RetentionSchema = z.object({
+  when: z.record(z.object({ in: z.array(z.string()).min(1) })).refine(v => Object.keys(v).length > 0, {
+    message: 'Retention when requires at least one field condition',
+  }),
+  clock: z.object({
+    field: SchemaFieldNameSchema,
+    after: z.string().regex(/^([1-9]\d*)d$/, 'Retention clock.after must be a positive whole-day duration such as "180d"'),
+  }),
+  resolved_when: z.record(z.object({ in: z.array(z.string()).min(1) })).optional(),
+  actions: z.array(z.union([
+    z.object({ kind: z.literal('archive'), directory: z.string().min(1) }),
+    z.object({ kind: z.literal('tombstone'), set: z.record(z.string(), z.string()).refine(v => Object.keys(v).length > 0) }),
+    z.object({ kind: z.literal('delete') }),
+  ])).min(1),
+});
+export type Retention = z.infer<typeof RetentionSchema>;
+
 /**
  * A reusable bundle of fields composed into a type via `traits`.
  *
@@ -458,6 +476,7 @@ export const TypeSchema = z.object({
     .describe(
       "Custom plural form for folder naming (e.g., 'research' instead of 'researches'). Auto-pluralized if not specified."
     ),
+  retention: RetentionSchema.optional().describe('Type-local retention policy evaluated by audit'),
 });
 
 // ============================================================================

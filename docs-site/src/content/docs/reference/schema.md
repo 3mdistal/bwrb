@@ -72,6 +72,7 @@ Types define categories of notes. Each type has a name (the object key) and a de
 | `traits` | array | — | Trait names composed into this type (see [Traits](#traits)) |
 | `description` | string | — | What this type is for and when to use it. Surfaced by `bwrb schema list` |
 | `output_dir` | string | no | Vault-relative folder where this type's notes live (e.g., `"Objectives/Tasks"`). When omitted, creation uses the computed pluralized type hierarchy; see [Output directories](#output-directories) |
+| `retention` | object | no | Type-local end-of-life policy evaluated by `bwrb audit`; it is not inherited by child types |
 | `fields` | object | `{}` | Field definitions |
 | `field_order` | array | — | Order of fields in frontmatter |
 | `body_sections` | array | — | Body structure after frontmatter |

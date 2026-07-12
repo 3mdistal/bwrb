@@ -433,6 +433,132 @@
         "plural": {
           "type": "string",
           "description": "Custom plural form for folder naming (e.g., 'research' instead of 'researches'). Auto-pluralized if not specified."
+        },
+        "retention": {
+          "type": "object",
+          "properties": {
+            "when": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "in": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "in"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "clock": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "$ref": "#/definitions/trait/properties/transition_guards/items/properties/requires/items/properties/relation"
+                },
+                "after": {
+                  "type": "string",
+                  "pattern": "^([1-9]\\d*)d$"
+                }
+              },
+              "required": [
+                "field",
+                "after"
+              ],
+              "additionalProperties": false
+            },
+            "resolved_when": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "in": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "in"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "actions": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "archive"
+                      },
+                      "directory": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "directory"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "tombstone"
+                      },
+                      "set": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "set"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "delete"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "when",
+            "clock",
+            "actions"
+          ],
+          "additionalProperties": false,
+          "description": "Type-local retention policy evaluated by audit"
         }
       },
       "additionalProperties": false

@@ -11,6 +11,7 @@ import {
   type Field,
   type Trait,
   type Recurrence,
+  type Retention,
   type ResolvedType,
   type ResolvedConfig,
   type LoadedSchema,
@@ -208,7 +209,67 @@ export function resolveSchema(schema: Schema): LoadedSchema {
   if (transitionEffectErrors.length > 0) {
     throw new Error(`Invalid transition effects: ${transitionEffectErrors.join(' ')}`);
   }
+  validateRetention(loaded);
   return loaded;
+}
+
+/** Return a type's own retention declaration. Retention intentionally does not inherit. */
+export function getRetentionForType(schema: LoadedSchema, typeName: string): Retention | undefined {
+  return schema.raw.types[typeName]?.retention;
+}
+
+function validateRetention(schema: LoadedSchema): void {
+  for (const [typeName, raw] of Object.entries(schema.raw.types)) {
+    const retention = raw.retention;
+    if (!retention) continue;
+    const fields = getFieldsForType(schema, typeName);
+    const clock = fields[retention.clock.field];
+    if (!clock || clock.prompt !== 'date' || resolveDateGranularity(clock, schema.config) !== 'day') {
+      throw new Error(`Invalid retention for type "${typeName}": clock.field "${retention.clock.field}" must be a day-granularity date field`);
+    }
+    for (const [fieldName, rule] of Object.entries(retention.when)) validateRetentionValues(typeName, fieldName, rule.in, fields);
+    for (const [fieldName, rule] of Object.entries(retention.resolved_when ?? {})) validateRetentionValues(typeName, fieldName, rule.in, fields);
+    for (const condition of [retention.when, retention.resolved_when ?? {}]) {
+      for (const fieldName of Object.keys(condition)) {
+        if (!fields[fieldName]) throw new Error(`Invalid retention for type "${typeName}": unknown field "${fieldName}"`);
+      }
+    }
+    for (const action of retention.actions) {
+      if (action.kind === 'archive') {
+        const directory = action.directory.replace(/\\/g, '/');
+        if (directory.startsWith('/') || directory.split('/').some(part => part === '..' || part.length === 0)) {
+          throw new Error(`Invalid retention for type "${typeName}": archive directory must be a normalized vault-relative path`);
+        }
+      }
+      if (action.kind !== 'tombstone') continue;
+      for (const [fieldName, value] of Object.entries(action.set)) {
+        const field = fields[fieldName];
+        if (!field) throw new Error(`Invalid retention for type "${typeName}": tombstone patch has unknown field "${fieldName}"`);
+        if (field.prompt === 'date' && value === '$TODAY' && resolveDateGranularity(field, schema.config) !== 'day') {
+          throw new Error(`Invalid retention for type "${typeName}": $TODAY requires day-granularity field "${fieldName}"`);
+        }
+        const options = getOptionValues(field.options);
+        if (options.length > 0 && value !== '$TODAY' && !options.includes(value)) {
+          throw new Error(`Invalid retention for type "${typeName}": tombstone value for "${fieldName}" is not an allowed option`);
+        }
+      }
+      if (retention.resolved_when && !matchesRetentionPatch(action.set, retention.resolved_when)) {
+        throw new Error(`Invalid retention for type "${typeName}": tombstone patch must satisfy resolved_when`);
+      }
+    }
+  }
+}
+
+function validateRetentionValues(typeName: string, fieldName: string, values: string[], fields: Record<string, Field>): void {
+  const field = fields[fieldName];
+  if (!field) throw new Error(`Invalid retention for type "${typeName}": unknown field "${fieldName}"`);
+  const options = getOptionValues(field.options);
+  if (options.length && values.some(value => !options.includes(value))) {
+    throw new Error(`Invalid retention for type "${typeName}": condition value for "${fieldName}" is not an allowed option`);
+  }
+}
+function matchesRetentionPatch(patch: Record<string, string>, condition: Record<string, { in: string[] }>): boolean {
+  return Object.entries(condition).every(([field, rule]) => typeof patch[field] === 'string' && rule.in.includes(patch[field]!));
 }
 
 /**

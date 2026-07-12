@@ -680,6 +680,22 @@ bwrb list --name "Target Note" --output link --picker none  # Output: [[Target N
 
 ## Error Handling
 
+## Retention
+
+Retention is a schema-declared, audit-reported lifecycle policy. It is intentionally never
+chosen by `audit --fix --auto`. To remediate records, use an explicit selector, the
+`retention-due` issue filter, a configured action, and `--execute` only after reviewing the
+dry run:
+
+```bash
+bwrb audit --all --fix --only retention-due --retention-action tombstone
+bwrb audit --all --fix --only retention-due --retention-action tombstone --execute
+```
+
+Do not infer a retention due date from filesystem timestamps. The schema clock must be a
+day-granularity date field. Delete actions remain safety-checked and can refuse records
+with live relations, backlinks, or fork lineage.
+
 bwrb exits with non-zero status on errors. JSON output includes error information:
 
 ```bash
