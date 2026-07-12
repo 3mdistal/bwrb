@@ -115,7 +115,7 @@ export const FieldSchema = z.object({
   value: z
     .string()
     .optional()
-    .describe('Static value (use $NOW for current datetime, $TODAY for date)'),
+    .describe('Static value (use $NOW for current datetime, $TODAY for date, or $ACTOR for logical runner provenance)'),
   // Human-readable description of what this field is for and when to use it.
   // Surfaced by `bwrb schema list` (text + JSON); distinct from `label`, which
   // is the imperative prompt shown during input.

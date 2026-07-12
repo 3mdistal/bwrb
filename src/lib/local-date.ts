@@ -25,6 +25,8 @@
  * - DD-MM-YYYY (EU format with dashes)
  */
 
+import { getLogicalActor } from './logical-actor.js';
+
 /** Default date format (ISO 8601) */
 export const DEFAULT_DATE_FORMAT = 'YYYY-MM-DD';
 
@@ -398,6 +400,8 @@ export function expandStaticValue(value: string, now: Date = new Date(), dateFor
       return formatLocalDateTime(now);
     case '$TODAY':
       return formatDateWithPattern(now, dateFormat);
+    case '$ACTOR':
+      return getLogicalActor();
     default:
       return value;
   }

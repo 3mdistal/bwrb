@@ -36,6 +36,11 @@ an entered transition, bwrb validates and applies the flat target patch in the
 same guarded commit. `$ACTOR`, `$NOW`, and `$TODAY` expand; target effects do
 not cascade into more effects or recurrence. An empty relation is a no-op.
 
+For schema-declared logical provenance (`{ "value": "$ACTOR" }`), establish
+identity once with root `--actor <value>` or `BWRB_ACTOR`. Explicit `--actor`
+wins; missing identity becomes `unknown`. Treat it as workflow provenance,
+never authentication or permission.
+
 ## Vault Resolution
 
 bwrb finds the vault in this order:

@@ -21,6 +21,7 @@ import { explainCommand } from './commands/explain.js';
 import { handleCompletionRequest } from './lib/completion.js';
 import { cleanupPromptMode } from './lib/prompt.js';
 import { BWRB_VERSION } from './version.js';
+import { configureLogicalActor } from './lib/logical-actor.js';
 
 const program = new Command();
 
@@ -53,6 +54,11 @@ if (completionsIndex !== -1) {
     .version(BWRB_VERSION)
     .option('-v, --vault <path>', 'Path to the vault directory')
     .option('--non-interactive', 'Disable interactive prompts and require explicit non-interactive flags')
+    .option('--actor <actor>', 'Logical workflow actor provenance (overrides BWRB_ACTOR)')
+    .hook('preAction', (_thisCommand, actionCommand) => {
+      const options = actionCommand.optsWithGlobals() as { actor?: string };
+      configureLogicalActor(options.actor);
+    })
     .hook('postAction', () => {
       cleanupPromptMode();
     })

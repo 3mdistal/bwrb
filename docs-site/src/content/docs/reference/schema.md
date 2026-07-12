@@ -358,13 +358,16 @@ Fields with `value` are not prompted—they're computed automatically:
 {
   "type": { "value": "task" },
   "created": { "value": "$NOW" },
-  "date": { "value": "$TODAY" }
+  "date": { "value": "$TODAY" },
+  "actor": { "value": "$ACTOR" }
 }
 ```
 
 **Special values:**
 - `$NOW` — Current datetime: `2025-01-07 14:30`
 - `$TODAY` — Current date: `2025-01-07`
+- `$ACTOR` — Logical runner identity resolved from root `--actor`, then
+  `BWRB_ACTOR`, then `unknown`. This is provenance, not authentication.
 
 ### text
 

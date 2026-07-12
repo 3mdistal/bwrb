@@ -469,7 +469,7 @@
         },
         "value": {
           "type": "string",
-          "description": "Static value (use $NOW for current datetime, $TODAY for date)"
+          "description": "Static value (use $NOW for current datetime, $TODAY for date, or $ACTOR for logical runner provenance)"
         },
         "description": {
           "type": "string",
