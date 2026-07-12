@@ -313,7 +313,7 @@ Examples:
       }
       const mentionLinkOnce = options.mentionLinkOnce ?? schema.config.mentionLinkOnce;
 
-      if (globalOpts.nonInteractive && fixMode && !autoMode) {
+      if (globalOpts.nonInteractive && fixMode && !autoMode && !retentionAction) {
         exitWithValidationError('bwrb audit --fix requires --auto when --non-interactive is set.');
       }
 

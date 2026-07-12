@@ -8,7 +8,7 @@
 
 import { join } from 'path';
 import { getOptionValues, type LoadedSchema, type TransitionEffect } from '../types/schema.js';
-import { getDescendants, getFieldsForType, getType, resolveTypePathFromFrontmatter } from './schema.js';
+import { getDescendants, getEffectiveTraitNames, getFieldsForType, resolveTypePathFromFrontmatter } from './schema.js';
 import { buildNoteTargetIndex, resolveRelationTarget } from './discovery.js';
 import { extractLinkTargets } from './links.js';
 import { parseNote, writeFileAtomic, writeNote } from './frontmatter.js';
@@ -35,10 +35,8 @@ export interface CommittedTransitionEffects {
 }
 
 function getTransitionEffectsForType(schema: LoadedSchema, typeName: string): TransitionEffect[] {
-  const type = getType(schema, typeName);
-  if (!type) return [];
   const traits = schema.raw.traits ?? {};
-  return type.traits.flatMap((traitName) => traits[traitName]?.transition_effects ?? []);
+  return getEffectiveTraitNames(schema, typeName).flatMap((traitName) => traits[traitName]?.transition_effects ?? []);
 }
 
 export function validateTransitionEffects(schema: LoadedSchema, typeName: string): string[] {

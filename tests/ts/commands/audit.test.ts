@@ -6854,7 +6854,6 @@ priority: medium
               'resolved-at': { prompt: 'date', granularity: 'day' },
               'retention-state': { prompt: 'select', options: ['active', 'tombstoned'] },
               'tombstoned-at': { prompt: 'date', granularity: 'day' },
-              related: { prompt: 'relation', source: 'candidate' },
             },
             retention: {
               when: { status: { in: ['accepted'] } },
@@ -6893,17 +6892,55 @@ priority: medium
       await expect(readFile(join(tempVaultDir, 'Candidates', 'Old.md'), 'utf8')).rejects.toThrow();
     });
 
-    it('refuses retention delete while a typed relation remains', async () => {
-      await writeFile(
-        join(tempVaultDir, 'Candidates', 'Ref.md'),
-        '---\ntype: candidate\nstatus: open\nrelated: "[[Old]]"\n---\n'
-      );
+    it('allows an explicit retention action in non-interactive mode without --auto', async () => {
+      const applied = await runCLI([
+        '--non-interactive', 'audit', '--path', 'Candidates/Old.md', '--fix', '--only', 'retention-due',
+        '--retention-action', 'tombstone', '--execute',
+      ], tempVaultDir);
+      expect(applied.exitCode).toBe(0);
+      expect(applied.stdout).toContain('Tombstoned');
+    });
+
+    it('deletes only when the retained type cannot be targeted by a relation', async () => {
       const applied = await runCLI([
         'audit', '--path', 'Candidates/Old.md', '--fix', '--only', 'retention-due',
         '--retention-action', 'delete', '--execute',
       ], tempVaultDir);
-      expect(applied.stdout).toContain('refusing delete');
-      expect(await readFile(join(tempVaultDir, 'Candidates', 'Old.md'), 'utf8')).toContain('type: candidate');
+      expect(applied.stdout).toContain('Deleted');
+      await expect(readFile(join(tempVaultDir, 'Candidates', 'Old.md'), 'utf8')).rejects.toThrow();
+    });
+
+    it('rejects delete retention when any relation can target the retained type', async () => {
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+      const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
+      schema.types.reference = { fields: { candidate: { prompt: 'relation', source: 'candidate' } } };
+      await writeFile(schemaPath, JSON.stringify(schema));
+      const result = await runCLI(['audit', '--only', 'retention-due'], tempVaultDir);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('delete is unsafe because relation fields can target this type');
+    });
+
+    it('rejects complex and transition-trigger tombstone patches', async () => {
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+      const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
+      schema.types.candidate.fields.related = { prompt: 'relation', source: 'candidate' };
+      schema.types.candidate.retention.actions = [
+        { kind: 'tombstone', set: { related: '[[Old]]', 'retention-state': 'tombstoned' } },
+      ];
+      await writeFile(schemaPath, JSON.stringify(schema));
+      const complex = await runCLI(['audit', '--only', 'retention-due'], tempVaultDir);
+      expect(complex.exitCode).toBe(1);
+      expect(complex.stderr).toContain('must be text, select, date, or static');
+
+      schema.types.candidate.traits = ['workflow'];
+      schema.traits = { workflow: { transition_guards: [{ on: 'status = accepted', requires: [{ relation: 'related', all: { field: 'status', equals: 'accepted' } }] }] } };
+      schema.types.candidate.retention.actions = [
+        { kind: 'tombstone', set: { status: 'accepted', 'retention-state': 'tombstoned' } },
+      ];
+      await writeFile(schemaPath, JSON.stringify(schema));
+      const trigger = await runCLI(['audit', '--only', 'retention-due'], tempVaultDir);
+      expect(trigger.exitCode).toBe(1);
+      expect(trigger.stderr).toContain('cannot modify transition trigger field "status"');
     });
   });
 });

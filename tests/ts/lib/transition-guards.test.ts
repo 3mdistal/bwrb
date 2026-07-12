@@ -23,6 +23,19 @@ async function fixture(requirementStatus: string) {
 }
 
 describe('transition guards', () => {
+  it('inherits guards from traits composed by an ancestor type', async () => {
+    const { vault } = await fixture('failed');
+    const schema = resolveSchema({ version: 2, traits: { guarded: { transition_guards: [{ on: 'status = accepted', requires: [{ relation: 'requirements', all: { field: 'status', equals: 'satisfied' } }] }] } }, types: {
+      candidate: { traits: ['guarded'], fields: { status: { prompt: 'select' }, requirements: { prompt: 'relation', source: 'requirement', multiple: true } }, output_dir: 'Candidates' },
+      'special-candidate': { extends: 'candidate', fields: {}, output_dir: 'Candidates' },
+      requirement: { fields: { status: { prompt: 'select' } }, output_dir: 'Requirements' },
+    }});
+
+    const result = await explainTransition(schema, vault, 'special-candidate', { status: 'accepted', requirements: ['[[R]]'] }, { field: 'status', value: 'accepted' });
+    expect(result.blocked).toBe(true);
+    expect(result.guards).toHaveLength(1);
+  });
+
   it('reports every relation state deterministically', async () => {
     const { vault, schema } = await fixture('stale');
     const result = await explainTransition(schema, vault, 'candidate', { status: 'accepted', requirements: ['[[R]]', '[[Missing]]'] }, { field: 'status', value: 'accepted' });

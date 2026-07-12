@@ -241,10 +241,29 @@ function validateRetention(schema: LoadedSchema): void {
           throw new Error(`Invalid retention for type "${typeName}": archive directory must be a normalized vault-relative path`);
         }
       }
+      if (action.kind === 'delete' && canTypeBeRelationTarget(schema, typeName)) {
+        throw new Error(`Invalid retention for type "${typeName}": delete is unsafe because relation fields can target this type; use archive or tombstone`);
+      }
       if (action.kind !== 'tombstone') continue;
+      const transitionFields = new Set(
+        getEffectiveTraitNames(schema, typeName).flatMap((name) => {
+          const trait = schema.raw.traits?.[name];
+          return [...(trait?.transition_guards ?? []), ...(trait?.transition_effects ?? [])]
+            .map(item => item.on.match(/^\s*([^=\s]+)\s*=/)?.[1])
+            .filter((field): field is string => Boolean(field));
+        })
+      );
       for (const [fieldName, value] of Object.entries(action.set)) {
         const field = fields[fieldName];
         if (!field) throw new Error(`Invalid retention for type "${typeName}": tombstone patch has unknown field "${fieldName}"`);
+        const safeScalar = field.prompt === 'text' || field.prompt === 'select' || field.prompt === 'date'
+          || (field.prompt === undefined && typeof field.value === 'string');
+        if (!safeScalar) {
+          throw new Error(`Invalid retention for type "${typeName}": tombstone patch field "${fieldName}" must be text, select, date, or static`);
+        }
+        if (transitionFields.has(fieldName)) {
+          throw new Error(`Invalid retention for type "${typeName}": tombstone patch cannot modify transition trigger field "${fieldName}"`);
+        }
         if (field.prompt === 'date' && value === '$TODAY' && resolveDateGranularity(field, schema.config) !== 'day') {
           throw new Error(`Invalid retention for type "${typeName}": $TODAY requires day-granularity field "${fieldName}"`);
         }
@@ -258,6 +277,24 @@ function validateRetention(schema: LoadedSchema): void {
       }
     }
   }
+}
+
+/**
+ * Delete is only safe when the schema makes the retained type impossible to
+ * reference through a typed relation. Runtime scans still protect legacy body
+ * links and lineage; this static restriction closes the create-a-reference
+ * race between a scan and unlink.
+ */
+function canTypeBeRelationTarget(schema: LoadedSchema, targetType: string): boolean {
+  for (const sourceType of schema.types.keys()) {
+    for (const field of Object.values(getFieldsForType(schema, sourceType))) {
+      if (field.prompt !== 'relation') continue;
+      const sources = Array.isArray(field.source) ? field.source : field.source ? [field.source] : [];
+      if (sources.length === 0 || sources.includes('any')) return true;
+      if (sources.some(source => source === targetType || getDescendants(schema, source).includes(targetType))) return true;
+    }
+  }
+  return false;
 }
 
 function validateRetentionValues(typeName: string, fieldName: string, values: string[], fields: Record<string, Field>): void {
@@ -748,6 +785,34 @@ export function getType(schema: LoadedSchema, typeName: string): ResolvedType | 
   }
 
   return undefined;
+}
+
+/**
+ * Return the traits that apply to a type through its inheritance chain.
+ *
+ * Resolved fields already include fields contributed by ancestor traits, so
+ * trait-owned behavior must follow the same root-to-leaf inheritance model.
+ * A repeated trait is included once, at its first (least-specific) position;
+ * this avoids running an inherited guard or effect twice when a subtype also
+ * names the trait explicitly.
+ */
+export function getEffectiveTraitNames(schema: LoadedSchema, typeName: string): string[] {
+  const type = getType(schema, typeName);
+  if (!type) return [];
+
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const chain = [...type.ancestors].reverse().map((name) => schema.types.get(name)).filter(Boolean);
+  chain.push(type);
+
+  for (const current of chain) {
+    for (const traitName of current!.traits) {
+      if (seen.has(traitName)) continue;
+      seen.add(traitName);
+      names.push(traitName);
+    }
+  }
+  return names;
 }
 
 /**

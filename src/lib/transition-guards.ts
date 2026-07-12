@@ -1,6 +1,6 @@
 import { join, relative } from 'path';
 import type { LoadedSchema, TransitionGuard } from '../types/schema.js';
-import { getType, getFieldsForType, getDescendants } from './schema.js';
+import { getEffectiveTraitNames, getFieldsForType, getDescendants } from './schema.js';
 import { getOptionValues } from '../types/schema.js';
 import { buildNoteTargetIndex, resolveRelationTarget } from './discovery.js';
 import { parseNote } from './frontmatter.js';
@@ -38,11 +38,9 @@ export function parseTransitionTrigger(input: string): TransitionTrigger | undef
 }
 
 export function getTransitionGuardsForType(schema: LoadedSchema, typeName: string): TransitionGuard[] {
-  const type = getType(schema, typeName);
-  if (!type) return [];
   const traits = schema.raw.traits ?? {};
   const guards: TransitionGuard[] = [];
-  for (const traitName of type.traits) guards.push(...(traits[traitName]?.transition_guards ?? []));
+  for (const traitName of getEffectiveTraitNames(schema, typeName)) guards.push(...(traits[traitName]?.transition_guards ?? []));
   return guards;
 }
 

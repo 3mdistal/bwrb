@@ -25,7 +25,29 @@ async function fixture() {
   return { vault, schema, source, target };
 }
 
+async function inheritedFixture() {
+  const vault = await mkdtemp(join(tmpdir(), 'bwrb-effects-inherited-')); dirs.push(vault);
+  await mkdir(join(vault, 'Candidates'), { recursive: true });
+  await mkdir(join(vault, 'Tasks'), { recursive: true });
+  const schema = resolveSchema({ version: 2, traits: { advancing: { transition_effects: [{ on: 'status = accepted', relation: 'task', set: { status: 'done' } }] } }, types: {
+    candidate: { traits: ['advancing'], fields: { status: { prompt: 'select', options: ['implementing', 'accepted'] }, task: { prompt: 'relation', source: 'task' } }, output_dir: 'Candidates' },
+    'special-candidate': { extends: 'candidate', fields: {}, output_dir: 'Candidates' },
+    task: { fields: { status: { prompt: 'select', options: ['open', 'done'] } }, output_dir: 'Tasks' },
+  }});
+  const target = join(vault, 'Tasks', 'T.md');
+  await writeFile(target, '---\ntype: task\nstatus: open\n---\nTarget\n', 'utf8');
+  const source = join(vault, 'Candidates', 'C.md');
+  await writeFile(source, '---\ntype: special-candidate\nstatus: implementing\ntask: "[[T]]"\n---\nSource\n', 'utf8');
+  return { vault, schema, source, target };
+}
+
 describe('transition effects', () => {
+  it('inherits effects from traits composed by an ancestor type', async () => {
+    const { vault, schema, source, target } = await inheritedFixture();
+    await editNoteFromJson(schema, vault, source, '{"status":"accepted"}');
+    expect(await readFile(target, 'utf8')).toContain('status: done');
+  });
+
   it('updates a scalar relation target only when the source enters its trigger', async () => {
     const { vault, schema, source, target } = await fixture();
     await editNoteFromJson(schema, vault, source, '{"status":"accepted"}');
