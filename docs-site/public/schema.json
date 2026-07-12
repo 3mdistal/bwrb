@@ -242,6 +242,80 @@
         },
         "recurrence": {
           "$ref": "#/definitions/recurrence"
+        },
+        "transition_guards": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "on": {
+                "type": "string",
+                "minLength": 1
+              },
+              "requires": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "relation": {
+                      "type": "string",
+                      "pattern": "^(?!forked-from$).*$",
+                      "description": "Schema field name; \"forked-from\" is reserved for system-managed lineage"
+                    },
+                    "min": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "all": {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "$ref": "#/definitions/trait/properties/transition_guards/items/properties/requires/items/properties/relation"
+                        },
+                        "equals": {
+                          "type": "string"
+                        },
+                        "in": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        }
+                      },
+                      "required": [
+                        "field"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "failed_when": {
+                      "$ref": "#/definitions/trait/properties/transition_guards/items/properties/requires/items/properties/all"
+                    },
+                    "stale_when": {
+                      "$ref": "#/definitions/trait/properties/transition_guards/items/properties/requires/items/properties/all"
+                    }
+                  },
+                  "required": [
+                    "relation",
+                    "all"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "on",
+              "requires"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "transition_effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/transitionEffect"
+          }
         }
       },
       "additionalProperties": false
@@ -271,6 +345,30 @@
       },
       "required": [
         "on"
+      ],
+      "additionalProperties": false
+    },
+    "transitionEffect": {
+      "type": "object",
+      "properties": {
+        "on": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relation": {
+          "$ref": "#/definitions/trait/properties/transition_guards/items/properties/requires/items/properties/relation"
+        },
+        "set": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "on",
+        "relation",
+        "set"
       ],
       "additionalProperties": false
     },

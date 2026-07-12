@@ -2,7 +2,7 @@
  * Bulk execution orchestration.
  */
 
-import { parseNote, writeNote } from '../frontmatter.js';
+import { parseNote, writeNote, writeFileAtomic } from '../frontmatter.js';
 import { resolveTypeFromFrontmatter } from '../schema.js';
 import { prepareRecurrenceFastPath, commitRecurrenceFastPath } from '../recurrence-fast-path.js';
 import { discoverManagedFiles, dedupeByCanonicalPath } from '../discovery.js';
@@ -15,6 +15,7 @@ import { executeBulkMove, findAllMarkdownFiles } from './move.js';
 import { assertTransitionGuards, transitionGuardTargetPaths } from '../transition-guards.js';
 import { withLineageMutationLocks } from '../lineage-lock.js';
 import { assertNoteBytesUnchanged } from '../note-write-concurrency.js';
+import { commitTransitionEffects, prepareTransitionEffects, rollbackTransitionEffects, transitionEffectTargetPaths } from '../transition-effects.js';
 import type {
   BulkOptions,
   BulkResult,
@@ -198,6 +199,9 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
       const resolvedType = resolveTypeFromFrontmatter(schema, modified);
       if (resolvedType) {
         await assertTransitionGuards(schema, vaultDir, resolvedType, file.frontmatter, modified);
+        // Validate effect targets during dry-runs too, so the receipt cannot
+        // promise a source transition whose related-note patch would fail.
+        await prepareTransitionEffects(schema, vaultDir, resolvedType, file.frontmatter, modified, file.path);
       }
 
       if (execute && changes.length > 0) {
@@ -233,22 +237,32 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
           const guardPaths = resolvedType
             ? await transitionGuardTargetPaths(schema, vaultDir, resolvedType, file.frontmatter, modified)
             : [];
-          await withLineageMutationLocks(vaultDir, [file.path, ...guardPaths], async () => {
+          const transitionEffects = resolvedType
+            ? await prepareTransitionEffects(schema, vaultDir, resolvedType, file.frontmatter, modified, file.path)
+            : [];
+          await withLineageMutationLocks(vaultDir, [file.path, ...guardPaths, ...transitionEffectTargetPaths(transitionEffects)], async () => {
             await assertNoteBytesUnchanged(file.path, file.raw);
+            for (const effect of transitionEffects) await assertNoteBytesUnchanged(effect.path, effect.raw);
             if (resolvedType) {
               await assertTransitionGuards(schema, vaultDir, resolvedType, file.frontmatter, modified);
             }
             await writeNote(file.path, modified, file.body);
-            fileChange.applied = true;
-
-            // Commit the prepared spawn (create successor + back-link `next`).
-            if (fastPathPlan) {
-              try {
+            const writtenSource = await parseNote(file.path).then((note) => note.raw);
+            let committedEffects;
+            try {
+              committedEffects = await commitTransitionEffects(transitionEffects);
+              fileChange.applied = true;
+              // Commit the prepared spawn (create successor + back-link `next`).
+              if (fastPathPlan) {
                 await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
-              } catch (recErr) {
-                const recMessage = recErr instanceof Error ? recErr.message : String(recErr);
-                result.errors.push(`Recurrence spawn failed for ${file.relativePath}: ${recMessage}`);
               }
+            } catch (effectErr) {
+              if (await parseNote(file.path).then((note) => note.raw).catch(() => '') === writtenSource) {
+                await writeFileAtomic(file.path, file.raw);
+              }
+              if (committedEffects) await rollbackTransitionEffects(committedEffects);
+              fileChange.applied = false;
+              throw effectErr;
             }
           });
         }

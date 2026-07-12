@@ -20,6 +20,7 @@ import {
   getOptionValues,
 } from '../types/schema.js';
 import { validateTransitionGuards } from './transition-guards.js';
+import { validateTransitionEffects } from './transition-effects.js';
 
 const META_TYPE = 'meta';
 
@@ -200,6 +201,12 @@ export function resolveSchema(schema: Schema): LoadedSchema {
   );
   if (transitionGuardErrors.length > 0) {
     throw new Error(`Invalid transition guards: ${transitionGuardErrors.join(' ')}`);
+  }
+  const transitionEffectErrors = Array.from(types.keys()).flatMap((typeName) =>
+    validateTransitionEffects(loaded, typeName)
+  );
+  if (transitionEffectErrors.length > 0) {
+    throw new Error(`Invalid transition effects: ${transitionEffectErrors.join(' ')}`);
   }
   return loaded;
 }

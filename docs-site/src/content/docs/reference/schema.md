@@ -214,6 +214,7 @@ A `task` now has every field from `objective` (and its ancestors) **plus** `stat
 | `fields` | object | Field definitions contributed by the trait |
 | `recurrence` | object | Spawn-on-transition recurrence config (see [Recurrence](#recurrence)) |
 | `transition_guards` | array | Direct relation-backed requirements checked when a field enters a value |
+| `transition_effects` | array | Bounded patches applied to a direct related note when a field enters a value |
 
 Traits are **flat**: a trait carries only `fields` (and an optional `description`, plus an optional `recurrence` block). A trait cannot `extends` a type or compose other traits. This keeps resolution simple and deterministic.
 
@@ -272,6 +273,26 @@ Guards are checked only when the source field enters the configured value.
 Bowerbird locks the source and all resolved evidence notes together before the
 final check and write. Use [`bwrb explain`](/reference/commands/explain/) to
 inspect the same result without mutating the note.
+
+### Transition effects
+
+A trait may update one directly related note when a source field enters a value:
+
+```json
+"transition_effects": [{
+  "on": "status = accepted",
+  "relation": "task",
+  "set": { "status": "done", "completed-at": "$TODAY" }
+}]
+```
+
+The relation must be a scalar effective `relation` field; an empty relation is
+a no-op. `set` is a flat literal patch. `$ACTOR`, `$NOW`, and `$TODAY` are the
+only expanded values. Bowerbird prepares and validates both notes, locks them
+in a stable shared order, rechecks their bytes, and writes the target directly.
+Target writes never trigger further effects or recurrence. If a later write
+fails, Bowerbird restores only its own earlier source bytes, never a newer
+writer's change.
 
 ### Precedence
 

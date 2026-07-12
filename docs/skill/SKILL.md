@@ -31,6 +31,11 @@ guard. A blocked explanation exits successfully because it is useful state.
 `bwrb edit --json` and interactive `bwrb edit` enforce the same guards;
 `bwrb bulk` reports blocked files individually and does not change them.
 
+Traits can also declare `transition_effects` for a scalar direct relation. On
+an entered transition, bwrb validates and applies the flat target patch in the
+same guarded commit. `$ACTOR`, `$NOW`, and `$TODAY` expand; target effects do
+not cascade into more effects or recurrence. An empty relation is a no-op.
+
 ## Vault Resolution
 
 bwrb finds the vault in this order:

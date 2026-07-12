@@ -330,6 +330,18 @@ export const TransitionGuardSchema = z.object({
 });
 export type TransitionGuard = z.infer<typeof TransitionGuardSchema>;
 
+/** A bounded direct-relation patch applied when a source field enters a value. */
+export const TransitionEffectSchema = z.object({
+  on: z.string().min(1),
+  relation: SchemaFieldNameSchema,
+  // String-only means patches stay flat literals. The transition executor
+  // expands only $ACTOR, $NOW, and $TODAY at commit time.
+  set: z.record(z.string(), z.string()).refine((set) => Object.keys(set).length > 0, {
+    message: 'A transition effect requires at least one field assignment',
+  }),
+});
+export type TransitionEffect = z.infer<typeof TransitionEffectSchema>;
+
 /**
  * A reusable bundle of fields composed into a type via `traits`.
  *
@@ -362,6 +374,8 @@ export const TraitSchema = z.object({
   recurrence: RecurrenceSchema.optional(),
   // Relation-backed invariants evaluated when a note enters a configured value.
   transition_guards: z.array(TransitionGuardSchema).optional(),
+  // Direct related-note patches evaluated when a note enters a configured value.
+  transition_effects: z.array(TransitionEffectSchema).optional(),
 });
 
 // ============================================================================

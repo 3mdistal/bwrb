@@ -14,7 +14,7 @@ import {
   getFieldsForType,
   getFrontmatterOrder,
 } from './schema.js';
-import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
+import { parseNote, writeNote, writeFileAtomic, generateBodySections } from './frontmatter.js';
 import {
   isBodySectionPresent,
   flattenBodySections,
@@ -53,6 +53,7 @@ import { withLineageMutationLocks } from './lineage-lock.js';
 import { assertNoteBytesUnchanged } from './note-write-concurrency.js';
 import { assertExpectedRevision, noteRevision } from './note-revision.js';
 import { assertTransitionGuards, transitionGuardTargetPaths } from './transition-guards.js';
+import { commitTransitionEffects, prepareTransitionEffects, rollbackTransitionEffects, transitionEffectTargetPaths } from './transition-effects.js';
 
 // ============================================================================
 // Types
@@ -366,16 +367,20 @@ async function editNoteFromJsonAttempt(
   const guardTargetPaths = await transitionGuardTargetPaths(
     schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter
   );
+  const transitionEffects = await prepareTransitionEffects(
+    schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter, filePath
+  );
 
   await waitForEditCommitBarrier(attempt, filePath);
 
-  const revision = await withLineageMutationLocks(vaultDir, [filePath, ...guardTargetPaths], async () => {
+  const revision = await withLineageMutationLocks(vaultDir, [filePath, ...guardTargetPaths, ...transitionEffectTargetPaths(transitionEffects)], async () => {
     if (expectedRevision !== undefined) {
       // Re-read while holding the shared mutation lock, closing the
       // validation-to-write race with other Bowerbird writers.
       assertExpectedRevision(expectedRevision, await readFile(filePath, 'utf-8'));
     }
     await assertNoteBytesUnchanged(filePath, raw, attempt);
+    for (const effect of transitionEffects) await assertNoteBytesUnchanged(effect.path, effect.raw, attempt);
     // Relation state can change after validation. Re-evaluate immediately
     // before the source write while its mutation lock is held.
     await assertTransitionGuards(schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter);
@@ -392,7 +397,20 @@ async function editNoteFromJsonAttempt(
       body
     );
     await writeNote(filePath, resolvedFrontmatter, body, orderedFields);
-    await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+    const writtenSource = await readFile(filePath, 'utf-8');
+    let committedEffects;
+    try {
+      committedEffects = await commitTransitionEffects(transitionEffects);
+      await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+    } catch (error) {
+      // Restore only the exact source bytes this invocation wrote. A newer
+      // writer wins; it must never be erased by our compensating rollback.
+      if (await readFile(filePath, 'utf-8').catch(() => '') === writtenSource) {
+        await writeFileAtomic(filePath, raw);
+      }
+      if (committedEffects) await rollbackTransitionEffects(committedEffects);
+      throw error;
+    }
     // Return the revision of the final bytes produced by this guarded commit
     // while the shared Bowerbird mutation lock still excludes another writer.
     return noteRevision(await readFile(filePath, 'utf-8'));
@@ -498,8 +516,12 @@ export async function editNoteInteractive(
   const guardTargetPaths = await transitionGuardTargetPaths(
     schema, vaultDir, typeDef.name, frontmatter, newFrontmatter
   );
-  const fastPath = await withLineageMutationLocks(vaultDir, [filePath, ...guardTargetPaths], async () => {
+  const transitionEffects = await prepareTransitionEffects(
+    schema, vaultDir, typeDef.name, frontmatter, newFrontmatter, filePath
+  );
+  const fastPath = await withLineageMutationLocks(vaultDir, [filePath, ...guardTargetPaths, ...transitionEffectTargetPaths(transitionEffects)], async () => {
     await assertNoteBytesUnchanged(filePath, raw);
+    for (const effect of transitionEffects) await assertNoteBytesUnchanged(effect.path, effect.raw);
     await assertTransitionGuards(schema, vaultDir, typeDef.name, frontmatter, newFrontmatter);
     const fastPathPlan = await prepareRecurrenceFastPath(
       schema,
@@ -511,7 +533,18 @@ export async function editNoteInteractive(
       updatedBody
     );
     await writeNote(filePath, newFrontmatter, updatedBody, orderedFields);
-    return commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+    const writtenSource = await readFile(filePath, 'utf-8');
+    let committedEffects;
+    try {
+      committedEffects = await commitTransitionEffects(transitionEffects);
+      return await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+    } catch (error) {
+      if (await readFile(filePath, 'utf-8').catch(() => '') === writtenSource) {
+        await writeFileAtomic(filePath, raw);
+      }
+      if (committedEffects) await rollbackTransitionEffects(committedEffects);
+      throw error;
+    }
   });
   printSuccess(`\n✓ Updated: ${filePath}`);
   if (fastPath.successorPath) {

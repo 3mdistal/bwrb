@@ -88,6 +88,13 @@ edits reject a blocked transition without writing and JSON reports
 `bwrb explain "Candidate 417" --transition accepted --output json` to inspect
 the same result before attempting the edit.
 
+### Related-note transition effects
+
+When an entered trait transition has `transition_effects`, `edit` applies its
+validated flat patch to the configured scalar relation target in the same
+guarded commit. Empty relations are no-ops. Effects do not cascade from the
+target into more effects or recurrence; cross-type creation remains recurrence.
+
 ## Concurrent lineage changes
 
 The final edit commit shares the note's lineage mutation lock with `new --fork`
