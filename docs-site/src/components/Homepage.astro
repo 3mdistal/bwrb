@@ -1,0 +1,127 @@
+---
+import BowerbirdMark from './BowerbirdMark.astro';
+
+const capabilities = [
+	{ label: 'Plain Markdown', detail: 'Your vault stays yours.', mark: 'file' },
+	{ label: 'Local-first', detail: 'No account. No cloud.', mark: 'folder' },
+	{ label: 'Automation-ready', detail: 'JSON in. JSON out.', mark: 'bolt' },
+];
+---
+
+<div class="bb-home">
+	<section class="bb-hero" aria-labelledby="bb-hero-title">
+		<div class="bb-hero-copy">
+			<div class="bb-kicker"><BowerbirdMark /> <span>The type system for your notes</span></div>
+			<h1 id="bb-hero-title">Your notes,<br />with a type system.</h1>
+			<p class="bb-hero-dek">
+				Bring structure to Markdown vaults with schemas, validation, and tooling that stays out of your way.
+			</p>
+			<div class="bb-actions">
+				<a class="bb-button bb-button-primary" href="/getting-started/quick-start/">
+					<span aria-hidden="true">›_</span> Start with a schema
+				</a>
+				<a class="bb-button bb-button-quiet" href="https://github.com/3mdistal/bwrb">
+					View on GitHub <span aria-hidden="true">↗</span>
+				</a>
+			</div>
+		</div>
+
+		<div class="bb-system" aria-label="A Markdown note passing through a schema to become a validated note">
+			<div class="bb-system-labels" aria-hidden="true">
+				<span>Raw Markdown</span><span>Schema</span><span>Validated note</span>
+			</div>
+			<div class="bb-system-grid">
+				<div class="bb-code-panel bb-raw-panel">
+					<div class="bb-panel-bar"><span>task.md</span><i></i></div>
+					<pre><code><span>---</span>
+<b>title:</b> Ship CLI v1
+<b>status:</b> in-progress
+<b>due:</b> 2026-07-18
+<span>---</span>
+
+## Overview
+Build, test, and ship.</code></pre>
+				</div>
+
+				<div class="bb-schema-panel">
+					<div class="bb-node bb-node-root"><i></i><strong>task</strong><small>type</small></div>
+					<div class="bb-node"><i></i><span>title</span><small>string</small></div>
+					<div class="bb-node"><i></i><span>status</span><small>select</small></div>
+					<div class="bb-node"><i></i><span>due</span><small>date</small></div>
+				</div>
+
+				<div class="bb-note-panel">
+					<div class="bb-valid"><i></i> Valid</div>
+					<div><small>title <em>string</em></small><strong>Ship CLI v1</strong></div>
+					<div><small>status <em>select</em></small><span class="bb-chip">in-progress</span></div>
+					<div><small>due <em>date</em></small><strong>July 18, 2026</strong></div>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<section class="bb-proof" aria-label="Product principles">
+		{capabilities.map((capability) => (
+			<div>
+				<span class={`bb-proof-icon bb-proof-${capability.mark}`} aria-hidden="true"></span>
+				<strong>{capability.label}</strong>
+				<small>{capability.detail}</small>
+			</div>
+		))}
+	</section>
+
+	<section class="bb-story" aria-labelledby="bb-story-title">
+		<div class="bb-section-heading">
+			<p>From an idea to a trustworthy vault</p>
+			<h2 id="bb-story-title">Structure that grows<br />with your thinking.</h2>
+		</div>
+
+		<div class="bb-story-grid">
+			<article class="bb-story-card bb-story-schema">
+				<header><span>Schema / 01</span><strong>Define the shape.</strong><p>Describe fields once. Let every note follow.</p></header>
+				<div class="bb-card-stage">
+					<pre><code><b>task</b>: &#123;
+  <b>status</b>: <span>select</span>
+  <b>due</b>: <span>date</span>
+  <b>priority</b>: <span>number</span>
+&#125;</code></pre>
+					<div class="bb-mini-tree" aria-hidden="true">
+						<i></i><p><b>task</b><small>object</small></p>
+						<p><b>status</b><small>select</small></p>
+						<p><b>due</b><small>date</small></p>
+						<p><b>priority</b><small>number</small></p>
+					</div>
+				</div>
+			</article>
+
+			<article class="bb-story-card bb-story-create">
+				<header><span>Create / 02</span><strong>Write in Markdown.</strong><p>Keep the format you trust. Add structure as you need it.</p></header>
+				<div class="bb-card-stage bb-terminal-stage">
+					<div class="bb-terminal-bar"><i></i><i></i><i></i><span>Terminal</span></div>
+					<pre><code><b>$</b> bwrb new task --json
+
+<span>?</span> title    Ship CLI v1
+<span>?</span> status   in-progress
+<span>?</span> due      2026-07-18
+
+<em>✓ Created tasks/Ship CLI v1.md</em></code></pre>
+				</div>
+			</article>
+
+			<article class="bb-story-card bb-story-audit">
+				<header><span>Audit / 03</span><strong>Trust the whole vault.</strong><p>Find drift early. Migrate deliberately.</p></header>
+				<div class="bb-card-stage bb-audit-stage">
+					<div class="bb-audit-summary"><span><i></i>42 valid</span><span><i></i>2 warnings</span></div>
+					<div class="bb-audit-row"><code>tasks/ship-cli-v1.md</code><span>valid</span></div>
+					<div class="bb-audit-row"><code>tasks/old-idea.md</code><span class="is-warning">2 issues</span></div>
+					<div class="bb-audit-row"><code>notes/untitled.md</code><span class="is-muted">ignored</span></div>
+				</div>
+			</article>
+		</div>
+	</section>
+
+	<section class="bb-cta" aria-labelledby="bb-cta-title">
+		<div><span>Ready when your notes are.</span><h2 id="bb-cta-title">Give your vault a backbone.</h2></div>
+		<a class="bb-button bb-button-primary" href="/getting-started/quick-start/">Read the Quick Start <span aria-hidden="true">→</span></a>
+	</section>
+</div>

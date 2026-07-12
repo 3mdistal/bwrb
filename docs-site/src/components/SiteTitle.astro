@@ -1,0 +1,30 @@
+---
+import BowerbirdMark from './BowerbirdMark.astro';
+---
+
+<a class="bb-site-title" href="/" aria-label="Bowerbird home">
+	<BowerbirdMark />
+	<span>Bowerbird</span>
+</a>
+
+<style>
+	.bb-site-title {
+		align-items: center;
+		color: var(--bb-ink);
+		display: inline-flex;
+		font-size: 1.06rem;
+		font-weight: 660;
+		gap: 0.62rem;
+		letter-spacing: -0.025em;
+		text-decoration: none;
+	}
+
+	.bb-site-title:hover {
+		color: var(--bb-accent);
+	}
+
+	.bb-site-title :global(svg) {
+		height: 1.85rem;
+		width: 1.85rem;
+	}
+</style>
