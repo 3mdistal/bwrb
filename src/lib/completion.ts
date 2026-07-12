@@ -250,6 +250,7 @@ const COMMANDS = [
   'delete',
   'list',
   'recent',
+  'explain',
   'schema',
   'audit',
   'bulk',

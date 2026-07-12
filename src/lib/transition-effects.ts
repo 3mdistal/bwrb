@@ -34,7 +34,7 @@ export interface CommittedTransitionEffects {
   writes: Array<{ effect: PreparedTransitionEffect; written: string }>;
 }
 
-export function getTransitionEffectsForType(schema: LoadedSchema, typeName: string): TransitionEffect[] {
+function getTransitionEffectsForType(schema: LoadedSchema, typeName: string): TransitionEffect[] {
   const type = getType(schema, typeName);
   if (!type) return [];
   const traits = schema.raw.traits ?? {};
