@@ -290,6 +290,14 @@ bwrb list --body "search term" --output json
 frontmatter field predicate. Detailed `--matches` line numbers still refer to
 the original file, and displayed context never crosses into YAML frontmatter.
 
+### Schema Date Defaults
+
+Schema fields with `prompt: "date"` may use creation-time expressions such as
+`@today` or `@today+7d` as schema defaults. BWRB evaluates them for ordinary
+creation, scoped default restoration during edit, and reset-on-fork defaults.
+Non-date defaults remain literal. Custom-calendar date fields require literal
+dates in their configured calendar rather than Gregorian `@today` expressions.
+
 ### Relative-Date Fields
 
 Schema fields with `prompt: "relative-date"` store structured constraints, not
