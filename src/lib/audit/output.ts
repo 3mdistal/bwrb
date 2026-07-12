@@ -22,7 +22,10 @@ import {
 /**
  * Calculate summary statistics from results.
  */
-export function calculateSummary(results: FileAuditResult[]): AuditSummary {
+export function calculateSummary(
+  results: FileAuditResult[],
+  filesChecked: number = results.length
+): AuditSummary {
   let filesWithErrors = 0;
   let filesWithWarnings = 0;
   let totalErrors = 0;
@@ -40,7 +43,7 @@ export function calculateSummary(results: FileAuditResult[]): AuditSummary {
   }
 
   return {
-    filesChecked: results.length > 0 ? results.length : 0,
+    filesChecked,
     filesWithErrors,
     filesWithWarnings,
     totalErrors,

@@ -47,6 +47,7 @@ import { applyWhereExpressions } from '../where-targeting.js';
 import { type LoadedSchema, type Field, getOptionValues } from '../../types/schema.js';
 import {
   type AuditIssue,
+  type AuditRunResult,
   type FileAuditResult,
   type ManagedFile,
   type AuditRunOptions,
@@ -122,11 +123,11 @@ const VAULT_GLOBAL_RESULT_PATH = '(vault-wide)';
 /**
  * Run audit on all managed files.
  */
-export async function runAudit(
+export async function runAuditDetailed(
   schema: LoadedSchema,
   vaultDir: string,
   options: AuditRunOptions
-): Promise<FileAuditResult[]> {
+): Promise<AuditRunResult> {
   // Discover all managed files
   const files = await discoverManagedFiles(schema, vaultDir, options.typePath);
 
@@ -318,7 +319,22 @@ export async function runAudit(
     }
   }
 
-  return results;
+  return { results, filesChecked: filteredFiles.length };
+}
+
+/**
+ * Run audit detection and return only files with findings.
+ *
+ * This compatibility surface intentionally omits clean files. Command output
+ * uses {@link runAuditDetailed} so summary accounting can still report every
+ * targeted file that was inspected.
+ */
+export async function runAudit(
+  schema: LoadedSchema,
+  vaultDir: string,
+  options: AuditRunOptions
+): Promise<FileAuditResult[]> {
+  return (await runAuditDetailed(schema, vaultDir, options)).results;
 }
 
 // ============================================================================

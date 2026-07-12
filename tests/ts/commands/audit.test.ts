@@ -669,11 +669,16 @@ priority: medium
 `
       );
 
-      const result = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+      const result = await runCLI(
+        ['audit', '--path', 'Ideas/Good File.md', '--output', 'json'],
+        tempVaultDir
+      );
 
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
       expect(json.files).toBeInstanceOf(Array);
+      expect(json.files).toHaveLength(0);
+      expect(json.summary.filesChecked).toBe(1);
       expect(json.summary.totalErrors).toBe(0);
     });
 
@@ -793,6 +798,14 @@ priority: medium
       expect(result.stdout).toContain('Summary:');
       expect(result.stdout).toContain('Files with issues: 2');
       expect(result.stdout).toContain('Total errors: 2');
+
+      const jsonResult = await runCLI(['audit', 'idea', '--output', 'json'], tempVaultDir);
+      const output = JSON.parse(jsonResult.stdout);
+      expect(output.summary).toMatchObject({
+        filesChecked: 3,
+        filesWithErrors: 2,
+        totalErrors: 2,
+      });
     });
   });
 
