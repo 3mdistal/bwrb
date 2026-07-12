@@ -16,7 +16,9 @@ idea—type safety for Markdown notes—harder to see than its feature inventory
 
 This should be a focused rewrite rather than a factual patch. The target is a
 short front door for prospective users and contributors, with detailed behavior
-routed to `bwrb.dev`.
+routed to `bwrb.dev`. Because `README.md` ships in the npm package, this is also
+the package's npm landing page; prospective and installing users are therefore
+the primary audience, not merely one possible audience.
 
 ## Evidence
 
@@ -44,21 +46,23 @@ reader learns what it has before learning why it exists.
 **Recommendation:** lead with the type-safety promise and a two- or three-sentence
 boundary: Markdown stays the source of truth; Bowerbird creates, validates,
 queries, and migrates notes against a schema; it is not a note editor, database,
-sync service, or LLM.
+sync service, or LLM. One sentence should surface its distinctive role as a set
+of deterministic guardrails beneath the agents that author a vault.
 
-### 3. High: the README violates the repo's summary-and-link policy
+### 3. High: the README contradicts its own declaration of canonical docs
 
 The README declares the docs site canonical near the top
 ([README](../README.md#documentation-policy)), but then reproduces detailed
 behavior contracts for schema fields, body sections, templates, instance
-scaffolding, query resolution, picker modes, and shell completion. The
-authoritative policy explicitly says "summary + link, not full mirroring" and
-warns against parallel full behavior specs
+scaffolding, query resolution, picker modes, and shell completion. Repository
+policy reinforces "summary + link, not full mirroring" and warns against parallel
+full behavior specs across the two documentation trees it governs
 ([canonical policy](../docs/product/canonical-docs-policy.md#link-vs-mirror-rules)).
 
 This duplication carries drift risk and obscures navigation. The 641-line README
-contains 31 Markdown headings, while the docs site already has dedicated getting
-started, schema, template, list, completion, and command-reference pages.
+contains 36 Markdown headings outside fenced examples, while the docs site has
+dedicated getting started, schema, template, list, completion, and
+command-reference pages.
 
 **Recommendation:** retain only:
 
@@ -72,6 +76,9 @@ started, schema, template, list, completion, and command-reference pages.
 Move or remove the detailed schema reference, template specification, instance
 edge cases, picker semantics, completion inventory, and duplicated `list`
 examples. Those belong on `bwrb.dev`.
+
+Public documentation links should be absolute `https://bwrb.dev` or GitHub URLs,
+not repository-relative links, so they resolve from both GitHub and npm.
 
 ### 4. Medium: the quick path does not demonstrate the payoff
 
@@ -99,6 +106,10 @@ user reference material and do not form a clear contributor path.
 points to `AGENTS.md`, the exact CI workflow or documented parity commands, and
 the docs-site contributor README. Avoid maintaining a hand-curated partial source
 tree; it goes stale without helping a new contributor navigate the architecture.
+
+The current source-install example also begins with the personal path
+`~/Developer/bwrb`, which is not a portable instruction. Contributor setup should
+show a clone command and repository-relative steps.
 
 ### 6. Low: naming and information hierarchy can be tightened
 
@@ -132,15 +143,12 @@ orientation, not widespread factual decay.
 - A shorter README will reduce maintenance cost only if the rewrite replaces
   removed contracts with direct canonical links. Deleting detail without routing
   readers would merely exchange duplication for a scavenger hunt.
-- The most useful audience order is likely: prospective user, installing user,
-  returning user seeking docs, then contributor. This matches the repository's
-  package distribution and docs-site structure, but it is still a product choice.
+- The useful audience order is: prospective user, installing user, returning
+  user seeking docs, then contributor. The npm rendering context settles this
+  more firmly than repository taste alone.
 
 ## Uncertainties
 
-- Whether the README should optimize primarily for the author/agent workflow or
-  for outside adopters. The recommended structure works for both, but the
-  examples and tone may differ.
 - Whether badges, screenshots, or a terminal recording are desired. None is
   necessary to fix the current structural problem.
 - The exact minimal schema/example to embed should be verified against a fresh
@@ -158,6 +166,27 @@ Rewrite the README around this structure:
    templates, automation/lineage—each linked to canonical docs.
 6. Documentation and roadmap links.
 7. Short contributor section with source setup and CI-parity pointer.
+
+## Acceptance criteria
+
+- `npm install -g bwrb` is the first installation command shown.
+- Source installation appears only under Contributing and uses a portable clone
+  path, not `~/Developer/bwrb`.
+- Public links are absolute and resolve from the npm README context.
+- Every shown command is verified copy-paste runnable. If a fresh
+  `bwrb init --yes` vault cannot support the complete embedded example, link to
+  the canonical Quick Start rather than duplicating its schema.
+- Detailed behavior-contract tables and specs for schemas, templates, picker and
+  app modes, and completion are replaced with summaries plus canonical links.
+- The hand-curated repository tree is removed.
+- The capability map covers the full command surface directly or via a full
+  command-reference link, including `recent`, `bulk`, `dashboard`, and `config`.
+- The opening states the type-safety promise, clear product boundaries, and the
+  deterministic agent-guardrail use case.
+- No current package version is hardcoded in prose.
+- The contributor section points to `AGENTS.md` and the repository's exact local
+  CI-parity sequence.
+- `pnpm docs:lint`, `pnpm docs:doctor`, and `pnpm docs:check` pass.
 
 Aim for roughly 150–250 lines. Treat that as a design constraint, not a sacred
 number: enough room to sing, not enough to become the whole aviary.
