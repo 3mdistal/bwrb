@@ -29,6 +29,8 @@ import {
   type FileStatMap,
 } from '../lib/list-helpers.js';
 import { readFile, stat } from 'fs/promises';
+import { parseNote } from '../lib/frontmatter.js';
+import { noteRevision } from '../lib/note-revision.js';
 
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
@@ -1055,12 +1057,17 @@ export async function listObjects(
 
   switch (options.outputFormat) {
     case 'json': {
-      const jsonOutput = filteredFiles.map(({ path, frontmatter }) => {
+      const jsonOutput = await Promise.all(filteredFiles.map(async ({ path }) => {
+        // The row and revision must describe one observation, not adjacent
+        // reads of a note that an editor could change between them.
+        const snapshot = await parseNote(path);
+        const frontmatter = snapshot.frontmatter;
         const notePath = relative(vaultDir, path);
         const noteName = basename(path, '.md');
         const base = {
           _path: notePath,
           _name: noteName,
+          revision: noteRevision(snapshot.raw),
         };
 
         if (!options.fields || options.fields.length === 0) {
@@ -1099,7 +1106,7 @@ export async function listObjects(
         }
 
         return selected;
-      });
+      }));
       console.log(JSON.stringify(jsonOutput, null, 2));
       return;
     }

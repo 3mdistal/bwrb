@@ -38,6 +38,7 @@ export interface JsonSuccess<T = unknown> {
   data?: T;
   path?: string;
   updated?: string[];
+  revision?: string;
   message?: string;
 }
 
@@ -56,7 +57,9 @@ export interface JsonError {
     expected?: string[] | string;
     suggestion?: string;
   }>;
-  code?: number;
+  code?: number | string;
+  expectedRevision?: string;
+  currentRevision?: string;
 }
 
 /**

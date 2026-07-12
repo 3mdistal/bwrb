@@ -28,6 +28,7 @@ import {
 import { resolveTargets, hasAnyTargeting, type TargetingOptions } from '../lib/targeting.js';
 import { ConcurrentNoteModificationError, UserCancelledError } from '../lib/errors.js';
 import { concurrentModificationData } from '../lib/note-write-concurrency.js';
+import { RevisionMismatchError } from '../lib/note-revision.js';
 import type { ResolvedConfig } from '../types/schema.js';
 
 // ============================================================================
@@ -42,6 +43,7 @@ interface EditOptions {
   id?: string;
   body?: string;
   json?: string;
+  expectedRevision?: string;
   output?: string;
   open?: boolean;
   app?: string;
@@ -82,10 +84,16 @@ function printEditSuccess(
   path: string,
   updatedFields: string[],
   jsonMode: boolean,
+  revision?: string,
   data?: EditOpenJsonData
 ): void {
   if (jsonMode) {
-    printJson(jsonSuccess({ path, updated: updatedFields, ...(data ? { data } : {}) }));
+    printJson(jsonSuccess({
+      path,
+      updated: updatedFields,
+      ...(revision ? { revision } : {}),
+      ...(data ? { data } : {}),
+    }));
     return;
   }
 
@@ -110,6 +118,7 @@ export const editCommand = new Command('edit')
   .option('--id <uuid>', 'Filter by stable note id')
   .option('-b, --body <pattern>', 'Filter by body content')
   .option('--json <patch>', 'Non-interactive patch/merge mode')
+  .option('--expected-revision <revision>', 'Require this opaque revision when using --json')
   .option('--output <format>', 'Output format: text or json (default: json with --json)')
   .option('-o, --open', 'Open the note in Obsidian after editing')
   .option('--app <mode>', 'App mode for --open: system (default), editor, visual, obsidian, print')
@@ -171,6 +180,16 @@ Precedence (for --open app mode):
       const outputFormat = options.output ?? globalOpts.output;
       if (outputFormat !== undefined && outputFormat !== 'json' && outputFormat !== 'text') {
         printError(`Unknown output format: ${outputFormat}`);
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+
+      if (options.expectedRevision !== undefined && !patchMode) {
+        const error = '--expected-revision requires --json <patch>';
+        if (jsonMode) {
+          printJson(jsonError(error));
+        } else {
+          printError(error);
+        }
         process.exit(ExitCodes.VALIDATION_ERROR);
       }
 
@@ -239,7 +258,12 @@ Precedence (for --open app mode):
         if (fileExists) {
           // It's a valid absolute path - use it directly.
           if (patchMode) {
-            const editResult = await editNoteFromJson(schema, vaultDir, query, options.json!, { jsonMode });
+            const editResult = await editNoteFromJson(schema, vaultDir, query, options.json!, {
+              jsonMode,
+              ...(options.expectedRevision !== undefined
+                ? { expectedRevision: options.expectedRevision }
+                : {}),
+            });
             let openData: EditOpenJsonData | undefined;
             if (options.open) {
               const appMode = resolveAppMode(appModeInput, schema.config);
@@ -250,7 +274,7 @@ Precedence (for --open app mode):
               }
               openData = await openAfterEdit(vaultDir, query, appMode, schema.config, jsonMode);
             }
-            printEditSuccess(relative(vaultDir, query), editResult.updatedFields, jsonMode, openData);
+            printEditSuccess(relative(vaultDir, query), editResult.updatedFields, jsonMode, editResult.revision, openData);
           } else {
             await editNoteInteractive(schema, vaultDir, query, {});
             printSuccess(`Updated ${basename(query, '.md')}`);
@@ -349,7 +373,12 @@ Precedence (for --open app mode):
       // Perform the edit
       if (patchMode) {
         // JSON patch mode: non-interactive patch with selectable output format
-        const editResult = await editNoteFromJson(schema, vaultDir, targetFile.path, options.json!, { jsonMode });
+        const editResult = await editNoteFromJson(schema, vaultDir, targetFile.path, options.json!, {
+          jsonMode,
+          ...(options.expectedRevision !== undefined
+            ? { expectedRevision: options.expectedRevision }
+            : {}),
+        });
         let openData: EditOpenJsonData | undefined;
 
         // Open after edit if requested
@@ -362,7 +391,7 @@ Precedence (for --open app mode):
           }
           openData = await openAfterEdit(vaultDir, targetFile.path, appMode, schema.config, jsonMode);
         }
-        printEditSuccess(targetFile.relativePath, editResult.updatedFields, jsonMode, openData);
+        printEditSuccess(targetFile.relativePath, editResult.updatedFields, jsonMode, editResult.revision, openData);
         return;
       } else {
         // Interactive mode
@@ -377,6 +406,18 @@ Precedence (for --open app mode):
         return;
       }
     } catch (err) {
+      if (err instanceof RevisionMismatchError) {
+        if (jsonMode) {
+          printJson(jsonError(err.message, {
+            code: 'REVISION_MISMATCH',
+            expectedRevision: err.expectedRevision,
+            currentRevision: err.currentRevision,
+          }));
+        } else {
+          printError(err.message);
+        }
+        process.exit(ExitCodes.IO_ERROR);
+      }
       if (err instanceof ConcurrentNoteModificationError) {
         if (jsonMode) {
           printJson(jsonError(err.message, {

@@ -158,6 +158,11 @@ describe('list command', () => {
       expect(json.length).toBeGreaterThan(0);
       expect(json[0]).toHaveProperty('_path');
       expect(json[0]).toHaveProperty('_name');
+      expect(json[0].revision).toMatch(/^[a-f0-9]{64}$/);
+
+      const repeated = await runCLI(['list', '--output', 'json', 'idea'], vaultDir);
+      const repeatedJson = JSON.parse(repeated.stdout);
+      expect(repeatedJson[0].revision).toBe(json[0].revision);
     });
   });
 
@@ -238,6 +243,7 @@ describe('list command', () => {
         {
           _path: 'Ideas/Another Idea.md',
           _name: 'Another Idea',
+          revision: expect.stringMatching(/^[a-f0-9]{64}$/),
           name: 'Another Idea',
           status: 'backlog',
           priority: 'high',
@@ -245,6 +251,7 @@ describe('list command', () => {
         {
           _path: 'Ideas/Sample Idea.md',
           _name: 'Sample Idea',
+          revision: expect.stringMatching(/^[a-f0-9]{64}$/),
           name: 'Sample Idea',
           status: 'raw',
           priority: 'medium',

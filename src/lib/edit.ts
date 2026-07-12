@@ -6,7 +6,7 @@
  * - `search --edit` (unified interface)
  */
 
-import { access, mkdir, writeFile } from 'fs/promises';
+import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import { join, relative } from 'path';
 import {
   getTypeDefByPath,
@@ -51,6 +51,7 @@ import { validateRelativeDateCalendarOffsetsForWrite } from './relative-date.js'
 import { isBwrbReservedFrontmatterField } from './frontmatter/systemFields.js';
 import { withLineageMutationLocks } from './lineage-lock.js';
 import { assertNoteBytesUnchanged } from './note-write-concurrency.js';
+import { assertExpectedRevision, noteRevision } from './note-revision.js';
 
 // ============================================================================
 // Types
@@ -59,11 +60,14 @@ import { assertNoteBytesUnchanged } from './note-write-concurrency.js';
 export interface EditResult {
   updatedFields: string[];
   path: string;
+  revision: string;
 }
 
 export interface EditFromJsonOptions {
   /** Whether to output errors as JSON */
   jsonMode?: boolean;
+  /** Opaque raw-note revision that must still match before this patch writes. */
+  expectedRevision?: string;
 }
 
 export interface EditInteractiveOptions {
@@ -96,7 +100,7 @@ export async function editNoteFromJson(
   jsonInput: string,
   options: EditFromJsonOptions = {}
 ): Promise<EditResult> {
-  const { jsonMode = true } = options;
+  const { jsonMode = true, expectedRevision } = options;
 
   // Parse JSON input
   let patchData: Record<string, unknown>;
@@ -124,7 +128,10 @@ export async function editNoteFromJson(
     throw new Error(error);
   }
 
-  for (let attempt = 1; attempt <= JSON_EDIT_ATTEMPTS; attempt++) {
+  // A guarded caller must reread and reconsider a stale patch; replaying it
+  // against unseen bytes would defeat the revision precondition.
+  const attempts = expectedRevision === undefined ? JSON_EDIT_ATTEMPTS : 1;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       return await editNoteFromJsonAttempt(
         schema,
@@ -132,12 +139,13 @@ export async function editNoteFromJson(
         filePath,
         patchData,
         jsonMode,
-        attempt
+        attempt,
+        expectedRevision
       );
     } catch (error) {
       if (
         error instanceof ConcurrentNoteModificationError &&
-        attempt < JSON_EDIT_ATTEMPTS
+        attempt < attempts
       ) {
         continue;
       }
@@ -145,7 +153,7 @@ export async function editNoteFromJson(
     }
   }
 
-  throw new ConcurrentNoteModificationError(filePath, JSON_EDIT_ATTEMPTS);
+  throw new ConcurrentNoteModificationError(filePath, attempts);
 }
 
 async function editNoteFromJsonAttempt(
@@ -154,11 +162,16 @@ async function editNoteFromJsonAttempt(
   filePath: string,
   patchData: Record<string, unknown>,
   jsonMode: boolean,
-  attempt: number
+  attempt: number,
+  expectedRevision: string | undefined
 ): Promise<EditResult> {
 
   // Parse existing note
   const { frontmatter, body, raw } = await parseNote(filePath);
+
+  if (expectedRevision !== undefined) {
+    assertExpectedRevision(expectedRevision, raw);
+  }
 
   // Resolve type path from existing frontmatter
   const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
@@ -350,7 +363,12 @@ async function editNoteFromJsonAttempt(
 
   await waitForEditCommitBarrier(attempt, filePath);
 
-  await withLineageMutationLocks(vaultDir, [filePath], async () => {
+  const revision = await withLineageMutationLocks(vaultDir, [filePath], async () => {
+    if (expectedRevision !== undefined) {
+      // Re-read while holding the shared mutation lock, closing the
+      // validation-to-write race with other Bowerbird writers.
+      assertExpectedRevision(expectedRevision, await readFile(filePath, 'utf-8'));
+    }
     await assertNoteBytesUnchanged(filePath, raw, attempt);
 
     // Recurrence prepare, predecessor write, and successor/back-link commit are
@@ -366,9 +384,16 @@ async function editNoteFromJsonAttempt(
     );
     await writeNote(filePath, resolvedFrontmatter, body, orderedFields);
     await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+    // Return the revision of the final bytes produced by this guarded commit
+    // while the shared Bowerbird mutation lock still excludes another writer.
+    return noteRevision(await readFile(filePath, 'utf-8'));
   });
 
-  return { updatedFields, path: filePath };
+  return {
+    updatedFields,
+    path: filePath,
+    revision,
+  };
 }
 
 // ============================================================================

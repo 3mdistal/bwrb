@@ -128,6 +128,39 @@ describe('edit command', () => {
       expect(json.success).toBe(true);
       expect(json.path).toBe('Ideas/Sample Idea.md');
       expect(json.updated).toContain('status');
+      expect(json.revision).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it('rejects --expected-revision without a JSON patch at the command boundary', async () => {
+      const result = await runCLI(
+        ['edit', 'Ideas/Sample Idea.md', '--expected-revision', 'opaque-token'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('--expected-revision requires --json <patch>');
+    });
+
+    it('rejects a body-invalidated revision and preserves the newer bytes', async () => {
+      const notePath = join(vaultDir, 'Ideas/Sample Idea.md');
+      const listed = await runCLI(['list', 'idea', '--output', 'json'], vaultDir);
+      const row = (JSON.parse(listed.stdout) as Array<{ _path: string; revision: string }>)
+        .find(note => note._path === 'Ideas/Sample Idea.md')!;
+      const newerRaw = `${await readFile(notePath, 'utf-8')}\nA native body edit.\n`;
+      await writeFile(notePath, newerRaw);
+
+      const result = await runCLI([
+        'edit', 'Ideas/Sample Idea.md', '--json', '{"status":"backlog"}',
+        '--expected-revision', row.revision, '--output', 'json',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(2);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        success: false,
+        code: 'REVISION_MISMATCH',
+        expectedRevision: row.revision,
+      });
+      expect(await readFile(notePath, 'utf-8')).toBe(newerRaw);
     });
 
     it('should accept --output text with JSON patch mode', async () => {
