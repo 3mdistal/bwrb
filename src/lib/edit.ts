@@ -52,6 +52,7 @@ import { isBwrbReservedFrontmatterField } from './frontmatter/systemFields.js';
 import { withLineageMutationLocks } from './lineage-lock.js';
 import { assertNoteBytesUnchanged } from './note-write-concurrency.js';
 import { assertExpectedRevision, noteRevision } from './note-revision.js';
+import { assertTransitionGuards, transitionGuardTargetPaths } from './transition-guards.js';
 
 // ============================================================================
 // Types
@@ -361,15 +362,23 @@ async function editNoteFromJsonAttempt(
   const fieldOrder = getFrontmatterOrder(typeDef);
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(resolvedFrontmatter);
 
+  await assertTransitionGuards(schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter);
+  const guardTargetPaths = await transitionGuardTargetPaths(
+    schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter
+  );
+
   await waitForEditCommitBarrier(attempt, filePath);
 
-  const revision = await withLineageMutationLocks(vaultDir, [filePath], async () => {
+  const revision = await withLineageMutationLocks(vaultDir, [filePath, ...guardTargetPaths], async () => {
     if (expectedRevision !== undefined) {
       // Re-read while holding the shared mutation lock, closing the
       // validation-to-write race with other Bowerbird writers.
       assertExpectedRevision(expectedRevision, await readFile(filePath, 'utf-8'));
     }
     await assertNoteBytesUnchanged(filePath, raw, attempt);
+    // Relation state can change after validation. Re-evaluate immediately
+    // before the source write while its mutation lock is held.
+    await assertTransitionGuards(schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter);
 
     // Recurrence prepare, predecessor write, and successor/back-link commit are
     // one guarded commit phase. A retry always re-prepares from fresh bytes.
@@ -485,8 +494,13 @@ export async function editNoteInteractive(
   }
 
   await beforeCommit?.();
-  const fastPath = await withLineageMutationLocks(vaultDir, [filePath], async () => {
+  await assertTransitionGuards(schema, vaultDir, typeDef.name, frontmatter, newFrontmatter);
+  const guardTargetPaths = await transitionGuardTargetPaths(
+    schema, vaultDir, typeDef.name, frontmatter, newFrontmatter
+  );
+  const fastPath = await withLineageMutationLocks(vaultDir, [filePath, ...guardTargetPaths], async () => {
     await assertNoteBytesUnchanged(filePath, raw);
+    await assertTransitionGuards(schema, vaultDir, typeDef.name, frontmatter, newFrontmatter);
     const fastPathPlan = await prepareRecurrenceFastPath(
       schema,
       vaultDir,

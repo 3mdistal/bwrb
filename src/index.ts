@@ -17,6 +17,7 @@ import { lineageCommand } from './commands/lineage/index.js';
 import { configCommand } from './commands/config.js';
 import { dashboardCommand } from './commands/dashboard.js';
 import { initCommand } from './commands/init.js';
+import { explainCommand } from './commands/explain.js';
 import { handleCompletionRequest } from './lib/completion.js';
 import { cleanupPromptMode } from './lib/prompt.js';
 import { BWRB_VERSION } from './version.js';
@@ -68,6 +69,7 @@ if (completionsIndex !== -1) {
   // Query operations
   program.addCommand(listCommand);
   program.addCommand(recentCommand);
+  program.addCommand(explainCommand);
   // Compatibility commands remain callable, but `list` is the canonical
   // query/search/open surface shown in root help and command completion.
   program.addCommand(openCommand, { hidden: true });

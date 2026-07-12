@@ -418,6 +418,18 @@ Precedence (for --open app mode):
         }
         process.exit(ExitCodes.IO_ERROR);
       }
+      if ((err as { code?: string }).code === 'TRANSITION_GUARD_FAILED') {
+        const guardError = err as Error & { explanation: unknown };
+        if (jsonMode) {
+          printJson(jsonError(guardError.message, {
+            code: 'TRANSITION_GUARD_FAILED',
+            data: guardError.explanation,
+          }));
+        } else {
+          printError(guardError.message);
+        }
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
       if (err instanceof ConcurrentNoteModificationError) {
         if (jsonMode) {
           printJson(jsonError(err.message, {

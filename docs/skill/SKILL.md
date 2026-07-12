@@ -15,6 +15,21 @@ Use bwrb when you need to:
 - Edit note frontmatter programmatically
 - Generate wikilinks for Obsidian
 - Validate notes against a schema
+- Explain or safely advance relation-backed workflow transitions
+
+## Guarded transitions
+
+Schemas may put `transition_guards` on traits. Before setting a guarded value,
+inspect the relation-backed requirements without writing:
+
+```bash
+bwrb explain "Candidate 417" --transition accepted --output json
+```
+
+The value-only shorthand is accepted only when it identifies one configured
+guard. A blocked explanation exits successfully because it is useful state.
+`bwrb edit --json` and interactive `bwrb edit` enforce the same guards;
+`bwrb bulk` reports blocked files individually and does not change them.
 
 ## Vault Resolution
 

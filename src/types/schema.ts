@@ -308,6 +308,28 @@ export const RecurrenceSchema = z.object({
 
 export type Recurrence = z.infer<typeof RecurrenceSchema>;
 
+const TransitionPredicateSchema = z.object({
+  field: SchemaFieldNameSchema,
+  equals: z.string().optional(),
+  in: z.array(z.string()).min(1).optional(),
+}).refine((value) => (value.equals === undefined) !== (value.in === undefined), {
+  message: 'A transition predicate requires exactly one of equals or in',
+});
+
+const TransitionRequirementSchema = z.object({
+  relation: SchemaFieldNameSchema,
+  min: z.number().int().min(1).optional(),
+  all: TransitionPredicateSchema,
+  failed_when: TransitionPredicateSchema.optional(),
+  stale_when: TransitionPredicateSchema.optional(),
+});
+
+export const TransitionGuardSchema = z.object({
+  on: z.string().min(1),
+  requires: z.array(TransitionRequirementSchema).min(1),
+});
+export type TransitionGuard = z.infer<typeof TransitionGuardSchema>;
+
 /**
  * A reusable bundle of fields composed into a type via `traits`.
  *
@@ -338,6 +360,8 @@ export const TraitSchema = z.object({
   // Recurrence configuration (spawn-on-transition). When present, types that
   // compose this trait gain event-driven successor spawning. See RecurrenceSchema.
   recurrence: RecurrenceSchema.optional(),
+  // Relation-backed invariants evaluated when a note enters a configured value.
+  transition_guards: z.array(TransitionGuardSchema).optional(),
 });
 
 // ============================================================================

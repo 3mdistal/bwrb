@@ -213,6 +213,7 @@ A `task` now has every field from `objective` (and its ancestors) **plus** `stat
 | `description` | string | What the trait bundles and when to use it. Surfaced by `bwrb schema list` |
 | `fields` | object | Field definitions contributed by the trait |
 | `recurrence` | object | Spawn-on-transition recurrence config (see [Recurrence](#recurrence)) |
+| `transition_guards` | array | Direct relation-backed requirements checked when a field enters a value |
 
 Traits are **flat**: a trait carries only `fields` (and an optional `description`, plus an optional `recurrence` block). A trait cannot `extends` a type or compose other traits. This keeps resolution simple and deterministic.
 
@@ -243,6 +244,34 @@ A trait may carry a `recurrence` block. Any type that composes the trait then sp
 | `set` | object | No | Field-offset assignments. Each value is `<dateField> + <duration>` (e.g. `"deadline + 7d"`); the base **must** be a date field |
 
 The `next` relation field does triple duty: it is the **chain link** (history), the **idempotency guard** (a successor is spawned only when `next` is empty), and the basis for the audit **backstop** (`missing-successor`). See the [task system guide](/automation/task-system/) for the full two-path execution model and validation rules.
+
+### Transition guards
+
+A trait may require direct related notes to satisfy constrained predicates
+before a field enters a value:
+
+```json
+"transition_guards": [{
+  "on": "status = accepted",
+  "requires": [{
+    "relation": "requirements",
+    "min": 1,
+    "all": { "field": "status", "equals": "satisfied" },
+    "failed_when": { "field": "status", "in": ["failed", "needs-revision"] },
+    "stale_when": { "field": "status", "in": ["stale", "superseded"] }
+  }]
+}]
+```
+
+`relation` must name an effective relation field; its `source` constrains the
+target type. Predicates inspect one target field using exactly one of `equals`
+or `in`. `min` defaults to one. Every resolved target must satisfy `all`, and
+missing, unresolved, stale, or failed evidence blocks the transition.
+
+Guards are checked only when the source field enters the configured value.
+Bowerbird locks the source and all resolved evidence notes together before the
+final check and write. Use [`bwrb explain`](/reference/commands/explain/) to
+inspect the same result without mutating the note.
 
 ### Precedence
 

@@ -12,6 +12,9 @@ import { applyWhereExpressions } from '../where-targeting.js';
 import { applyOperations } from './operations.js';
 import { createBackup } from './backup.js';
 import { executeBulkMove, findAllMarkdownFiles } from './move.js';
+import { assertTransitionGuards, transitionGuardTargetPaths } from '../transition-guards.js';
+import { withLineageMutationLocks } from '../lineage-lock.js';
+import { assertNoteBytesUnchanged } from '../note-write-concurrency.js';
 import type {
   BulkOptions,
   BulkResult,
@@ -108,16 +111,18 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
     relativePath: string;
     frontmatter: Record<string, unknown>;
     body: string;
+    raw: string;
   }[] = [];
 
   for (const file of files) {
     try {
-      const { frontmatter, body } = await parseNote(file.path);
+      const { frontmatter, body, raw } = await parseNote(file.path);
       parsedFiles.push({
         path: file.path,
         relativePath: file.relativePath,
         frontmatter,
         body,
+        raw,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -188,6 +193,13 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
       const { modified, changes } = applyOperations({ ...file.frontmatter }, operations);
       fileChange.changes = changes;
 
+      // Guard evaluation happens for dry-runs too, so a bulk receipt never
+      // promises a change that execution would later reject.
+      const resolvedType = resolveTypeFromFrontmatter(schema, modified);
+      if (resolvedType) {
+        await assertTransitionGuards(schema, vaultDir, resolvedType, file.frontmatter, modified);
+      }
+
       if (execute && changes.length > 0) {
         // Recurrence fast path (atomicity, #107): VALIDATE + COMPUTE the
         // successor BEFORE writing the predecessor's change, so a spawn that
@@ -218,18 +230,27 @@ export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
           fileChange.error = recError;
           result.errors.push(`Recurrence spawn failed for ${file.relativePath}: ${recError}`);
         } else {
-          await writeNote(file.path, modified, file.body);
-          fileChange.applied = true;
-
-          // Commit the prepared spawn (create successor + back-link `next`).
-          if (fastPathPlan) {
-            try {
-              await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
-            } catch (recErr) {
-              const recMessage = recErr instanceof Error ? recErr.message : String(recErr);
-              result.errors.push(`Recurrence spawn failed for ${file.relativePath}: ${recMessage}`);
+          const guardPaths = resolvedType
+            ? await transitionGuardTargetPaths(schema, vaultDir, resolvedType, file.frontmatter, modified)
+            : [];
+          await withLineageMutationLocks(vaultDir, [file.path, ...guardPaths], async () => {
+            await assertNoteBytesUnchanged(file.path, file.raw);
+            if (resolvedType) {
+              await assertTransitionGuards(schema, vaultDir, resolvedType, file.frontmatter, modified);
             }
-          }
+            await writeNote(file.path, modified, file.body);
+            fileChange.applied = true;
+
+            // Commit the prepared spawn (create successor + back-link `next`).
+            if (fastPathPlan) {
+              try {
+                await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+              } catch (recErr) {
+                const recMessage = recErr instanceof Error ? recErr.message : String(recErr);
+                result.errors.push(`Recurrence spawn failed for ${file.relativePath}: ${recMessage}`);
+              }
+            }
+          });
         }
       }
     } catch (err) {

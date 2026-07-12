@@ -341,6 +341,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
     '--help',
   ],
   completion: ['--help'],
+  explain: ['--transition', '--output', '--help'],
   config: ['--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
 };
 

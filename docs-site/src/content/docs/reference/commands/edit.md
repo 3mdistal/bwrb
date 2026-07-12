@@ -79,6 +79,15 @@ It never replays a guarded patch: list/read again and reconsider the change.
 Successful JSON edits return the note's new opaque `revision`. Interactive edits
 do not accept revision preconditions.
 
+### Relation-backed transition guards
+
+Traits can declare `transition_guards` that require direct related notes to be
+satisfied before a field enters a configured value. Both JSON and interactive
+edits reject a blocked transition without writing and JSON reports
+`TRANSITION_GUARD_FAILED` with the complete explanation DTO. Use
+`bwrb explain "Candidate 417" --transition accepted --output json` to inspect
+the same result before attempting the edit.
+
 ## Concurrent lineage changes
 
 The final edit commit shares the note's lineage mutation lock with `new --fork`

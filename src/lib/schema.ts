@@ -19,6 +19,7 @@ import {
   type OwnerInfo,
   getOptionValues,
 } from '../types/schema.js';
+import { validateTransitionGuards } from './transition-guards.js';
 
 const META_TYPE = 'meta';
 
@@ -193,7 +194,14 @@ export function resolveSchema(schema: Schema): LoadedSchema {
 
   validateCalendarReferences(types, config);
   
-  return { raw: schema, types, ownership, config };
+  const loaded = { raw: schema, types, ownership, config };
+  const transitionGuardErrors = Array.from(types.keys()).flatMap((typeName) =>
+    validateTransitionGuards(loaded, typeName)
+  );
+  if (transitionGuardErrors.length > 0) {
+    throw new Error(`Invalid transition guards: ${transitionGuardErrors.join(' ')}`);
+  }
+  return loaded;
 }
 
 /**

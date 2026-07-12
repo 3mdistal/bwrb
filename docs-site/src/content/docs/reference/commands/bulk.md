@@ -79,6 +79,10 @@ bwrb bulk --type task --set status=settled
 bwrb bulk --type task --set status=settled --execute
 ```
 
+When a change enters a trait-configured guarded transition, bulk evaluates the
+same relation requirements as `edit`. Each blocked file is reported as an error
+and remains unchanged; dry-runs report the block too.
+
 ### Non-interactive Confirmation
 
 If `stdin` is not a TTY and the operation requires confirmation (cross-type `--all` or large operations), bwrb does not prompt. Use `--force`/`--yes` to skip the confirmation or pipe a single `y/yes` or `n/no` answer. Otherwise the command fails fast with a clear error.
