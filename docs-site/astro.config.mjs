@@ -26,6 +26,10 @@ export default defineConfig({
 			title: 'Bowerbird',
 			tagline: 'The type system for your notes',
 			description: 'Schema-driven note management for markdown vaults',
+			components: {
+				PageTitle: './src/components/PageTitle.astro',
+				SiteTitle: './src/components/SiteTitle.astro',
+			},
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/3mdistal/bwrb' },
 			],

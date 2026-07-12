@@ -1,0 +1,26 @@
+---
+interface Props {
+	class?: string;
+}
+
+const { class: className } = Astro.props;
+---
+
+<svg class={className} viewBox="0 0 48 48" aria-hidden="true">
+	<path d="M9 4v40M18 4v40M30 4v40M39 4v40M4 9h40M4 18h40M4 30h40M4 39h40" />
+	<path class="mark-accent" d="M18 18h12v12H18z" />
+</svg>
+
+<style>
+	svg {
+		fill: none;
+		stroke: currentColor;
+		stroke-linecap: square;
+		stroke-width: 1.5;
+	}
+
+	.mark-accent {
+		stroke: var(--bb-accent, #315ee8);
+		stroke-width: 2.5;
+	}
+</style>
