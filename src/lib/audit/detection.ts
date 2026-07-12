@@ -18,6 +18,7 @@ import {
   resolveDateCalendar,
   resolveDateGranularity,
   getRecurrenceForType,
+  getRetentionForType,
 } from '../schema.js';
 import { readStructuralFrontmatter } from './structural.js';
 import { getOwnedChildFolder } from '../ownership-paths.js';
@@ -82,6 +83,7 @@ import {
 } from '../discovery.js';
 import { buildRelativeDateFieldMap, validateRelativeDateValue } from '../relative-date.js';
 import { parseCalendarDate } from '../calendar-date.js';
+import { formatLocalDate } from '../local-date.js';
 import { collectLineageIssues } from './lineage.js';
 
 // Import ownership tracking
@@ -128,6 +130,9 @@ export async function runAuditDetailed(
   vaultDir: string,
   options: AuditRunOptions
 ): Promise<AuditRunResult> {
+  // Capture once: a long audit must not split a midnight boundary into two
+  // different retention decisions.
+  const retentionToday = options.retentionToday ?? formatLocalDate();
   // Discover all managed files
   const files = await discoverManagedFiles(schema, vaultDir, options.typePath);
 
@@ -237,7 +242,7 @@ export async function runAuditDetailed(
 
   for (const file of filteredFiles) {
     const issues = [
-      ...(await auditFile(schema, vaultDir, file, options, noteIndex, ownershipIndex, parentMap, entityMentionIndex)),
+      ...(await auditFile(schema, vaultDir, file, { ...options, retentionToday }, noteIndex, ownershipIndex, parentMap, entityMentionIndex)),
       ...(lineageIssuesByPath.get(file.relativePath) ?? []),
     ];
 
@@ -543,6 +548,28 @@ export async function auditFile(
   // Get field definitions for this type
   const fields = getFieldsForType(schema, resolvedTypePath);
   const fieldNames = new Set(Object.keys(fields));
+
+  const retention = getRetentionForType(schema, resolvedTypePath);
+  if (retention && matchesRetentionCondition(frontmatter, retention.when)) {
+    const resolved = retention.resolved_when && matchesRetentionCondition(frontmatter, retention.resolved_when);
+    if (!resolved) {
+      const clockValue = frontmatter[retention.clock.field];
+      const due = retentionDue(clockValue, retention.clock.after, options.retentionToday!);
+      if (due.kind === 'due') {
+        issues.push({
+          severity: 'warning', code: 'retention-due', autoFixable: false,
+          field: retention.clock.field,
+          message: `Retention is due since ${due.dueDate} (clock ${retention.clock.field}: ${due.clockDate})`,
+          meta: { clockField: retention.clock.field, clockDate: due.clockDate, dueDate: due.dueDate, today: options.retentionToday, actions: retention.actions },
+        });
+      } else if (due.kind === 'invalid') {
+        issues.push({ severity: 'warning', code: 'retention-due', autoFixable: false, field: retention.clock.field,
+          message: `Retention clock is missing or invalid: ${due.reason}`,
+          meta: { clockField: retention.clock.field, today: options.retentionToday, diagnostic: 'invalid-clock', actions: retention.actions },
+        });
+      }
+    }
+  }
 
   // Combine allowed fields from different sources
   const allowedFields = new Set([
@@ -2750,6 +2777,27 @@ function checkSingularPluralMismatch(
   }
   
   return null;
+}
+
+function matchesRetentionCondition(frontmatter: Record<string, unknown>, condition: Record<string, { in: string[] }>): boolean {
+  return Object.entries(condition).every(([field, rule]) =>
+    typeof frontmatter[field] === 'string' && rule.in.includes(frontmatter[field] as string)
+  );
+}
+
+function retentionDue(value: unknown, after: string, today: string):
+  | { kind: 'due'; clockDate: string; dueDate: string }
+  | { kind: 'not-due' }
+  | { kind: 'invalid'; reason: string } {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return { kind: 'invalid', reason: 'expected a YYYY-MM-DD date' };
+  const clock = new Date(`${value}T00:00:00`);
+  const localClock = `${clock.getFullYear()}-${String(clock.getMonth() + 1).padStart(2, '0')}-${String(clock.getDate()).padStart(2, '0')}`;
+  if (Number.isNaN(clock.getTime()) || localClock !== value) return { kind: 'invalid', reason: 'expected a valid calendar date' };
+  const days = Number(after.slice(0, -1));
+  const due = new Date(clock);
+  due.setDate(due.getDate() + days);
+  const dueDate = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}`;
+  return today >= dueDate ? { kind: 'due', clockDate: value, dueDate } : { kind: 'not-due' };
 }
 
 // ============================================================================

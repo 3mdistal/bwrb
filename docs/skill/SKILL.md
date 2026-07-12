@@ -15,6 +15,31 @@ Use bwrb when you need to:
 - Edit note frontmatter programmatically
 - Generate wikilinks for Obsidian
 - Validate notes against a schema
+- Explain or safely advance relation-backed workflow transitions
+
+## Guarded transitions
+
+Schemas may put `transition_guards` on traits. Before setting a guarded value,
+inspect the relation-backed requirements without writing:
+
+```bash
+bwrb explain "Candidate 417" --transition accepted --output json
+```
+
+The value-only shorthand is accepted only when it identifies one configured
+guard. A blocked explanation exits successfully because it is useful state.
+`bwrb edit --json` and interactive `bwrb edit` enforce the same guards;
+`bwrb bulk` reports blocked files individually and does not change them.
+
+Traits can also declare `transition_effects` for a scalar direct relation. On
+an entered transition, bwrb validates and applies the flat target patch in the
+same guarded commit. `$ACTOR`, `$NOW`, and `$TODAY` expand; target effects do
+not cascade into more effects or recurrence. An empty relation is a no-op.
+
+For schema-declared logical provenance (`{ "value": "$ACTOR" }`), establish
+identity once with root `--actor <value>` or `BWRB_ACTOR`. Explicit `--actor`
+wins; missing identity becomes `unknown`. Treat it as workflow provenance,
+never authentication or permission.
 
 ## Vault Resolution
 
@@ -258,6 +283,9 @@ bwrb list task --where "priority == 'high' && status != 'done'" --output json
 # Include specific fields in output
 bwrb list task --fields status,priority --output json
 
+# JSON list rows include an opaque revision for guarded shared-record edits.
+bwrb list task --where "status == 'active'" --output json
+
 # Sort matches before reading or limiting output
 bwrb list task --sort deadline --output json
 bwrb list task --sort priority --desc --output json
@@ -297,6 +325,23 @@ Schema fields with `prompt: "date"` may use creation-time expressions such as
 creation, scoped default restoration during edit, and reset-on-fork defaults.
 Non-date defaults remain literal. Custom-calendar date fields require literal
 dates in their configured calendar rather than Gregorian `@today` expressions.
+
+### Guarded shared-record edits
+
+When editing a shared record, copy its `revision` from a JSON list row exactly
+as returned. It guards against any note-byte change, including a Markdown-body
+edit:
+
+```bash
+bwrb edit "Candidate 417" --json '{"status":"awaiting-review"}' \
+  --expected-revision '<opaque revision>' --output json
+```
+
+On success, retain the new top-level `revision` returned by `edit`. On a stale
+observation, Bowerbird exits `2` with `code: "REVISION_MISMATCH"`,
+`expectedRevision`, and `currentRevision`; do not retry the same patch blindly.
+Relist/read the note and decide again. `--expected-revision` requires `--json`;
+interactive edits do not support it.
 
 ### Relative-Date Fields
 
@@ -634,6 +679,22 @@ bwrb list --name "Target Note" --output link --picker none  # Output: [[Target N
 ```
 
 ## Error Handling
+
+## Retention
+
+Retention is a schema-declared, audit-reported lifecycle policy. It is intentionally never
+chosen by `audit --fix --auto`. To remediate records, use an explicit selector, the
+`retention-due` issue filter, a configured action, and `--execute` only after reviewing the
+dry run:
+
+```bash
+bwrb audit --all --fix --only retention-due --retention-action tombstone
+bwrb audit --all --fix --only retention-due --retention-action tombstone --execute
+```
+
+Do not infer a retention due date from filesystem timestamps. The schema clock must be a
+day-granularity date field. Delete actions remain safety-checked and can refuse records
+with live relations, backlinks, or fork lineage.
 
 bwrb exits with non-zero status on errors. JSON output includes error information:
 

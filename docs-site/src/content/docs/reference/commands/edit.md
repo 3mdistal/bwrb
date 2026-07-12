@@ -28,6 +28,7 @@ third excess positional is rejected.
 | `-w, --where <expr>` | Filter by frontmatter expression (repeatable) |
 | `-b, --body <pattern>` | Filter by Markdown body content; YAML frontmatter is excluded |
 | `--json <patch>` | Non-interactive patch/merge mode |
+| `--expected-revision <revision>` | Require an opaque revision from `list --output json`; requires `--json` |
 | `-o, --open` | Open the note after editing |
 | `--app <mode>` | App mode for `--open`: `system`, `editor`, `visual`, `obsidian`, `print` |
 | `--picker <mode>` | Picker mode: `fzf`, `numbered`, `none` |
@@ -60,6 +61,39 @@ bwrb edit -t task --where "status == 'active'" "Deploy" --json '{"priority":"hig
 ```
 
 `--json` mode rejects patch fields that are not defined for the resolved note type. Existing legacy or unknown fields in the note are preserved unless the patch changes them.
+
+### Guarded JSON edits
+
+For a contested record, retain the opaque `revision` returned by `bwrb list
+--output json` and send it back with the patch:
+
+```bash
+bwrb edit "Candidate 417" --json '{"status":"awaiting-review"}' \
+  --expected-revision '<revision from list>' --output json
+```
+
+Bowerbird compares it to the read snapshot and again immediately before the
+write under its mutation lock. A mismatch exits `2`, leaves the note untouched,
+and returns `REVISION_MISMATCH` plus `expectedRevision` and `currentRevision`.
+It never replays a guarded patch: list/read again and reconsider the change.
+Successful JSON edits return the note's new opaque `revision`. Interactive edits
+do not accept revision preconditions.
+
+### Relation-backed transition guards
+
+Traits can declare `transition_guards` that require direct related notes to be
+satisfied before a field enters a configured value. Both JSON and interactive
+edits reject a blocked transition without writing and JSON reports
+`TRANSITION_GUARD_FAILED` with the complete explanation DTO. Use
+`bwrb explain "Candidate 417" --transition accepted --output json` to inspect
+the same result before attempting the edit.
+
+### Related-note transition effects
+
+When an entered trait transition has `transition_effects`, `edit` applies its
+validated flat patch to the configured scalar relation target in the same
+guarded commit. Empty relations are no-ops. Effects do not cascade from the
+target into more effects or recurrence; cross-type creation remains recurrence.
 
 ## Concurrent lineage changes
 

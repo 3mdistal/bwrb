@@ -83,7 +83,11 @@ rejected.
 Name, fuzzy, and detailed-match modes use the established search JSON shapes.
 Fuzzy JSON includes similarity scores and the field that matched; detailed body
 JSON includes line matches and context. Normal filtered-list JSON remains the
-array of note frontmatter objects used by existing scripts.
+array of note frontmatter objects used by existing scripts. Each row also has a
+`revision`: an opaque digest of the exact Markdown bytes read for that row.
+Treat it only as an observation token—do not infer ordering or meaning from its
+format. Pass it unchanged to guarded JSON edits when a shared record must not
+silently overwrite a newer change.
 
 With `--matches`, text output shows grep-style line details and JSON preserves
 structured match details. `paths` and `link` emit each matching note once, while

@@ -16,6 +16,22 @@ bwrb --non-interactive new task --json '{"name":"Fix login","priority":"high"}'
 bwrb --non-interactive edit "My Task" --json '{"status":"settled"}'
 ```
 
+## Logical actor provenance
+
+Schemas opt into runner provenance with `{ "value": "$ACTOR" }`. Establish the
+identity once for the CLI process:
+
+```bash
+BWRB_ACTOR='codex:session-17' bwrb new attestation \
+  --json '{"name":"CI passed","outcome":"passed"}'
+bwrb --actor 'orchestrator:reviewer-2' new attestation \
+  --json '{"name":"Independent review","outcome":"passed"}'
+```
+
+The explicit root option wins over the environment. If neither exists,
+`$ACTOR` becomes `unknown`; Bowerbird never guesses Alice from an OS account,
+Git identity, or hostname. Actor values are provenance, not permission.
+
 ## JSON output shapes
 
 Check the command reference before choosing a parser. Bowerbird emits one

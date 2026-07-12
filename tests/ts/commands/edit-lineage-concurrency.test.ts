@@ -15,6 +15,7 @@ import { insertFrontmatterScalarPreservingBytes, parseNote } from '../../../src/
 import { loadSchema } from '../../../src/lib/schema.js';
 import { editNoteInteractive } from '../../../src/lib/edit.js';
 import { ConcurrentNoteModificationError } from '../../../src/lib/errors.js';
+import { noteRevision } from '../../../src/lib/note-revision.js';
 
 const CLI_SRC_PATH = join(PROJECT_ROOT, 'src/index.ts');
 const TSX_CLI = join(PROJECT_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
@@ -120,6 +121,33 @@ describe('edit versus lineage identity writes', () => {
     ], vaultDir);
     expect(sequential.exitCode, sequential.stderr || sequential.stdout).toBe(0);
     expect(await readFile(sourcePath, 'utf-8')).toBe(await readFile(expectedPath, 'utf-8'));
+  });
+
+  it('does not replay a stale revision-guarded JSON edit', async () => {
+    const notePath = join(vaultDir, 'Ideas/Guarded Race.md');
+    const originalRaw = '---\ntype: idea\nstatus: raw\npriority: medium\n---\nOriginal body.\n';
+    const newerRaw = `${originalRaw}\nExternal body edit.\n`;
+    await writeFile(notePath, originalRaw);
+    const barrierDir = join(vaultDir, '.barrier-guarded');
+    const edit = spawnCli([
+      'edit', notePath, '--json', '{"priority":"high"}',
+      '--expected-revision', noteRevision(originalRaw), '--output', 'json',
+    ], vaultDir, barrierDir);
+    running.push(edit);
+
+    await waitForFile(join(barrierDir, 'edit-read-1.ready'), { timeoutMs: 10_000 });
+    await writeFile(notePath, newerRaw);
+    await writeFile(join(barrierDir, 'edit-commit-1.go'), 'go\n');
+
+    const result = await edit.completion;
+    expect(result.exitCode).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      success: false,
+      code: 'REVISION_MISMATCH',
+      expectedRevision: noteRevision(originalRaw),
+      currentRevision: noteRevision(newerRaw),
+    });
+    expect(await readFile(notePath, 'utf-8')).toBe(newerRaw);
   });
 
   it('replays a JSON edit after lineage adopt writes immutable provenance', async () => {

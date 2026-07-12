@@ -7,6 +7,7 @@ import {
   FieldSchema,
   FilterConditionSchema,
   RecurrenceSchema,
+  TransitionEffectSchema,
   TraitSchema,
   TypeSchema,
 } from '../types/schema.js';
@@ -37,6 +38,7 @@ const DEFINITIONS = {
   config: ConfigSchema,
   trait: TraitSchema,
   recurrence: RecurrenceSchema,
+  transitionEffect: TransitionEffectSchema,
   typeNode: TypeSchema,
   frontmatterField: FieldSchema,
   bodySection: BodySectionSchema,

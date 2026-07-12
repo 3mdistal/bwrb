@@ -6,7 +6,7 @@
  * - `search --edit` (unified interface)
  */
 
-import { access, mkdir, writeFile } from 'fs/promises';
+import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import { join, relative } from 'path';
 import {
   getTypeDefByPath,
@@ -14,7 +14,7 @@ import {
   getFieldsForType,
   getFrontmatterOrder,
 } from './schema.js';
-import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
+import { parseNote, writeNote, writeFileAtomic, generateBodySections } from './frontmatter.js';
 import {
   isBodySectionPresent,
   flattenBodySections,
@@ -51,6 +51,9 @@ import { validateRelativeDateCalendarOffsetsForWrite } from './relative-date.js'
 import { isBwrbReservedFrontmatterField } from './frontmatter/systemFields.js';
 import { withLineageMutationLocks } from './lineage-lock.js';
 import { assertNoteBytesUnchanged } from './note-write-concurrency.js';
+import { assertExpectedRevision, noteRevision } from './note-revision.js';
+import { assertTransitionGuards, transitionGuardTargetPaths } from './transition-guards.js';
+import { commitTransitionEffects, prepareTransitionEffects, rollbackTransitionEffects, transitionEffectTargetPaths } from './transition-effects.js';
 
 // ============================================================================
 // Types
@@ -59,11 +62,14 @@ import { assertNoteBytesUnchanged } from './note-write-concurrency.js';
 export interface EditResult {
   updatedFields: string[];
   path: string;
+  revision: string;
 }
 
 export interface EditFromJsonOptions {
   /** Whether to output errors as JSON */
   jsonMode?: boolean;
+  /** Opaque raw-note revision that must still match before this patch writes. */
+  expectedRevision?: string;
 }
 
 export interface EditInteractiveOptions {
@@ -96,7 +102,7 @@ export async function editNoteFromJson(
   jsonInput: string,
   options: EditFromJsonOptions = {}
 ): Promise<EditResult> {
-  const { jsonMode = true } = options;
+  const { jsonMode = true, expectedRevision } = options;
 
   // Parse JSON input
   let patchData: Record<string, unknown>;
@@ -124,7 +130,10 @@ export async function editNoteFromJson(
     throw new Error(error);
   }
 
-  for (let attempt = 1; attempt <= JSON_EDIT_ATTEMPTS; attempt++) {
+  // A guarded caller must reread and reconsider a stale patch; replaying it
+  // against unseen bytes would defeat the revision precondition.
+  const attempts = expectedRevision === undefined ? JSON_EDIT_ATTEMPTS : 1;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       return await editNoteFromJsonAttempt(
         schema,
@@ -132,12 +141,13 @@ export async function editNoteFromJson(
         filePath,
         patchData,
         jsonMode,
-        attempt
+        attempt,
+        expectedRevision
       );
     } catch (error) {
       if (
         error instanceof ConcurrentNoteModificationError &&
-        attempt < JSON_EDIT_ATTEMPTS
+        attempt < attempts
       ) {
         continue;
       }
@@ -145,7 +155,7 @@ export async function editNoteFromJson(
     }
   }
 
-  throw new ConcurrentNoteModificationError(filePath, JSON_EDIT_ATTEMPTS);
+  throw new ConcurrentNoteModificationError(filePath, attempts);
 }
 
 async function editNoteFromJsonAttempt(
@@ -154,11 +164,16 @@ async function editNoteFromJsonAttempt(
   filePath: string,
   patchData: Record<string, unknown>,
   jsonMode: boolean,
-  attempt: number
+  attempt: number,
+  expectedRevision: string | undefined
 ): Promise<EditResult> {
 
   // Parse existing note
   const { frontmatter, body, raw } = await parseNote(filePath);
+
+  if (expectedRevision !== undefined) {
+    assertExpectedRevision(expectedRevision, raw);
+  }
 
   // Resolve type path from existing frontmatter
   const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
@@ -348,10 +363,27 @@ async function editNoteFromJsonAttempt(
   const fieldOrder = getFrontmatterOrder(typeDef);
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(resolvedFrontmatter);
 
+  await assertTransitionGuards(schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter);
+  const guardTargetPaths = await transitionGuardTargetPaths(
+    schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter
+  );
+  const transitionEffects = await prepareTransitionEffects(
+    schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter, filePath
+  );
+
   await waitForEditCommitBarrier(attempt, filePath);
 
-  await withLineageMutationLocks(vaultDir, [filePath], async () => {
+  const revision = await withLineageMutationLocks(vaultDir, [filePath, ...guardTargetPaths, ...transitionEffectTargetPaths(transitionEffects)], async () => {
+    if (expectedRevision !== undefined) {
+      // Re-read while holding the shared mutation lock, closing the
+      // validation-to-write race with other Bowerbird writers.
+      assertExpectedRevision(expectedRevision, await readFile(filePath, 'utf-8'));
+    }
     await assertNoteBytesUnchanged(filePath, raw, attempt);
+    for (const effect of transitionEffects) await assertNoteBytesUnchanged(effect.path, effect.raw, attempt);
+    // Relation state can change after validation. Re-evaluate immediately
+    // before the source write while its mutation lock is held.
+    await assertTransitionGuards(schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter);
 
     // Recurrence prepare, predecessor write, and successor/back-link commit are
     // one guarded commit phase. A retry always re-prepares from fresh bytes.
@@ -365,10 +397,30 @@ async function editNoteFromJsonAttempt(
       body
     );
     await writeNote(filePath, resolvedFrontmatter, body, orderedFields);
-    await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+    const writtenSource = await readFile(filePath, 'utf-8');
+    let committedEffects;
+    try {
+      committedEffects = await commitTransitionEffects(transitionEffects);
+      await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+    } catch (error) {
+      // Restore only the exact source bytes this invocation wrote. A newer
+      // writer wins; it must never be erased by our compensating rollback.
+      if (await readFile(filePath, 'utf-8').catch(() => '') === writtenSource) {
+        await writeFileAtomic(filePath, raw);
+      }
+      if (committedEffects) await rollbackTransitionEffects(committedEffects);
+      throw error;
+    }
+    // Return the revision of the final bytes produced by this guarded commit
+    // while the shared Bowerbird mutation lock still excludes another writer.
+    return noteRevision(await readFile(filePath, 'utf-8'));
   });
 
-  return { updatedFields, path: filePath };
+  return {
+    updatedFields,
+    path: filePath,
+    revision,
+  };
 }
 
 // ============================================================================
@@ -460,8 +512,17 @@ export async function editNoteInteractive(
   }
 
   await beforeCommit?.();
-  const fastPath = await withLineageMutationLocks(vaultDir, [filePath], async () => {
+  await assertTransitionGuards(schema, vaultDir, typeDef.name, frontmatter, newFrontmatter);
+  const guardTargetPaths = await transitionGuardTargetPaths(
+    schema, vaultDir, typeDef.name, frontmatter, newFrontmatter
+  );
+  const transitionEffects = await prepareTransitionEffects(
+    schema, vaultDir, typeDef.name, frontmatter, newFrontmatter, filePath
+  );
+  const fastPath = await withLineageMutationLocks(vaultDir, [filePath, ...guardTargetPaths, ...transitionEffectTargetPaths(transitionEffects)], async () => {
     await assertNoteBytesUnchanged(filePath, raw);
+    for (const effect of transitionEffects) await assertNoteBytesUnchanged(effect.path, effect.raw);
+    await assertTransitionGuards(schema, vaultDir, typeDef.name, frontmatter, newFrontmatter);
     const fastPathPlan = await prepareRecurrenceFastPath(
       schema,
       vaultDir,
@@ -472,7 +533,18 @@ export async function editNoteInteractive(
       updatedBody
     );
     await writeNote(filePath, newFrontmatter, updatedBody, orderedFields);
-    return commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+    const writtenSource = await readFile(filePath, 'utf-8');
+    let committedEffects;
+    try {
+      committedEffects = await commitTransitionEffects(transitionEffects);
+      return await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+    } catch (error) {
+      if (await readFile(filePath, 'utf-8').catch(() => '') === writtenSource) {
+        await writeFileAtomic(filePath, raw);
+      }
+      if (committedEffects) await rollbackTransitionEffects(committedEffects);
+      throw error;
+    }
   });
   printSuccess(`\n✓ Updated: ${filePath}`);
   if (fastPath.successorPath) {

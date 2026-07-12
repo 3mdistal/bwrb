@@ -97,7 +97,8 @@ export type IssueCode =
   | 'relative-date-bound-violation'
   | 'relative-date-unanchored'
   | 'relative-date-invalid-ref'
-  | 'relative-date-invalid-offset';
+  | 'relative-date-invalid-offset'
+  | 'retention-due';
 
 /**
  * A single audit issue.
@@ -242,6 +243,7 @@ export interface AuditOptions {
   dryRun?: boolean;
   /** With --fix --auto: apply fixes (omit to preview). */
   execute?: boolean;
+  retentionAction?: 'archive' | 'tombstone' | 'delete';
   all?: boolean;
   allowField?: string[];
   /**
@@ -289,6 +291,8 @@ export interface AuditRunOptions {
    * (#622). Undefined means enabled (default).
    */
   mentionFuzzyEnabled?: boolean | undefined;
+  /** One local day snapshot shared by every retention finding in this run. */
+  retentionToday?: string | undefined;
 }
 
 /**

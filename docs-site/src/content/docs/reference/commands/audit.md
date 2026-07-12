@@ -47,9 +47,29 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `--auto` | With `--fix`: automatically apply unambiguous fixes |
 | `--dry-run` | With `--fix`: preview fixes without writing |
 | `--execute` | With `--fix --auto`: apply auto-fixes for execute-gated issues (for example `trailing-whitespace`) |
+| `--retention-action <kind>` | Explicitly preview or execute configured `archive`, `tombstone`, or `delete` retention action; requires `--fix --only retention-due` |
 
 Repair mode writes by default and requires explicit targeting (selectors or `--all`).
 Use `--dry-run` to preview fixes without writing.
+
+### Retention remediation
+
+Types can declare retention (see the schema reference). Audit reports a due record as a
+`retention-due` warning and includes the configured actions in JSON metadata. It uses one
+local-day snapshot for the entire run; the deadline is inclusive. A missing or invalid
+clock is a diagnostic, never an invented deadline.
+
+Retention is never an automatic fix. Target it explicitly, select the issue, and name an
+action; omission of `--execute` is a dry run:
+
+```bash
+bwrb audit --all --fix --only retention-due --retention-action archive
+bwrb audit --all --fix --only retention-due --retention-action archive --execute
+```
+
+Before writing, Bowerbird re-reads the note under its mutation lock and confirms it is
+still due. Archive updates wikilinks, tombstone applies only the schema-declared patch,
+and delete refuses live lineage, backlinks, or typed relations.
 
 `unlinked-mention` auto-fixes normally link every eligible exact/alias occurrence. Set
 `config.mention_link_once: true` or pass `--mention-link-once` to make
@@ -106,6 +126,7 @@ Delete semantics in repair mode:
 | `relative-date-invalid-ref` | A relative-date anchor reference is missing or ambiguous (warning; flag-only) |
 | `missing-successor` | A [recurring](/automation/task-system/) note satisfies its trigger (e.g. `status = done`) but its chain field (`next`) is empty — a successor was never spawned (e.g. completed outside bwrb). Warning; **auto-fixable** (`--fix` spawns it, identical to the fast path) |
 | `invalid-recurrence` | A [recurrence](/automation/task-system/) rule is broken at the config level — a malformed trigger, a non-date offset base, or a template that doesn't exist (error; **never auto-fixable** — a config error gets the same safety net as data) |
+| `retention-due` | A type's explicit retention clock is due, or its clock value is invalid. Warning; never auto-fixed. Remediation requires `--only retention-due`, explicit targeting, `--retention-action`, and `--execute` after reviewing the dry run |
 
 Note: built-in fields (`id`, `name`, and reserved provenance field `forked-from`) are always allowed and do not produce `unknown-field` issues. Ordinary `bwrb new --json`, `bwrb edit`, template input, schema defaults, and audit fixes cannot mutate reserved fields. Use `bwrb new --fork` for a new child or guarded [`bwrb lineage adopt`](/reference/commands/lineage/) for known derivation between two existing notes; all stored provenance receives the lineage checks above.
 Invalid option values inside list fields are reported as `invalid-option` with `listIndex` metadata, not a separate issue code.

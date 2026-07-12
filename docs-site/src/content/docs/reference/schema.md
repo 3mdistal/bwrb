@@ -72,6 +72,7 @@ Types define categories of notes. Each type has a name (the object key) and a de
 | `traits` | array | — | Trait names composed into this type (see [Traits](#traits)) |
 | `description` | string | — | What this type is for and when to use it. Surfaced by `bwrb schema list` |
 | `output_dir` | string | no | Vault-relative folder where this type's notes live (e.g., `"Objectives/Tasks"`). When omitted, creation uses the computed pluralized type hierarchy; see [Output directories](#output-directories) |
+| `retention` | object | no | Type-local end-of-life policy evaluated by `bwrb audit`; it is not inherited by child types |
 | `fields` | object | `{}` | Field definitions |
 | `field_order` | array | — | Order of fields in frontmatter |
 | `body_sections` | array | — | Body structure after frontmatter |
@@ -213,6 +214,8 @@ A `task` now has every field from `objective` (and its ancestors) **plus** `stat
 | `description` | string | What the trait bundles and when to use it. Surfaced by `bwrb schema list` |
 | `fields` | object | Field definitions contributed by the trait |
 | `recurrence` | object | Spawn-on-transition recurrence config (see [Recurrence](#recurrence)) |
+| `transition_guards` | array | Direct relation-backed requirements checked when a field enters a value |
+| `transition_effects` | array | Bounded patches applied to a direct related note when a field enters a value |
 
 Traits are **flat**: a trait carries only `fields` (and an optional `description`, plus an optional `recurrence` block). A trait cannot `extends` a type or compose other traits. This keeps resolution simple and deterministic.
 
@@ -243,6 +246,54 @@ A trait may carry a `recurrence` block. Any type that composes the trait then sp
 | `set` | object | No | Field-offset assignments. Each value is `<dateField> + <duration>` (e.g. `"deadline + 7d"`); the base **must** be a date field |
 
 The `next` relation field does triple duty: it is the **chain link** (history), the **idempotency guard** (a successor is spawned only when `next` is empty), and the basis for the audit **backstop** (`missing-successor`). See the [task system guide](/automation/task-system/) for the full two-path execution model and validation rules.
+
+### Transition guards
+
+A trait may require direct related notes to satisfy constrained predicates
+before a field enters a value:
+
+```json
+"transition_guards": [{
+  "on": "status = accepted",
+  "requires": [{
+    "relation": "requirements",
+    "min": 1,
+    "all": { "field": "status", "equals": "satisfied" },
+    "failed_when": { "field": "status", "in": ["failed", "needs-revision"] },
+    "stale_when": { "field": "status", "in": ["stale", "superseded"] }
+  }]
+}]
+```
+
+`relation` must name an effective relation field; its `source` constrains the
+target type. Predicates inspect one target field using exactly one of `equals`
+or `in`. `min` defaults to one. Every resolved target must satisfy `all`, and
+missing, unresolved, stale, or failed evidence blocks the transition.
+
+Guards are checked only when the source field enters the configured value.
+Bowerbird locks the source and all resolved evidence notes together before the
+final check and write. Use [`bwrb explain`](/reference/commands/explain/) to
+inspect the same result without mutating the note.
+
+### Transition effects
+
+A trait may update one directly related note when a source field enters a value:
+
+```json
+"transition_effects": [{
+  "on": "status = accepted",
+  "relation": "task",
+  "set": { "status": "done", "completed-at": "$TODAY" }
+}]
+```
+
+The relation must be a scalar effective `relation` field; an empty relation is
+a no-op. `set` is a flat literal patch. `$ACTOR`, `$NOW`, and `$TODAY` are the
+only expanded values. Bowerbird prepares and validates both notes, locks them
+in a stable shared order, rechecks their bytes, and writes the target directly.
+Target writes never trigger further effects or recurrence. If a later write
+fails, Bowerbird restores only its own earlier source bytes, never a newer
+writer's change.
 
 ### Precedence
 
@@ -308,13 +359,16 @@ Fields with `value` are not prompted—they're computed automatically:
 {
   "type": { "value": "task" },
   "created": { "value": "$NOW" },
-  "date": { "value": "$TODAY" }
+  "date": { "value": "$TODAY" },
+  "actor": { "value": "$ACTOR" }
 }
 ```
 
 **Special values:**
 - `$NOW` — Current datetime: `2025-01-07 14:30`
 - `$TODAY` — Current date: `2025-01-07`
+- `$ACTOR` — Logical runner identity resolved from root `--actor`, then
+  `BWRB_ACTOR`, then `unknown`. This is provenance, not authentication.
 
 ### text
 

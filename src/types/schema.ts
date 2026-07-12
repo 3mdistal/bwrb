@@ -115,7 +115,7 @@ export const FieldSchema = z.object({
   value: z
     .string()
     .optional()
-    .describe('Static value (use $NOW for current datetime, $TODAY for date)'),
+    .describe('Static value (use $NOW for current datetime, $TODAY for date, or $ACTOR for logical runner provenance)'),
   // Human-readable description of what this field is for and when to use it.
   // Surfaced by `bwrb schema list` (text + JSON); distinct from `label`, which
   // is the imperative prompt shown during input.
@@ -308,6 +308,58 @@ export const RecurrenceSchema = z.object({
 
 export type Recurrence = z.infer<typeof RecurrenceSchema>;
 
+const TransitionPredicateSchema = z.object({
+  field: SchemaFieldNameSchema,
+  equals: z.string().optional(),
+  in: z.array(z.string()).min(1).optional(),
+}).refine((value) => (value.equals === undefined) !== (value.in === undefined), {
+  message: 'A transition predicate requires exactly one of equals or in',
+});
+
+const TransitionRequirementSchema = z.object({
+  relation: SchemaFieldNameSchema,
+  min: z.number().int().min(1).optional(),
+  all: TransitionPredicateSchema,
+  failed_when: TransitionPredicateSchema.optional(),
+  stale_when: TransitionPredicateSchema.optional(),
+});
+
+export const TransitionGuardSchema = z.object({
+  on: z.string().min(1),
+  requires: z.array(TransitionRequirementSchema).min(1),
+});
+export type TransitionGuard = z.infer<typeof TransitionGuardSchema>;
+
+/** A bounded direct-relation patch applied when a source field enters a value. */
+export const TransitionEffectSchema = z.object({
+  on: z.string().min(1),
+  relation: SchemaFieldNameSchema,
+  // String-only means patches stay flat literals. The transition executor
+  // expands only $ACTOR, $NOW, and $TODAY at commit time.
+  set: z.record(z.string(), z.string()).refine((set) => Object.keys(set).length > 0, {
+    message: 'A transition effect requires at least one field assignment',
+  }),
+});
+export type TransitionEffect = z.infer<typeof TransitionEffectSchema>;
+
+/** A type-local, explicit policy for records that have reached their end of life. */
+export const RetentionSchema = z.object({
+  when: z.record(z.object({ in: z.array(z.string()).min(1) })).refine(v => Object.keys(v).length > 0, {
+    message: 'Retention when requires at least one field condition',
+  }),
+  clock: z.object({
+    field: SchemaFieldNameSchema,
+    after: z.string().regex(/^([1-9]\d*)d$/, 'Retention clock.after must be a positive whole-day duration such as "180d"'),
+  }),
+  resolved_when: z.record(z.object({ in: z.array(z.string()).min(1) })).optional(),
+  actions: z.array(z.union([
+    z.object({ kind: z.literal('archive'), directory: z.string().min(1) }),
+    z.object({ kind: z.literal('tombstone'), set: z.record(z.string(), z.string()).refine(v => Object.keys(v).length > 0) }),
+    z.object({ kind: z.literal('delete') }),
+  ])).min(1),
+});
+export type Retention = z.infer<typeof RetentionSchema>;
+
 /**
  * A reusable bundle of fields composed into a type via `traits`.
  *
@@ -338,6 +390,10 @@ export const TraitSchema = z.object({
   // Recurrence configuration (spawn-on-transition). When present, types that
   // compose this trait gain event-driven successor spawning. See RecurrenceSchema.
   recurrence: RecurrenceSchema.optional(),
+  // Relation-backed invariants evaluated when a note enters a configured value.
+  transition_guards: z.array(TransitionGuardSchema).optional(),
+  // Direct related-note patches evaluated when a note enters a configured value.
+  transition_effects: z.array(TransitionEffectSchema).optional(),
 });
 
 // ============================================================================
@@ -420,6 +476,7 @@ export const TypeSchema = z.object({
     .describe(
       "Custom plural form for folder naming (e.g., 'research' instead of 'researches'). Auto-pluralized if not specified."
     ),
+  retention: RetentionSchema.optional().describe('Type-local retention policy evaluated by audit'),
 });
 
 // ============================================================================

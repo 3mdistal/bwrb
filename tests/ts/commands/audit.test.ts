@@ -6837,4 +6837,110 @@ priority: medium
       expect(content).toContain('status: raw');
     });
   });
+
+  describe('retention', () => {
+    let tempVaultDir: string;
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-retention-test-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await mkdir(join(tempVaultDir, 'Candidates'), { recursive: true });
+      await writeFile(join(tempVaultDir, '.bwrb', 'schema.json'), JSON.stringify({
+        version: 2,
+        types: {
+          candidate: {
+            output_dir: 'Candidates',
+            fields: {
+              status: { prompt: 'select', options: ['accepted', 'open'] },
+              'resolved-at': { prompt: 'date', granularity: 'day' },
+              'retention-state': { prompt: 'select', options: ['active', 'tombstoned'] },
+              'tombstoned-at': { prompt: 'date', granularity: 'day' },
+            },
+            retention: {
+              when: { status: { in: ['accepted'] } },
+              clock: { field: 'resolved-at', after: '1d' },
+              resolved_when: { 'retention-state': { in: ['tombstoned'] } },
+              actions: [
+                { kind: 'archive', directory: 'Archive/Candidates' },
+                { kind: 'tombstone', set: { 'retention-state': 'tombstoned', 'tombstoned-at': '$TODAY' } },
+                { kind: 'delete' },
+              ],
+            },
+          },
+        },
+      }, null, 2));
+      await writeFile(join(tempVaultDir, 'Candidates', 'Old.md'), '---\ntype: candidate\nstatus: accepted\nresolved-at: 2000-01-01\nretention-state: active\n---\n');
+    });
+    afterEach(async () => rm(tempVaultDir, { recursive: true, force: true }));
+    it('reports due retention and requires explicit remediation execution', async () => {
+      const report = await runCLI(['audit', '--only', 'retention-due'], tempVaultDir);
+      expect(report.stdout).toContain('Retention is due');
+      const dry = await runCLI(['audit', '--all', '--fix', '--only', 'retention-due', '--retention-action', 'tombstone'], tempVaultDir);
+      expect(dry.stdout).toContain('Would tombstone');
+      expect(await readFile(join(tempVaultDir, 'Candidates', 'Old.md'), 'utf8')).toContain('retention-state: active');
+      const applied = await runCLI(['audit', '--all', '--fix', '--only', 'retention-due', '--retention-action', 'tombstone', '--execute'], tempVaultDir);
+      expect(applied.stdout).toContain('Tombstoned');
+      expect(await readFile(join(tempVaultDir, 'Candidates', 'Old.md'), 'utf8')).toContain('retention-state: tombstoned');
+    });
+
+    it('archives only on explicit execute', async () => {
+      const applied = await runCLI([
+        'audit', '--path', 'Candidates/Old.md', '--fix', '--only', 'retention-due',
+        '--retention-action', 'archive', '--execute',
+      ], tempVaultDir);
+      expect(applied.stdout).toContain('Archived');
+      expect(await readFile(join(tempVaultDir, 'Archive', 'Candidates', 'Old.md'), 'utf8')).toContain('type: candidate');
+      await expect(readFile(join(tempVaultDir, 'Candidates', 'Old.md'), 'utf8')).rejects.toThrow();
+    });
+
+    it('allows an explicit retention action in non-interactive mode without --auto', async () => {
+      const applied = await runCLI([
+        '--non-interactive', 'audit', '--path', 'Candidates/Old.md', '--fix', '--only', 'retention-due',
+        '--retention-action', 'tombstone', '--execute',
+      ], tempVaultDir);
+      expect(applied.exitCode).toBe(0);
+      expect(applied.stdout).toContain('Tombstoned');
+    });
+
+    it('deletes only when the retained type cannot be targeted by a relation', async () => {
+      const applied = await runCLI([
+        'audit', '--path', 'Candidates/Old.md', '--fix', '--only', 'retention-due',
+        '--retention-action', 'delete', '--execute',
+      ], tempVaultDir);
+      expect(applied.stdout).toContain('Deleted');
+      await expect(readFile(join(tempVaultDir, 'Candidates', 'Old.md'), 'utf8')).rejects.toThrow();
+    });
+
+    it('rejects delete retention when any relation can target the retained type', async () => {
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+      const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
+      schema.types.reference = { fields: { candidate: { prompt: 'relation', source: 'candidate' } } };
+      await writeFile(schemaPath, JSON.stringify(schema));
+      const result = await runCLI(['audit', '--only', 'retention-due'], tempVaultDir);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('delete is unsafe because relation fields can target this type');
+    });
+
+    it('rejects complex and transition-trigger tombstone patches', async () => {
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+      const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
+      schema.types.candidate.fields.related = { prompt: 'relation', source: 'candidate' };
+      schema.types.candidate.retention.actions = [
+        { kind: 'tombstone', set: { related: '[[Old]]', 'retention-state': 'tombstoned' } },
+      ];
+      await writeFile(schemaPath, JSON.stringify(schema));
+      const complex = await runCLI(['audit', '--only', 'retention-due'], tempVaultDir);
+      expect(complex.exitCode).toBe(1);
+      expect(complex.stderr).toContain('must be text, select, date, or static');
+
+      schema.types.candidate.traits = ['workflow'];
+      schema.traits = { workflow: { transition_guards: [{ on: 'status = accepted', requires: [{ relation: 'related', all: { field: 'status', equals: 'accepted' } }] }] } };
+      schema.types.candidate.retention.actions = [
+        { kind: 'tombstone', set: { status: 'accepted', 'retention-state': 'tombstoned' } },
+      ];
+      await writeFile(schemaPath, JSON.stringify(schema));
+      const trigger = await runCLI(['audit', '--only', 'retention-due'], tempVaultDir);
+      expect(trigger.exitCode).toBe(1);
+      expect(trigger.stderr).toContain('cannot modify transition trigger field "status"');
+    });
+  });
 });

@@ -57,6 +57,7 @@ import {
   type UndocumentedSchemaEntries,
 } from '../lib/audit/schema-docs.js';
 import { parseFuzzyThreshold } from '../lib/audit/unlinked-mention.js';
+import { runRetentionRemediation } from '../lib/audit/retention.js';
 import chalk from 'chalk';
 
 const FIX_TARGETING_ERROR_SUMMARY =
@@ -202,6 +203,7 @@ Examples:
   .option('--auto', 'With --fix: automatically apply unambiguous fixes')
   .option('--dry-run', 'With --fix: preview fixes without writing')
   .option('--execute', 'With --fix --auto: apply fixes (omit to preview)')
+  .option('--retention-action <kind>', 'Explicit retention action: archive, tombstone, or delete (requires --only retention-due --fix)')
   .option('--allow-field <fields...>', 'Allow additional fields beyond schema (repeatable)')
   .option(
     '--mention-fuzzy-threshold <n>',
@@ -229,6 +231,7 @@ Examples:
     const autoMode = options.auto ?? false;
     const dryRunMode = options.dryRun ?? false;
     const executeMode = options.execute ?? false;
+    const retentionAction = options.retentionAction as 'archive' | 'tombstone' | 'delete' | undefined;
     const exitWithValidationError = (
       message: string,
       {
@@ -260,9 +263,10 @@ Examples:
       exitWithValidationError('--dry-run requires --fix');
     }
 
-    // --execute requires --fix --auto
-    if (executeMode && (!fixMode || !autoMode)) {
-      exitWithValidationError('--execute requires --fix --auto');
+    // Retention is deliberately never an auto-fix. It has its own explicit
+    // selector/action gate, while preserving ordinary audit's auto contract.
+    if (executeMode && (!fixMode || (!autoMode && !retentionAction))) {
+      exitWithValidationError('--execute requires --fix --auto (or --retention-action)');
     }
 
     // --fix is not compatible with JSON output
@@ -272,6 +276,15 @@ Examples:
 
     if (executeMode && dryRunMode) {
       exitWithValidationError('--execute cannot be used with --dry-run');
+    }
+    if (retentionAction && !['archive', 'tombstone', 'delete'].includes(retentionAction)) {
+      exitWithValidationError('--retention-action must be archive, tombstone, or delete');
+    }
+    if (retentionAction && (!fixMode || options.only !== 'retention-due')) {
+      exitWithValidationError('--retention-action requires --fix --only retention-due');
+    }
+    if (retentionAction && autoMode) {
+      exitWithValidationError('--retention-action cannot be combined with --auto');
     }
 
     try {
@@ -300,7 +313,7 @@ Examples:
       }
       const mentionLinkOnce = options.mentionLinkOnce ?? schema.config.mentionLinkOnce;
 
-      if (globalOpts.nonInteractive && fixMode && !autoMode) {
+      if (globalOpts.nonInteractive && fixMode && !autoMode && !retentionAction) {
         exitWithValidationError('bwrb audit --fix requires --auto when --non-interactive is set.');
       }
 
@@ -397,6 +410,12 @@ Examples:
 
       // Handle fix mode
       if (fixMode) {
+        if (retentionAction) {
+          const remediation = await runRetentionRemediation({ results, schema, vaultDir, action: retentionAction, execute: executeMode && !dryRunMode });
+          for (const message of remediation.messages) console.log(message);
+          console.log(`${executeMode && !dryRunMode ? 'Applied' : 'Dry run'}: ${remediation.applied || remediation.attempted} retention action(s)`);
+          return;
+        }
         const headlessDryRunPreview = dryRunMode && !autoMode && !process.stdin.isTTY;
 
         if (!autoMode && !headlessDryRunPreview && !process.stdin.isTTY && results.length > 0) {

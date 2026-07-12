@@ -29,6 +29,7 @@ describe('help output contract snapshots', () => {
       'delete',
       'list',
       'recent',
+      'explain',
       'schema',
       'audit',
       'bulk',
