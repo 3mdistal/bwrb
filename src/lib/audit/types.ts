@@ -171,6 +171,12 @@ export interface FileAuditResult {
   issues: AuditIssue[];
 }
 
+/** Audit findings plus the number of targeted files actually inspected. */
+export interface AuditRunResult {
+  results: FileAuditResult[];
+  filesChecked: number;
+}
+
 /**
  * Overall audit summary.
  */
