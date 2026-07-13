@@ -2,9 +2,11 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { writeFile, rm, mkdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import { mkdtemp } from 'fs/promises';
+import { existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { createTestVault, cleanupTestVault, runCLI, runCLIWithOpenStdin } from '../fixtures/setup.js';
 import { extractHelpCommands } from '../helpers/help.js';
+import { ExitCodes } from '../../../src/lib/output.js';
 
 describe('schema command', () => {
   let vaultDir: string;
@@ -916,6 +918,81 @@ status: in-flight
           await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
         );
         expect(schema.schemaVersion).toBe('2.0.0');
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+
+    it('fails closed without advancing schema state when option cleanup would empty required fields', async () => {
+      const tempVaultDir = await createTestVault();
+      try {
+        const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+        const snapshotPath = join(tempVaultDir, '.bwrb', 'schema.applied.json');
+        const currentSchema = {
+          version: 2,
+          schemaVersion: '1.0.0',
+          types: {
+            'qa-record': {
+              output_dir: 'qa-records',
+              fields: {
+                status: {
+                  prompt: 'select',
+                  options: ['draft'],
+                  required: true,
+                },
+              },
+            },
+          },
+        };
+        const previousSchema = JSON.parse(JSON.stringify(currentSchema));
+        previousSchema.types['qa-record'].fields.status.options = ['draft', 'retired'];
+
+        await writeFile(schemaPath, JSON.stringify(currentSchema, null, 2));
+        await writeFile(
+          snapshotPath,
+          JSON.stringify({
+            schemaVersion: '1.0.0',
+            snapshotAt: new Date().toISOString(),
+            schema: previousSchema,
+          }, null, 2)
+        );
+        await mkdir(join(tempVaultDir, 'qa-records'), { recursive: true });
+        await mkdir(join(tempVaultDir, 'Archive'), { recursive: true });
+        const invalidNote = `---\ntype: qa-record\nstatus: retired\n---\n`;
+        await writeFile(join(tempVaultDir, 'qa-records/Source Fork.md'), invalidNote);
+        await writeFile(join(tempVaultDir, 'Archive/Source.md'), invalidNote);
+
+        const result = await runCLI(
+          [
+            'schema',
+            'migrate',
+            '--execute',
+            '--set-version',
+            '2.0.0',
+            '--yes',
+            '--no-backup',
+            '--output',
+            'json',
+          ],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
+        const response = JSON.parse(result.stdout);
+        expect(response.success).toBe(false);
+        expect(response.error).toContain('Migration blocked by 2 required-field issues');
+        expect(response.data.blockers.map((blocker: { relativePath: string }) => blocker.relativePath)).toEqual([
+          'Archive/Source.md',
+          'qa-records/Source Fork.md',
+        ]);
+        expect(await readFile(join(tempVaultDir, 'Archive/Source.md'), 'utf8')).toBe(invalidNote);
+        expect(await readFile(join(tempVaultDir, 'qa-records/Source Fork.md'), 'utf8')).toBe(invalidNote);
+
+        const unchangedSchema = JSON.parse(await readFile(schemaPath, 'utf8'));
+        expect(unchangedSchema.schemaVersion).toBe('1.0.0');
+        const unchangedSnapshot = JSON.parse(await readFile(snapshotPath, 'utf8'));
+        expect(unchangedSnapshot.schema.types['qa-record'].fields.status.options).toContain('retired');
+        expect(existsSync(join(tempVaultDir, '.bwrb', 'migrations.json'))).toBe(false);
       } finally {
         await cleanupTestVault(tempVaultDir);
       }
