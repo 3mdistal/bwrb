@@ -9,10 +9,9 @@
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import { join, relative } from 'path';
 import {
-  getTypeDefByPath,
-  resolveTypePathFromFrontmatter,
+  getType,
+  resolveTypeFromFrontmatter,
   getFieldsForType,
-  getFrontmatterOrder,
 } from './schema.js';
 import { parseNote, writeNote, writeFileAtomic, generateBodySections } from './frontmatter.js';
 import {
@@ -204,7 +203,7 @@ async function editNoteFromJsonAttempt(
   }
 
   // Resolve type path from existing frontmatter
-  const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
   if (!typePath) {
     const error = 'Could not determine note type from frontmatter';
     if (jsonMode) {
@@ -214,7 +213,7 @@ async function editNoteFromJsonAttempt(
     throw new Error(error);
   }
 
-  const typeDef = getTypeDefByPath(schema, typePath);
+  const typeDef = getType(schema, typePath);
   if (!typeDef) {
     const error = `Unknown type path: ${typePath}`;
     if (jsonMode) {
@@ -388,7 +387,7 @@ async function editNoteFromJsonAttempt(
   }
 
   // Get field order
-  const fieldOrder = getFrontmatterOrder(typeDef);
+  const fieldOrder = typeDef.fieldOrder;
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(resolvedFrontmatter);
 
   await injectMutationFault(mutationFaultInjector, 'before', 'guard-evaluation');
@@ -502,7 +501,7 @@ export async function editNoteInteractive(
   printInfo(`\n=== Editing: ${fileName} ===`);
 
   // Resolve type path from frontmatter
-  const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
   if (!typePath) {
     printWarning('Warning: Unknown type, showing raw frontmatter edit');
     console.log('Current frontmatter:');
@@ -510,7 +509,7 @@ export async function editNoteInteractive(
     return;
   }
 
-  const typeDef = getTypeDefByPath(schema, typePath);
+  const typeDef = getType(schema, typePath);
   if (!typeDef) {
     printWarning(`Warning: Unknown type path: ${typePath}`);
     return;
@@ -527,7 +526,7 @@ export async function editNoteInteractive(
     )
   );
   const fields = getFieldsForType(schema, typePath);
-  const fieldOrder = getFrontmatterOrder(typeDef);
+  const fieldOrder = typeDef.fieldOrder;
 
   // Determine actual field order
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(fields);

@@ -11,7 +11,7 @@ import { readFile } from 'fs/promises';
 import { basename } from 'path';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
-import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
+import { loadSchema, getType, formatUnknownTypeError } from '../lib/schema.js';
 import { configurePromptMode, printError, printSuccess, printWarning } from '../lib/prompt.js';
 import {
   printJson,
@@ -307,7 +307,7 @@ async function handleContentSearch(
 
   // Validate type if provided
   if (options.type) {
-    const typeDef = getTypeDefByPath(schema, options.type);
+    const typeDef = getType(schema, options.type);
     if (!typeDef) {
       const error = formatUnknownTypeError(schema, options.type);
       if (jsonMode) {
@@ -593,7 +593,7 @@ async function buildScopedSearchIndex(
   const index = await buildNoteIndex(schema, vaultDir, options.path);
   if (!options.type && !options.where?.length) return index;
 
-  if (options.type && !getTypeDefByPath(schema, options.type)) {
+  if (options.type && !getType(schema, options.type)) {
     throw new Error(formatUnknownTypeError(schema, options.type));
   }
 

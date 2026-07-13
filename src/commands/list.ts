@@ -3,7 +3,7 @@ import { basename, relative } from 'path';
 import chalk from 'chalk';
 import {
   loadSchema,
-  getTypeDefByPath,
+  getType,
   getAllFieldsForType,
   formatUnknownTypeError,
   getFieldsForType,
@@ -655,7 +655,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
 
       // Validate type if specified
       if (targeting.type) {
-        const typeDef = getTypeDefByPath(schema, targeting.type);
+        const typeDef = getType(schema, targeting.type);
         if (!typeDef) {
           const error = formatUnknownTypeError(schema, targeting.type);
           if (jsonMode) {

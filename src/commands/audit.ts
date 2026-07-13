@@ -8,7 +8,7 @@
 import { Command } from 'commander';
 import {
   loadSchema,
-  getTypeDefByPath,
+  getType,
   formatUnknownTypeError,
 } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
@@ -364,7 +364,7 @@ Examples:
 
       // Validate type if specified
       if (typePath) {
-        const typeDef = getTypeDefByPath(schema, typePath);
+        const typeDef = getType(schema, typePath);
         if (!typeDef) {
           const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {

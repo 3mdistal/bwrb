@@ -5,20 +5,12 @@ import { tmpdir } from 'os';
 import {
   loadSchema,
   loadCurrentSchema,
-  getTypeFamilies,
+  getTypeNames,
   getFieldOptions,
   getOptionsForField,
-  parseTypePath,
-  getTypeDefByPath,
-  hasSubtypes,
-  getSubtypeKeys,
-  discriminatorName,
   getFieldsForType,
-  getFrontmatterOrder,
-  getOrderedFieldNames,
-  resolveTypePathFromFrontmatter,
+  resolveTypeFromFrontmatter,
   getAllFieldsForType,
-  getDiscriminatorFieldsFromTypePath,
   getPluralName,
   computeDefaultOutputDir,
   getType,
@@ -176,9 +168,9 @@ describe('schema', () => {
     });
   });
 
-  describe('getTypeFamilies', () => {
+  describe('getTypeNames', () => {
     it('should return top-level type names', () => {
-      const families = getTypeFamilies(schema);
+      const families = getTypeNames(schema);
       expect(families).toContain('objective');
       expect(families).toContain('idea');
     });
@@ -215,67 +207,46 @@ describe('schema', () => {
     });
   });
 
-  describe('parseTypePath', () => {
-    it('should return type name as single-element array (legacy function)', () => {
-      // In v2, parseTypePath just returns [typeName] - no path splitting
-      expect(parseTypePath('task')).toEqual(['task']);
-      expect(parseTypePath('idea')).toEqual(['idea']);
-      expect(parseTypePath('')).toEqual(['']);
-    });
-  });
-
-  describe('getTypeDefByPath', () => {
+  describe('getType', () => {
     it('should return type definition for type name', () => {
-      const typeDef = getTypeDefByPath(schema, 'idea');
+      const typeDef = getType(schema, 'idea');
       expect(typeDef).toBeDefined();
       expect(typeDef?.outputDir).toBe('Ideas');
     });
 
     it('should return type definition for child type', () => {
-      const typeDef = getTypeDefByPath(schema, 'task');
+      const typeDef = getType(schema, 'task');
       expect(typeDef).toBeDefined();
       expect(typeDef?.outputDir).toBe('Objectives/Tasks');
     });
 
     it('should return undefined for unknown type', () => {
-      const typeDef = getTypeDefByPath(schema, 'unknown');
+      const typeDef = getType(schema, 'unknown');
       expect(typeDef).toBeUndefined();
     });
   });
 
-  describe('hasSubtypes', () => {
+  describe('type children', () => {
     it('should return true for types with subtypes', () => {
-      const typeDef = getTypeDefByPath(schema, 'objective');
+      const typeDef = getType(schema, 'objective');
       expect(typeDef).toBeDefined();
-      expect(hasSubtypes(typeDef!)).toBe(true);
+      expect(typeDef!.children.length > 0).toBe(true);
     });
 
     it('should return false for leaf types', () => {
-      const typeDef = getTypeDefByPath(schema, 'idea');
+      const typeDef = getType(schema, 'idea');
       expect(typeDef).toBeDefined();
-      expect(hasSubtypes(typeDef!)).toBe(false);
+      expect(typeDef!.children.length > 0).toBe(false);
     });
   });
 
-  describe('getSubtypeKeys', () => {
+  describe('type.children', () => {
     it('should return subtype keys', () => {
-      const typeDef = getTypeDefByPath(schema, 'objective');
+      const typeDef = getType(schema, 'objective');
       expect(typeDef).toBeDefined();
-      const keys = getSubtypeKeys(typeDef!);
+      const keys = typeDef!.children;
       expect(keys).toContain('task');
       expect(keys).toContain('milestone');
-    });
-  });
-
-  describe('discriminatorName', () => {
-    it('should return "type" for top-level', () => {
-      expect(discriminatorName(undefined)).toBe('type');
-      expect(discriminatorName('type')).toBe('type');
-    });
-
-    it('should always return "type" in new model (no parent-type discriminators)', () => {
-      // In the new inheritance model, we use a single 'type' field
-      expect(discriminatorName('objective')).toBe('type');
     });
   });
 
@@ -310,22 +281,22 @@ describe('schema', () => {
     });
   });
 
-  describe('getFrontmatterOrder', () => {
+  describe('fieldOrder', () => {
     it('should return explicit order if defined', () => {
-      const typeDef = getTypeDefByPath(schema, 'idea');
+      const typeDef = getType(schema, 'idea');
       expect(typeDef).toBeDefined();
-      const order = getFrontmatterOrder(typeDef!);
+      const order = typeDef!.fieldOrder;
       // In new model, 'type' discriminator is not in field order
       expect(order).toContain('status');
       expect(order).toContain('priority');
     });
   });
 
-  describe('getOrderedFieldNames', () => {
+  describe('resolved field order', () => {
     it('should use field_order if defined', () => {
-      const typeDef = getTypeDefByPath(schema, 'task');
+      const typeDef = getType(schema, 'task');
       expect(typeDef).toBeDefined();
-      const order = getOrderedFieldNames(schema, 'task', typeDef!);
+      const order = typeDef!.fieldOrder;
       expect(order).toContain('status');
       expect(order).toContain('milestone');
       expect(order).toContain('deadline');
@@ -334,36 +305,36 @@ describe('schema', () => {
     it('should return fieldOrder from resolved type', () => {
       // In the new model, field ordering is computed at schema load time
       // and stored in the ResolvedType.fieldOrder property
-      const typeDef = getTypeDefByPath(schema, 'idea');
+      const typeDef = getType(schema, 'idea');
       expect(typeDef).toBeDefined();
-      const order = getOrderedFieldNames(schema, 'idea', typeDef!);
+      const order = typeDef!.fieldOrder;
       expect(order).toContain('status');
       expect(order).toContain('priority');
     });
   });
 
-  describe('resolveTypePathFromFrontmatter', () => {
+  describe('resolveTypeFromFrontmatter', () => {
     it('should resolve simple type', () => {
-      const typeName = resolveTypePathFromFrontmatter(schema, { type: 'idea' });
+      const typeName = resolveTypeFromFrontmatter(schema, { type: 'idea' });
       expect(typeName).toBe('idea');
     });
 
     it('should resolve child type directly', () => {
       // In v2 model, frontmatter has just 'type: task'
-      const typeName = resolveTypePathFromFrontmatter(schema, { type: 'task' });
+      const typeName = resolveTypeFromFrontmatter(schema, { type: 'task' });
       expect(typeName).toBe('task');
     });
 
     it('should return parent type when only parent specified', () => {
       // If frontmatter has type: objective, return objective (not task)
-      const typeName = resolveTypePathFromFrontmatter(schema, {
+      const typeName = resolveTypeFromFrontmatter(schema, {
         type: 'objective',
       });
       expect(typeName).toBe('objective');
     });
 
     it('should return undefined for missing type', () => {
-      const typeName = resolveTypePathFromFrontmatter(schema, {});
+      const typeName = resolveTypeFromFrontmatter(schema, {});
       expect(typeName).toBeUndefined();
     });
   });
@@ -374,29 +345,6 @@ describe('schema', () => {
       // In new model, 'type' is not a field
       expect(fields.has('status')).toBe(true);
       expect(fields.has('milestone')).toBe(true);
-    });
-  });
-
-  describe('getDiscriminatorFieldsFromTypePath', () => {
-    it('should return type field for type name', () => {
-      const fields = getDiscriminatorFieldsFromTypePath('idea');
-      expect(fields).toEqual({ type: 'idea' });
-    });
-
-    it('should return type field with provided name', () => {
-      // In v2, this function just returns { type: typeName }
-      const fields = getDiscriminatorFieldsFromTypePath('task');
-      expect(fields).toEqual({ type: 'task' });
-    });
-
-    it('should return type field for any string', () => {
-      const fields = getDiscriminatorFieldsFromTypePath('milestone');
-      expect(fields).toEqual({ type: 'milestone' });
-    });
-
-    it('should return type field with empty string for empty input', () => {
-      const fields = getDiscriminatorFieldsFromTypePath('');
-      expect(fields).toEqual({ type: '' });
     });
   });
 

@@ -15,10 +15,9 @@ import {
   getType,
   getFieldsForType,
   resolveTypeFromFrontmatter,
-  getDiscriminatorFieldsFromTypePath,
   getOptionsForField,
   getConcreteTypeNames,
-  getTypeFamilies,
+  getTypeNames,
   getDescendants,
 } from '../schema.js';
 import { coerceBooleanFromString, coerceNumberFromString } from './coercion.js';
@@ -46,9 +45,6 @@ import { buildNoteTargetIndex, type NoteTargetIndex } from '../discovery.js';
 import { BacklinkScanner } from './backlink-index.js';
 import { isBwrbBuiltinFrontmatterField } from '../frontmatter/systemFields.js';
 
-// Alias for backward compatibility
-const resolveTypePathFromFrontmatter = resolveTypeFromFrontmatter;
-const getTypeDefByPath = getType;
 import {
   type AuditIssue,
   type FileAuditResult,
@@ -202,8 +198,8 @@ async function applyUnlinkedMentionFix(
   const newBody =
     body.slice(0, matchIndex) + replacement + body.slice(matchIndex + surface.length);
 
-  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
-  const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
+  const typePath = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
+  const typeDef = typePath ? getType(schema, typePath) : undefined;
   const order = typeDef?.fieldOrder;
 
   if (!isDryRunEnabled()) {
@@ -304,8 +300,8 @@ async function applyBodySectionFix(
   }
 
   const parsed = await parseNote(filePath);
-  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
-  const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
+  const typePath = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
+  const typeDef = typePath ? getType(schema, typePath) : undefined;
   if (!typeDef) {
     return { file: filePath, issue, action: 'failed', message: 'Could not resolve note type' };
   }
@@ -378,7 +374,7 @@ async function applyMissingSuccessorFix(
   }
 
   const predecessorName = basename(filePath, '.md');
-  const typeDef = getTypeDefByPath(schema, typePath);
+  const typeDef = getType(schema, typePath);
   const order = typeDef?.fieldOrder;
 
   try {
@@ -614,7 +610,7 @@ async function applyFix(
           return { file: filePath, issue, action: 'failed', message: 'No type path provided' };
         }
         // Convert type path to discriminator fields and add them
-        const discriminatorFields = getDiscriminatorFieldsFromTypePath(newValue);
+        const discriminatorFields = { type: newValue };
         Object.assign(frontmatter, discriminatorFields);
         break;
       }
@@ -817,8 +813,8 @@ async function applyFix(
 
     // Write the updated frontmatter
     // Get the type path to determine frontmatter order
-    const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
-    const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
+    const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
+    const typeDef = typePath ? getType(schema, typePath) : undefined;
     const order = typeDef?.fieldOrder;
 
     if (!isDryRunEnabled()) {
@@ -1016,8 +1012,8 @@ async function removeField(
     delete frontmatter[fieldName];
 
     // Get frontmatter order if available
-    const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
-    const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
+    const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
+    const typeDef = typePath ? getType(schema, typePath) : undefined;
     const order = typeDef?.fieldOrder;
 
     if (!isDryRunEnabled()) {
@@ -1047,7 +1043,7 @@ function getDefaultValue(
   frontmatter: Record<string, unknown>,
   fieldName: string
 ): unknown | undefined {
-  const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
   if (!typePath) return undefined;
 
   const fields = getFieldsForType(schema, typePath);
@@ -1302,8 +1298,8 @@ export async function runAutoFix(
             frontmatter[targetField] = frontmatter[issue.field];
             delete frontmatter[issue.field];
 
-            const updatedTypePath = resolveTypePathFromFrontmatter(schema, frontmatter);
-            const updatedTypeDef = updatedTypePath ? getTypeDefByPath(schema, updatedTypePath) : undefined;
+            const updatedTypePath = resolveTypeFromFrontmatter(schema, frontmatter);
+            const updatedTypeDef = updatedTypePath ? getType(schema, updatedTypePath) : undefined;
             const order = updatedTypeDef?.fieldOrder;
 
             if (!dryRun) {
@@ -1335,7 +1331,7 @@ export async function runAutoFix(
         const fixResult = await applyFix(schema, result.path, issue, issue.inferredType);
         if (fixResult.action === 'fixed') {
           console.log(chalk.cyan(`  ${result.relativePath}`));
-          const fields = getDiscriminatorFieldsFromTypePath(issue.inferredType);
+          const fields = { type: issue.inferredType };
           const fieldStr = Object.entries(fields)
             .map(([k, v]) => `${k}: ${v}`)
             .join(', ');
@@ -2306,7 +2302,7 @@ async function handleOrphanFileFix(
   if (typePath) {
     const fixResult = await applyFix(schema, result.path, issue, typePath);
     if (fixResult.action === 'fixed') {
-      const fields = getDiscriminatorFieldsFromTypePath(typePath);
+      const fields = { type: typePath };
       const fieldStr = Object.entries(fields)
         .map(([k, v]) => `${k}: ${v}`)
         .join(', ');
@@ -2353,7 +2349,7 @@ async function handleMissingRequiredFix(
   }
 
   // No default - check if field has options or allow text input
-  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
   const fieldOptions = typePath ? getOptionsForField(schema, typePath, issue.field) : [];
 
   if (fieldOptions.length > 0) {
@@ -2427,7 +2423,7 @@ async function handleEmptyStringRequiredFix(
     }
   }
 
-  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
   const fieldOptions = typePath ? getOptionsForField(schema, typePath, issue.field) : [];
 
   if (fieldOptions.length > 0) {
@@ -2522,7 +2518,7 @@ async function handleUnknownFieldFix(
   }
 
   const parsed = await parseNote(result.path);
-  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
   const schemaFields: Record<string, Field> = typePath ? getFieldsForType(schema, typePath) : {};
 
   const candidates = getSimilarFieldCandidates(issue.field, schemaFields, issue.value, 3);
@@ -2609,8 +2605,8 @@ async function handleUnknownFieldFix(
     frontmatter[targetField] = frontmatter[issue.field];
     delete frontmatter[issue.field];
 
-    const updatedTypePath = resolveTypePathFromFrontmatter(schema, frontmatter);
-    const updatedTypeDef = updatedTypePath ? getTypeDefByPath(schema, updatedTypePath) : undefined;
+    const updatedTypePath = resolveTypeFromFrontmatter(schema, frontmatter);
+    const updatedTypeDef = updatedTypePath ? getType(schema, updatedTypePath) : undefined;
     const order = updatedTypeDef?.fieldOrder;
 
     if (!isDryRunEnabled()) {
@@ -2826,7 +2822,7 @@ async function handleInvalidSourceTypeFix(
 
   // Get the source type constraint from the schema
   const parsed = await parseNote(result.path);
-  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
   if (!typePath) {
     console.log(chalk.dim('    (Cannot fix - unknown type)'));
     return 'skipped';
@@ -3050,7 +3046,7 @@ async function handleInvalidTypeFix(
   context?: FixContext
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
   // Get available types
-  const availableTypes = getTypeFamilies(schema);
+  const availableTypes = getTypeNames(schema);
   
   if (availableTypes.length === 0) {
     console.log(chalk.dim('    (No types defined in schema - skipping)'));
@@ -3085,7 +3081,7 @@ async function handleInvalidTypeFix(
   // Apply the fix - update the type field
   const fixResult = await applyFix(schema, result.path, { ...issue, code: 'orphan-file' }, selected);
   if (fixResult.action === 'fixed') {
-    const fields = getDiscriminatorFieldsFromTypePath(selected);
+    const fields = { type: selected };
     const fieldStr = Object.entries(fields)
       .map(([k, v]) => `${k}: ${v}`)
       .join(', ');
@@ -3125,7 +3121,7 @@ async function handleParentCycleFix(
   
   // Get notes of the same type to offer as alternative parents
   const parsed = await parseNote(result.path);
-  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
   let validParents: string[] = [];
   
   if (typePath) {
@@ -3262,8 +3258,8 @@ async function updateFrontmatterValue(
       };
     }
 
-    const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
-    const typeDef = typePath ? getTypeDefByPath(schema, typePath) : undefined;
+    const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
+    const typeDef = typePath ? getType(schema, typePath) : undefined;
     const order = typeDef?.fieldOrder;
 
     if (!isDryRunEnabled()) {
@@ -3352,7 +3348,7 @@ async function handleSelfReferenceFix(
 
   const { schema, noteTargetIndex } = context;
   const parsed = await parseNote(result.path);
-  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
   const fields = typePath ? getFieldsForType(schema, typePath) : {};
   const field = fields[issue.field];
   const linkFormat = schema.config.linkFormat ?? 'wikilink';
@@ -3440,7 +3436,7 @@ async function handleAmbiguousLinkTargetFix(
   const linkFormat = schema.config.linkFormat ?? 'wikilink';
 
   const parsed = await parseNote(result.path);
-  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
   const fields = typePath ? getFieldsForType(schema, typePath) : {};
   const field = fields[issue.field];
   const isRequired = field?.required === true;
@@ -3514,7 +3510,7 @@ async function handleInvalidListElementFix(
   }
 
   const parsed = await parseNote(result.path);
-  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
   const fields = typePath ? getFieldsForType(schema, typePath) : {};
   const field = fields[fieldName];
   const isRequired = field?.required === true;
@@ -3888,7 +3884,7 @@ async function handleWrongScalarTypeFix(
 
   const parsed = await parseNote(result.path);
   const currentValue = parsed.frontmatter[issue.field];
-  const typePath = resolveTypePathFromFrontmatter(schema, parsed.frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, parsed.frontmatter);
   const fields = typePath ? getFieldsForType(schema, typePath) : {};
   const field = fields[issue.field];
   const expectsList = field?.prompt === 'list' || field?.multiple === true;

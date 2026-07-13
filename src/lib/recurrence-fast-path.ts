@@ -25,7 +25,7 @@
  */
 
 import { writeNote } from './frontmatter.js';
-import { getFrontmatterOrder, getRecurrenceForType } from './schema.js';
+import { getRecurrenceForType } from './schema.js';
 import { getType } from './schema.js';
 import {
   CHAIN_NEXT_FIELD,
@@ -80,7 +80,7 @@ export async function prepareRecurrenceFastPath(
 ): Promise<PreparedFastPath> {
   const predecessorName = filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
   const typeDef = getType(schema, typeName);
-  const orderList = typeDef ? getFrontmatterOrder(typeDef) : undefined;
+  const orderList = typeDef?.fieldOrder;
   const order = orderList && orderList.length > 0 ? orderList : undefined;
 
   const noop: PreparedFastPath = { prepared: null, predecessorName, order, filePath, body };

@@ -10,7 +10,7 @@ import { basename, isAbsolute, relative } from 'path';
 import fs from 'fs/promises';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
-import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
+import { loadSchema, getType, formatUnknownTypeError } from '../lib/schema.js';
 import { configurePromptMode, printError, printSuccess } from '../lib/prompt.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError } from '../lib/output.js';
 import {
@@ -233,7 +233,7 @@ Precedence (for --open app mode):
 
       // Validate type if provided
       if (options.type) {
-        const typeDef = getTypeDefByPath(schema, options.type);
+        const typeDef = getType(schema, options.type);
         if (!typeDef) {
           const error = formatUnknownTypeError(schema, options.type);
           if (jsonMode) {

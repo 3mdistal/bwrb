@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { relative } from 'path';
-import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
+import { loadSchema, getType, formatUnknownTypeError } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
 import {
@@ -209,7 +209,7 @@ Template management:
         process.exit(1);
       }
 
-      const typeDef = getTypeDefByPath(schema, resolvedPath);
+      const typeDef = getType(schema, resolvedPath);
       if (!typeDef) {
         printError(formatUnknownTypeError(schema, resolvedPath));
         process.exit(1);

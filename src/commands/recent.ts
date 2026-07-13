@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { basename, relative } from 'path';
 import { stat } from 'fs/promises';
 import chalk from 'chalk';
-import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
+import { loadSchema, getType, formatUnknownTypeError } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
 import { printError } from '../lib/prompt.js';
@@ -225,7 +225,7 @@ Examples:
 
       // Validate type if specified
       if (targeting.type) {
-        const typeDef = getTypeDefByPath(schema, targeting.type);
+        const typeDef = getType(schema, targeting.type);
         if (!typeDef) {
           const error = formatUnknownTypeError(schema, targeting.type);
           if (jsonMode) {

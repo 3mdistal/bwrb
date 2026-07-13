@@ -13,8 +13,8 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import {
   loadSchema,
-  getTypeDefByPath,
-  getTypeFamilies,
+  getType,
+  getTypeNames,
   getOptionsForField,
   resolveTypeFromFrontmatter,
   formatUnknownTypeError,
@@ -227,7 +227,7 @@ Examples:
 
       // Validate type exists if specified
       if (typePath) {
-        const typeDef = getTypeDefByPath(schema, typePath);
+        const typeDef = getType(schema, typePath);
         if (!typeDef) {
           const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {
@@ -508,7 +508,7 @@ function validateEnumValue(
  */
 function showAvailableTypes(schema: LoadedSchema): void {
   console.log('\nAvailable types:');
-  for (const family of getTypeFamilies(schema)) {
+  for (const family of getTypeNames(schema)) {
     console.log(`  ${family}`);
   }
 }

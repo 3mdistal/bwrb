@@ -4,7 +4,7 @@ import { mkdir, unlink } from 'fs/promises';
 import chalk from 'chalk';
 import {
   loadSchema,
-  getTypeDefByPath,
+  getType,
   getFieldsForType,
   formatUnknownTypeError,
 } from '../lib/schema.js';
@@ -211,7 +211,7 @@ templateCommand
 
       // Validate type path if provided
       if (typePath) {
-        const typeDef = getTypeDefByPath(schema, typePath);
+        const typeDef = getType(schema, typePath);
         if (!typeDef) {
           const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {
@@ -582,7 +582,7 @@ templateCommand
 
       // Validate type path if provided
       if (typePath) {
-        const typeDef = getTypeDefByPath(schema, typePath);
+        const typeDef = getType(schema, typePath);
         if (!typeDef) {
           const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {
@@ -712,7 +712,7 @@ templateCommand
       }
 
       // Validate type path
-      const typeDef = getTypeDefByPath(schema, resolvedTypePath);
+      const typeDef = getType(schema, resolvedTypePath);
       if (!typeDef) {
         const error = formatUnknownTypeError(schema, resolvedTypePath);
         if (jsonMode) {
@@ -1089,7 +1089,7 @@ templateCommand
         if (template === null) throw new UserCancelledError();
       } else {
         // Validate type path
-        const typeDef = getTypeDefByPath(schema, typePath);
+        const typeDef = getType(schema, typePath);
         if (!typeDef) {
           const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {
@@ -1479,7 +1479,7 @@ templateCommand
         if (template === null) throw new UserCancelledError();
       } else {
         // Validate type path
-        const typeDef = getTypeDefByPath(schema, typePath);
+        const typeDef = getType(schema, typePath);
         if (!typeDef) {
           const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {

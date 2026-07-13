@@ -12,7 +12,7 @@ import {
   getFieldsForType,
   resolveTypeFromFrontmatter,
   getOutputDir,
-  getTypeFamilies,
+  getTypeNames,
   getDescendants,
   getOwnedFields,
   resolveDateCalendar,
@@ -417,7 +417,7 @@ export async function auditFile(
   // Resolve full type path from frontmatter
   const resolvedTypePath = resolveTypeFromFrontmatter(schema, frontmatter);
   if (!resolvedTypePath) {
-    const knownTypes = getTypeFamilies(schema);
+    const knownTypes = getTypeNames(schema);
     const suggestion = suggestFieldName(String(typeValue), knownTypes);
     issues.push({
       severity: 'error',

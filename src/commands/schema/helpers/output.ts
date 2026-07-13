@@ -9,10 +9,8 @@
 
 import chalk from 'chalk';
 import {
-  getTypeFamilies,
-  getTypeDefByPath,
-  hasSubtypes,
-  getSubtypeKeys,
+  getTypeNames,
+  getType,
   getFieldsForType,
   getFieldsByOrigin,
   getFieldOrderForOrigin,
@@ -35,8 +33,8 @@ export function outputSchemaJson(schema: LoadedSchema): void {
   const output: Record<string, unknown> = {
     version: raw.version ?? 2,
     types: Object.fromEntries(
-      getTypeFamilies(schema).map(family => {
-        const typeDef = getTypeDefByPath(schema, family);
+      getTypeNames(schema).map(family => {
+        const typeDef = getType(schema, family);
         return [
           family,
           typeDef ? formatTypeForJson(schema, family, typeDef) : {},
@@ -52,7 +50,7 @@ export function outputSchemaJson(schema: LoadedSchema): void {
  * Output specific type details as JSON.
  */
 export function outputTypeDetailsJson(schema: LoadedSchema, typePath: string): void {
-  const typeDef = getTypeDefByPath(schema, typePath);
+  const typeDef = getType(schema, typePath);
   if (!typeDef) {
     printJson(jsonError(formatUnknownTypeError(schema, typePath)));
     process.exit(ExitCodes.VALIDATION_ERROR);
@@ -115,7 +113,7 @@ export function outputTypeDetailsJson(schema: LoadedSchema, typePath: string): v
         formatFieldForJson(field),
       ])
     ),
-    subtypes: hasSubtypes(typeDef) ? getSubtypeKeys(typeDef) : undefined,
+    subtypes: typeDef.children.length > 0 ? typeDef.children : undefined,
     body_sections: typeDef.bodySections 
       ? formatBodySectionsForJson(typeDef.bodySections)
       : undefined,
@@ -144,11 +142,11 @@ function formatTypeForJson(
   if (typeDef.description) result.description = typeDef.description;
 
   // Add subtypes if present (children in new model)
-  if (hasSubtypes(typeDef)) {
+  if (typeDef.children.length > 0) {
     result.subtypes = Object.fromEntries(
-      getSubtypeKeys(typeDef).map(subtype => {
+      typeDef.children.map(subtype => {
         // In v2, children are just type names, not paths
-        const childTypeDef = getTypeDefByPath(schema, subtype);
+        const childTypeDef = getType(schema, subtype);
         return [
           subtype,
           childTypeDef ? formatTypeForJson(schema, subtype, childTypeDef) : {},
@@ -226,8 +224,8 @@ export function showSchemaTree(schema: LoadedSchema): void {
 
   // Show types
   console.log(chalk.cyan('Types:'));
-  for (const family of getTypeFamilies(schema)) {
-    const typeDef = getTypeDefByPath(schema, family);
+  for (const family of getTypeNames(schema)) {
+    const typeDef = getType(schema, family);
     if (!typeDef) continue;
     printTypeTree(schema, family, typeDef, 0, context);
   }
@@ -268,10 +266,10 @@ function printTypeTree(
   printTreeLine(indent, label, context);
 
   // Show subtypes (children in new model)
-  if (hasSubtypes(typeDef)) {
-    for (const subtype of getSubtypeKeys(typeDef)) {
+  if (typeDef.children.length > 0) {
+    for (const subtype of typeDef.children) {
       // In v2, children are just type names, not paths
-        const subDef = getTypeDefByPath(schema, subtype);
+        const subDef = getType(schema, subtype);
         if (subDef) {
           printTypeTree(schema, subtype, subDef, depth + 1, context);
         }
@@ -310,7 +308,7 @@ function printLabelValue(
  */
 export function showTypeDetails(schema: LoadedSchema, typePath: string): void {
   const context = getTtyContext();
-  const typeDef = getTypeDefByPath(schema, typePath);
+  const typeDef = getType(schema, typePath);
   if (!typeDef) {
     printError(formatUnknownTypeError(schema, typePath));
     process.exit(1);
@@ -337,8 +335,8 @@ export function showTypeDetails(schema: LoadedSchema, typePath: string): void {
   }
 
   // Subtypes (children in new model) - show before fields for better overview
-  if (hasSubtypes(typeDef)) {
-    printLabelValue('Subtypes', getSubtypeKeys(typeDef).join(', '), context);
+  if (typeDef.children.length > 0) {
+    printLabelValue('Subtypes', typeDef.children.join(', '), context);
   }
 
   // Fields grouped by origin (own vs trait vs inherited)
@@ -564,8 +562,8 @@ export function showSchemaTreeVerbose(schema: LoadedSchema): void {
   console.log(chalk.bold('\nSchema Types\n'));
 
   console.log(chalk.cyan('Types:'));
-  for (const family of getTypeFamilies(schema)) {
-    const typeDef = getTypeDefByPath(schema, family);
+  for (const family of getTypeNames(schema)) {
+    const typeDef = getType(schema, family);
     if (!typeDef) continue;
     printTypeTreeVerbose(schema, family, typeDef, 0, context);
   }
@@ -666,7 +664,7 @@ function printTypeTreeVerbose(
   }
 
   // Add blank line between types for readability (but not after the last subtype)
-  const subtypes = hasSubtypes(typeDef) ? getSubtypeKeys(typeDef) : [];
+  const subtypes = typeDef.children.length > 0 ? typeDef.children : [];
   if (subtypes.length === 0) {
     console.log('');
   }
@@ -674,7 +672,7 @@ function printTypeTreeVerbose(
   // Show subtypes (children in new model)
   if (subtypes.length > 0) {
     for (const subtype of subtypes) {
-        const subDef = getTypeDefByPath(schema, subtype);
+        const subDef = getType(schema, subtype);
         if (subDef) {
         printTypeTreeVerbose(schema, subtype, subDef, depth + 1, context);
       }
@@ -762,7 +760,7 @@ export function outputSchemaVerboseJson(schema: LoadedSchema): void {
     if (processedTypes.has(typeName)) return;
     processedTypes.add(typeName);
 
-    const typeDef = getTypeDefByPath(schema, typeName);
+    const typeDef = getType(schema, typeName);
     if (!typeDef) return;
 
     // Get fields grouped by origin
@@ -828,8 +826,8 @@ export function outputSchemaVerboseJson(schema: LoadedSchema): void {
     }
 
     // Add subtypes if any
-    if (hasSubtypes(typeDef)) {
-      typeOutput.subtypes = getSubtypeKeys(typeDef);
+    if (typeDef.children.length > 0) {
+      typeOutput.subtypes = typeDef.children;
     }
 
     types.push(typeOutput);
@@ -841,7 +839,7 @@ export function outputSchemaVerboseJson(schema: LoadedSchema): void {
   }
 
   // Start with top-level families
-  for (const family of getTypeFamilies(schema)) {
+  for (const family of getTypeNames(schema)) {
     processType(family);
   }
 
