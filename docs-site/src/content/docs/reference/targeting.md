@@ -235,7 +235,10 @@ For ergonomics, the first positional argument is auto-detected:
 | `bwrb list "Ideas/"` | Contains `/`, matches path | `--path "Ideas/"` |
 | `bwrb list "status == 'x'"` | Contains operators | `--where "status == 'x'"` |
 
-**Ambiguity handling:** When detection is ambiguous, Bowerbird errors with a helpful message suggesting explicit flags.
+**Ambiguity handling:** Read-only list modes may return multiple rows. A
+mutation never chooses one silently: ambiguity errors list candidate paths and
+tell you to retry with one exact vault-relative path (or narrow with explicit
+selectors).
 
 ## Command Support Matrix
 

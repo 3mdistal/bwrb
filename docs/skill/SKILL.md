@@ -450,8 +450,9 @@ bwrb edit --type task --where "status == 'active'" "Deploy" --json '{"status": "
 ```
 
 Notes:
-- If multiple notes share the same name, `bwrb edit` errors and lists candidates. Disambiguate with `--type`, `--path`, or a vault-relative path.
+- If multiple notes share the same name, `bwrb edit` errors, lists candidate paths, and asks for an exact-path retry. Disambiguate with `--type`, `--path`, or a listed vault-relative path.
 - `bwrb new --json` rejects unknown frontmatter fields after merging template defaults. `bwrb edit --json` rejects unknown fields in the patch.
+- A validated JSON patch with no semantic change preserves the note's exact bytes and raw-byte revision.
 - Edit commits coordinate with fork/adopt lineage writes. JSON patches make up to three total attempts (the initial attempt plus at most two retries) from fresh bytes; on exhaustion, retry only when JSON has numeric `code: 2`, `data.reason: "note-modified-concurrently"`, and `data.retryable: true`. Interactive edits do not replay answers gathered from stale values.
 
 ### Deleting Notes
@@ -474,6 +475,9 @@ bwrb delete "Note Name" --dry-run --output json
 
 # Bulk delete with confirmation (skip with --force)
 bwrb delete --type task --execute --force
+
+# Recoverable delete: copies files + manifest under .bwrb/backups first
+bwrb delete "Note Name" --force --backup
 ```
 
 ### Finding Notes
@@ -556,6 +560,13 @@ bwrb schema migrate --execute --set-version 1.1.0 --output json
 # Execute non-deterministic changes (data removal/review) with explicit consent.
 bwrb schema migrate --execute --set-version 2.0.0 --yes --output json
 ```
+
+Migration discovery follows valid frontmatter types across the vault, including
+typed notes moved outside their configured output directory. If cleanup would
+empty a required field without a schema default, preview JSON returns
+`data.blocked` and `data.blockers`; execute exits non-zero without changing
+notes, backups, schema version, snapshot, or history. Set explicit valid values
+on the named notes and retry—do not infer a replacement option.
 
 #### Type Inference and Check Dependencies
 

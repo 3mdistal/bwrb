@@ -19,6 +19,7 @@ bwrb schema <subcommand>
 | [fields](#fields-alias) | Alias for `schema list <typePath>` |
 | [list](#list) | List schema contents |
 | [validate](#validate) | Validate schema structure |
+| [new](#new) | Create a type or field |
 | [discover](#discover) | Report frontmatter field-usage facts (descriptive) |
 | [diff](#diff) | Show pending schema changes |
 | [migrate](#migrate) | Apply schema changes to notes |
@@ -37,6 +38,10 @@ bwrb schema fields task
 
 # Validate schema structure
 bwrb schema validate
+
+# Create a simple type without prompts
+bwrb --non-interactive schema new type idea --directory Ideas \
+  --fields marker:text,published:boolean --output json
 
 # Report frontmatter field-usage facts over a folder (descriptive)
 bwrb schema discover ./notes
@@ -244,6 +249,35 @@ bwrb schema validate --output json
 
 ---
 
+## new
+
+Create schema types and fields interactively or through the bounded
+non-interactive type surface.
+
+```bash
+bwrb schema new type [name] [options]
+bwrb schema new field [type] [name]
+```
+
+`schema new type` accepts `--directory`, `--inherits`, `--description`,
+`--output`, and comma-separated `--fields name:type` definitions. In global
+`--non-interactive` mode, the type name and every required value must be
+explicit. The shorthand intentionally supports only field shapes that are
+complete from a type name alone. A select or other prompt-rich definition is
+rejected promptly without creating a partial type and tells you to rerun
+`schema new field <type> <field>` in a TTY.
+
+```bash
+# Safe headless creation
+bwrb --non-interactive schema new type idea --directory Ideas \
+  --fields marker:text,published:boolean --output json
+
+# Prompt-rich fields belong in the interactive field editor
+bwrb schema new field idea status
+```
+
+---
+
 ## discover
 
 Report **descriptive** facts about the frontmatter across a folder of Markdown
@@ -446,6 +480,8 @@ Migrations update existing notes when the schema changes:
 - **Automatic backup**: Creates a backup before applying changes
 - **Explicit headless execution**: Non-interactive runs with note changes require `--set-version`; non-deterministic changes also require `--yes`
 - **Atomic operations**: All changes succeed or none are applied
+- **Vault-wide typed-note discovery**: A note remains a migration target when its frontmatter type is valid even if it has been moved outside the type's configured output directory
+- **Required-field blockers**: If a planned cleanup would clear a required field and no schema default provides a safe replacement, preview JSON reports `blocked` / `blockers`; execute exits non-zero before writing notes, backups, snapshots, version, or history. Set an explicit valid value and retry rather than accepting an arbitrary replacement option.
 
 ### Examples
 

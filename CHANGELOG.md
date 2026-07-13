@@ -17,6 +17,24 @@ All notable changes to Bowerbird are documented in this file.
 | `audit`, `bulk`, or `delete --text` | `--body <query>` |
 | `audit.ignored_directories`, `BWRB_AUDIT_EXCLUDE` | `config.excluded_directories`, `BWRB_EXCLUDE` |
 
+### Added
+
+- **Measured large-vault performance contracts** — deterministic 5,000/10,000-note fixtures, isolated edit/list benchmarks, retry-zero reporting, and command byte/fault matrices now guard the discovery and mutation paths.
+- **Recoverable deletion** — `bwrb delete --backup` copies selected files and a manifest under `.bwrb/backups/` before deletion.
+
+### Changed
+
+- **Simpler discovery and presentation paths** — exact edit targets avoid unnecessary alias hydration, query resolution shares ignore/discovery work, snapshot parsing reads each note once, and ordinary `list`/`recent` flat output shares one byte-frozen presenter.
+- **Non-interactive schema creation** — `schema new type --fields name:type` creates simple fields without prompting. Prompt-rich fields such as selects fail promptly with the exact interactive `schema new field` recovery command instead of opening a hidden prompt.
+- **Schema migration safety** — migrations discover typed notes across the vault, including notes moved outside their configured output directory. A migration that would clear a required field without a default fails atomically with structured blockers and does not advance notes, backups, snapshots, version, or history.
+
+### Fixed
+
+- **Actionable targeting failures** — mutating ambiguity and duplicate-owner errors list candidate paths and exact-path recovery; malformed selected YAML names the affected path and repair action.
+- **Byte-preserving semantic no-ops** — an edit whose validated result is semantically unchanged retains the original file bytes while still enforcing revisions, locks, and concurrent-write guards.
+- **Headless list-name resolution** — a unique exact display-name match returns directly instead of opening the fuzzy picker.
+- **Truthful audit previews** — wrong-directory dry runs classify a displayed `Would move` action under `Would fix`, keeping per-file plans and summary counts aligned.
+
 ## [0.2.4] - 2026-07-10
 
 Patch release for guarded existing-note lineage adoption, safer concurrent

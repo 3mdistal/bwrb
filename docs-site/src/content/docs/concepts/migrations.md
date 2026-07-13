@@ -107,6 +107,18 @@ was applied.
 In `--output json` mode, the per-note changes are always included under
 `data.fileChanges` (uncapped), so automation never needs the flag.
 
+Migration discovery follows valid frontmatter types across the vault. A typed
+note that has been moved outside its configured output directory is still
+included in `totalFiles`, change planning, and execution; its separate
+`wrong-directory` audit issue does not make it disappear from schema evolution.
+
+If a change would clear a required field and the schema has no default that can
+replace it safely, preview JSON sets `data.blocked: true` and lists structured
+`data.blockers` with the note path and field. Execute fails closed before any
+note, backup, schema version, applied snapshot, or migration-history write. Set
+valid values on the named notes, then rerun the migration. Bowerbird never
+guesses which remaining select option you intended.
+
 ### 4. Apply the Migration
 
 When ready, execute the migration:
