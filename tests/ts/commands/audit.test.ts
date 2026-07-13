@@ -6874,12 +6874,40 @@ priority: medium
     it('reports due retention and requires explicit remediation execution', async () => {
       const report = await runCLI(['audit', '--only', 'retention-due'], tempVaultDir);
       expect(report.stdout).toContain('Retention is due');
+      expect(report.stdout).toContain('Available actions: archive, tombstone, delete');
       const dry = await runCLI(['audit', '--all', '--fix', '--only', 'retention-due', '--retention-action', 'tombstone'], tempVaultDir);
       expect(dry.stdout).toContain('Would tombstone');
       expect(await readFile(join(tempVaultDir, 'Candidates', 'Old.md'), 'utf8')).toContain('retention-state: active');
       const applied = await runCLI(['audit', '--all', '--fix', '--only', 'retention-due', '--retention-action', 'tombstone', '--execute'], tempVaultDir);
       expect(applied.stdout).toContain('Tombstoned');
       expect(await readFile(join(tempVaultDir, 'Candidates', 'Old.md'), 'utf8')).toContain('retention-state: tombstoned');
+    });
+
+    it('shows one available retention action in text without changing JSON metadata', async () => {
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+      const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
+      schema.types.candidate.retention.actions = [
+        { kind: 'tombstone', set: { 'retention-state': 'tombstoned', 'tombstoned-at': '$TODAY' } },
+      ];
+      await writeFile(schemaPath, JSON.stringify(schema));
+
+      const text = await runCLI(['audit', '--only', 'retention-due'], tempVaultDir);
+      expect(text.stdout).toContain('Available actions: tombstone');
+
+      const json = await runCLI(['audit', '--only', 'retention-due', '--output', 'json'], tempVaultDir);
+      const payload = JSON.parse(json.stdout);
+      expect(payload.files[0].issues[0]).toMatchObject({
+        code: 'retention-due',
+        message: 'Retention is due since 2000-01-02 (clock resolved-at: 2000-01-01)',
+        meta: { actions: [{ kind: 'tombstone' }] },
+      });
+    });
+
+    it('does not suggest retention actions until an invalid clock is repaired', async () => {
+      await writeFile(join(tempVaultDir, 'Candidates', 'Old.md'), '---\ntype: candidate\nstatus: accepted\nretention-state: active\n---\n');
+      const report = await runCLI(['audit', '--only', 'retention-due'], tempVaultDir);
+      expect(report.stdout).toContain('Retention clock is missing or invalid');
+      expect(report.stdout).not.toContain('Available actions:');
     });
 
     it('archives only on explicit execute', async () => {

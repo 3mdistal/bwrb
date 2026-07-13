@@ -138,6 +138,18 @@ export function outputTextResults(
       const symbol = issue.severity === 'error' ? chalk.red('✗') : chalk.yellow('⚠');
       console.log(`  ${symbol} ${issue.message}`);
 
+      if (issue.code === 'retention-due' && issue.meta?.diagnostic !== 'invalid-clock') {
+        const actions = Array.isArray(issue.meta?.actions)
+          ? issue.meta.actions.flatMap(action => {
+            if (!action || typeof action !== 'object' || !('kind' in action)) return [];
+            return typeof action.kind === 'string' ? [action.kind] : [];
+          })
+          : [];
+        if (actions.length > 0) {
+          console.log(chalk.dim(`    Available actions: ${actions.join(', ')}`));
+        }
+      }
+
       if (issue.expected && Array.isArray(issue.expected)) {
         const display = issue.expected.length <= 6
           ? issue.expected.join(', ')

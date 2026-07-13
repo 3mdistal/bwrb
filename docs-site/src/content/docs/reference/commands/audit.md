@@ -55,9 +55,10 @@ Use `--dry-run` to preview fixes without writing.
 ### Retention remediation
 
 Types can declare retention (see the schema reference). Audit reports a due record as a
-`retention-due` warning and includes the configured actions in JSON metadata. It uses one
-local-day snapshot for the entire run; the deadline is inclusive. A missing or invalid
-clock is a diagnostic, never an invented deadline.
+`retention-due` warning. Text output names the available action kinds, while JSON includes
+the full configured actions in issue metadata. It uses one local-day snapshot for the
+entire run; the deadline is inclusive. A missing or invalid clock is a diagnostic, never
+an invented deadline, so no actions are suggested until the clock is repaired.
 
 Retention is never an automatic fix. Target it explicitly, select the issue, and name an
 action; omission of `--execute` is a dry run:
