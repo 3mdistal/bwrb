@@ -53,8 +53,12 @@ The docs are hosted on Vercel and connected to GitHub.
 Vercel is configured with an **Ignored Build Step** to only build when `docs-site/` changes:
 
 ```bash
-git diff HEAD^ HEAD --quiet -- ./docs-site
+git diff HEAD^ HEAD --quiet -- .
 ```
+
+Vercel runs this command from the configured `docs-site` project root, so `.`
+is the docs tree. A repository-relative `./docs-site` path would incorrectly
+resolve to `docs-site/docs-site` and cancel every deployment.
 
 This means:
 - PRs that only touch source code (`src/`, `tests/`) → **no Vercel build**
@@ -65,12 +69,14 @@ This means:
 If you need to trigger a manual deployment (e.g., after rate limiting):
 
 ```bash
-cd docs-site
+# Run from the repository root; the Vercel project enters docs-site itself.
+vercel link --project docs-site --scope alice-moores-projects
 vercel          # Deploy preview
 vercel --prod   # Deploy to production
 ```
 
-> **Note**: You need to be authenticated with the Vercel CLI (`vercel login`) and have access to the project.
+> **Note**: You need to be authenticated with the Vercel CLI (`vercel login`),
+> have access to the project, and use Vercel CLI 47.2.2 or newer.
 
 ### Rate Limiting
 

@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "astro",
+  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- .",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install"
