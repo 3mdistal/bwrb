@@ -992,7 +992,8 @@ export function isInTypeOutputDir(relativePath: string, typeOutputDirs: Set<stri
  */
 export async function discoverAllTypeFiles(
   schema: LoadedSchema,
-  vaultDir: string
+  vaultDir: string,
+  context?: DiscoveryContext
 ): Promise<ManagedFile[]> {
   const allFiles = new Map<string, ManagedFile>(); // dedupe by path
   // A vault-wide query visits every root type. Loading hierarchical ignore
@@ -1001,8 +1002,7 @@ export async function discoverAllTypeFiles(
   // Keep one immutable matcher for the complete discovery pass; the matcher is
   // only read after loading, and all type collectors preserve their existing
   // ownership and boundary handling.
-  const excluded = getExcludedDirectories(schema);
-  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+  const { excluded, ignoreMatcher } = context ?? await loadDiscoveryContext(schema, vaultDir);
   
   // Get root types (direct children of meta) to avoid duplicate collection
   // since collectFilesForType already includes descendants
@@ -1032,10 +1032,10 @@ export async function discoverAllTypeFiles(
  */
 export async function discoverUnmanagedFiles(
   schema: LoadedSchema,
-  vaultDir: string
+  vaultDir: string,
+  context?: DiscoveryContext
 ): Promise<ManagedFile[]> {
-  const excluded = getExcludedDirectories(schema);
-  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+  const { excluded, ignoreMatcher } = context ?? await loadDiscoveryContext(schema, vaultDir);
   const typeOutputDirs = getTypeOutputDirs(schema);
   
   // Vault-wide scan with exclusions
@@ -1070,8 +1070,14 @@ export async function discoverFilesForQueryResolution(
   schema: LoadedSchema,
   vaultDir: string
 ): Promise<ManagedFile[]> {
-  const managed = await discoverAllTypeFiles(schema, vaultDir);
-  const unmanaged = await discoverUnmanagedFiles(schema, vaultDir);
+  // Both scans traverse the same immutable ignore/config context. Build it once
+  // per query-resolution pass, but deliberately do not cache discovered files:
+  // mutation relation validation must always rediscover the current vault.
+  const context = await loadDiscoveryContext(schema, vaultDir);
+  const [managed, unmanaged] = await Promise.all([
+    discoverAllTypeFiles(schema, vaultDir, context),
+    discoverUnmanagedFiles(schema, vaultDir, context),
+  ]);
 
   const allFiles = new Map<string, ManagedFile>();
   for (const file of [...managed, ...unmanaged]) {
@@ -1081,6 +1087,19 @@ export async function discoverFilesForQueryResolution(
   }
 
   return Array.from(allFiles.values()).sort(stablePathCompare);
+}
+
+interface DiscoveryContext {
+  excluded: Set<string>;
+  ignoreMatcher: Ignore;
+}
+
+async function loadDiscoveryContext(
+  schema: LoadedSchema,
+  vaultDir: string
+): Promise<DiscoveryContext> {
+  const excluded = getExcludedDirectories(schema);
+  return { excluded, ignoreMatcher: await loadIgnoreMatcher(vaultDir, excluded) };
 }
 
 /**

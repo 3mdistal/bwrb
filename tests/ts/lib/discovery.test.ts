@@ -26,6 +26,7 @@ import {
   discoverAllTypeFiles,
   discoverUnmanagedFiles,
   discoverFilesForNavigation,
+  discoverFilesForQueryResolution,
   type ManagedFile,
 } from '../../../src/lib/discovery.js';
 import { loadSchema } from '../../../src/lib/schema.js';
@@ -753,6 +754,35 @@ describe('Discovery', () => {
   });
 
   describe('discoverFilesForNavigation', () => {
+    it('shares one hierarchical discovery context without changing managed, unmanaged, or owned results', async () => {
+      await mkdir(join(vaultDir, 'Notes'), { recursive: true });
+      await writeFile(join(vaultDir, 'Notes', '.bwrbignore'), 'hidden.md');
+      await writeFile(join(vaultDir, 'Notes', 'Visible.md'), '---\ntitle: Visible\n---\n');
+      await writeFile(join(vaultDir, 'Notes', 'hidden.md'), '---\ntitle: Hidden\n---\n');
+      await mkdir(join(vaultDir, 'Templates'), { recursive: true });
+      await writeFile(join(vaultDir, 'Templates', 'Excluded.md'), '---\ntitle: Excluded\n---\n');
+
+      await mkdir(join(vaultDir, 'Projects', 'Project Alpha', 'research'), { recursive: true });
+      await writeFile(
+        join(vaultDir, 'Projects', 'Project Alpha', 'Project Alpha.md'),
+        '---\ntype: project\nstatus: raw\nresearch: "[[Owned Research]]"\n---\n'
+      );
+      await writeFile(
+        join(vaultDir, 'Projects', 'Project Alpha', 'research', 'Owned Research.md'),
+        '---\ntype: research\nstatus: raw\n---\n'
+      );
+
+      const files = await discoverFilesForQueryResolution(schema, vaultDir);
+      const byPath = new Map(files.map(file => [file.relativePath, file]));
+
+      expect(byPath.has('Ideas/Sample Idea.md')).toBe(true);
+      expect(byPath.has('Notes/Visible.md')).toBe(true);
+      expect(byPath.has('Notes/hidden.md')).toBe(false);
+      expect(byPath.has('Templates/Excluded.md')).toBe(false);
+      expect(byPath.get('Projects/Project Alpha/research/Owned Research.md')?.expectedType).toBe('research');
+      expect(byPath.get('Projects/Project Alpha/research/Owned Research.md')?.ownership?.ownerType).toBe('project');
+    });
+
     it('should combine type files and unmanaged files', async () => {
       // Create an unmanaged file
       await mkdir(join(vaultDir, 'Notes'), { recursive: true });
