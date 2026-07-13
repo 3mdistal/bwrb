@@ -145,6 +145,43 @@ export async function fixtureChecksum(fixture: string): Promise<string> {
   return checksum.digest('hex');
 }
 
+/** Content hashes keyed by fixture-relative path, excluding known ephemeral metadata. */
+export async function fixtureContentHashes(fixture: string): Promise<Map<string, string>> {
+  const files: string[] = [];
+  async function walk(directory: string): Promise<void> {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (path === join(fixture, '.bwrb', 'locks')) continue;
+      if (entry.isDirectory()) await walk(path); else files.push(path);
+    }
+  }
+  await walk(fixture);
+  const hashes = new Map<string, string>();
+  for (const file of files.sort()) {
+    if (file === join(fixture, 'fixture-manifest.json')) continue;
+    hashes.set(relative(fixture, file), sha256(await readFile(file)));
+  }
+  return hashes;
+}
+
+/** Includes created, deleted, and content-modified paths in stable order. */
+export function changedFixturePaths(before: ReadonlyMap<string, string>, after: ReadonlyMap<string, string>): string[] {
+  return [...new Set([...before.keys(), ...after.keys()])].filter(path => before.get(path) !== after.get(path)).sort();
+}
+
+export function hasExactParallelChangeSet(
+  kind: 'edits' | 'list-count',
+  beforeChecksum: string,
+  afterChecksum: string,
+  changedPaths: readonly string[],
+  expectedEditPaths: readonly string[],
+): boolean {
+  if (kind === 'list-count') return beforeChecksum === afterChecksum && changedPaths.length === 0;
+  return beforeChecksum !== afterChecksum
+    && changedPaths.length === expectedEditPaths.length
+    && changedPaths.every((path, index) => path === [...expectedEditPaths].sort()[index]);
+}
+
 function targetPath(fixture: string, index: number): string {
   const shard = String(index % 12).padStart(2, '0');
   return join(fixture, 'Objectives', 'Tasks', `Area-${shard}`, `Sprint-${Math.floor(index / 120)}`, `task-${String(index).padStart(5, '0')}.md`);
@@ -269,6 +306,7 @@ export async function runPerformanceContract(options: PerformanceContractOptions
     // particular, no child invocation re-checks the whole fixture before it
     // starts: that would stagger the supposedly parallel process launches.
     const beforeChecksum = await fixtureChecksum(fixture);
+    const beforeContents = await fixtureContentHashes(fixture);
     const targets = kind === 'edits' ? [2, 9, 16, 23].map(index => targetPath(fixture, index)) : [];
     const beforeTargets = await Promise.all(targets.map(async path => ({ path, bytes: await readFile(path) })));
     type Prepared = { index: number; sample: number; scenario: typeof scenarios[number]; commandLine: string[]; target?: string; beforeTarget?: Buffer; timeOutput?: string; launched: string[] };
@@ -306,6 +344,7 @@ export async function runPerformanceContract(options: PerformanceContractOptions
     // Validation begins only after every child has closed, so post-run checksum
     // work cannot extend the group timing interval.
     const afterChecksum = await fixtureChecksum(fixture);
+    const afterContents = await fixtureContentHashes(fixture);
     const afterTargets = await Promise.all(targets.map(async path => ({ path, bytes: await readFile(path) })));
     const observations: ContractObservation[] = results.map(result => {
       const { prepared: item } = result;
@@ -323,9 +362,11 @@ export async function runPerformanceContract(options: PerformanceContractOptions
     for (const observation of observations) await writeFile(rawJsonl, `${JSON.stringify({ ...observation, invocation: `four-process-${kind}` })}\n`, { encoding: 'utf8', flag: 'a' });
     let lockResidue = false;
     try { lockResidue = (await readdir(join(fixture, '.bwrb', 'locks'))).length > 0; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    const exactTargetDiff = kind === 'edits' ? beforeTargets.every((target, index) => !target.bytes.equals(afterTargets[index]!.bytes)) : beforeChecksum === afterChecksum;
+    const changedPaths = changedFixturePaths(beforeContents, afterContents);
+    const expectedEditPaths = targets.map(path => relative(fixture, path));
+    const exactTargetDiff = hasExactParallelChangeSet(kind, beforeChecksum, afterChecksum, changedPaths, expectedEditPaths);
     const complete = observations.every(item => item.exitCode === 0 && item.stdout.valid && item.stdout.semanticValid) && !lockResidue && exactTargetDiff;
-    return { processes: 4 as const, profile: 'teenylilthoughts-analogue' as const, totalMs, complete, observations, lockResidue, fixture: { beforeChecksum, afterChecksum, exactTargetDiff, targets: beforeTargets.map((target, index) => ({ path: target.path, beforeSha256: sha256(target.bytes), afterSha256: sha256(afterTargets[index]!.bytes), changed: !target.bytes.equals(afterTargets[index]!.bytes) })) }, budget: complete ? { target: 'all complete under 8000 ms', met: totalMs < 8000, observed: totalMs } : { target: 'all complete under 8000 ms', met: null, observed: null, reason: lockResidue ? 'Lock residue remained after the group.' : 'One or more observations failed semantic/output/integrity validation.' } };
+    return { processes: 4 as const, profile: 'teenylilthoughts-analogue' as const, totalMs, complete, observations, lockResidue, fixture: { beforeChecksum, afterChecksum, changedPaths, exactTargetDiff, targets: beforeTargets.map((target, index) => ({ path: target.path, beforeSha256: sha256(target.bytes), afterSha256: sha256(afterTargets[index]!.bytes), changed: !target.bytes.equals(afterTargets[index]!.bytes) })) }, budget: complete ? { target: 'all complete under 8000 ms', met: totalMs < 8000, observed: totalMs } : { target: 'all complete under 8000 ms', met: null, observed: null, reason: lockResidue ? 'Lock residue remained after the group.' : 'One or more observations failed semantic/output/integrity validation.' } };
   }
   const parallel = await runParallel('edits');
   const parallelList = options.parallelList ? await runParallel('list-count') : undefined;

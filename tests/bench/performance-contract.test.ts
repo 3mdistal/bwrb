@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { launchPreparedInParallel, summarizeTimings, validatePerformanceContractReport } from '../../tools/bench/performance-contract.js';
+import { changedFixturePaths, hasExactParallelChangeSet, launchPreparedInParallel, summarizeTimings, validatePerformanceContractReport } from '../../tools/bench/performance-contract.js';
 
 describe('performance contract harness', () => {
   it('summarizes measured timings without treating absent phases as zero', () => {
@@ -32,5 +32,20 @@ describe('performance contract harness', () => {
     clock += 5_000_000n; // Simulated post-launch work is the only measured delay.
     releases.forEach(release => release());
     await expect(group).resolves.toMatchObject({ totalMs: 5, results: prepared });
+  });
+
+  it('rejects an edit group when any extra fixture file changed', () => {
+    const before = new Map([['Tasks/a.md', 'before'], ['Tasks/b.md', 'before'], ['Tasks/c.md', 'before'], ['Tasks/d.md', 'before'], ['unrelated.md', 'same']]);
+    const after = new Map([['Tasks/a.md', 'after'], ['Tasks/b.md', 'after'], ['Tasks/c.md', 'after'], ['Tasks/d.md', 'after'], ['unrelated.md', 'mutated']]);
+    const changed = changedFixturePaths(before, after);
+    expect(changed).toEqual(['Tasks/a.md', 'Tasks/b.md', 'Tasks/c.md', 'Tasks/d.md', 'unrelated.md']);
+    expect(hasExactParallelChangeSet('edits', 'before-checksum', 'after-checksum', changed, ['Tasks/a.md', 'Tasks/b.md', 'Tasks/c.md', 'Tasks/d.md'])).toBe(false);
+  });
+
+  it('requires list groups to preserve both checksum and every content path', () => {
+    const unchanged = changedFixturePaths(new Map([['Tasks/a.md', 'same']]), new Map([['Tasks/a.md', 'same']]));
+    expect(hasExactParallelChangeSet('list-count', 'checksum', 'checksum', unchanged, [])).toBe(true);
+    expect(hasExactParallelChangeSet('list-count', 'checksum', 'different', unchanged, [])).toBe(false);
+    expect(hasExactParallelChangeSet('list-count', 'checksum', 'checksum', ['created.md'], [])).toBe(false);
   });
 });
