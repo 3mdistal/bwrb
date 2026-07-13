@@ -1031,6 +1031,76 @@ title: Directory-owned but typeless
       }
     });
 
+    it('accepts unique basename and path targets case-insensitively', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        const basenameResult = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          milestone: '[[lAuNcH]]',
+        });
+        const pathResult = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          milestone: '[[mIlEsToNeS/lAuNcH]]',
+        });
+
+        expect(basenameResult).toEqual({ valid: true, errors: [] });
+        expect(pathResult).toEqual({ valid: true, errors: [] });
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('keeps real basenames ahead of aliases by falling back to alias-aware resolution', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        await writeFile(
+          join(tempVaultDir, 'Ideas', 'Release Alias.md'),
+          `---
+type: idea
+---
+`
+        );
+
+        const result = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          milestone: '[[Release Alias]]',
+        });
+
+        expect(result.errors).toEqual([
+          expect.objectContaining({ actualType: 'idea', targetName: 'Release Alias' }),
+        ]);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('keeps shared aliases ambiguous by falling back to alias-aware resolution', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        await writeFile(
+          join(tempVaultDir, 'Milestones', 'Second Launch.md'),
+          `---
+type: milestone
+aliases:
+  - Release Alias
+---
+`
+        );
+
+        const result = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          milestone: '[[Release Alias]]',
+        });
+
+        expect(result.errors[0]).toEqual(
+          expect.objectContaining({ targetName: 'Release Alias' })
+        );
+        expect(result.errors[0]!.message).toContain('Ambiguous relation target');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
     it('accepts path-qualified references for source any', async () => {
       const { relationSchema, tempVaultDir } = await buildRelationContractVault();
       try {
@@ -1183,6 +1253,61 @@ type: milestone
         ]);
         expect(result.errors[0]).not.toHaveProperty('actualType');
         expect(result.errors[0].message).toContain('Referenced note not found');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('uses parsed frontmatter rather than directory ownership and preserves multi-error order', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        await writeFile(
+          join(tempVaultDir, 'Milestones', 'Malformed.md'),
+          `---
+type: [milestone
+---
+`
+        );
+
+        const result = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          milestone: ['[[Untyped]]', '[[Malformed]]', '[[Only Wrong]]'],
+        });
+
+        expect(result.errors.map((error) => error.targetName)).toEqual([
+          'Untyped',
+          'Malformed',
+          'Only Wrong',
+        ]);
+        expect(result.errors[2]).toEqual(expect.objectContaining({ actualType: 'idea' }));
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('does not validate excluded files but still accepts a typeless source:any target', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        await writeFile(join(tempVaultDir, '.gitignore'), 'Ideas/Ignored.md\n');
+        await writeFile(
+          join(tempVaultDir, 'Ideas', 'Ignored.md'),
+          `---
+type: idea
+---
+`
+        );
+
+        const excluded = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          idea_ref: '[[Ignored]]',
+        });
+        const any = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task',
+          any_ref: '[[Untyped]]',
+        });
+
+        expect(excluded.errors[0]!.message).toContain('Referenced note not found');
+        expect(any).toEqual({ valid: true, errors: [] });
       } finally {
         await rm(tempVaultDir, { recursive: true, force: true });
       }
