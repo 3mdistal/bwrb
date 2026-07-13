@@ -21,16 +21,6 @@ export function warnDeprecated(oldFlag: string, newUsage: string): void {
 }
 
 /**
- * Emit the command-level warning for a deprecated compatibility entrypoint.
- *
- * Keep this at the compatibility command's action boundary so shared command
- * implementations can also serve canonical entrypoints without warning.
- */
-export function warnDeprecatedCommand(command: string, newUsage: string): void {
-  warnDeprecated(`bwrb ${command}`, newUsage);
-}
-
-/**
  * JSON output wrapper for success results.
  */
 export interface JsonSuccess<T = unknown> {

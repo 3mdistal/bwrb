@@ -137,7 +137,7 @@
       "body_sections": []
     }
   },
-  "audit": {
-    "ignored_directories": ["Templates"]
+  "config": {
+    "excluded_directories": ["Templates"]
   }
 }

@@ -6,7 +6,7 @@
  * 2. Content search (--body): Markdown body search using ripgrep
  */
 
-import { Command } from 'commander';
+import type { Command } from 'commander';
 import { readFile } from 'fs/promises';
 import { basename } from 'path';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
@@ -20,7 +20,6 @@ import {
   ExitCodes,
   exitWithResolutionError,
   warnDeprecated,
-  warnDeprecatedCommand,
   type SearchOutputFormat,
 } from '../lib/output.js';
 import { openNote, resolveAppMode, parseAppMode } from './open.js';
@@ -140,172 +139,11 @@ function resolveSearchOutputFormat(options: SearchOptions): SearchOutputFormat {
   return 'default';
 }
 
-// ============================================================================
-// Command Definition
-// ============================================================================
-
-// Kept private only while the shared list search implementation remains
-// colocated in this module. It is deliberately not registered by the CLI.
-const removedSearchCommand = new Command('search')
-  .description('Search for notes by name or content (compatibility command; use list)')
-  .argument('[query]', 'Search pattern (name/path for default mode, content pattern for --body)')
-  .argument('[mode]', 'App mode for --open: system, editor, visual, obsidian, print')
-  // Output format (new unified flag)
-  .option('--output <format>', 'Output format: text (default), paths, link, content, json')
-  // Deprecated output flags (still work but emit warnings)
-  .option('--wikilink', 'DEPRECATED: use --output link')
-  .option('--path-output', 'DEPRECATED: use --output paths')
-  .option('--content', 'DEPRECATED: use --output content')
-  // Open and picker options
-  .option('-o, --open', 'Open the selected note after search')
-  .option('--edit', 'Edit the selected note\'s frontmatter after search')
-  .option('--json <patch>', 'JSON patch data for --edit mode (non-interactive)')
-  .option('--app <mode>', 'How to open: system (default), editor, visual, obsidian, print')
-  .option('--preview', 'Show file preview in fzf picker (requires fzf)')
-  .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
-  // Content search options
-  .option('-b, --body', 'Search Markdown body content (uses ripgrep)')
-  .option('--text', 'DEPRECATED: use --body')
-  .option('-t, --type <type>', 'Restrict search to a type (e.g., idea, objective/task)')
-  .option('-p, --path <pattern>', 'Filter by file path glob pattern, e.g. "Projects/**" (works in name, --fuzzy, and --body modes)')
-  .option('--path-glob <pattern>', 'DEPRECATED: use --path')
-  .option('-w, --where <expression...>', 'Filter results by frontmatter expression')
-  .option('-C, --context <lines>', 'Lines of context around matches (default: 2)')
-  // NOTE: Commander maps --no-context to options.context === false.
-  .option('--no-context', 'Do not show context lines')
-  .option('-S, --case-sensitive', 'Case-sensitive search (default: case-insensitive)')
-  .option('-E, --regex', 'Treat pattern as regex (default: literal)')
-  .option('-l, --limit <count>', 'Maximum displayed files (never narrows name-mode selection)')
-  // Fuzzy search options
-  .option('--fuzzy', 'Fuzzy name/alias search: ranked approximate matches with scores')
-  .option('--threshold <score>', 'Minimum similarity 0-1 for --fuzzy (default: 0.5)')
-  .addHelpText('after', `
-Name Search (default):
-  Searches by note name, basename, or path.
-
-  -l, --limit <n>      Limit displayed candidates. Resolution and --open use
-                       the complete candidate set, so a limit never resolves
-                       an ambiguous name or alias arbitrarily.
-
-  -p, --path <pat>     Scope resolution to a path glob (e.g. "Projects/**").
-                       Applies in name, --fuzzy, and --body modes. If both
-                       --path and the deprecated --path-glob are passed, --path
-                       wins and --path-glob is ignored (with a warning).
-
-  Output Formats (--output):
-    name        Output just the note name (default)
-    paths       Output vault-relative path with extension
-    link        Output [[Name]] format for Obsidian links
-    content     Output full file contents (frontmatter + body)
-    json        Output as JSON
-
-  Picker Modes:
-    auto        Use fzf if available, else numbered select (default)
-    fzf         Force fzf (error if unavailable)
-    numbered    Force numbered select
-    none        Error on ambiguity (for non-interactive use)
-
-Fuzzy Search (--fuzzy):
-  Ranked approximate matching over note names and aliases. Use this to ask
-  "does an entity like X already exist?" before creating a new note.
-
-  Options:
-    --fuzzy              Enable fuzzy ranked matching
-    --threshold <0-1>    Minimum similarity score (default: 0.5)
-    -l, --limit <n>      Max ranked results (default: 10)
-
-  Each result carries a similarity score (1.0 = exact). Use --output json to
-  consume scores programmatically.
-
-Content Search (--body):
-  Full-text search across Markdown note bodies using ripgrep. YAML frontmatter
-  is excluded; displayed line numbers still refer to the original file.
-  
-  Options:
-    -b, --body           Enable content search mode
-    -t, --type <type>    Restrict to specific type (e.g., task, objective/task)
-    -p, --path <pat>     Filter by path pattern (e.g., "Projects/**")
-    -w, --where <expr>   Filter by frontmatter (e.g., "status != 'done'")
-    -C, --context <n>    Show n lines of context (default: 2)
-    --no-context         Don't show context lines
-    -S, --case-sensitive Case-sensitive matching
-    -E, --regex          Treat pattern as regex
-    -l, --limit <n>      Max files to return (default: 100)
-
-Open Options:
-  --open               Open the selected note in an app
-  --app <mode>         How to open: system (default), editor, visual, obsidian, print
-
-Edit Options:
-  --edit               Edit the selected note's frontmatter
-  --json <patch>       JSON patch data for non-interactive edit (use with --edit)
-
-App Modes:
-  system      Open with OS default handler (default)
-  editor      Open in terminal editor ($EDITOR or config.editor)
-  visual      Open in GUI editor ($VISUAL or config.visual)
-  obsidian    Open in Obsidian via URI scheme
-  print       Print the resolved path (for scripting)
-
-Precedence (for default app):
-  1. --app flag (explicit)
-  2. [mode] positional argument (e.g. bwrb search "My Note" --open print)
-  3. BWRB_DEFAULT_APP environment variable
-  4. config.open_with in .bwrb/schema.json
-  5. Fallback: system
-
-Examples:
-  # Name search
-  bwrb search "My Note"                    # Find by name
-  bwrb search "My Note" --output link      # Output: [[My Note]]
-  bwrb search "My Note" --open             # Find and open in Obsidian
-  bwrb search "My Note" --open --app editor  # Find and open in $EDITOR
-  bwrb search "My Note" --open print        # Positional mode (for --open)
-  bwrb search "My Note" --edit             # Find and edit frontmatter
-  bwrb search "My Note" --edit --json '{"status":"done"}'  # Non-interactive edit
-  
-  # Content search
-  bwrb search "deploy" --body              # Search all notes for "deploy"
-  bwrb search "deploy" -b -t task          # Search only in tasks
-  bwrb search "TODO" -b --where "status != 'done'"  # Expression filter
-  bwrb search "error.*log" -b --regex      # Regex search
-  bwrb search "deploy" -b --output json    # JSON output with matches
-  bwrb search "deploy" -b --open           # Search and open first match
-
-  # Fuzzy search (ranked candidates with scores)
-  bwrb search "Stephen Yeg" --fuzzy        # Ranked near-matches by name/alias
-  bwrb search "Steve" --fuzzy --output json  # Scores for an agent to consume
-  bwrb search "Steve" --fuzzy --threshold 0.7  # Tighter match cutoff
-
-  # Piping
-  bwrb search "bug" -t --output paths | xargs -I {} code {}`)
-  .allowExcessArguments(false)
-  .action(async (
-    query: string | undefined,
-    mode: string | undefined,
-    options: SearchOptions,
-    cmd: Command
-  ) => {
-    const replacement = options.edit
-      ? 'bwrb edit <target> --json <patch>'
-      : options.fuzzy
-        ? `bwrb list --fuzzy <query>${options.open ? ' --open' : ''}`
-        : options.body || options.text
-          ? `bwrb list --body <query> --matches${options.open ? ' --open' : ''}`
-          : `bwrb list --name <query>${options.open ? ' --open' : ''}`;
-    warnDeprecatedCommand('search', replacement);
-    await runSearchCommand(query, mode, options, cmd);
-  });
-
-void removedSearchCommand;
-
 /**
  * Run the shared name, fuzzy, or content-search flow.
  *
- * `bwrb list` is the canonical command surface. The hidden `search`
- * compatibility command and `list` both call this function so the mature
- * resolution, picker, output, and edit-through-search contracts stay in one
- * place.
+ * `bwrb list` is the canonical command surface and reuses this mature
+ * resolution, picker, output, and edit implementation.
  */
 export async function runSearchCommand(
   query: string | undefined,
@@ -397,7 +235,7 @@ export async function runSearchCommand(
       const schema = await loadSchema(vaultDir);
 
       if (globalOpts.nonInteractive && options.edit && !options.json) {
-        printError('bwrb search --edit requires --json <patch> when --non-interactive is set.');
+        printError('bwrb edit requires --json <patch> when --non-interactive is set.');
         process.exit(1);
       }
 
@@ -1123,7 +961,7 @@ async function handleNameSearch(
 
     // For pipe-friendly output formats (link, paths, content), output all
     // candidates instead of erroring on ambiguity. This enables workflows
-    // like `bwrb search Idea --output link` to return disambiguated
+    // like canonical list name resolution to return disambiguated
     // wikilinks for all matches. (fixes #544)
     if (displayedCandidates && displayedCandidates.length > 0) {
       const pipeFormats: SearchOutputFormat[] = ['link', 'paths', 'content'];

@@ -525,7 +525,7 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
    * aliased relation target (e.g. `[[BuilderProject]]`, an alias of `Builder`)
    * resolves to its canonical note so its ancestor chain is walked, and an
    * aliased query node resolves to the canonical note so subtree matching works.
-   * This makes `under` consistent with `bwrb open <alias>`. A dangling alias
+   * This makes `under` consistent with canonical alias resolution. A dangling alias
    * (claimed by no note) or an ambiguous alias (claimed by several) is left
    * as-is, so it simply fails to match rather than crashing or guessing.
    */
