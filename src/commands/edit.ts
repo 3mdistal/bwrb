@@ -13,7 +13,12 @@ import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
 import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
 import { configurePromptMode, printError, printSuccess } from '../lib/prompt.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError } from '../lib/output.js';
-import { buildNoteIndex, type ManagedFile } from '../lib/navigation.js';
+import {
+  buildNoteIndex,
+  hydrateNoteIndexAliases,
+  resolveExactNoteQuery,
+  type ManagedFile,
+} from '../lib/navigation.js';
 import { parsePickerMode, resolveAndPick, type PickerMode } from '../lib/picker.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
 import {
@@ -315,7 +320,15 @@ Precedence (for --open app mode):
 
       // Build candidates based on targeting
       let candidates: ManagedFile[];
-      const index = await buildNoteIndex(schema, vaultDir);
+      // A plain `edit <query>` can resolve a path or basename solely from the
+      // canonical discovery result. Avoid parsing every note's frontmatter
+      // until that exact tier misses; aliases and fuzzy matching still hydrate
+      // below with the same discovered files. Targeted modes deliberately keep
+      // their eager behavior because filtering depends on parsed metadata.
+      const directQueryFastPath = query !== undefined && !hasTargeting;
+      const index = await buildNoteIndex(schema, vaultDir, undefined, {
+        includeAliases: !directQueryFastPath,
+      });
 
       if (hasTargeting) {
         // Use resolveTargets for proper filtering
@@ -352,6 +365,16 @@ Precedence (for --open app mode):
         const existing = filteredIndex.byBasename.get(fileBasename) ?? [];
         existing.push(file);
         filteredIndex.byBasename.set(fileBasename, existing);
+      }
+
+      if (directQueryFastPath) {
+        const exactResolution = resolveExactNoteQuery(filteredIndex, query);
+        // An exact file or an ambiguous basename is already decisive. Only an
+        // actual path/basename miss pays the snapshot parse required for aliases
+        // and fuzzy fallback.
+        if (!exactResolution.exact && exactResolution.candidates.length === 0) {
+          await hydrateNoteIndexAliases(schema, filteredIndex);
+        }
       }
 
       const result = await resolveAndPick(filteredIndex, query, {

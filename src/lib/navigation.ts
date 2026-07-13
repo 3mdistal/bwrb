@@ -58,6 +58,15 @@ export interface ResolutionResult {
   isAmbiguous: boolean;
 }
 
+export interface BuildNoteIndexOptions {
+  /**
+   * Parse discovered notes to build the alias map. Leave this disabled only
+   * when a caller can first satisfy an exact path/basename lookup without
+   * frontmatter metadata, then hydrate aliases on a miss.
+   */
+  includeAliases?: boolean;
+}
+
 // Re-export ManagedFile for convenience
 export type { ManagedFile };
 
@@ -80,7 +89,8 @@ export type { ManagedFile };
 export async function buildNoteIndex(
   schema: LoadedSchema,
   vaultDir: string,
-  pathFilter?: string
+  pathFilter?: string,
+  options: BuildNoteIndexOptions = {}
 ): Promise<NoteIndex> {
   const allDiscovered = await discoverFilesForNavigation(schema, vaultDir);
 
@@ -117,6 +127,32 @@ export async function buildNoteIndex(
     }
   }
 
+  const index: NoteIndex = {
+    byPath,
+    byBasename,
+    byAlias: new Map<string, ManagedFile[]>(),
+    allFiles: files,
+    ...(fullByBasename ? { fullByBasename } : {}),
+  };
+
+  if (options.includeAliases !== false) {
+    await hydrateNoteIndexAliases(schema, index);
+  }
+
+  return index;
+}
+
+/**
+ * Populate aliases on an index whose files have already been discovered.
+ *
+ * This intentionally parses only after an exact path/basename miss for the
+ * direct edit fast path. Other callers retain eager alias hydration through
+ * the default `buildNoteIndex` behavior.
+ */
+export async function hydrateNoteIndexAliases(
+  schema: LoadedSchema,
+  index: NoteIndex
+): Promise<void> {
   // Index entity aliases as additional resolution keys, so notes are findable by
   // their declared aliases. Reuses the single parse pass from the vault snapshot;
   // aliases only exist on schema-typed entities.
@@ -124,17 +160,17 @@ export async function buildNoteIndex(
   // differ only by case, consistent with the case-insensitive basename lookup in
   // resolveNoteQuery.
   const basenamesLower = new Set<string>();
-  for (const name of byBasename.keys()) {
+  for (const name of index.byBasename.keys()) {
     basenamesLower.add(name.toLowerCase());
   }
   const byAlias = new Map<string, ManagedFile[]>();
   // Reuse the exact discovery result above: this preserves ManagedFile
   // identity/order/ownership in the navigation maps and avoids a second full
   // vault discovery solely to parse aliases.
-  const snapshot = await buildVaultNoteSnapshotFromFiles(schema, allDiscovered);
+  const snapshot = await buildVaultNoteSnapshotFromFiles(schema, index.allFiles);
   for (const note of snapshot.notes) {
     if (!note.resolvedType || !note.frontmatter) continue;
-    const file = byPath.get(note.relativePath);
+    const file = index.byPath.get(note.relativePath);
     if (!file) continue;
     const aliases = getEntityAliases(schema, note.resolvedType, note.frontmatter);
     for (const alias of aliases) {
@@ -147,13 +183,7 @@ export async function buildNoteIndex(
     }
   }
 
-  return {
-    byPath,
-    byBasename,
-    byAlias,
-    allFiles: files,
-    ...(fullByBasename ? { fullByBasename } : {}),
-  };
+  index.byAlias = byAlias;
 }
 
 // ============================================================================

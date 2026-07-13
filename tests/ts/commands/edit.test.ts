@@ -1106,6 +1106,82 @@ describe('edit command --open flag', () => {
       expect(json.path).toContain('Another Idea.md');
     });
 
+    it('keeps the direct-query fast path exact while preserving alias fallback and discovery boundaries', async () => {
+      const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+      const schema = JSON.parse(await readFile(schemaPath, 'utf-8'));
+      schema.types.idea.fields.aliases = {
+        prompt: 'list',
+        alias: true,
+        list_format: 'yaml-array',
+      };
+      schema.types.idea.field_order.push('aliases');
+      schema.config = { excluded_directories: ['Excluded'] };
+      await writeFile(schemaPath, JSON.stringify(schema, null, 2), 'utf-8');
+
+      // A real basename must win without parsing the aliased note, even when a
+      // separate malformed note exists elsewhere in the vault.
+      await writeFile(join(vaultDir, 'Ideas', 'Real Name.md'), `---\ntype: idea\nstatus: raw\n---\n`);
+      await writeFile(join(vaultDir, 'Ideas', 'Alias Carrier.md'), `---\ntype: idea\nstatus: raw\naliases:\n  - Real Name\n  - Unique Alias\n---\n`);
+      await writeFile(join(vaultDir, 'Ideas', 'Broken.md'), `---\ntype: idea\nstatus: [broken\n---\n`);
+
+      const basenameWins = await runCLI(
+        ['edit', 'Real Name', '--picker', 'none', '--json', '{"status":"settled"}'],
+        vaultDir
+      );
+      expect(basenameWins.exitCode).toBe(0);
+      expect(JSON.parse(basenameWins.stdout).path).toBe('Ideas/Real Name.md');
+
+      // Alias fallback still hydrates on an exact-name miss.
+      const aliasMatch = await runCLI(
+        ['edit', 'Unique Alias', '--picker', 'none', '--json', '{"status":"settled"}'],
+        vaultDir
+      );
+      expect(aliasMatch.exitCode).toBe(0);
+      expect(JSON.parse(aliasMatch.stdout).path).toBe('Ideas/Alias Carrier.md');
+
+      await writeFile(join(vaultDir, 'Ideas', 'Alias One.md'), `---\ntype: idea\nstatus: raw\naliases:\n  - Shared Alias\n---\n`);
+      await writeFile(join(vaultDir, 'Ideas', 'Alias Two.md'), `---\ntype: idea\nstatus: raw\naliases:\n  - Shared Alias\n---\n`);
+      const sharedAlias = await runCLI(
+        ['edit', 'Shared Alias', '--picker', 'none', '--json', '{}'],
+        vaultDir
+      );
+      expect(sharedAlias.exitCode).toBe(1);
+      expect(JSON.parse(sharedAlias.stdout).error).toMatch(/ambiguous query/i);
+
+      await writeFile(join(vaultDir, 'Ideas', 'Duplicate.md'), `---\ntype: idea\nstatus: raw\n---\n`);
+      await writeFile(join(vaultDir, 'Objectives/Tasks', 'Duplicate.md'), `---\ntype: task\nstatus: backlog\n---\n`);
+      const duplicateBasename = await runCLI(
+        ['edit', 'Duplicate', '--picker', 'none', '--json', '{}'],
+        vaultDir
+      );
+      expect(duplicateBasename.exitCode).toBe(1);
+      expect(JSON.parse(duplicateBasename.stdout).error).toMatch(/ambiguous query/i);
+
+      // Exact discovery does not parse unrelated notes; selecting malformed
+      // frontmatter itself still fails through the existing edit validation.
+      const malformedTarget = await runCLI(
+        ['edit', 'Broken', '--picker', 'none', '--json', '{}'],
+        vaultDir
+      );
+      expect(malformedTarget.exitCode).not.toBe(0);
+
+      await mkdir(join(vaultDir, 'Excluded'), { recursive: true });
+      await writeFile(join(vaultDir, 'Excluded', 'Hidden.md'), `---\ntype: idea\nstatus: raw\n---\n`);
+      const excluded = await runCLI(['edit', 'Hidden', '--picker', 'none', '--json', '{}'], vaultDir);
+      expect(excluded.exitCode).toBe(1);
+      expect(JSON.parse(excluded.stdout).error).toMatch(/no matching notes found/i);
+
+      await mkdir(join(vaultDir, 'Projects', 'Project Alpha', 'research'), { recursive: true });
+      await writeFile(join(vaultDir, 'Projects', 'Project Alpha', 'Project Alpha.md'), `---\ntype: project\nstatus: raw\n---\n`);
+      await writeFile(join(vaultDir, 'Projects', 'Project Alpha', 'research', 'Owned Research.md'), `---\ntype: research\nstatus: raw\n---\n`);
+      const owned = await runCLI(
+        ['edit', 'Owned Research', '--picker', 'none', '--json', '{"status":"settled"}'],
+        vaultDir
+      );
+      expect(owned.exitCode).toBe(0);
+      expect(JSON.parse(owned.stdout).path).toBe('Projects/Project Alpha/research/Owned Research.md');
+    });
+
     it('should find notes in dot-directory type outputs', async () => {
       const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
       const schema = JSON.parse(await readFile(schemaPath, 'utf-8'));
