@@ -1,4 +1,4 @@
-import { getType, getTypeNames } from '../../lib/schema.js';
+import { getRootTypeNames, getType } from '../../lib/schema.js';
 import { promptSelection } from '../../lib/prompt.js';
 import type { LoadedSchema } from '../../types/schema.js';
 
@@ -9,7 +9,7 @@ export async function resolveTypePath(
   let typePath = initialPath;
 
   if (!typePath) {
-    const families = getTypeNames(schema);
+    const families = getRootTypeNames(schema);
     const selected = await promptSelection('What would you like to create?', families);
     if (!selected) return undefined;
     typePath = selected;

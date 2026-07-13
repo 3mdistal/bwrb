@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 import {
   loadSchema,
   loadCurrentSchema,
-  getTypeNames,
+  getRootTypeNames,
   getFieldOptions,
   getOptionsForField,
   getFieldsForType,
@@ -168,11 +168,13 @@ describe('schema', () => {
     });
   });
 
-  describe('getTypeNames', () => {
+  describe('getRootTypeNames', () => {
     it('should return top-level type names', () => {
-      const families = getTypeNames(schema);
+      const families = getRootTypeNames(schema);
       expect(families).toContain('objective');
       expect(families).toContain('idea');
+      expect(families).not.toContain('meta');
+      expect(families).not.toContain('task');
     });
   });
 

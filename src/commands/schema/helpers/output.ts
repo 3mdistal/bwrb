@@ -9,7 +9,7 @@
 
 import chalk from 'chalk';
 import {
-  getTypeNames,
+  getRootTypeNames,
   getType,
   getFieldsForType,
   getFieldsByOrigin,
@@ -33,7 +33,7 @@ export function outputSchemaJson(schema: LoadedSchema): void {
   const output: Record<string, unknown> = {
     version: raw.version ?? 2,
     types: Object.fromEntries(
-      getTypeNames(schema).map(family => {
+      getRootTypeNames(schema).map(family => {
         const typeDef = getType(schema, family);
         return [
           family,
@@ -224,7 +224,7 @@ export function showSchemaTree(schema: LoadedSchema): void {
 
   // Show types
   console.log(chalk.cyan('Types:'));
-  for (const family of getTypeNames(schema)) {
+  for (const family of getRootTypeNames(schema)) {
     const typeDef = getType(schema, family);
     if (!typeDef) continue;
     printTypeTree(schema, family, typeDef, 0, context);
@@ -562,7 +562,7 @@ export function showSchemaTreeVerbose(schema: LoadedSchema): void {
   console.log(chalk.bold('\nSchema Types\n'));
 
   console.log(chalk.cyan('Types:'));
-  for (const family of getTypeNames(schema)) {
+  for (const family of getRootTypeNames(schema)) {
     const typeDef = getType(schema, family);
     if (!typeDef) continue;
     printTypeTreeVerbose(schema, family, typeDef, 0, context);
@@ -839,7 +839,7 @@ export function outputSchemaVerboseJson(schema: LoadedSchema): void {
   }
 
   // Start with top-level families
-  for (const family of getTypeNames(schema)) {
+  for (const family of getRootTypeNames(schema)) {
     processType(family);
   }
 

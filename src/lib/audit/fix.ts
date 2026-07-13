@@ -17,7 +17,7 @@ import {
   resolveTypeFromFrontmatter,
   getOptionsForField,
   getConcreteTypeNames,
-  getTypeNames,
+  getRootTypeNames,
   getDescendants,
 } from '../schema.js';
 import { coerceBooleanFromString, coerceNumberFromString } from './coercion.js';
@@ -3046,7 +3046,7 @@ async function handleInvalidTypeFix(
   context?: FixContext
 ): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
   // Get available types
-  const availableTypes = getTypeNames(schema);
+  const availableTypes = getRootTypeNames(schema);
   
   if (availableTypes.length === 0) {
     console.log(chalk.dim('    (No types defined in schema - skipping)'));

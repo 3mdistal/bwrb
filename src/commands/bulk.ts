@@ -14,7 +14,7 @@ import chalk from 'chalk';
 import {
   loadSchema,
   getType,
-  getTypeNames,
+  getRootTypeNames,
   getOptionsForField,
   resolveTypeFromFrontmatter,
   formatUnknownTypeError,
@@ -508,7 +508,7 @@ function validateEnumValue(
  */
 function showAvailableTypes(schema: LoadedSchema): void {
   console.log('\nAvailable types:');
-  for (const family of getTypeNames(schema)) {
+  for (const family of getRootTypeNames(schema)) {
     console.log(`  ${family}`);
   }
 }

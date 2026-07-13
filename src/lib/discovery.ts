@@ -19,7 +19,7 @@ import {
   canTypeBeOwned,
   resolveTypeFromFrontmatter,
   getConcreteTypeNames,
-  getTypeNames,
+  getRootTypeNames,
   getEntityAliases,
 } from './schema.js';
 import { parseNoteContent } from './frontmatter.js';
@@ -1006,7 +1006,7 @@ export async function discoverAllTypeFiles(
   
   // Get root types (direct children of meta) to avoid duplicate collection
   // since collectFilesForType already includes descendants
-  const rootTypes = getTypeNames(schema);
+  const rootTypes = getRootTypeNames(schema);
   
   for (const typeName of rootTypes) {
     const typeFiles = await collectFilesForType(schema, vaultDir, typeName, {

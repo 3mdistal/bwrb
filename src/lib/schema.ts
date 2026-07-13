@@ -823,6 +823,17 @@ export function getTypeNames(schema: LoadedSchema): string[] {
 }
 
 /**
+ * Get root types in declaration order.
+ *
+ * Root types are the direct children of the internal `meta` type. This is
+ * intentionally narrower than getTypeNames(), which includes every resolved
+ * type (including descendants and `meta` itself).
+ */
+export function getRootTypeNames(schema: LoadedSchema): string[] {
+  return schema.types.get(META_TYPE)?.children ?? [];
+}
+
+/**
  * Get all concrete type names (types that can have instances).
  * In the new model, all types are potentially concrete.
  */
