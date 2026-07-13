@@ -76,7 +76,6 @@ const scenarios: Array<{ name: ScenarioName; targetIndex: number; mutation: bool
 ];
 
 function sha256(value: Buffer): string { return createHash('sha256').update(value).digest('hex'); }
-function jsonValid(value: Buffer): boolean { try { JSON.parse(value.toString('utf8')); return true; } catch { return false; } }
 function stdoutValidity(scenario: ScenarioName, profile: ContractProfile, value: Buffer, expectedTarget?: string): { jsonValid: boolean; valid: boolean; semanticValid: boolean; expected: 'json' | 'count' } {
   let json: { success?: unknown; updated?: unknown; path?: unknown } | undefined;
   try { json = JSON.parse(value.toString('utf8')) as typeof json; } catch { /* reflected by jsonValid */ }
