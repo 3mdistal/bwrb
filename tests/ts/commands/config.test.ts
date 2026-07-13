@@ -66,7 +66,8 @@ describe('config command', () => {
       expect(json.success).toBe(true);
       expect(json.data).toBeDefined();
       expect(json.data.link_format).toBe('wikilink');
-      expect(json.data.excluded_directories).toEqual([]);
+      // The shared test schema explicitly excludes Templates.
+      expect(json.data.excluded_directories).toEqual(['Templates']);
       expect(json.data.date_format).toBe('YYYY-MM-DD');
       expect(json.data.date_granularity).toBe('day');
       // open_with should be one of the valid options

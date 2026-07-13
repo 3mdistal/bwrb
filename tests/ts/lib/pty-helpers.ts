@@ -413,6 +413,9 @@ export function spawnBowerbird(
     cwd: PROJECT_ROOT,
     env: {
       ...baseEnv,
+      // The source-mode tsx loader emits Node runtime deprecation warnings on
+      // newer hosts. Those are test-runner diagnostics, not CLI layout bytes.
+      NODE_NO_WARNINGS: '1',
       // Force color output even in non-TTY-like environments
       FORCE_COLOR: '1',
       // Set the vault path
