@@ -179,6 +179,7 @@ Precedence (for --open app mode):
     const appModeInput = options.app ?? mode;
     let jsonMode = patchMode;
     let resolvedVaultDir: string | undefined;
+    let selectedTargetPath: string | undefined;
     try {
       const globalOpts = getGlobalOpts(cmd);
       jsonMode = resolveEditJsonMode(options, globalOpts.output);
@@ -392,6 +393,7 @@ Precedence (for --open app mode):
       }
 
       const targetFile = result.file;
+      selectedTargetPath = targetFile.relativePath;
 
       // Perform the edit
       if (patchMode) {
@@ -473,19 +475,22 @@ Precedence (for --open app mode):
         process.exit(1);
       }
       const message = err instanceof Error ? err.message : String(err);
+      const actionableMessage = err instanceof Error && err.name === 'YAMLException' && selectedTargetPath
+        ? `Could not edit ${selectedTargetPath}: malformed YAML frontmatter. ${message} Fix the YAML in that file and retry.`
+        : message;
       if (err instanceof OpenConfigurationError) {
         if (jsonMode) {
-          printJson(jsonError(message));
+          printJson(jsonError(actionableMessage));
           process.exit(ExitCodes.VALIDATION_ERROR);
         }
-        printError(message);
+        printError(actionableMessage);
         process.exit(1);
       }
       if (jsonMode) {
-        printJson(jsonError(message));
+        printJson(jsonError(actionableMessage));
         process.exit(ExitCodes.IO_ERROR);
       }
-      printError(message);
+      printError(actionableMessage);
       process.exit(1);
     }
   });

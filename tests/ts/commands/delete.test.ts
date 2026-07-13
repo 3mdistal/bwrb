@@ -61,6 +61,25 @@ describe('delete command', () => {
       expect(existsSync(filePath)).toBe(false);
     });
 
+    it('creates a recoverable backup before a forced single-file deletion', async () => {
+      const filePath = join(vaultDir, 'Ideas', 'Sample Idea.md');
+      const original = await readFile(filePath, 'utf-8');
+
+      const result = await runCLI(
+        ['delete', 'Sample Idea', '--force', '--backup', '--output', 'json'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.data.backupPath).toContain(join('.bwrb', 'backups'));
+      expect(existsSync(filePath)).toBe(false);
+      expect(await readFile(join(json.data.backupPath, 'files', 'Ideas', 'Sample Idea.md'), 'utf-8'))
+        .toBe(original);
+      const manifest = JSON.parse(await readFile(join(json.data.backupPath, 'manifest.json'), 'utf-8'));
+      expect(manifest.files).toEqual(['Ideas/Sample Idea.md']);
+    });
+
     it('exits promptly after stdin confirmation succeeds with stdin left open (#795)', async () => {
       const filePath = join(vaultDir, 'Ideas', 'Sample Idea.md');
       expect(existsSync(filePath)).toBe(true);

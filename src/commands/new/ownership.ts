@@ -6,7 +6,9 @@ import {
 } from '../../lib/vault.js';
 import { promptSelection, printWarning } from '../../lib/prompt.js';
 import { UserCancelledError } from '../../lib/errors.js';
-import { ExitCodes, jsonError } from '../../lib/output.js';
+import { buildVaultNoteSnapshot } from '../../lib/discovery.js';
+import { ExitCodes, jsonError, jsonResolutionError, type ErrorCandidate } from '../../lib/output.js';
+import { basename, join } from 'path';
 import type { LoadedSchema, ResolvedType } from '../../types/schema.js';
 import type { OwnershipMode } from './types.js';
 import { throwJsonError } from './errors.js';
@@ -16,6 +18,21 @@ interface OwnershipDecision {
   owner?: OwnerNoteRef;
   fieldName?: string;
 }
+
+export class OwnerResolutionError extends Error {
+  candidates: ErrorCandidate[];
+
+  constructor(ownerArg: string, candidates: ErrorCandidate[]) {
+    super(`Ambiguous owner: ${ownerArg} matches ${candidates.length} notes.`);
+    this.name = 'OwnerResolutionError';
+    this.candidates = candidates;
+  }
+}
+
+type OwnerResolution =
+  | { kind: 'unique'; owner: OwnerNoteRef }
+  | { kind: 'ambiguous'; candidates: ErrorCandidate[] }
+  | { kind: 'missing' };
 
 export async function resolveInteractiveOwnership(
   schema: LoadedSchema,
@@ -67,10 +84,20 @@ export async function resolveJsonOwnership(
       );
     }
 
-    const owner = await findOwnerFromArg(schema, vaultDir, typeName, ownerArg);
-    if (!owner) {
+    const resolution = await resolveOwnerFromArg(schema, vaultDir, typeName, ownerArg);
+    if (resolution.kind === 'ambiguous') {
+      throwJsonError(
+        jsonResolutionError(
+          `Ambiguous owner: ${ownerArg} matches ${resolution.candidates.length} notes.`,
+          resolution.candidates
+        ),
+        ExitCodes.VALIDATION_ERROR
+      );
+    }
+    if (resolution.kind === 'missing') {
       throwJsonError(jsonError(`Owner not found: ${ownerArg}`), ExitCodes.VALIDATION_ERROR);
     }
+    const owner = resolution.owner;
     const fieldName = getOwnedFieldNameForOwner(schema, typeName, owner.ownerType);
     if (!fieldName) {
       throwJsonError(jsonError(`Owner type '${owner.ownerType}' does not own type '${typeName}'`), ExitCodes.SCHEMA_ERROR);
@@ -88,10 +115,14 @@ async function resolveOwnership(
   ownerArg?: string
 ): Promise<OwnershipDecision> {
   if (ownerArg) {
-    const owner = await findOwnerFromArg(schema, vaultDir, typeName, ownerArg);
-    if (!owner) {
+    const resolution = await resolveOwnerFromArg(schema, vaultDir, typeName, ownerArg);
+    if (resolution.kind === 'ambiguous') {
+      throw new OwnerResolutionError(ownerArg, resolution.candidates);
+    }
+    if (resolution.kind === 'missing') {
       throw new Error(`Owner not found: ${ownerArg}`);
     }
+    const owner = resolution.owner;
     const fieldName = getOwnedFieldNameForOwner(schema, typeName, owner.ownerType);
     if (!fieldName) {
       throw new Error(`Owner type '${owner.ownerType}' does not own type '${typeName}'`);
@@ -172,25 +203,57 @@ function getOwnedFieldNameForOwner(
   return ownerInfo?.fieldName;
 }
 
-async function findOwnerFromArg(
+async function resolveOwnerFromArg(
   schema: LoadedSchema,
   vaultDir: string,
   childTypeName: string,
   ownerArg: string
-): Promise<OwnerNoteRef | undefined> {
-  const ownerName = ownerArg
+): Promise<OwnerResolution> {
+  const ownerTarget = ownerArg
     .replace(/^"/, '').replace(/"$/, '')
-    .replace(/^\[\[/, '').replace(/\]\]$/, '');
+    .replace(/^\[\[/, '').replace(/\]\]$/, '')
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/\.md$/i, '');
 
-  const ownerTypes = getPossibleOwnerTypes(schema, childTypeName);
+  const ownerTypes = new Set(
+    getPossibleOwnerTypes(schema, childTypeName).map(ownerInfo => ownerInfo.ownerType)
+  );
+  const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
+  const owners = snapshot.notes
+    .filter(note => note.resolvedType !== undefined && ownerTypes.has(note.resolvedType))
+    .map(note => {
+      const relativePath = note.relativePath.replace(/\\/g, '/');
+      return {
+        ref: {
+          ownerType: note.resolvedType!,
+          ownerName: basename(relativePath, '.md'),
+          ownerPath: join(vaultDir, relativePath),
+        },
+        relativePath,
+        pathTarget: relativePath.replace(/\.md$/i, ''),
+      };
+    });
 
-  for (const ownerInfo of ownerTypes) {
-    const owners = await findOwnerNotes(schema, vaultDir, ownerInfo.ownerType);
-    const match = owners.find(o => o.ownerName === ownerName);
-    if (match) {
-      return match;
-    }
+  const exactPathMatches = owners.filter(owner => owner.pathTarget === ownerTarget);
+  if (exactPathMatches.length === 1) {
+    const match = exactPathMatches[0]!;
+    return {
+      kind: 'unique',
+      owner: { ...match.ref, ownerName: match.pathTarget },
+    };
   }
 
-  return undefined;
+  const nameMatches = owners.filter(owner => owner.ref.ownerName === ownerTarget);
+  if (nameMatches.length === 1) {
+    return { kind: 'unique', owner: nameMatches[0]!.ref };
+  }
+  if (nameMatches.length > 1) {
+    return {
+      kind: 'ambiguous',
+      candidates: nameMatches.map(owner => ({ relativePath: owner.relativePath })),
+    };
+  }
+
+  return { kind: 'missing' };
 }

@@ -47,6 +47,7 @@ import {
   type DeleteLineageBlock,
 } from '../lib/delete-lineage-guard.js';
 import { withLineageMutationLocks } from '../lib/lineage-lock.js';
+import { createBackup } from '../lib/bulk/backup.js';
 
 // ============================================================================
 // Types
@@ -66,6 +67,7 @@ interface DeleteOptions {
   body?: string;
   all?: boolean;
   execute?: boolean;
+  backup?: boolean;
 }
 
 // ============================================================================
@@ -149,6 +151,7 @@ export const deleteCommand = new Command('delete')
   .option('-a, --all', 'Select all notes (required for bulk delete without other targeting)')
   .option('-x, --execute', 'Actually delete files (default is dry-run for bulk operations)')
   .option('--dry-run', 'Preview deletions without removing files')
+  .option('--backup', 'Create a recoverable backup under .bwrb/backups before deletion')
   // Original options
   .option('-f, --force', 'Skip confirmation and fork-lineage safety checks')
   .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
@@ -184,6 +187,7 @@ Picker Modes:
 Examples:
   bwrb delete "My Note"                   # Single file delete with confirmation
   bwrb delete "My Note" --force           # Skip confirmation
+  bwrb delete "My Note" --force --backup  # Back up, then delete
   bwrb delete --type task                 # Dry-run: preview deletions
   bwrb delete --type task --execute       # Actually delete all tasks
   bwrb delete --type task --dry-run        # Explicit dry-run preview
@@ -191,7 +195,8 @@ Examples:
   bwrb delete --path "Archive/**" -x      # Delete all notes in Archive
   bwrb delete --output json --force "My Note"   # Scripting mode (single file)
 
-Note: Deletion is permanent. The file is removed from the filesystem.
+Note: Deletion removes the source file from the filesystem. Use --backup to
+      copy selected files under .bwrb/backups before deletion.
       Notes with direct fork children refuse deletion unless --force is used.
       Forced deletion leaves child forked-from provenance dangling for audit.
       Use version control (git) to recover deleted notes if needed.`)
@@ -656,6 +661,7 @@ async function handleBulkDelete(
   // Execute mode: actually delete files
   const deleted: string[] = [];
   const errors: Array<{ path: string; error: string }> = [];
+  let backupPath: string | undefined;
 
   const deleteFiles = async (): Promise<void> => {
     for (const file of files) {
@@ -671,12 +677,18 @@ async function handleBulkDelete(
   };
 
   if (options.force) {
+    if (options.backup) {
+      backupPath = await createBackup(vaultDir, files.map(file => file.path), `delete ${files.length} file(s)`);
+    }
     await deleteFiles();
   } else {
     try {
       await withLineageMutationLocks(vaultDir, files.map(file => file.path), async () => {
         const assessment = await assessCurrentDeleteLineage(schema, vaultDir, files, true);
         if (assessment.length > 0) throw new LineageDeleteRefusalError(assessment);
+        if (options.backup) {
+          backupPath = await createBackup(vaultDir, files.map(file => file.path), `delete ${files.length} file(s)`);
+        }
         await deleteFiles();
       });
     } catch (error) {
@@ -698,6 +710,7 @@ async function handleBulkDelete(
         errorCount: errors.length,
         deleted,
         errors: errors.length > 0 ? errors : undefined,
+        ...(backupPath ? { backupPath } : {}),
       },
     }));
   } else {
@@ -709,6 +722,10 @@ async function handleBulkDelete(
       if (deleted.length > 10) {
         console.log(`  ... and ${deleted.length - 10} more`);
       }
+    }
+
+    if (backupPath) {
+      printInfo(`Backup created: ${backupPath}`);
     }
 
     if (errors.length > 0) {
@@ -852,7 +869,11 @@ async function deleteResolvedFile({
 
   // Delete the file. Non-force deletion rechecks under the same path-keyed
   // lock used by `new --fork`, after every prompt and backlink scan has ended.
+  let backupPath: string | undefined;
   if (options.force) {
+    if (options.backup) {
+      backupPath = await createBackup(vaultDir, [fullPath], `delete ${relativePath}`);
+    }
     await unlink(fullPath);
     await unregisterIssuedNotePath(vaultDir, relativePath);
   } else {
@@ -860,6 +881,9 @@ async function deleteResolvedFile({
       await withLineageMutationLocks(vaultDir, [fullPath], async () => {
         const assessment = await assessCurrentDeleteLineage(schema, vaultDir, [file], true);
         if (assessment.length > 0) throw new LineageDeleteRefusalError(assessment);
+        if (options.backup) {
+          backupPath = await createBackup(vaultDir, [fullPath], `delete ${relativePath}`);
+        }
         await unlink(fullPath);
         await unregisterIssuedNotePath(vaultDir, relativePath);
       });
@@ -880,10 +904,14 @@ async function deleteResolvedFile({
       data: {
         absolutePath: fullPath,
         backlinksCount: jsonMode ? 0 : backlinks.length,
+        ...(backupPath ? { backupPath } : {}),
       },
     }));
   } else {
     printSuccess(`Deleted: ${relativePath}`);
+    if (backupPath) {
+      printInfo(`Backup created: ${backupPath}`);
+    }
     if (backlinks.length > 0) {
       printWarning(`Note: ${backlinks.length} note(s) still contain links to this file.`);
     }

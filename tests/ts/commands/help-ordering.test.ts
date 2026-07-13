@@ -16,4 +16,13 @@ describe('top-level help command ordering', () => {
 
     expect(() => assertCanonicalHelpCommandOrdering(commands)).not.toThrow();
   });
+
+  it('documents vault discovery sources and their precedence', async () => {
+    const result = await runCLI(['--help']);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('precedence: --vault');
+    expect(result.stdout).toContain('nearest ancestor, BWRB_VAULT');
+    expect(result.stdout).toContain('discovery below cwd');
+  });
 });

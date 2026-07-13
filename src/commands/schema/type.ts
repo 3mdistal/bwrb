@@ -13,6 +13,7 @@ import {
 } from '../../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../../lib/vaultSelection.js';
 import {
+  configurePromptMode,
   printError,
   printSuccess,
   promptInput,
@@ -27,7 +28,7 @@ import {
 } from '../../lib/output.js';
 import { UserCancelledError } from '../../lib/errors.js';
 import { loadRawSchemaJson, writeSchema } from '../../lib/schema-writer.js';
-import { validateTypeName } from './helpers/validation.js';
+import { validateFieldName, validateTypeName } from './helpers/validation.js';
 import { promptTypePicker } from './helpers/pickers.js';
 import { promptFieldDefinition, promptSingleFieldDefinition } from './helpers/prompts.js';
 import type { Field, Type } from '../../types/schema.js';
@@ -49,6 +50,64 @@ interface DeleteTypeOptions {
   execute?: boolean;
 }
 
+const FIELD_PROMPT_TYPES = [
+  'text',
+  'select',
+  'list',
+  'date',
+  'relative-date',
+  'relation',
+  'boolean',
+  'number',
+] as const satisfies readonly NonNullable<Field['prompt']>[];
+
+const FIELD_TYPES_REQUIRING_METADATA = new Set<NonNullable<Field['prompt']>>([
+  'select',
+  'relation',
+  'relative-date',
+]);
+
+function parseFieldDefinitions(input: string, typeName: string): Record<string, Field> {
+  const fields: Record<string, Field> = {};
+
+  for (const rawDefinition of input.split(',')) {
+    const fieldDefinition = rawDefinition.trim();
+    const parts = fieldDefinition.split(':');
+    if (parts.length !== 2 || !parts[0]?.trim() || !parts[1]?.trim()) {
+      throw new Error(
+        `Invalid field definition: "${rawDefinition}". Use "name:type" entries separated by commas.`
+      );
+    }
+
+    const fieldName = parts[0].trim();
+    const fieldType = parts[1].trim();
+    const nameError = validateFieldName(fieldName);
+    if (nameError) {
+      throw new Error(`Invalid field "${fieldName}": ${nameError}`);
+    }
+    if (!FIELD_PROMPT_TYPES.includes(fieldType as typeof FIELD_PROMPT_TYPES[number])) {
+      throw new Error(
+        `Invalid field type "${fieldType}" for "${fieldName}". Supported types: ${FIELD_PROMPT_TYPES.join(', ')}.`
+      );
+    }
+    if (fields[fieldName]) {
+      throw new Error(`Duplicate field definition: "${fieldName}".`);
+    }
+
+    const promptType = fieldType as NonNullable<Field['prompt']>;
+    if (FIELD_TYPES_REQUIRING_METADATA.has(promptType)) {
+      throw new Error(
+        `Field type "${fieldType}" for "${fieldName}" requires additional metadata that --fields cannot encode. `
+        + `Create the type without this field, then run "bwrb schema new field ${typeName} ${fieldName}" interactively.`
+      );
+    }
+
+    fields[fieldName] = { prompt: promptType };
+  }
+
+  return fields;
+}
+
 /**
  * Register type subcommands onto parent new/edit/delete commands.
  */
@@ -67,6 +126,11 @@ export function registerNewTypeCommand(newCommand: Command): void {
 
       try {
         const globalOpts = getGlobalOpts(cmd);
+        const nonInteractive = globalOpts.nonInteractive === true || jsonMode;
+        configurePromptMode({
+          forcedNonInteractive: globalOpts.nonInteractive === true,
+          bypassHint: 'provide the type name and any desired --directory, --inherits, --fields, and --description flags.',
+        });
         const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
         if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
         const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
@@ -74,8 +138,8 @@ export function registerNewTypeCommand(newCommand: Command): void {
         // Get name if not provided
         let typeName = name;
         if (!typeName) {
-          if (jsonMode) {
-            throw new Error('Type name is required in JSON mode');
+          if (nonInteractive) {
+            throw new Error('Type name is required in non-interactive mode');
           }
           const result = await promptInput('Type name');
           if (result === null) {
@@ -107,7 +171,7 @@ export function registerNewTypeCommand(newCommand: Command): void {
           if (!schema.raw.types[inherits]) {
             throw new Error(`Parent type "${inherits}" does not exist`);
           }
-        } else if (!jsonMode) {
+        } else if (!nonInteractive) {
           // Interactive: prompt for parent type selection
           const availableTypes = getTypeNames(schema)
             .filter(t => t !== 'meta' && t !== typeName)
@@ -138,17 +202,8 @@ export function registerNewTypeCommand(newCommand: Command): void {
         // Parse fields from options or prompt
         const fields: Record<string, Field> = {};
         if (options.fields) {
-          // Parse "name:type,name2:type2" format
-          for (const fieldDef of options.fields.split(',')) {
-            const [fieldName, fieldType] = fieldDef.split(':').map(s => s.trim());
-            if (!fieldName || !fieldType) {
-              throw new Error(`Invalid field definition: "${fieldDef}". Use "name:type" format.`);
-            }
-            // Map simple type strings to field definitions
-            const promptType = fieldType as Field['prompt'];
-            fields[fieldName] = { prompt: promptType };
-          }
-        } else if (!jsonMode) {
+          Object.assign(fields, parseFieldDefinitions(options.fields, typeName));
+        } else if (!nonInteractive) {
           // Interactive prompt for fields
           const wantFields = await promptConfirm('Add fields to this type?');
           if (wantFields) {
@@ -161,7 +216,7 @@ export function registerNewTypeCommand(newCommand: Command): void {
 
         // Description - from option or interactive prompt
         let description = options.description?.trim();
-        if (description === undefined && !jsonMode) {
+        if (description === undefined && !nonInteractive) {
           const descResult = await promptInput('Description (what is this type for? blank to skip)');
           if (descResult === null) {
             process.exit(0);

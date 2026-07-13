@@ -1164,6 +1164,10 @@ describe('edit command --open flag', () => {
         vaultDir
       );
       expect(malformedTarget.exitCode).not.toBe(0);
+      const malformedError = JSON.parse(malformedTarget.stdout).error as string;
+      expect(malformedError).toContain('Ideas/Broken.md');
+      expect(malformedError).toMatch(/malformed YAML frontmatter/i);
+      expect(malformedError).toMatch(/fix the YAML.*retry/i);
 
       await mkdir(join(vaultDir, 'Excluded'), { recursive: true });
       await writeFile(join(vaultDir, 'Excluded', 'Hidden.md'), `---\ntype: idea\nstatus: raw\n---\n`);
@@ -1290,6 +1294,20 @@ describe('edit command --open flag', () => {
       expect(result.exitCode).toBe(1);
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(false);
+      expect(json.error).toContain('Retry with one exact path from the matching files.');
+      expect(json.errors.length).toBeGreaterThan(0);
+      expect(json.errors[0].suggestion).toContain('Retry with one exact path');
+    });
+
+    it('should suggest exact paths for ambiguous text targeting', async () => {
+      const result = await runCLI(
+        ['edit', 'Idea', '--picker', 'none'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Retry with one exact path from the matching files.');
+      expect(result.stderr).toContain('Matching files:');
     });
   });
 });
