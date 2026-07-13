@@ -4476,6 +4476,9 @@ priority: medium
       // Should show what would be done
       expect(result.stdout).toContain('Would move to');
       expect(result.stdout).toContain('Ideas/');
+      expect(result.stdout).toContain('Would fix: 1 issues');
+      expect(result.stdout).toContain('Would skip: 0 issues');
+      expect(result.stdout).toContain('Remaining: 0 issues');
 
       // Verify the file was NOT moved in dry-run mode
       const { access } = await import('fs/promises');

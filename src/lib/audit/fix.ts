@@ -1141,7 +1141,10 @@ export async function runAutoFix(
           // Show what would be done
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.yellow(`    ⚠ Would move to ${issue.expectedDirectory}/`));
-          skipped++;
+          // A dry run classifies the planned action, not the absence of a
+          // physical write. Keep the per-file "Would move" line aligned with
+          // the aggregate "Would fix" count.
+          fixed++;
           // Remove from fixableIssues so we don't process it again
           const idx = fixableIssues.indexOf(issue);
           if (idx > -1) fixableIssues.splice(idx, 1);
@@ -1193,7 +1196,7 @@ export async function runAutoFix(
         if (dryRun) {
           console.log(chalk.cyan(`  ${result.relativePath}`));
           console.log(chalk.yellow(`    ⚠ Would move to ${issue.expectedDirectory}/`));
-          skipped++;
+          fixed++;
           const idx = fixableIssues.indexOf(issue);
           if (idx > -1) fixableIssues.splice(idx, 1);
           continue;
