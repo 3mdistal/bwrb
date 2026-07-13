@@ -94,6 +94,22 @@ export function summarizeTimings(values: Array<number | null>): TimingSummary | 
   const measured = values.filter((value): value is number => value !== null && Number.isFinite(value));
   return measured.length ? { median: percentile(measured, 0.5)!, p95: percentile(measured, 0.95)!, min: Math.min(...measured), max: Math.max(...measured) } : null;
 }
+
+/**
+ * Starts every prepared operation before awaiting any of their completions.
+ * The returned duration deliberately measures launch-through-last-close only;
+ * callers must complete filesystem preparation before invoking this helper.
+ */
+export async function launchPreparedInParallel<T, TResult>(
+  prepared: readonly T[],
+  launch: (item: T, started: bigint) => Promise<TResult>,
+  now: () => bigint = () => process.hrtime.bigint(),
+): Promise<{ started: bigint; totalMs: number; results: TResult[] }> {
+  const started = now();
+  const completions = prepared.map(item => launch(item, started));
+  const results = await Promise.all(completions);
+  return { started, totalMs: Number(now() - started) / 1_000_000, results };
+}
 /** A deliberately small schema guard for consumers reading durable JSON artifacts. */
 export function validatePerformanceContractReport(value: unknown): value is PerformanceContractReport {
   if (!value || typeof value !== 'object') return false;
@@ -249,20 +265,67 @@ export async function runPerformanceContract(options: PerformanceContractOptions
   async function runParallel(kind: 'edits' | 'list-count') {
     const fixture = join(options.tempDir, `parallel-${kind}`);
     await cp(parallelBase, fixture, { recursive: true });
-    const started = process.hrtime.bigint();
+    // Preparation is intentionally outside the measured group interval. In
+    // particular, no child invocation re-checks the whole fixture before it
+    // starts: that would stagger the supposedly parallel process launches.
     const beforeChecksum = await fixtureChecksum(fixture);
     const targets = kind === 'edits' ? [2, 9, 16, 23].map(index => targetPath(fixture, index)) : [];
-    const beforeTargets = await Promise.all(targets.map(async path => ({ path, sha256: sha256(await readFile(path)) })));
-    const observations = await Promise.all([2, 9, 16, 23].map((index, sample) => invoke(options, fixture, 'teenylilthoughts-analogue', kind === 'edits' ? { name: 'absolute-path-edit', targetIndex: index, mutation: true } : { name: 'list-count', targetIndex: 0, mutation: false }, sample + 1)));
-    const totalMs = Number(process.hrtime.bigint() - started) / 1_000_000;
-    for (const observation of observations) await writeFile(rawJsonl, `${JSON.stringify({ ...observation, invocation: `four-process-${kind}` })}\n`, { encoding: 'utf8', flag: 'a' });
+    const beforeTargets = await Promise.all(targets.map(async path => ({ path, bytes: await readFile(path) })));
+    type Prepared = { index: number; sample: number; scenario: typeof scenarios[number]; commandLine: string[]; target?: string; beforeTarget?: Buffer; timeOutput?: string; launched: string[] };
+    type Completed = { prepared: Prepared; mutationObservedMs: number | null; firstOutputMs: number | null; closeMs: number; exited: { code: number | null; signal: NodeJS.Signals | null }; stdout: Buffer; stderr: Buffer; peakRss: ContractObservation['peakRss'] };
+    const prepared: Prepared[] = await Promise.all([2, 9, 16, 23].map(async (index, sample) => {
+      const scenario = kind === 'edits' ? { name: 'absolute-path-edit', targetIndex: index, mutation: true } as const : { name: 'list-count', targetIndex: 0, mutation: false } as const;
+      const target = scenario.mutation ? targetPath(fixture, scenario.targetIndex) : undefined;
+      const beforeTarget = target ? beforeTargets.find(item => item.path === target)?.bytes : undefined;
+      const commandLine = command(options, fixture, scenario);
+      const timeOutput = process.platform === 'darwin' ? join(options.outDir, `.time-parallel-${process.pid}-${Date.now()}-${sample}-${Math.random().toString(16).slice(2)}.txt`) : undefined;
+      return { index, sample: sample + 1, scenario, commandLine, target, beforeTarget, timeOutput, launched: timeOutput ? ['/usr/bin/time', '-l', '-o', timeOutput, ...commandLine] : commandLine };
+    }));
+    const { totalMs, results } = await launchPreparedInParallel(prepared, async (item, started): Promise<Completed> => {
+      let mutationObservedMs: number | null = null;
+      let active = true;
+      const monitor = item.target && item.beforeTarget ? setInterval(() => {
+        if (!active || mutationObservedMs !== null) return;
+        readFile(item.target!).then(value => {
+          if (mutationObservedMs === null && !value.equals(item.beforeTarget!)) mutationObservedMs = Number(process.hrtime.bigint() - started) / 1_000_000;
+        }).catch(() => undefined);
+      }, 5) : undefined;
+      const stdout: Buffer[] = []; const stderr: Buffer[] = []; let firstOutputMs: number | null = null;
+      const child = spawn(item.launched[0]!, item.launched.slice(1), { cwd: options.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+      child.stdout.on('data', chunk => { if (firstOutputMs === null) firstOutputMs = Number(process.hrtime.bigint() - started) / 1_000_000; stdout.push(Buffer.from(chunk)); });
+      child.stderr.on('data', chunk => stderr.push(Buffer.from(chunk)));
+      const exited = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((done, reject) => {
+        child.once('error', reject); child.once('close', (code, signal) => done({ code, signal }));
+      });
+      active = false; if (monitor) clearInterval(monitor);
+      const timeText = item.timeOutput ? await readFile(item.timeOutput, 'utf8') : undefined;
+      if (item.timeOutput) await rm(item.timeOutput, { force: true });
+      const rssMatch = timeText?.match(/\s(\d+)\s+maximum resident set size/);
+      return { prepared: item, mutationObservedMs, firstOutputMs, closeMs: Number(process.hrtime.bigint() - started) / 1_000_000, exited, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr), peakRss: rssMatch ? { classification: 'measured', valueBytes: Number(rssMatch[1]!) } : { classification: 'unmeasured', valueBytes: null, reason: item.timeOutput ? 'macOS time output did not include maximum resident set size.' : 'Peak RSS is only measured by this harness on macOS with /usr/bin/time -l.' } };
+    });
+    // Validation begins only after every child has closed, so post-run checksum
+    // work cannot extend the group timing interval.
     const afterChecksum = await fixtureChecksum(fixture);
-    const afterTargets = await Promise.all(targets.map(async path => ({ path, sha256: sha256(await readFile(path)) })));
+    const afterTargets = await Promise.all(targets.map(async path => ({ path, bytes: await readFile(path) })));
+    const observations: ContractObservation[] = results.map(result => {
+      const { prepared: item } = result;
+      const afterTarget = item.target ? afterTargets.find(target => target.path === item.target)?.bytes : undefined;
+      const changed = !!item.beforeTarget && !!afterTarget && !item.beforeTarget.equals(afterTarget);
+      return {
+        scenario: item.scenario.name, profile: 'teenylilthoughts-analogue', sample: item.sample, command: item.commandLine, totalMs: result.closeMs, mutationObservedMs: result.mutationObservedMs, firstOutputMs: result.firstOutputMs, closeMs: result.closeMs,
+        exitCode: result.exited.code, signal: result.exited.signal,
+        stdout: { bytes: result.stdout.length, sha256: sha256(result.stdout), ...stdoutValidity(item.scenario.name, 'teenylilthoughts-analogue', result.stdout, item.target ? relative(fixture, item.target) : undefined) },
+        stderr: { bytes: result.stderr.length, sha256: sha256(result.stderr) }, peakRss: result.peakRss,
+        fixture: { beforeChecksum, afterChecksum, expectedMutation: item.scenario.mutation, integrityValid: item.scenario.mutation ? beforeChecksum !== afterChecksum && changed : beforeChecksum === afterChecksum },
+        ...(item.target && item.beforeTarget && afterTarget ? { target: { path: item.target, beforeSha256: sha256(item.beforeTarget), afterSha256: sha256(afterTarget), changed } } : {}),
+      };
+    });
+    for (const observation of observations) await writeFile(rawJsonl, `${JSON.stringify({ ...observation, invocation: `four-process-${kind}` })}\n`, { encoding: 'utf8', flag: 'a' });
     let lockResidue = false;
     try { lockResidue = (await readdir(join(fixture, '.bwrb', 'locks'))).length > 0; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    const exactTargetDiff = kind === 'edits' ? beforeTargets.every((target, index) => target.sha256 !== afterTargets[index]!.sha256) : beforeChecksum === afterChecksum;
+    const exactTargetDiff = kind === 'edits' ? beforeTargets.every((target, index) => !target.bytes.equals(afterTargets[index]!.bytes)) : beforeChecksum === afterChecksum;
     const complete = observations.every(item => item.exitCode === 0 && item.stdout.valid && item.stdout.semanticValid) && !lockResidue && exactTargetDiff;
-    return { processes: 4 as const, profile: 'teenylilthoughts-analogue' as const, totalMs, complete, observations, lockResidue, fixture: { beforeChecksum, afterChecksum, exactTargetDiff, targets: beforeTargets.map((target, index) => ({ ...target, afterSha256: afterTargets[index]!.sha256, changed: target.sha256 !== afterTargets[index]!.sha256 })) }, budget: complete ? { target: 'all complete under 8000 ms', met: totalMs < 8000, observed: totalMs } : { target: 'all complete under 8000 ms', met: null, observed: null, reason: lockResidue ? 'Lock residue remained after the group.' : 'One or more observations failed semantic/output/integrity validation.' } };
+    return { processes: 4 as const, profile: 'teenylilthoughts-analogue' as const, totalMs, complete, observations, lockResidue, fixture: { beforeChecksum, afterChecksum, exactTargetDiff, targets: beforeTargets.map((target, index) => ({ path: target.path, beforeSha256: sha256(target.bytes), afterSha256: sha256(afterTargets[index]!.bytes), changed: !target.bytes.equals(afterTargets[index]!.bytes) })) }, budget: complete ? { target: 'all complete under 8000 ms', met: totalMs < 8000, observed: totalMs } : { target: 'all complete under 8000 ms', met: null, observed: null, reason: lockResidue ? 'Lock residue remained after the group.' : 'One or more observations failed semantic/output/integrity validation.' } };
   }
   const parallel = await runParallel('edits');
   const parallelList = options.parallelList ? await runParallel('list-count') : undefined;
