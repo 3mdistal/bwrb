@@ -53,8 +53,12 @@ The docs are hosted on Vercel and connected to GitHub.
 Vercel is configured with an **Ignored Build Step** to only build when `docs-site/` changes:
 
 ```bash
-git diff HEAD^ HEAD --quiet -- ./docs-site
+git diff HEAD^ HEAD --quiet -- .
 ```
+
+Vercel runs this command from the configured `docs-site` project root, so `.`
+is the docs tree. A repository-relative `./docs-site` path would incorrectly
+resolve to `docs-site/docs-site` and cancel every deployment.
 
 This means:
 - PRs that only touch source code (`src/`, `tests/`) → **no Vercel build**
