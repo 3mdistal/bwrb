@@ -74,6 +74,7 @@ import {
   type LineageNode,
 } from '../lib/lineage.js';
 import { isValidNoteId, normalizeNoteId } from '../lib/note-id.js';
+import { renderFlatNotePaths } from '../lib/flat-note-presenter.js';
 
 /**
  * Resolve the output format from --output flag.
@@ -1016,10 +1017,11 @@ export async function listObjects(
     }
 
     case 'link': {
-      for (const { path } of filteredFiles) {
-        const name = basename(path, '.md');
-        console.log(`[[${name}]]`);
-      }
+      process.stdout.write(renderFlatNotePaths(
+        filteredFiles.map(file => file.path),
+        vaultDir,
+        'link'
+      ));
       return;
     }
 
@@ -1031,9 +1033,11 @@ export async function listObjects(
     }
 
     case 'paths': {
-      for (const { path } of filteredFiles) {
-        console.log(relative(vaultDir, path));
-      }
+      process.stdout.write(renderFlatNotePaths(
+        filteredFiles.map(file => file.path),
+        vaultDir,
+        'paths'
+      ));
       return;
     }
   }

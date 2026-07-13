@@ -28,6 +28,7 @@ import { openNote, resolveAppMode, parseAppMode } from './open.js';
 import { pickFile, parsePickerMode } from '../lib/picker.js';
 import { createDashboard, updateDashboard, getDashboard } from '../lib/dashboard.js';
 import type { DashboardDefinition } from '../types/schema.js';
+import { renderFlatNotePaths } from '../lib/flat-note-presenter.js';
 
 /**
  * Default number of recently-modified notes to show when --limit is omitted.
@@ -379,16 +380,20 @@ Examples:
         }
 
         case 'paths': {
-          for (const { path } of limited) {
-            console.log(relative(vaultDir, path));
-          }
+          process.stdout.write(renderFlatNotePaths(
+            limited.map(file => file.path),
+            vaultDir,
+            'paths'
+          ));
           return;
         }
 
         case 'link': {
-          for (const { path } of limited) {
-            console.log(`[[${basename(path, '.md')}]]`);
-          }
+          process.stdout.write(renderFlatNotePaths(
+            limited.map(file => file.path),
+            vaultDir,
+            'link'
+          ));
           return;
         }
 
