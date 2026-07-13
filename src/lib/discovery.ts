@@ -22,7 +22,7 @@ import {
   getTypeFamilies,
   getEntityAliases,
 } from './schema.js';
-import { parseNote } from './frontmatter.js';
+import { parseNoteContent } from './frontmatter.js';
 import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
 import { levenshteinDistance } from './levenshtein.js';
 import type { LoadedSchema, OwnedFieldInfo } from '../types/schema.js';
@@ -603,10 +603,14 @@ export async function buildVaultNoteSnapshotFromFiles(
     };
 
     try {
-      if (await hasMalformedTopFrontmatter(file.path)) {
+      // Keep the yaml@2 malformed-frontmatter preflight separate from the
+      // gray-matter parse below: they deliberately have different contracts.
+      // Read once so a snapshot cannot preflight one revision then parse another.
+      const raw = await readFile(file.path, 'utf-8');
+      if (hasMalformedTopFrontmatter(raw)) {
         throw new Error('Malformed frontmatter');
       }
-      const { frontmatter } = await parseNote(file.path);
+      const { frontmatter } = parseNoteContent(raw);
       entry.frontmatter = frontmatter;
       const resolvedType = resolveTypeFromFrontmatter(schema, frontmatter);
       if (resolvedType) {
@@ -622,8 +626,7 @@ export async function buildVaultNoteSnapshotFromFiles(
   return { notes };
 }
 
-async function hasMalformedTopFrontmatter(filePath: string): Promise<boolean> {
-  const raw = await readFile(filePath, 'utf-8');
+function hasMalformedTopFrontmatter(raw: string): boolean {
   const match = raw.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/);
   if (!match) return false;
 

@@ -254,6 +254,42 @@ describe('Discovery', () => {
       expect(typeMap.has('Ideas/Malformed')).toBe(false);
     });
 
+    it('parses in-memory snapshot content with the normal frontmatter contract', async () => {
+      await mkdir(join(vaultDir, 'Ideas', 'Nested'), { recursive: true });
+      await writeFile(
+        join(vaultDir, 'Ideas', 'Nested', 'CRLF.md'),
+        '---\r\ntype: idea\r\ndeadline: 2026-07-12\r\nmeta:\r\n  labels:\r\n    - one\r\n---\r\nA body.\r\n'
+      );
+      await writeFile(join(vaultDir, 'Ideas', 'No Frontmatter.md'), 'Just a body.\n');
+
+      const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
+      const crlf = snapshot.notes.find((note) => note.relativePath === 'Ideas/Nested/CRLF.md');
+      const noFrontmatter = snapshot.notes.find((note) => note.relativePath === 'Ideas/No Frontmatter.md');
+
+      expect(crlf?.frontmatter).toEqual({
+        type: 'idea',
+        deadline: '2026-07-12',
+        meta: { labels: ['one'] },
+      });
+      expect(crlf?.resolvedType).toBe('idea');
+      expect(noFrontmatter?.frontmatter).toEqual({});
+      expect(noFrontmatter?.resolvedType).toBeUndefined();
+    });
+
+    it('keeps a vanished file as an unparsed snapshot entry', async () => {
+      const files = await discoverFilesForNavigation(schema, vaultDir);
+      const vanished = files.find((file) => file.relativePath === 'Ideas/Sample Idea.md')!;
+      await rm(vanished.path);
+
+      const snapshot = await buildVaultNoteSnapshotFromFiles(schema, [vanished]);
+
+      expect(snapshot.notes).toEqual([{
+        path: vanished.path,
+        relativePath: vanished.relativePath,
+        directoryType: vanished.expectedType,
+      }]);
+    });
+
     it('builds a snapshot from an existing discovery result without changing its order or malformed-note behavior', async () => {
       await writeFile(join(vaultDir, 'Ideas', 'Malformed.md'), `---\ntype: [\n---\n`);
 
