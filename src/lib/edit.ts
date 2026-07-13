@@ -8,6 +8,7 @@
 
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import { join, relative } from 'path';
+import { isDeepStrictEqual } from 'util';
 import {
   getType,
   resolveTypeFromFrontmatter,
@@ -384,6 +385,27 @@ async function editNoteFromJsonAttempt(
       }
       throw new Error(cycleError.message);
     }
+  }
+
+  // A semantic no-op must not pass through the YAML serializer. Rewriting an
+  // unchanged parsed document would still alter source bytes such as quote
+  // style and frontmatter key order. Keep the normal guarded-read semantics:
+  // wait at the commit barrier, acquire the source lock, and confirm that the
+  // exact bytes we observed are still current before returning their revision.
+  if (isDeepStrictEqual(resolvedFrontmatter, frontmatter)) {
+    await waitForEditCommitBarrier(attempt, filePath);
+    await injectMutationFault(mutationFaultInjector, 'before', 'lock-acquisition');
+    const revision = await withLineageMutationLocks(vaultDir, [filePath], async () => {
+      await injectMutationFault(mutationFaultInjector, 'after', 'lock-acquisition');
+      if (expectedRevision !== undefined) {
+        await injectMutationFault(mutationFaultInjector, 'before', 'expected-revision-check');
+        assertExpectedRevision(expectedRevision, await readFile(filePath, 'utf-8'));
+        await injectMutationFault(mutationFaultInjector, 'after', 'expected-revision-check');
+      }
+      await assertNoteBytesUnchanged(filePath, raw, attempt);
+      return noteRevision(raw);
+    });
+    return { updatedFields, path: filePath, revision };
   }
 
   // Get field order

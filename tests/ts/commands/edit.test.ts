@@ -12,6 +12,7 @@ import {
   TEST_SCHEMA,
   withTestCliNodeOptions,
 } from '../fixtures/setup.js';
+import { noteRevision } from '../../../src/lib/note-revision.js';
 
 // Note: The `edit` command uses the `prompts` library which requires a TTY.
 // Interactive tests are in edit.pty.test.ts.
@@ -987,6 +988,35 @@ No frontmatter here.
       const json = JSON.parse(result.stdout);
       expect(json.success).toBe(true);
       expect(json.updated).toEqual([]);
+    });
+
+    it('preserves noncanonical source bytes for a semantic no-op JSON edit', async () => {
+      const notePath = join(vaultDir, 'Ideas/Byte Preserving No Op.md');
+      const original = [
+        '---',
+        'priority: "medium"',
+        "status: 'raw'",
+        'type: "idea"',
+        '---',
+        'Body bytes stay exactly where they are.',
+        '',
+      ].join('\n');
+      await writeFile(notePath, original, 'utf-8');
+
+      const result = await runEditWithOpenStdin([
+        'edit', 'Ideas/Byte Preserving No Op.md', '--picker', 'none',
+        '--json', '{}', '--output', 'json',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe('');
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        success: true,
+        path: 'Ideas/Byte Preserving No Op.md',
+        updated: [],
+        revision: noteRevision(original),
+      });
+      expect(await readFile(notePath, 'utf-8')).toBe(original);
     });
 
     it('exits promptly for a vault-relative no-op JSON edit with stdin left open (#793)', async () => {
