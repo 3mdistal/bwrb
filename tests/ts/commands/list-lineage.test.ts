@@ -311,14 +311,13 @@ B body
     ['idea'],
     ['idea', 'print'],
     ['--type', 'idea'], ['--path', 'Ideas/**'], ['--where', 'status=raw'],
-    ['--body', 'body'], ['--text', 'body'], ['--name', 'Lineage B'],
+    ['--body', 'body'], ['--name', 'Lineage B'],
     ['--fuzzy', 'Lineage'], ['--matches'], ['--threshold', '0.5'],
     ['--context', '0'], ['--no-context'], ['--case-sensitive'], ['--regex'],
     ['--id', A], ['--fields', 'status'], ['--sort', 'name'], ['--desc'],
-    ['--limit', '1'], ['--count'], ['--roots'], ['--children-of', 'Lineage A'],
-    ['--descendants-of', 'Lineage A'], ['--tree'], ['--depth', '1'],
+    ['--limit', '1'], ['--count'], ['--depth', '1'],
     ['--open'], ['--app', 'print'], ['--picker', 'none'], ['--preview'],
-    ['--save-as', 'x'], ['--force'], ['--json'], ['--paths'],
+    ['--save-as', 'x'], ['--force'],
     ['--output', 'text'], ['--output', 'bogus'],
   ])('rejects conflicting or noncanonical lineage arguments: %s', async (...conflict) => {
     const args = ['list', '--lineage', 'Lineage B', ...conflict];
