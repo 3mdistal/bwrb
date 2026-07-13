@@ -576,10 +576,26 @@ export async function buildVaultNoteSnapshot(
   vaultDir: string
 ): Promise<VaultNoteSnapshot> {
   const allFiles = await discoverFilesForQueryResolution(schema, vaultDir);
+  return buildVaultNoteSnapshotFromFiles(schema, allFiles);
+}
+
+/**
+ * Build a vault note snapshot from files that have already been discovered.
+ *
+ * Keeping discovery outside this helper lets callers that already hold the
+ * canonical `ManagedFile[]` reuse its ordering and ownership metadata without
+ * paying for another vault walk. Parsing behavior deliberately remains the
+ * same as {@link buildVaultNoteSnapshot}: malformed notes stay present in the
+ * snapshot but contribute no parsed metadata.
+ */
+export async function buildVaultNoteSnapshotFromFiles(
+  schema: LoadedSchema,
+  files: ManagedFile[]
+): Promise<VaultNoteSnapshot> {
 
   const notes: VaultNoteSnapshotEntry[] = [];
 
-  for (const file of allFiles) {
+  for (const file of files) {
     const entry: VaultNoteSnapshotEntry = {
       path: file.path,
       relativePath: file.relativePath,

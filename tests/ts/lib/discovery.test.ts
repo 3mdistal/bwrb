@@ -10,6 +10,7 @@ import {
   buildNoteTypeMap,
   buildNoteTargetIndex,
   buildVaultNoteSnapshot,
+  buildVaultNoteSnapshotFromFiles,
   buildVaultNoteIndex,
   deriveAllFiles,
   deriveNotePathMap,
@@ -251,6 +252,31 @@ describe('Discovery', () => {
       const typeMap = deriveNoteTypeMap(snapshot);
       expect(typeMap.has('Malformed')).toBe(false);
       expect(typeMap.has('Ideas/Malformed')).toBe(false);
+    });
+
+    it('builds a snapshot from an existing discovery result without changing its order or malformed-note behavior', async () => {
+      await writeFile(join(vaultDir, 'Ideas', 'Malformed.md'), `---\ntype: [\n---\n`);
+
+      const discovered = await discoverFilesForNavigation(schema, vaultDir);
+      const reordered = [
+        discovered.find((file) => file.relativePath === 'Ideas/Malformed.md')!,
+        ...discovered.filter((file) => file.relativePath !== 'Ideas/Malformed.md'),
+      ];
+      const snapshot = await buildVaultNoteSnapshotFromFiles(schema, reordered);
+
+      // This is the regression seam used by navigation: it may hand the
+      // snapshot builder its already-discovered ManagedFile[] and retain the
+      // same ordering and expected-directory metadata without another walk.
+      expect(snapshot.notes.map((note) => note.relativePath)).toEqual(
+        reordered.map((file) => file.relativePath)
+      );
+      expect(snapshot.notes[0]).toMatchObject({
+        path: reordered[0]!.path,
+        relativePath: 'Ideas/Malformed.md',
+        directoryType: reordered[0]!.expectedType,
+      });
+      expect(snapshot.notes[0]!.frontmatter).toBeUndefined();
+      expect(snapshot.notes[0]!.resolvedType).toBeUndefined();
     });
 
     it('should preserve duplicate basename ambiguity and path normalization', async () => {

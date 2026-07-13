@@ -10,7 +10,7 @@
 import { basename } from 'path';
 import type { LoadedSchema } from '../types/schema.js';
 import {
-  buildVaultNoteSnapshot,
+  buildVaultNoteSnapshotFromFiles,
   discoverFilesForNavigation,
   filterByPath,
   findSimilarFiles,
@@ -128,7 +128,10 @@ export async function buildNoteIndex(
     basenamesLower.add(name.toLowerCase());
   }
   const byAlias = new Map<string, ManagedFile[]>();
-  const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
+  // Reuse the exact discovery result above: this preserves ManagedFile
+  // identity/order/ownership in the navigation maps and avoids a second full
+  // vault discovery solely to parse aliases.
+  const snapshot = await buildVaultNoteSnapshotFromFiles(schema, allDiscovered);
   for (const note of snapshot.notes) {
     if (!note.resolvedType || !note.frontmatter) continue;
     const file = byPath.get(note.relativePath);

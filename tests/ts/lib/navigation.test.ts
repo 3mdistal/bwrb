@@ -32,6 +32,11 @@ describe('Navigation', () => {
     
     // Check allFiles
     expect(index.allFiles.length).toBeGreaterThan(0);
+
+    // Navigation maps must keep the original ManagedFile objects, including
+    // expected type and ownership metadata supplied by discovery.
+    const sample = index.allFiles.find((file) => file.relativePath === 'Ideas/Sample Idea.md')!;
+    expect(index.byPath.get('Ideas/Sample Idea.md')).toBe(sample);
   });
 
   it('should resolve exact path query', async () => {
