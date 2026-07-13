@@ -889,6 +889,19 @@ describe('validation', () => {
       expect(result.errors).toHaveLength(0);
     });
 
+    it('does not require a vault index when no source-constrained value is populated', async () => {
+      // The missing directory makes any accidental vault-wide index build fail.
+      // Ordinary edits with no populated relation/context value must not pay for
+      // discovery just to establish that there is nothing to validate.
+      const result = await validateContextFields(schema, join(vaultDir, 'missing-vault'), 'task', {
+        type: 'task',
+        status: 'backlog',
+        milestone: [' ', null, 42],
+      });
+
+      expect(result).toEqual({ valid: true, errors: [] });
+    });
+
     it('should handle unquoted wikilink format', async () => {
       const result = await validateContextFields(schema, vaultDir, 'task', {
         type: 'task',

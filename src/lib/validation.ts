@@ -945,7 +945,13 @@ export async function validateContextFields(
 ): Promise<ContextValidationResult> {
   const errors: ContextValidationError[] = [];
   const fields = getFieldsForType(schema, typeName);
-  const noteIndex = await buildVaultNoteIndex(schema, vaultDir);
+  // Most edits do not touch a populated source-constrained field. Building the
+  // vault-wide relation index in those cases is pure discovery cost: the loop
+  // below would never consult it. Keep the existing validation semantics for
+  // populated strings (including non-wikilinks, which the single-value
+  // validator intentionally leaves to other validators), but avoid the index
+  // entirely when there is nothing it could validate.
+  const valuesToValidate: Array<{ fieldName: string; field: Field; value: string }> = [];
 
   for (const [fieldName, field] of Object.entries(fields)) {
     // Skip fields without source constraint (not context fields)
@@ -953,28 +959,33 @@ export async function validateContextFields(
 
     const value = frontmatter[fieldName];
 
-    // Skip blank values, incl. whitespace-only (required field check is
-    // separate). Arrays fall through to per-element handling below (#707).
-    if (isBlankScalar(value)) continue;
-
     // Validate each value (handle both single and array values)
     const values = Array.isArray(value) ? value : [value];
-    
     for (const v of values) {
-      if (typeof v !== 'string') continue;
-      
+      // Skip blank values, incl. whitespace-only (required field check is
+      // separate). Arrays are handled element-by-element (#707).
+      if (typeof v !== 'string' || isBlankScalar(v)) continue;
+      valuesToValidate.push({ fieldName, field, value: v });
+    }
+  }
+
+  if (valuesToValidate.length === 0) {
+    return { valid: true, errors };
+  }
+
+  const noteIndex = await buildVaultNoteIndex(schema, vaultDir);
+  for (const { fieldName, field, value } of valuesToValidate) {
       const error = await validateSingleContextValue(
         schema,
         fieldName,
         field,
-        v,
+        value,
         noteIndex
       );
-      
+
       if (error) {
         errors.push(error);
       }
-    }
   }
 
   return {
