@@ -19,7 +19,7 @@ export interface ContractObservation {
   closeMs: number;
   exitCode: number | null;
   signal: NodeJS.Signals | null;
-  stdout: { bytes: number; sha256: string; jsonValid: boolean; valid: boolean; expected: 'json' | 'count' };
+  stdout: { bytes: number; sha256: string; jsonValid: boolean; valid: boolean; semanticValid: boolean; expected: 'json' | 'count' };
   stderr: { bytes: number; sha256: string };
   peakRss: { classification: 'measured' | 'unmeasured'; valueBytes: number | null; reason?: string };
   fixture: { beforeChecksum: string; afterChecksum: string; expectedMutation: boolean; integrityValid: boolean };
@@ -45,11 +45,13 @@ export interface PerformanceContractReport {
   format: 1;
   createdAt: string;
   commit: string;
-  executable: { node: string; nodeVersion: string; cli: string; mode: 'built' };
+  executable: { node: string; nodeVersion: string; cli: string; distSha256: string; mode: 'built' };
   environment: { platform: NodeJS.Platform; arch: string; cpuCount: number; contention: string };
-  fixtures: Array<{ profile: ContractProfile; path: string; noteCount: number; initialChecksum: string }>;
+  acceptance: { eligible: boolean; accepted: false; reason: string };
+  fixtures: Array<{ profile: ContractProfile; path: string; noteCount: number; initialChecksum: string; manifestChecksum: string; manifestChecksumValid: boolean }>;
   scenarios: ScenarioSummary[];
   parallel: { processes: 4; profile: ContractProfile; totalMs: number; complete: boolean; observations: ContractObservation[]; budget: { target: string; met: boolean | null; observed: number | null; reason?: string } };
+  parallelList?: { processes: 4; profile: ContractProfile; totalMs: number; complete: boolean; observations: ContractObservation[]; lockResidue: boolean; budget: { target: string; met: boolean | null; observed: number | null; reason?: string } };
   rawJsonl: string;
   phaseInstrumentation: 'unavailable: production command instrumentation does not expose startup/schema/discovery/etc phase boundaries';
 }
@@ -61,6 +63,9 @@ export interface PerformanceContractOptions {
   samples: number;
   contention: string;
   nodePath?: string;
+  selectedProfiles?: ContractProfile[];
+  selectedScenarios?: ScenarioName[];
+  parallelList?: boolean;
 }
 
 const profiles: ContractProfile[] = ['teenylilthoughts-analogue-5k', 'teenylilthoughts-analogue'];
@@ -72,11 +77,11 @@ const scenarios: Array<{ name: ScenarioName; targetIndex: number; mutation: bool
 
 function sha256(value: Buffer): string { return createHash('sha256').update(value).digest('hex'); }
 function jsonValid(value: Buffer): boolean { try { JSON.parse(value.toString('utf8')); return true; } catch { return false; } }
-function stdoutValidity(scenario: ScenarioName, value: Buffer): { jsonValid: boolean; valid: boolean; expected: 'json' | 'count' } {
+function stdoutValidity(scenario: ScenarioName, profile: ContractProfile, value: Buffer): { jsonValid: boolean; valid: boolean; semanticValid: boolean; expected: 'json' | 'count' } {
   const parsed = jsonValid(value);
   return scenario === 'list-count'
-    ? { jsonValid: parsed, valid: /^\d+\n$/.test(value.toString('utf8')), expected: 'count' }
-    : { jsonValid: parsed, valid: parsed, expected: 'json' };
+    ? { jsonValid: parsed, valid: /^\d+\n$/.test(value.toString('utf8')), semanticValid: value.toString('utf8') === `${profile === 'teenylilthoughts-analogue' ? 10_000 : 5_000}\n`, expected: 'count' }
+    : { jsonValid: parsed, valid: parsed, semanticValid: parsed && (JSON.parse(value.toString('utf8')) as { success?: unknown; updated?: unknown }).success === true && Array.isArray((JSON.parse(value.toString('utf8')) as { updated?: unknown }).updated) && (JSON.parse(value.toString('utf8')) as { updated: unknown[] }).updated.includes('status'), expected: 'json' };
 }
 function percentile(values: number[], fraction: number): number | null {
   if (!values.length) return null;
@@ -96,7 +101,7 @@ export function validatePerformanceContractReport(value: unknown): value is Perf
     && typeof report.commit === 'string'
     && !!report.executable && report.executable.mode === 'built' && isAbsolute(report.executable.node) && isAbsolute(report.executable.cli)
     && Array.isArray(report.fixtures) && report.fixtures.every(fixture => fixture.noteCount === 5_000 || fixture.noteCount === 10_000)
-    && Array.isArray(report.scenarios) && report.scenarios.length === 6
+    && Array.isArray(report.scenarios) && report.scenarios.length > 0
     && report.parallel?.processes === 4
     && typeof report.rawJsonl === 'string'
     && report.phaseInstrumentation === 'unavailable: production command instrumentation does not expose startup/schema/discovery/etc phase boundaries';
@@ -132,10 +137,7 @@ function command(options: PerformanceContractOptions, fixture: string, scenario:
   const cli = resolve(options.cwd, 'dist/index.js');
   if (scenario.name === 'list-count') return [node, cli, '--vault', fixture, 'list', '--count'];
   const target = targetPath(fixture, scenario.targetIndex);
-  // A basename is the command's unambiguous exact-name path. The generated
-  // frontmatter display name includes a shared type word and deliberately
-  // exercises fuzzy ambiguity instead.
-  const query = scenario.name === 'absolute-path-edit' ? target : `task-${String(scenario.targetIndex).padStart(5, '0')}`;
+  const query = scenario.name === 'absolute-path-edit' ? target : 'wp7 exact name target 00009';
   return [node, cli, '--vault', fixture, 'edit', query, '--json', '{"status":"done"}', '--output', 'json'];
 }
 
@@ -173,7 +175,7 @@ async function invoke(options: PerformanceContractOptions, fixture: string, prof
   return {
     scenario: scenario.name, profile, sample, command: commandLine, totalMs: closeMs, mutationObservedMs, firstOutputMs, closeMs,
     exitCode: exited.code, signal: exited.signal,
-    stdout: { bytes: Buffer.concat(stdout).length, sha256: sha256(Buffer.concat(stdout)), ...stdoutValidity(scenario.name, Buffer.concat(stdout)) },
+    stdout: { bytes: Buffer.concat(stdout).length, sha256: sha256(Buffer.concat(stdout)), ...stdoutValidity(scenario.name, profile, Buffer.concat(stdout)) },
     stderr: { bytes: Buffer.concat(stderr).length, sha256: sha256(Buffer.concat(stderr)) },
     peakRss: rssMatch ? { classification: 'measured', valueBytes: Number(rssMatch[1]!) } : { classification: 'unmeasured', valueBytes: null, reason: timeOutput ? 'macOS time output did not include maximum resident set size.' : 'Peak RSS is only measured by this harness on macOS with /usr/bin/time -l.' },
     fixture: { beforeChecksum, afterChecksum, expectedMutation: scenario.mutation, integrityValid: scenario.mutation ? beforeChecksum !== afterChecksum && changed : beforeChecksum === afterChecksum },
@@ -182,7 +184,7 @@ async function invoke(options: PerformanceContractOptions, fixture: string, prof
 }
 
 function summary(scenario: ScenarioName, observations: ContractObservation[]): ScenarioSummary {
-  const success = observations.filter(item => item.exitCode === 0 && item.stdout.valid && item.fixture.integrityValid);
+  const success = observations.filter(item => item.exitCode === 0 && item.stdout.valid && item.stdout.semanticValid && item.fixture.integrityValid);
   const total = summarizeTimings(success.map(item => item.totalMs));
   // A polling observer can prove a mutation occurred, but cannot timestamp its
   // exact syscall. Do not turn that lower-bound observation into a fake phase.
@@ -192,7 +194,7 @@ function summary(scenario: ScenarioName, observations: ContractObservation[]): S
   const limit = scenario === 'absolute-path-edit' ? 1000 : scenario === 'exact-name-edit' ? 2000 : 3000;
   return {
     scenario, samples: observations.length, successfulSamples: success.length, totalMs: total, mutationToFirstOutputMs: mutationToFirst, firstOutputToCloseMs: firstOutputToClose, peakRssBytes: rss,
-    budget: total ? { target: `p95 under ${limit} ms`, met: total.p95 < limit, observed: total.p95 } : { target: `p95 under ${limit} ms`, met: null, observed: null, reason: 'No valid successful observations.' },
+    budget: success.length === observations.length && total ? { target: `p95 under ${limit} ms`, met: total.p95 < limit, observed: total.p95, ...(observations.length < 5 ? { reason: 'Three-sample p95 is the maximum/context figure, not a stable acceptance estimate.' } : {}) } : { target: `p95 under ${limit} ms`, met: null, observed: null, reason: 'All samples must pass output and integrity validation.' },
     phaseBudgets: {
       mutationToFirstOutput: { target: 'under 100 ms', met: null, observed: null, reason: 'Mutation is observed by 5 ms polling, not instrumented at the write boundary.' },
       firstOutputToClose: firstOutputToClose ? { target: 'p95 under 100 ms', met: firstOutputToClose.p95 < 100, observed: firstOutputToClose.p95 } : { target: 'p95 under 100 ms', met: null, observed: null, reason: 'No valid first-output observations.' },
@@ -225,31 +227,49 @@ export async function runPerformanceContract(options: PerformanceContractOptions
   const rawJsonl = join(options.outDir, 'performance-contract.raw.jsonl');
   const fixtures: PerformanceContractReport['fixtures'] = [];
   const all: ContractObservation[] = [];
-  for (const profile of profiles) {
+  const requestedProfiles = options.selectedProfiles ?? profiles;
+  const requestedScenarios = options.selectedScenarios ?? scenarios.map(scenario => scenario.name);
+  for (const profile of requestedProfiles) {
     const base = join(options.tempDir, profile);
     const manifest = await generateFixture(profile, base);
-    fixtures.push({ profile, path: base, noteCount: manifest.noteCount, initialChecksum: await fixtureChecksum(base) });
-    for (const scenario of scenarios) for (let sample = 1; sample <= options.samples; sample += 1) {
+    const initialChecksum = await fixtureChecksum(base);
+    fixtures.push({ profile, path: base, noteCount: manifest.noteCount, initialChecksum, manifestChecksum: manifest.checksum, manifestChecksumValid: manifest.checksum === initialChecksum });
+    for (const scenario of scenarios.filter(item => requestedScenarios.includes(item.name))) for (let sample = 1; sample <= options.samples; sample += 1) {
       const fixture = join(options.tempDir, `${profile}-${scenario.name}-${sample}`);
       await cp(base, fixture, { recursive: true });
       const observation = await invoke(options, fixture, profile, scenario, sample);
       all.push(observation); await writeFile(rawJsonl, `${JSON.stringify(observation)}\n`, { encoding: 'utf8', flag: 'a' });
     }
   }
-  const parallelFixture = join(options.tempDir, 'parallel');
   const parallelBase = join(options.tempDir, 'teenylilthoughts-analogue');
-  await cp(parallelBase, parallelFixture, { recursive: true });
-  const parallelStarted = process.hrtime.bigint();
-  const parallelObservations = await Promise.all([2, 9, 16, 23].map((index, sample) => invoke(options, parallelFixture, 'teenylilthoughts-analogue', { name: 'absolute-path-edit', targetIndex: index, mutation: true }, sample + 1)));
-  const parallelTotalMs = Number(process.hrtime.bigint() - parallelStarted) / 1_000_000;
-  for (const observation of parallelObservations) await writeFile(rawJsonl, `${JSON.stringify({ ...observation, invocation: 'four-process-parallel' })}\n`, { encoding: 'utf8', flag: 'a' });
-  const parallelComplete = parallelObservations.every(item => item.exitCode === 0 && item.stdout.valid && item.fixture.integrityValid);
+  if (!requestedProfiles.includes('teenylilthoughts-analogue')) throw new Error('The four-process matrix requires the 10k profile.');
+  async function runParallel(kind: 'edits' | 'list-count') {
+    const fixture = join(options.tempDir, `parallel-${kind}`);
+    await cp(parallelBase, fixture, { recursive: true });
+    const started = process.hrtime.bigint();
+    const beforeChecksum = await fixtureChecksum(fixture);
+    const targets = kind === 'edits' ? [2, 9, 16, 23].map(index => targetPath(fixture, index)) : [];
+    const beforeTargets = await Promise.all(targets.map(async path => ({ path, sha256: sha256(await readFile(path)) })));
+    const observations = await Promise.all([2, 9, 16, 23].map((index, sample) => invoke(options, fixture, 'teenylilthoughts-analogue', kind === 'edits' ? { name: 'absolute-path-edit', targetIndex: index, mutation: true } : { name: 'list-count', targetIndex: 0, mutation: false }, sample + 1)));
+    const totalMs = Number(process.hrtime.bigint() - started) / 1_000_000;
+    for (const observation of observations) await writeFile(rawJsonl, `${JSON.stringify({ ...observation, invocation: `four-process-${kind}` })}\n`, { encoding: 'utf8', flag: 'a' });
+    const afterChecksum = await fixtureChecksum(fixture);
+    const afterTargets = await Promise.all(targets.map(async path => ({ path, sha256: sha256(await readFile(path)) })));
+    let lockResidue = false;
+    try { lockResidue = (await readdir(join(fixture, '.bwrb', 'locks'))).length > 0; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    const exactTargetDiff = kind === 'edits' ? beforeTargets.every((target, index) => target.sha256 !== afterTargets[index]!.sha256) : beforeChecksum === afterChecksum;
+    const complete = observations.every(item => item.exitCode === 0 && item.stdout.valid && item.stdout.semanticValid) && !lockResidue && exactTargetDiff;
+    return { processes: 4 as const, profile: 'teenylilthoughts-analogue' as const, totalMs, complete, observations, lockResidue, fixture: { beforeChecksum, afterChecksum, exactTargetDiff, targets: beforeTargets.map((target, index) => ({ ...target, afterSha256: afterTargets[index]!.sha256, changed: target.sha256 !== afterTargets[index]!.sha256 })) }, budget: complete ? { target: 'all complete under 8000 ms', met: totalMs < 8000, observed: totalMs } : { target: 'all complete under 8000 ms', met: null, observed: null, reason: lockResidue ? 'Lock residue remained after the group.' : 'One or more observations failed semantic/output/integrity validation.' } };
+  }
+  const parallel = await runParallel('edits');
+  const parallelList = options.parallelList ? await runParallel('list-count') : undefined;
   const report: PerformanceContractReport = {
     format: 1, createdAt: new Date().toISOString(), commit: await commit(options.cwd),
-    executable: { node, nodeVersion, cli: resolve(options.cwd, 'dist/index.js'), mode: 'built' },
+    executable: { node, nodeVersion, cli: resolve(options.cwd, 'dist/index.js'), distSha256: sha256(await readFile(resolve(options.cwd, 'dist/index.js'))), mode: 'built' },
     environment: { platform: process.platform, arch: process.arch, cpuCount: cpus().length, contention: options.contention }, fixtures,
-    scenarios: scenarios.flatMap(scenario => profiles.map(profile => ({ ...summary(scenario.name, all.filter(item => item.scenario === scenario.name && item.profile === profile)), scenario: `${profile}:${scenario.name}` }))),
-    parallel: { processes: 4, profile: 'teenylilthoughts-analogue', totalMs: parallelTotalMs, complete: parallelComplete, observations: parallelObservations, budget: parallelComplete ? { target: 'all complete under 8000 ms', met: parallelTotalMs < 8000, observed: parallelTotalMs } : { target: 'all complete under 8000 ms', met: null, observed: null, reason: 'One or more parallel observations failed integrity or output validation.' } },
+    acceptance: { eligible: options.contention === 'isolated' && options.samples >= 5, accepted: false, reason: options.contention === 'isolated' && options.samples >= 5 ? 'Harness records evidence; acceptance requires human review.' : 'Shared contention or fewer than five samples is contextual evidence only.' },
+    scenarios: scenarios.filter(scenario => requestedScenarios.includes(scenario.name)).flatMap(scenario => requestedProfiles.map(profile => ({ ...summary(scenario.name, all.filter(item => item.scenario === scenario.name && item.profile === profile)), scenario: `${profile}:${scenario.name}` }))),
+    parallel, ...(parallelList ? { parallelList } : {}),
     rawJsonl, phaseInstrumentation: 'unavailable: production command instrumentation does not expose startup/schema/discovery/etc phase boundaries',
   };
   await writeFile(join(options.outDir, 'performance-contract-report.json'), `${JSON.stringify(report, null, 2)}\n`);
@@ -260,8 +280,11 @@ export async function runPerformanceContract(options: PerformanceContractOptions
 function parseArgs(argv: string[], cwd: string): PerformanceContractOptions {
   const value = (name: string): string | undefined => { const index = argv.indexOf(name); return index === -1 ? undefined : argv[index + 1]; };
   const temp = value('--temp'); const out = value('--out'); const samples = Number(value('--samples') ?? '3'); const contention = value('--contention') ?? 'unspecified'; const nodePath = value('--node');
+  const selectedProfiles = value('--profiles')?.split(',').map(item => item === '10k' ? 'teenylilthoughts-analogue' : item === '5k' ? 'teenylilthoughts-analogue-5k' : item).filter((item): item is ContractProfile => profiles.includes(item as ContractProfile));
+  const selectedScenarios = value('--scenarios')?.split(',').filter((item): item is ScenarioName => scenarios.some(scenario => scenario.name === item));
   if (!temp || !out || !Number.isInteger(samples)) throw new Error('Usage: pnpm bench:contract -- --temp <absolute-directory> --out <absolute-directory> [--samples 3] [--contention isolated|shared] [--node <absolute-node22-path>]');
-  return { tempDir: isAbsolute(temp) ? temp : resolve(cwd, temp), outDir: isAbsolute(out) ? out : resolve(cwd, out), cwd, samples, contention, ...(nodePath ? { nodePath: isAbsolute(nodePath) ? nodePath : resolve(cwd, nodePath) } : {}) };
+  if (selectedProfiles?.length === 0 || selectedScenarios?.length === 0) throw new Error('Use --profiles 5k,10k and --scenarios absolute-path-edit,exact-name-edit,list-count.');
+  return { tempDir: isAbsolute(temp) ? temp : resolve(cwd, temp), outDir: isAbsolute(out) ? out : resolve(cwd, out), cwd, samples, contention, ...(nodePath ? { nodePath: isAbsolute(nodePath) ? nodePath : resolve(cwd, nodePath) } : {}), ...(selectedProfiles ? { selectedProfiles } : {}), ...(selectedScenarios ? { selectedScenarios } : {}), ...(argv.includes('--parallel-list') ? { parallelList: true } : {}) };
 }
 
 if (process.argv[1]?.endsWith('performance-contract.ts')) {
