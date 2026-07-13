@@ -24,6 +24,7 @@
     "test:bench": "pnpm build && vitest run --config tests/bench/vitest.config.ts",
     "bench:fixture": "tsx tools/bench/generate-fixtures.ts",
     "bench:run": "tsx tools/bench/run.ts",
+    "bench:contract": "tsx tools/bench/performance-contract.ts",
     "test:reliability": "sh -c 'mkdir -p artifacts/health && shift $([ \"$1\" = \"--\" ] && echo 1 || echo 0); exec vitest run --config vitest.reliability.config.ts --exclude=\"**/*.pty.test.ts\" \"$@\"' --",
     "test:reliability:pty": "sh -c 'mkdir -p artifacts/health && BWRB_RELIABILITY_JSON_OUTPUT=artifacts/health/retry-zero-pty-results.json exec vitest run --config vitest.reliability.config.ts .pty.test.ts'",
     "test:pty": "vitest run --reporter=verbose .pty.test.ts",

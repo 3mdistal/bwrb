@@ -2,13 +2,14 @@ import { createHash } from 'node:crypto';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-export type FixtureProfile = 'small' | 'medium' | 'large' | 'realistic' | 'teenylilthoughts-analogue';
+export type FixtureProfile = 'small' | 'medium' | 'large' | 'realistic' | 'teenylilthoughts-analogue-5k' | 'teenylilthoughts-analogue';
 
 const PROFILE_COUNTS: Record<FixtureProfile, number> = {
   small: 25,
   medium: 500,
   large: 10_000,
   realistic: 96,
+  'teenylilthoughts-analogue-5k': 5_000,
   'teenylilthoughts-analogue': 10_000,
 };
 
@@ -54,8 +55,9 @@ const schema = {
 
 function pad(value: number): string { return String(value).padStart(5, '0'); }
 function id(index: number): string { return `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`; }
+function isAnalogue(profile: FixtureProfile): boolean { return profile.startsWith('teenylilthoughts-analogue'); }
 function body(index: number, profile: FixtureProfile): string {
-  if (profile === 'teenylilthoughts-analogue') return '';
+  if (isAnalogue(profile)) return '';
   const tier = index % 5;
   if (tier === 0) return '';
   if (tier === 1) return `A compact deterministic benchmark note ${index}.\n`;
@@ -92,12 +94,12 @@ function note(type: string, index: number, profile: FixtureProfile): string {
     if (index >= 12 && index % 4 === 0) lines.push(`position: ${JSON.stringify([{ kind: 'equal', ref: `[[event-${pad(index - 7)}]]`, field: 'start', offset: '2h' }])}`);
   }
   if (type === 'draft') lines.push(`status: ${['seed', 'working', 'published'][index % 3]}`, `tags:${yamlList(['writing', `season-${index % 4}`])}`);
-  if (profile === 'teenylilthoughts-analogue') lines.push('metadata-only: true');
+  if (isAnalogue(profile)) lines.push('metadata-only: true');
   return `${lines.join('\n')}\n---\n${body(index, profile)}`;
 }
 
-function typesFor(profile: FixtureProfile, count: number): string[] {
-  const types = profile === 'teenylilthoughts-analogue' ? ['note', 'objective', 'task', 'project', 'person', 'event', 'draft'] : ['note', 'objective', 'task', 'project', 'person', 'event', 'draft'];
+function typesFor(_profile: FixtureProfile, count: number): string[] {
+  const types = ['note', 'objective', 'task', 'project', 'person', 'event', 'draft'];
   return Array.from({ length: count }, (_, index) => types[index % types.length]!);
 }
 
@@ -141,7 +143,7 @@ export async function generateFixture(profile: FixtureProfile, outDir: string, s
     format: 1, profile, seed, schemaVersion: schema.version, noteCount: PROFILE_COUNTS[profile], typeCounts,
     maxDirectoryDepth: 4, bodySizeDistribution, relationDensity: Number((relations / PROFILE_COUNTS[profile]).toFixed(4)),
     checksum: '', audit: { expectedIssueCount: 3, state: 'known-warnings' },
-    ...(profile === 'teenylilthoughts-analogue' ? {
+    ...(isAnalogue(profile) ? {
       analogue: {
         bodyPolicy: 'empty' as const,
         liveSchemaCopied: false as const,
