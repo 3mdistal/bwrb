@@ -73,9 +73,7 @@ function pathFor(type: string, index: number): string {
 }
 
 function note(type: string, index: number, profile: FixtureProfile): string {
-  // A unique real frontmatter name keeps the WP7.4 exact-name edit distinct
-  // from fuzzy matching of the otherwise deliberately repetitive task names.
-  const name = type === 'task' && index === 9 ? 'wp7 exact name target 00009' : `${type} ${pad(index)}`;
+  const name = `${type} ${pad(index)}`;
   const lines = ['---', `type: ${type}`, `id: ${id(index)}`, `name: ${JSON.stringify(name)}`];
   if (index % 11 === 0) lines.push(`aliases:${yamlList([`${type} alias ${pad(index)}`, `benchmark-${index}`])}`);
   if (index > 7 && index % 17 === 0) lines.push(`forked-from: ${id(index - 7)}`);

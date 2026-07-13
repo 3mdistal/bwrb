@@ -45,6 +45,14 @@ describe('benchmark fixtures', () => {
     expect(sample.endsWith('---\n')).toBe(true);
   }, 30_000);
 
+  it('keeps the WP7.4 exact-basename target identifiable by its filename, not frontmatter name', async () => {
+    const analogueDir = await fixtureDir('exact-basename');
+    await generateFixture('teenylilthoughts-analogue', analogueDir);
+    const target = await readFile(join(analogueDir, 'Objectives', 'Tasks', 'Area-09', 'Sprint-0', 'task-00009.md'), 'utf8');
+    expect(target).toContain('name: "task 00009"');
+    expect(target).not.toContain('wp7 exact name target');
+  }, 30_000);
+
   it('has the recorded advisory-only audit state in the built CLI', async () => {
     const dir = await fixtureDir('audit');
     await generateFixture('realistic', dir);

@@ -44,8 +44,10 @@ contention label, total/first-output/close timing, observed mutation timing,
 exit/output validity, target and fixture checksums, and macOS peak RSS from
 `/usr/bin/time -l`. On other platforms RSS is explicitly unmeasured.
 
-The command measures exact absolute-path edit, exact-name edit, unfiltered
-`list --count`, sequential invocations, and four concurrent distinct edits.
+The command measures exact absolute-path edit, exact-basename edit (the
+unambiguous `task-00009` filename identity, not a frontmatter `name` or fuzzy
+match), unfiltered `list --count`, sequential invocations, and four concurrent
+distinct edits.
 Production code currently exposes no trustworthy startup/schema/discovery
 phase instrumentation, so those phases are explicitly marked unavailable—not
 invented from wall-clock guesses. Treat any shared-machine run as

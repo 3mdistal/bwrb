@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { cpus } from 'node:os';
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { generateFixture, type FixtureProfile } from './generate-fixtures.js';
 
 type ContractProfile = Extract<FixtureProfile, 'teenylilthoughts-analogue-5k' | 'teenylilthoughts-analogue'>;
-type ScenarioName = 'absolute-path-edit' | 'exact-name-edit' | 'list-count';
+type ScenarioName = 'absolute-path-edit' | 'exact-basename-edit' | 'list-count';
 
 export interface ContractObservation {
   scenario: ScenarioName;
@@ -71,17 +71,19 @@ export interface PerformanceContractOptions {
 const profiles: ContractProfile[] = ['teenylilthoughts-analogue-5k', 'teenylilthoughts-analogue'];
 const scenarios: Array<{ name: ScenarioName; targetIndex: number; mutation: boolean }> = [
   { name: 'absolute-path-edit', targetIndex: 2, mutation: true },
-  { name: 'exact-name-edit', targetIndex: 9, mutation: true },
+  { name: 'exact-basename-edit', targetIndex: 9, mutation: true },
   { name: 'list-count', targetIndex: 0, mutation: false },
 ];
 
 function sha256(value: Buffer): string { return createHash('sha256').update(value).digest('hex'); }
 function jsonValid(value: Buffer): boolean { try { JSON.parse(value.toString('utf8')); return true; } catch { return false; } }
-function stdoutValidity(scenario: ScenarioName, profile: ContractProfile, value: Buffer): { jsonValid: boolean; valid: boolean; semanticValid: boolean; expected: 'json' | 'count' } {
-  const parsed = jsonValid(value);
+function stdoutValidity(scenario: ScenarioName, profile: ContractProfile, value: Buffer, expectedTarget?: string): { jsonValid: boolean; valid: boolean; semanticValid: boolean; expected: 'json' | 'count' } {
+  let json: { success?: unknown; updated?: unknown; path?: unknown } | undefined;
+  try { json = JSON.parse(value.toString('utf8')) as typeof json; } catch { /* reflected by jsonValid */ }
+  const parsed = json !== undefined;
   return scenario === 'list-count'
     ? { jsonValid: parsed, valid: /^\d+\n$/.test(value.toString('utf8')), semanticValid: value.toString('utf8') === `${profile === 'teenylilthoughts-analogue' ? 10_000 : 5_000}\n`, expected: 'count' }
-    : { jsonValid: parsed, valid: parsed, semanticValid: parsed && (JSON.parse(value.toString('utf8')) as { success?: unknown; updated?: unknown }).success === true && Array.isArray((JSON.parse(value.toString('utf8')) as { updated?: unknown }).updated) && (JSON.parse(value.toString('utf8')) as { updated: unknown[] }).updated.includes('status'), expected: 'json' };
+    : { jsonValid: parsed, valid: parsed, semanticValid: json?.success === true && Array.isArray(json.updated) && json.updated.includes('status') && json.path === expectedTarget, expected: 'json' };
 }
 function percentile(values: number[], fraction: number): number | null {
   if (!values.length) return null;
@@ -137,7 +139,9 @@ function command(options: PerformanceContractOptions, fixture: string, scenario:
   const cli = resolve(options.cwd, 'dist/index.js');
   if (scenario.name === 'list-count') return [node, cli, '--vault', fixture, 'list', '--count'];
   const target = targetPath(fixture, scenario.targetIndex);
-  const query = scenario.name === 'absolute-path-edit' ? target : 'wp7 exact name target 00009';
+  // Exact edit identity is a filename basename (or an alias/path), never an
+  // arbitrary frontmatter `name`. This query must not rely on fuzzy fallback.
+  const query = scenario.name === 'absolute-path-edit' ? target : `task-${String(scenario.targetIndex).padStart(5, '0')}`;
   return [node, cli, '--vault', fixture, 'edit', query, '--json', '{"status":"done"}', '--output', 'json'];
 }
 
@@ -175,7 +179,7 @@ async function invoke(options: PerformanceContractOptions, fixture: string, prof
   return {
     scenario: scenario.name, profile, sample, command: commandLine, totalMs: closeMs, mutationObservedMs, firstOutputMs, closeMs,
     exitCode: exited.code, signal: exited.signal,
-    stdout: { bytes: Buffer.concat(stdout).length, sha256: sha256(Buffer.concat(stdout)), ...stdoutValidity(scenario.name, profile, Buffer.concat(stdout)) },
+    stdout: { bytes: Buffer.concat(stdout).length, sha256: sha256(Buffer.concat(stdout)), ...stdoutValidity(scenario.name, profile, Buffer.concat(stdout), target ? relative(fixture, target) : undefined) },
     stderr: { bytes: Buffer.concat(stderr).length, sha256: sha256(Buffer.concat(stderr)) },
     peakRss: rssMatch ? { classification: 'measured', valueBytes: Number(rssMatch[1]!) } : { classification: 'unmeasured', valueBytes: null, reason: timeOutput ? 'macOS time output did not include maximum resident set size.' : 'Peak RSS is only measured by this harness on macOS with /usr/bin/time -l.' },
     fixture: { beforeChecksum, afterChecksum, expectedMutation: scenario.mutation, integrityValid: scenario.mutation ? beforeChecksum !== afterChecksum && changed : beforeChecksum === afterChecksum },
@@ -191,7 +195,7 @@ function summary(scenario: ScenarioName, observations: ContractObservation[]): S
   const mutationToFirst = null;
   const firstOutputToClose = summarizeTimings(success.map(item => item.firstOutputMs !== null ? item.closeMs - item.firstOutputMs : null));
   const rss = summarizeTimings(success.map(item => item.peakRss.valueBytes));
-  const limit = scenario === 'absolute-path-edit' ? 1000 : scenario === 'exact-name-edit' ? 2000 : 3000;
+  const limit = scenario === 'absolute-path-edit' ? 1000 : scenario === 'exact-basename-edit' ? 2000 : 3000;
   return {
     scenario, samples: observations.length, successfulSamples: success.length, totalMs: total, mutationToFirstOutputMs: mutationToFirst, firstOutputToCloseMs: firstOutputToClose, peakRssBytes: rss,
     budget: success.length === observations.length && total ? { target: `p95 under ${limit} ms`, met: total.p95 < limit, observed: total.p95, ...(observations.length < 5 ? { reason: 'Three-sample p95 is the maximum/context figure, not a stable acceptance estimate.' } : {}) } : { target: `p95 under ${limit} ms`, met: null, observed: null, reason: 'All samples must pass output and integrity validation.' },
@@ -283,7 +287,7 @@ function parseArgs(argv: string[], cwd: string): PerformanceContractOptions {
   const selectedProfiles = value('--profiles')?.split(',').map(item => item === '10k' ? 'teenylilthoughts-analogue' : item === '5k' ? 'teenylilthoughts-analogue-5k' : item).filter((item): item is ContractProfile => profiles.includes(item as ContractProfile));
   const selectedScenarios = value('--scenarios')?.split(',').filter((item): item is ScenarioName => scenarios.some(scenario => scenario.name === item));
   if (!temp || !out || !Number.isInteger(samples)) throw new Error('Usage: pnpm bench:contract -- --temp <absolute-directory> --out <absolute-directory> [--samples 3] [--contention isolated|shared] [--node <absolute-node22-path>]');
-  if (selectedProfiles?.length === 0 || selectedScenarios?.length === 0) throw new Error('Use --profiles 5k,10k and --scenarios absolute-path-edit,exact-name-edit,list-count.');
+  if (selectedProfiles?.length === 0 || selectedScenarios?.length === 0) throw new Error('Use --profiles 5k,10k and --scenarios absolute-path-edit,exact-basename-edit,list-count.');
   return { tempDir: isAbsolute(temp) ? temp : resolve(cwd, temp), outDir: isAbsolute(out) ? out : resolve(cwd, out), cwd, samples, contention, ...(nodePath ? { nodePath: isAbsolute(nodePath) ? nodePath : resolve(cwd, nodePath) } : {}), ...(selectedProfiles ? { selectedProfiles } : {}), ...(selectedScenarios ? { selectedScenarios } : {}), ...(argv.includes('--parallel-list') ? { parallelList: true } : {}) };
 }
 
