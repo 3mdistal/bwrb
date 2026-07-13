@@ -45,7 +45,6 @@ interface BulkCommandOptions {
   type?: string;
   path?: string;
   body?: string;
-  text?: string; // deprecated
   all?: boolean;
   set?: string[];
   rename?: string[];
@@ -158,7 +157,6 @@ Examples:
   .option('-t, --type <type>', 'Filter by type (e.g., task, objective/milestone)')
   .option('-p, --path <glob>', 'Filter by file path (supports globs)')
   .option('-b, --body <query>', 'Filter by body content')
-  .option('--text <query>', 'Filter by body content (deprecated: use --body)', undefined)
   .option('--set <field=value...>', 'Set field value (or clear with --set field=)')
   .option('--rename <old=new...>', 'Rename field')
   .option('--delete <field...>', 'Delete field')
@@ -199,16 +197,11 @@ Examples:
         process.exit(1);
       }
 
-      // Handle --text deprecation
-      if (options.text) {
-        console.error('Warning: --text is deprecated, use --body instead');
-      }
-
       // Build targeting options from flags
       let typePath = options.type;
       let pathGlob = options.path;
       let whereExpressions = options.where ?? [];
-      const bodyQuery = options.body ?? options.text;
+      const bodyQuery = options.body;
 
       // Handle positional argument
       if (target) {

@@ -248,9 +248,7 @@ bwrb template list [type] [name]   # List all, or show details if both provided
 
 **Decisions made:**
 - `list` is the canonical read-only query, search, picker, and open surface.
-- `search` and `open` remain hidden compatibility commands for existing scripts.
-- `edit` remains the canonical mutation surface; compatibility `search --edit`
-  retains its established meaning.
+- `edit` remains the canonical mutation surface.
 - The AI safety-net primitives (`list --fuzzy`, `unlinked-mention`,
   `frequent-unlinked-term`, `schema discover`, and recurrence) are shipped.
 
@@ -274,8 +272,7 @@ In short: docs-site is canonical for user-facing CLI behavior; `docs/product/` i
 Commands in `bwrb --help` are ordered to reflect the product's priority model and guide users through a logical workflow:
 
 1. **CRUD operations** — `new`, `edit`, `delete` (core note actions)
-2. **Query operations** — `list`, `recent` (canonical discovery and navigation;
-   `open`/`search` are hidden compatibility commands)
+2. **Query operations** — `list`, `recent` (canonical discovery and navigation)
 3. **Schema and management** — `schema`, `audit`, `bulk`, `template` (schema enforcement and maintenance)
 4. **Saved queries** — `dashboard` (saved configurations, follows template conceptually)
 5. **Meta/utility** — `init`, `config`, `completion`, `help` (one-time setup and operational commands)

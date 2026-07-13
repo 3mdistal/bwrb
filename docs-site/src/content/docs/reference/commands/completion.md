@@ -63,8 +63,6 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 - Ensure `BWRB_VAULT` is set or run from within a vault directory
 - Root command and maintained subcommand candidates are contract-tested against
   the built CLI help surface
-- The hidden compatibility commands `open` and `search` remain callable but are
-  not root completion candidates; use `list` for new workflows
 - Restart your shell after adding the completion script
 
 ## See Also

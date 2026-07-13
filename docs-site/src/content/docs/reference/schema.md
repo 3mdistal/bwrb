@@ -670,8 +670,7 @@ also known by. bwrb consults aliases during name resolution and linking, so an
 entity is **findable and linkable by its aliases wherever it is findable by its
 name**:
 
-- `bwrb list --name`, `bwrb edit`, and the compatibility `open`/`search`
-  commands resolve a query to an entity when
+- `bwrb list --name` and `bwrb edit` resolve a query to an entity when
   it matches one of the entity's aliases (a real note name always wins over an
   alias of the same string — **case-insensitively**, consistent with the rest of
   resolution, so a real note `steve` wins over an entity merely aliased `Steve`).
@@ -895,7 +894,6 @@ Configure the [`bwrb audit`](/reference/commands/audit/) command:
 ```json
 {
   "audit": {
-    "ignored_directories": ["Archive", ".obsidian", "Templates"],
     "allowed_extra_fields": ["aliases", "cssclass", "publish"]
   }
 }
@@ -903,7 +901,6 @@ Configure the [`bwrb audit`](/reference/commands/audit/) command:
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `ignored_directories` | array | Directories to skip during audit |
 | `allowed_extra_fields` | array | Extra frontmatter fields that won't trigger warnings |
 
 ---
@@ -973,7 +970,6 @@ A full schema demonstrating inheritance, relations, body sections, and config:
   },
   
   "audit": {
-    "ignored_directories": [".obsidian", "Templates"],
     "allowed_extra_fields": ["aliases", "cssclass"]
   },
   

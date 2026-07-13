@@ -6,7 +6,7 @@
  * 2. Bulk mode: Delete multiple notes matching targeting selectors
  *
  * Bulk mode uses the two-gate safety model:
- * - Gate 1: Explicit targeting (--type, --path, --where, --text) or --all
+ * - Gate 1: Explicit targeting (--type, --path, --where, --body) or --all
  * - Gate 2: --execute flag to actually perform deletion (dry-run by default)
  */
 
@@ -64,7 +64,6 @@ interface DeleteOptions {
   where?: string[];
   id?: string;
   body?: string;
-  text?: string; // deprecated
   all?: boolean;
   execute?: boolean;
 }
@@ -147,7 +146,6 @@ export const deleteCommand = new Command('delete')
   .option('-w, --where <expr...>', 'Filter by frontmatter expression (e.g., "status=active")')
   .option('--id <uuid>', 'Filter by stable note id')
   .option('-b, --body <query>', 'Filter by body content search')
-  .option('--text <query>', 'Filter by body content search (deprecated: use --body)', undefined)
   .option('-a, --all', 'Select all notes (required for bulk delete without other targeting)')
   .option('-x, --execute', 'Actually delete files (default is dry-run for bulk operations)')
   .option('--dry-run', 'Preview deletions without removing files')
@@ -220,13 +218,8 @@ Note: Deletion is permanent. The file is removed from the filesystem.
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
 
-      // Handle --text deprecation
-      if (options.text) {
-        console.error('Warning: --text is deprecated, use --body instead');
-      }
-
       // Check if using bulk targeting selectors
-      const bodyQuery = options.body ?? options.text;
+      const bodyQuery = options.body;
       const targetingOpts: TargetingOptions = {
         ...(options.type && { type: options.type }),
         ...(options.path && { path: options.path }),

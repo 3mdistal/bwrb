@@ -13,7 +13,7 @@ roadmap are implemented:
 - Dashboards, `list --save-as`, aliases, hierarchical scope with `under()`,
   partial and relative dates, and custom calendars
 - Canonical `list` discovery with name, fuzzy, body-match, content, open, and
-  lineage modes; hidden `search` and `open` remain compatibility commands
+  lineage modes
 - Deterministic agent safety nets: unlinked mentions, frequent unlinked terms,
   daily-note coverage queries, `schema discover`, and event-driven recurrence
 - Native document forks, immutable lineage metadata, lineage inspection, and

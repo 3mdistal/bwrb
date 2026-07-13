@@ -26,9 +26,8 @@ features have shipped:
 - **Delivery:** live docs-site, generated JSON Schema, JSON-capable automation
   on the commands that advertise it, shell completion, and release packaging
 
-The compatibility `search` and `open` commands remain callable for existing
-scripts, but `list` is the canonical read surface and `edit` is the canonical
-mutation surface.
+`list` is the canonical read surface and `edit` is the canonical mutation
+surface.
 
 ## Current focus
 

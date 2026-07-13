@@ -4,6 +4,19 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-13
+
+### Breaking changes
+
+| Removed surface | Use instead |
+| --- | --- |
+| `bwrb search`, `bwrb open` | `bwrb list --name <query>`; add `--open` when needed |
+| `list --text` | `list --body <query>` |
+| `list --paths`, `list --json`, `list --tree` | `list --output paths`, `--output json`, `--output tree` |
+| `list --roots`, `--children-of`, `--descendants-of` | `--where "isRoot()"`, `isChildOf(...)`, `isDescendantOf(...)` |
+| `audit`, `bulk`, or `delete --text` | `--body <query>` |
+| `audit.ignored_directories`, `BWRB_AUDIT_EXCLUDE` | `config.excluded_directories`, `BWRB_EXCLUDE` |
+
 ## [0.2.4] - 2026-07-10
 
 Patch release for guarded existing-note lineage adoption, safer concurrent

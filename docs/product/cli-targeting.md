@@ -289,9 +289,7 @@ Bowerbird recognizes multiple exclusion mechanisms:
 | `.gitignore` patterns | `.gitignore` file in vault root | `Archive/`, `*.tmp` |
 | `.bwrbignore` patterns | `.bwrbignore` files (hierarchical) | `dist/`, `!dist/`, `!dist/**` |
 | Exclusions (schema, canonical) | `schema.config.excluded_directories` | `["Templates", "Archive/Old"]` |
-| Exclusions (schema, legacy alias) | `schema.audit.ignored_directories` | `["Templates", "Archive/Old"]` |
 | Exclusions (env, canonical) | `BWRB_EXCLUDE` (comma-separated) | `BWRB_EXCLUDE=Archive,Drafts` |
-| Exclusions (env, legacy alias) | `BWRB_AUDIT_EXCLUDE` (comma-separated) | `BWRB_AUDIT_EXCLUDE=Archive,Drafts` |
 | Hidden directories | Any directory starting with `.` | `.obsidian/`, `.trash/` |
 | Always excluded | `.bwrb/` | `.bwrb/` |
 
@@ -305,7 +303,7 @@ Bowerbird recognizes multiple exclusion mechanisms:
 
 ### When Exclusion Rules Apply
 
-Excluded directories apply to **all bwrb operations** consistently. If a file is excluded, it does not enter the candidate set for canonical `list`/`edit`, compatibility `search`/`open`, or `audit`.
+Excluded directories apply to **all bwrb operations** consistently. If a file is excluded, it does not enter the candidate set for `list`, `edit`, or `audit`.
 
 ### Example
 

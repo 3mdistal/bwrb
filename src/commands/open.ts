@@ -303,7 +303,9 @@ interface OpenOptions {
   vault?: string;
 }
 
-export const openCommand = new Command("open")
+// Kept private only while the shared app-opening helpers remain colocated in
+// this module. It is deliberately not registered by the CLI.
+const removedOpenCommand = new Command("open")
   .description("Open a note (compatibility command; use list --open)")
   .argument("[query]", "Note name or path to open")
   .argument("[mode]", "App mode to open with: system, editor, visual, obsidian, print")
@@ -463,3 +465,5 @@ Examples:
       }
     }
   });
+
+void removedOpenCommand;

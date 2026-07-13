@@ -53,9 +53,7 @@ Completions are context-aware:
 - No hard-coded values
 
 Root command and maintained subcommand candidates are contract-tested against
-the built CLI help surface. The hidden compatibility commands `open` and
-`search` remain callable but are intentionally not taught as canonical root
-candidates.
+the built CLI help surface.
 
 ## See Also
 

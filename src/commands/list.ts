@@ -2,7 +2,6 @@ import { Command } from 'commander';
 import { basename, relative } from 'path';
 import chalk from 'chalk';
 import {
-  getType,
   loadSchema,
   getTypeDefByPath,
   getAllFieldsForType,
@@ -13,13 +12,10 @@ import {
 } from '../lib/schema.js';
 import {
   buildParentMapFromFiles,
-  buildChildrenMap,
-  collectDescendants,
   createFileComparator,
   buildTree,
   treeHasNestedNotes,
   buildDirectoryTree,
-  extractNoteName,
   isFileSortKey,
   isFileStatField,
   formatFileStatDisplay,
@@ -40,7 +36,6 @@ import {
   jsonError,
   ExitCodes,
   exitWithResolutionError,
-  warnDeprecated,
   type ListOutputFormat,
 } from '../lib/output.js';
 import { UserCancelledError } from '../lib/errors.js';
@@ -81,24 +76,9 @@ import {
 import { isValidNoteId, normalizeNoteId } from '../lib/note-id.js';
 
 /**
- * Resolve the output format from --output flag and deprecated flags.
- * Emits deprecation warnings for old flags.
+ * Resolve the output format from --output flag.
  */
 function resolveListOutputFormat(options: ListCommandOptions): ListOutputFormat {
-  // Check deprecated flags first (they take precedence for backwards compat)
-  if (options.json) {
-    warnDeprecated('--json', '--output json');
-    return 'json';
-  }
-  if (options.paths) {
-    warnDeprecated('--paths', '--output paths');
-    return 'paths';
-  }
-  if (options.tree) {
-    warnDeprecated('--tree', '--output tree');
-    return 'tree';
-  }
-
   // Check --output flag
   if (options.output) {
     // 'text' is an alias for 'default'
@@ -143,8 +123,6 @@ interface ListCommandOptions {
   context?: string | boolean;
   caseSensitive?: boolean;
   regex?: boolean;
-  text?: string; // deprecated
-  paths?: boolean; // deprecated
   fields?: string;
   where?: string[];
   id?: string;
@@ -154,17 +132,11 @@ interface ListCommandOptions {
   sort?: string;
   desc?: boolean;
   output?: string;
-  json?: boolean; // deprecated
   // Open options
   open?: boolean;
   app?: string;
   picker?: string;
   preview?: boolean;
-  // Hierarchy options for recursive types
-  roots?: boolean;
-  childrenOf?: string;
-  descendantsOf?: string;
-  tree?: boolean; // deprecated (use --output tree)
   depth?: string;
   // Dashboard save options
   saveAs?: string;
@@ -185,7 +157,6 @@ function validateLineageMode(
   if (options.path !== undefined) conflicts.push('--path');
   if (options.where !== undefined) conflicts.push('--where');
   if (options.body !== undefined) conflicts.push('--body');
-  if (options.text !== undefined) conflicts.push('--text');
   if (options.name !== undefined) conflicts.push('--name');
   if (options.fuzzy !== undefined) conflicts.push('--fuzzy');
   if (options.matches === true) conflicts.push('--matches');
@@ -199,10 +170,6 @@ function validateLineageMode(
   if (options.desc === true) conflicts.push('--desc');
   if (options.limit !== undefined) conflicts.push('--limit');
   if (options.count === true) conflicts.push('--count');
-  if (options.roots === true) conflicts.push('--roots');
-  if (options.childrenOf !== undefined) conflicts.push('--children-of');
-  if (options.descendantsOf !== undefined) conflicts.push('--descendants-of');
-  if (options.tree === true) conflicts.push('--tree');
   if (options.depth !== undefined) conflicts.push('--depth');
   if (options.open === true) conflicts.push('--open');
   if (options.app !== undefined) conflicts.push('--app');
@@ -210,8 +177,6 @@ function validateLineageMode(
   if (options.preview === true) conflicts.push('--preview');
   if (options.saveAs !== undefined) conflicts.push('--save-as');
   if (options.force === true) conflicts.push('--force');
-  if (options.json === true) conflicts.push('--json');
-  if (options.paths === true) conflicts.push('--paths');
 
   if (conflicts.length > 0) {
     return `--lineage cannot be combined with ${conflicts.join(', ')}.`;
@@ -242,8 +207,8 @@ function validateCanonicalSearchMode(
   if (selectedModes.length > 1) {
     return `Cannot combine ${selectedModes.join(', ')}. Choose one search mode.`;
   }
-  if ((options.name !== undefined || options.fuzzy !== undefined) && (options.body !== undefined || options.text !== undefined)) {
-    return '--name and --fuzzy cannot be combined with --body or --text.';
+  if ((options.name !== undefined || options.fuzzy !== undefined) && options.body !== undefined) {
+    return '--name and --fuzzy cannot be combined with --body.';
   }
   if (options.matches && !options.body) {
     return '--matches requires --body <query>';
@@ -257,7 +222,7 @@ function validateCanonicalSearchMode(
   if (hasCanonicalSearchMode(options) && (positional !== undefined || mode !== undefined)) {
     return 'Search modes do not accept positional filters or app modes; use targeting flags and --app instead.';
   }
-  if (hasCanonicalSearchMode(options) && (options.fields || options.count || options.sort || options.desc || options.roots || options.childrenOf || options.descendantsOf || options.tree || options.depth || options.saveAs || options.force)) {
+  if (hasCanonicalSearchMode(options) && (options.fields || options.count || options.sort || options.desc || options.depth || options.saveAs || options.force)) {
     return '--name, --fuzzy, and --matches cannot be combined with table, hierarchy, sort, count, or dashboard options.';
   }
   if (hasCanonicalSearchMode(options) && options.id) {
@@ -273,8 +238,6 @@ async function runCanonicalSearchMode(
   options: ListCommandOptions,
   cmd: Command
 ): Promise<void> {
-  if (options.json) warnDeprecated('--json', '--output json');
-  if (options.paths) warnDeprecated('--paths', '--output paths');
   const query = options.name ?? options.fuzzy ?? options.body;
   const searchOptions: SearchOptions = {
     ...(options.type !== undefined ? { type: options.type } : {}),
@@ -290,7 +253,7 @@ async function runCanonicalSearchMode(
     ...(options.context === false ? { noContext: true } : {}),
     ...(options.caseSensitive !== undefined ? { caseSensitive: options.caseSensitive } : {}),
     ...(options.regex !== undefined ? { regex: options.regex } : {}),
-    output: options.json ? 'json' : options.paths ? 'paths' : (options.output ?? 'text'),
+    output: options.output ?? 'text',
     fuzzy: options.fuzzy !== undefined,
     body: options.matches === true,
   };
@@ -564,9 +527,6 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--no-context', 'Do not show context around detailed body matches')
   .option('-S, --case-sensitive', 'Use case-sensitive matching with --matches')
   .option('-E, --regex', 'Treat the --body query as a regex with --matches')
-  .option('--text <query>', 'Filter by body content search (deprecated: use --body)', undefined)
-  .option('--paths', 'Output file paths (deprecated: use --output paths)')
-  .option('--json', 'Output as JSON (deprecated: use --output json)')
   .option('--fields <fields>', 'Show frontmatter fields in a table (comma-separated)')
   .option('-w, --where <expression...>', 'Filter with expression (multiple are ANDed)')
   .option('--id <uuid>', 'Filter by stable note id')
@@ -581,11 +541,6 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--app <mode>', 'How to open: system (default), editor, visual, obsidian, print')
   .option('--picker <mode>', 'Selection mode: auto (default), fzf, numbered, none')
   .option('--preview', 'Show file preview in the fzf picker')
-  // Hierarchy options for recursive types (deprecated in favor of --where functions)
-  .option('--roots', 'Only show root notes (deprecated: use --where "isRoot()")')
-  .option('--children-of <note>', 'Only show direct children (deprecated: use --where "isChildOf(\'[[Note]]\')")')
-  .option('--descendants-of <note>', 'Only show descendants (deprecated: use --where "isDescendantOf(\'[[Note]]\')")')
-  .option('--tree', 'Display as tree (deprecated: use --output tree)')
   .option('-L, --depth <n>', 'Limit tree/descendants depth')
   // Dashboard save options
   .option('--save-as <name>', 'Save this query as a dashboard')
@@ -597,7 +552,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .action(async (positional: string | undefined, mode: string | undefined, options: ListCommandOptions, cmd: Command) => {
     if (cmd.args.length > 2) {
       const excessError = `too many arguments. Expected 2 arguments but got ${cmd.args.length}.`;
-      if (options.lineage !== undefined && (options.json || options.output === 'json')) {
+      if (options.lineage !== undefined && options.output === 'json') {
         printJson(jsonError(excessError, { code: ExitCodes.VALIDATION_ERROR }));
       } else {
         console.error(`error: ${excessError}`);
@@ -607,7 +562,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
 
     const lineageModeError = validateLineageMode(positional, mode, options);
     if (lineageModeError) {
-      const requestedJson = options.json || options.output === 'json';
+      const requestedJson = options.output === 'json';
       if (requestedJson) {
         printJson(jsonError(lineageModeError, { code: ExitCodes.VALIDATION_ERROR }));
         process.exit(ExitCodes.VALIDATION_ERROR);
@@ -623,7 +578,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
 
     const searchModeError = validateCanonicalSearchMode(positional, mode, options);
     if (searchModeError) {
-      const requestedJson = options.json || options.output === 'json';
+      const requestedJson = options.output === 'json';
       if (requestedJson) {
         printJson(jsonError(searchModeError));
         process.exit(ExitCodes.VALIDATION_ERROR);
@@ -637,7 +592,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       return;
     }
 
-    // Resolve output format from --output flag and deprecated flags
+      // Resolve output format from --output.
     const outputFormat = resolveListOutputFormat(options);
     const jsonMode = outputFormat === 'json';
 
@@ -680,12 +635,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       if (options.path) targeting.path = options.path;
       if (options.where) targeting.where = options.where;
       if (options.id) targeting.id = options.id;
-      // Handle --body (new) and --text (deprecated)
-      if (options.text) {
-        console.error('Warning: --text is deprecated, use --body instead');
-      }
-      const bodyQuery = options.body ?? options.text;
-      if (bodyQuery) targeting.body = bodyQuery;
+      if (options.body) targeting.body = options.body;
 
       // Handle smart positional detection
       if (positional) {
@@ -772,19 +722,6 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         }
       }
 
-      // Emit deprecation warnings for hierarchy flags (unless in JSON mode)
-      if (!jsonMode) {
-        if (options.roots) {
-          warnDeprecated('--roots', '--where "isRoot()"');
-        }
-        if (options.childrenOf) {
-          warnDeprecated('--children-of', `--where "isChildOf('[[${extractNoteName(options.childrenOf) ?? options.childrenOf}]]')"`);
-        }
-        if (options.descendantsOf) {
-          warnDeprecated('--descendants-of', `--where "isDescendantOf('[[${extractNoteName(options.descendantsOf) ?? options.descendantsOf}]]')"`);
-        }
-      }
-      
       await listObjects(schema, vaultDir, targeting.type, targetResult.files, {
         outputFormat,
         ...(fields !== undefined && { fields }),
@@ -793,10 +730,6 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         app: appModeInput,
         pickerMode: resolveGlobalPickerMode(options.picker, globalOpts, 'auto'),
         preview: options.preview,
-        // Hierarchy options
-        roots: options.roots,
-        childrenOf: options.childrenOf,
-        descendantsOf: options.descendantsOf,
         depth,
         count: options.count,
         sortField: options.sort,
@@ -877,10 +810,6 @@ export interface ListOptions {
   app?: string | undefined;
   pickerMode?: string | undefined;
   preview?: boolean | undefined;
-  // Hierarchy options
-  roots?: boolean | undefined;
-  childrenOf?: string | undefined;
-  descendantsOf?: string | undefined;
   depth?: number | undefined;
 }
 
@@ -891,7 +820,7 @@ export interface ListOptions {
 export async function listObjects(
   schema: LoadedSchema,
   vaultDir: string,
-  typePath: string | undefined,
+  _typePath: string | undefined,
   files: Array<{ path: string; relativePath: string; frontmatter: Record<string, unknown> }>,
   options: ListOptions
 ): Promise<void> {
@@ -902,49 +831,6 @@ export async function listObjects(
   }));
 
   const jsonMode = options.outputFormat === 'json';
-
-  // Check if type is recursive for hierarchy options
-  const typeDef = typePath ? getType(schema, typePath) : undefined;
-  const isRecursive = typeDef?.recursive ?? false;
-
-  // Apply hierarchy filters for recursive types
-  if (isRecursive) {
-    // Build parent map for hierarchy queries
-    const parentMap = buildParentMapFromFiles(filteredFiles);
-    const childrenMap = buildChildrenMap(parentMap);
-
-    if (options.roots) {
-      // Only show notes with no parent
-      filteredFiles = filteredFiles.filter(f => {
-        const name = basename(f.path, '.md');
-        return !parentMap.has(name);
-      });
-    }
-
-    if (options.childrenOf) {
-      // Only show direct children of the specified note
-      const targetName = extractNoteName(options.childrenOf);
-      if (targetName) {
-        const children = childrenMap.get(targetName) ?? new Set();
-        filteredFiles = filteredFiles.filter(f => {
-          const name = basename(f.path, '.md');
-          return children.has(name);
-        });
-      }
-    }
-
-    if (options.descendantsOf) {
-      // Show all descendants of the specified note
-      const targetName = extractNoteName(options.descendantsOf);
-      if (targetName) {
-        const descendants = collectDescendants(targetName, childrenMap, options.depth);
-        filteredFiles = filteredFiles.filter(f => {
-          const name = basename(f.path, '.md');
-          return descendants.has(name);
-        });
-      }
-    }
-  }
 
   // Stat the files first when a `file.*` stat key is needed — either for
   // SORTING (`--sort file.mtime`) or for DISPLAY (`--fields file.size`). The

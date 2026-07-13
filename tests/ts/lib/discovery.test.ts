@@ -128,17 +128,14 @@ describe('Discovery', () => {
       expect(excluded.has('Templates')).toBe(true);
     });
 
-    it('should respect BWRB_EXCLUDE env var (and legacy alias)', () => {
+    it('should respect BWRB_EXCLUDE env var', () => {
       const originalExclude = process.env.BWRB_EXCLUDE;
-      const originalAuditExclude = process.env.BWRB_AUDIT_EXCLUDE;
 
       try {
         process.env.BWRB_EXCLUDE = 'Archive';
-        process.env.BWRB_AUDIT_EXCLUDE = 'Drafts/';
 
         const excluded = getExcludedDirectories(schema);
         expect(excluded.has('Archive')).toBe(true);
-        expect(excluded.has('Drafts')).toBe(true); // Trailing slash normalized
       } finally {
         if (originalExclude === undefined) {
           delete process.env.BWRB_EXCLUDE;
@@ -146,11 +143,6 @@ describe('Discovery', () => {
           process.env.BWRB_EXCLUDE = originalExclude;
         }
 
-        if (originalAuditExclude === undefined) {
-          delete process.env.BWRB_AUDIT_EXCLUDE;
-        } else {
-          process.env.BWRB_AUDIT_EXCLUDE = originalAuditExclude;
-        }
       }
     });
   });
@@ -714,7 +706,7 @@ describe('Discovery', () => {
       expect(paths).not.toContain('Objectives/Tasks/Sample Task.md');
     });
 
-    it('should respect ignored_directories for unmanaged files', async () => {
+    it('should respect config excluded_directories for unmanaged files', async () => {
       // Create unmanaged file in an ignored directory
       await mkdir(join(vaultDir, 'Templates/Notes'), { recursive: true });
       await writeFile(join(vaultDir, 'Templates/Notes/Template.md'), '---\ntitle: Template\n---\n');

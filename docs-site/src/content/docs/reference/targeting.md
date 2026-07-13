@@ -249,14 +249,12 @@ For ergonomics, the first positional argument is auto-detected:
 
 **Notes:**
 - `list` is the canonical query, search, picker, and open surface.
-- `open` and `search` remain callable compatibility commands but are hidden from
-  the canonical command list.
 
 ## Default Behavior
 
 Default behavior depends on command destructiveness:
 
-### Read-only commands (`list`, `audit` without `--fix`, `search`)
+### Read-only commands (`list`, `audit` without `--fix`)
 
 No selectors = implicit `--all` (operate on entire vault).
 
@@ -317,7 +315,7 @@ the short form.
 | `paths` | File paths only |
 | `link` | Wikilinks (`[[Note Name]]`) |
 | `tree` | Hierarchical tree view (list only) |
-| `content` | Full file contents (`list` and compatibility `search`) |
+| `content` | Full file contents (`list`) |
 
 ```bash
 bwrb list --type task --output json

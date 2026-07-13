@@ -619,7 +619,7 @@ bwrb dashboard list --output json  # JSON output for scripting
 
 ## Best Practices
 
-1. **Use canonical `list --output json`** for note discovery and `audit --output json` for validation; avoid starting new automation on hidden compatibility `search`/`open`
+1. **Use `list --output json`** for note discovery and `audit --output json` for validation
 2. **Always use `--picker none`** to prevent interactive prompts blocking automation
 3. **Query schema first** before creating notes to understand required fields
 4. **Use `--json` input** for `new` and `edit` to avoid interactive prompts

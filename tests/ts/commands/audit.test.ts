@@ -1295,14 +1295,11 @@ priority: medium
       }
     });
 
-    it('should respect config.excluded_directories (and legacy alias)', async () => {
+    it('should respect config.excluded_directories', async () => {
       const schemaWithExclusions = {
         ...TEST_SCHEMA,
         config: {
-          excluded_directories: ['Templates'],
-        },
-        audit: {
-          ignored_directories: ['Archive/Old'],
+          excluded_directories: ['Templates', 'Archive/Old'],
         },
       };
       await writeFile(

@@ -144,7 +144,9 @@ function resolveSearchOutputFormat(options: SearchOptions): SearchOutputFormat {
 // Command Definition
 // ============================================================================
 
-export const searchCommand = new Command('search')
+// Kept private only while the shared list search implementation remains
+// colocated in this module. It is deliberately not registered by the CLI.
+const removedSearchCommand = new Command('search')
   .description('Search for notes by name or content (compatibility command; use list)')
   .argument('[query]', 'Search pattern (name/path for default mode, content pattern for --body)')
   .argument('[mode]', 'App mode for --open: system, editor, visual, obsidian, print')
@@ -294,6 +296,8 @@ Examples:
     warnDeprecatedCommand('search', replacement);
     await runSearchCommand(query, mode, options, cmd);
   });
+
+void removedSearchCommand;
 
 /**
  * Run the shared name, fuzzy, or content-search flow.

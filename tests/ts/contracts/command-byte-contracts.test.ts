@@ -161,17 +161,31 @@ describe('P1 command contracts: JSON output and vault-byte invariance', () => {
     expect(await vaultFileHashes(vaultDir)).toEqual(before);
   });
 
-  it('P3 deprecated --json retains the list JSON shape while surfacing its warning', async () => {
-    const canonical = await runRawCli(['list', 'idea', '--output', 'json'], vaultDir);
-    const compatibility = await runRawCli(['list', 'idea', '--json'], vaultDir);
+  it('P3 removed public commands and deprecated flags reject without changing vault bytes', async () => {
+    const rejectedCases = [
+      ['search', 'Sample Idea'],
+      ['open', 'Sample Idea'],
+      ['list', '--text', 'sample'],
+      ['list', '--paths'],
+      ['list', '--json'],
+      ['list', '--roots'],
+      ['list', '--children-of', 'Sample Idea'],
+      ['list', '--descendants-of', 'Sample Idea'],
+      ['audit', '--text', 'sample'],
+      ['bulk', '--text', 'sample', '--set', 'status=raw'],
+      ['delete', '--text', 'sample'],
+    ];
 
-    expectOneJsonValue(canonical);
-    expectOneJsonValue(compatibility, {
-      stderr: 'Warning: --json is deprecated, use --output json instead\n',
-    });
-    expect(JSON.parse(compatibility.stdout)).toEqual(JSON.parse(canonical.stdout));
-    expect(canonical.stderr).toBe('');
-    expect(compatibility.stderr).toContain('Warning:');
-    expect(compatibility.stderr).toContain('--output json');
+    for (const args of rejectedCases) {
+      const before = await vaultFileHashes(vaultDir);
+      const result = await runRawCli(args, vaultDir);
+      expect(result.exitCode, `${args.join(' ')}: ${result.stderr}`).not.toBe(0);
+      expect(await vaultFileHashes(vaultDir)).toEqual(before);
+    }
+
+    expectOneJsonValue(await runRawCli(['list', '--body', 'sample', '--output', 'json'], vaultDir));
+    const paths = await runRawCli(['list', '--output', 'paths'], vaultDir);
+    expect(paths.exitCode, paths.stderr).toBe(0);
+    expect(paths.stdout).toContain('Ideas/Sample Idea.md');
   });
 });

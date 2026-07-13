@@ -484,10 +484,6 @@ export const TypeSchema = z.object({
 // ============================================================================
 
 export const AuditConfigSchema = z.object({
-  ignored_directories: z
-    .array(z.string())
-    .optional()
-    .describe('Directories to skip during audit'),
   allowed_extra_fields: z
     .array(z.string())
     .optional()

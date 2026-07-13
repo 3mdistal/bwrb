@@ -244,9 +244,7 @@ export async function loadIgnoreMatcher(vaultDir: string, excluded: Set<string>)
  * Exclusions combine as a union across all sources:
  * - Always: `.bwrb`
  * - Canonical schema config: `config.excluded_directories`
- * - Legacy schema alias: `audit.ignored_directories`
  * - Canonical env var: `BWRB_EXCLUDE` (comma-separated)
- * - Legacy env var alias: `BWRB_AUDIT_EXCLUDE` (comma-separated)
  *
  * Values are treated as vault-root-relative directory prefixes.
  */
@@ -268,16 +266,8 @@ export function getExcludedDirectories(schema: LoadedSchema): Set<string> {
     }
   }
 
-  // Legacy schema alias
-  const legacySchemaExclusions = schema.raw.audit?.ignored_directories;
-  if (Array.isArray(legacySchemaExclusions)) {
-    for (const dir of legacySchemaExclusions) {
-      addDir(dir);
-    }
-  }
-
-  // Env vars (comma-separated). Treat BWRB_AUDIT_EXCLUDE as an alias.
-  const envParts = [process.env.BWRB_EXCLUDE, process.env.BWRB_AUDIT_EXCLUDE].filter(Boolean) as string[];
+  // Env vars (comma-separated).
+  const envParts = [process.env.BWRB_EXCLUDE].filter(Boolean) as string[];
   if (envParts.length > 0) {
     for (const dir of envParts.join(',').split(',')) {
       addDir(dir);
