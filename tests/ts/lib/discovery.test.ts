@@ -591,6 +591,16 @@ describe('Discovery', () => {
   });
 
   describe('discoverAllTypeFiles', () => {
+    it('applies hierarchical ignore rules consistently across pooled type scans', async () => {
+      await writeFile(join(vaultDir, '.bwrbignore'), 'Ideas/');
+
+      const files = await discoverAllTypeFiles(schema, vaultDir);
+      const paths = files.map(file => file.relativePath);
+
+      expect(paths.some(path => path.startsWith('Ideas/'))).toBe(false);
+      expect(paths).toContain('Objectives/Tasks/Sample Task.md');
+    });
+
     it('should collect files from all type directories', async () => {
       const files = await discoverAllTypeFiles(schema, vaultDir);
       

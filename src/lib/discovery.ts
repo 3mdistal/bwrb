@@ -986,13 +986,24 @@ export async function discoverAllTypeFiles(
   vaultDir: string
 ): Promise<ManagedFile[]> {
   const allFiles = new Map<string, ManagedFile>(); // dedupe by path
+  // A vault-wide query visits every root type. Loading hierarchical ignore
+  // rules itself walks the vault to find nested `.bwrbignore` files, so doing
+  // it once per type turns one query into several otherwise-identical walks.
+  // Keep one immutable matcher for the complete discovery pass; the matcher is
+  // only read after loading, and all type collectors preserve their existing
+  // ownership and boundary handling.
+  const excluded = getExcludedDirectories(schema);
+  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
   
   // Get root types (direct children of meta) to avoid duplicate collection
   // since collectFilesForType already includes descendants
   const rootTypes = getTypeFamilies(schema);
   
   for (const typeName of rootTypes) {
-    const typeFiles = await collectFilesForType(schema, vaultDir, typeName);
+    const typeFiles = await collectFilesForType(schema, vaultDir, typeName, {
+      excluded,
+      ignoreMatcher,
+    });
     for (const file of typeFiles) {
       if (!allFiles.has(file.relativePath)) {
         allFiles.set(file.relativePath, file);
@@ -1070,7 +1081,8 @@ export async function discoverFilesForQueryResolution(
 export async function collectFilesForType(
   schema: LoadedSchema,
   vaultDir: string,
-  typeName: string
+  typeName: string,
+  context?: { excluded: Set<string>; ignoreMatcher: Ignore }
 ): Promise<ManagedFile[]> {
   const type = getType(schema, typeName);
   if (!type) return [];
@@ -1078,13 +1090,13 @@ export async function collectFilesForType(
   const files: ManagedFile[] = [];
   
   // Collect files for this type (including owned)
-  const typeFiles = await collectFilesForTypeWithOwnership(schema, vaultDir, typeName);
+  const typeFiles = await collectFilesForTypeWithOwnership(schema, vaultDir, typeName, context);
   files.push(...typeFiles);
   
   // Also collect files for all descendants (including owned)
   const descendants = getDescendants(schema, typeName);
   for (const descendantName of descendants) {
-    const descendantFiles = await collectFilesForTypeWithOwnership(schema, vaultDir, descendantName);
+    const descendantFiles = await collectFilesForTypeWithOwnership(schema, vaultDir, descendantName, context);
     files.push(...descendantFiles);
   }
 
@@ -1312,15 +1324,16 @@ async function collectOwnedFiles(
 async function collectFilesForTypeWithOwnership(
   schema: LoadedSchema,
   vaultDir: string,
-  typeName: string
+  typeName: string,
+  context?: { excluded: Set<string>; ignoreMatcher: Ignore }
 ): Promise<ManagedFile[]> {
   const type = getType(schema, typeName);
   if (!type) return [];
 
   const files: ManagedFile[] = [];
 
-  const excluded = getExcludedDirectories(schema);
-  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+  const excluded = context?.excluded ?? getExcludedDirectories(schema);
+  const ignoreMatcher = context?.ignoreMatcher ?? await loadIgnoreMatcher(vaultDir, excluded);
 
   // Collect files in the type's output_dir (non-owned notes), recursing into
   // nested subdirectories while skipping subtrees owned by other types or
