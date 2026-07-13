@@ -32,3 +32,4 @@ docs-site/.astro/
 # Beads artifacts (deprecated)
 .beads/
 .beads-backup/
+.vercel
