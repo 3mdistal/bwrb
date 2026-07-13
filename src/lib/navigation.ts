@@ -3,8 +3,8 @@
  * 
  * This module handles building an index of vault files and resolving
  * user queries to specific files. It scans vault markdown while respecting
- * global exclusion rules (config.excluded_directories, legacy audit.ignored_directories,
- * vault-root .gitignore, hidden dot-directories, and BWRB_EXCLUDE / BWRB_AUDIT_EXCLUDE).
+ * global exclusion rules (config.excluded_directories, vault-root .gitignore,
+ * hidden dot-directories, and BWRB_EXCLUDE).
  */
 
 import { basename } from 'path';

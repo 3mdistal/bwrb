@@ -11,6 +11,14 @@ For the complete changelog with all details, see [CHANGELOG.md](https://github.c
 
 ### Unreleased
 
+### 0.3.0
+
+- **Removed deprecated CLI surfaces** — `search` and `open`, legacy `list`
+  aliases and hierarchy flags, `--text` aliases on mutating/audit commands,
+  and legacy audit exclusion inputs now reject. Use the documented `list`,
+  `--output`, `--body`, `--where`, `config.excluded_directories`, and
+  `BWRB_EXCLUDE` replacements.
+
 ### 0.2.4
 
 - **Existing-note lineage adoption** — `bwrb lineage adopt <child> --from <parent>` adds a dry-run-first, lock-coordinated path for recording known derivation between existing same-type notes without rewriting their bodies or ordinary metadata

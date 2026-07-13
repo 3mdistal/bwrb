@@ -50,7 +50,7 @@ const schema = {
     event: { extends: 'note', output_dir: 'Calendar/Events', fields: { type: { value: 'event' }, start: { prompt: 'date' }, position: { prompt: 'relative-date', source: 'event' } } },
     draft: { extends: 'note', output_dir: 'Drafts', traits: ['tagged'], fields: { type: { value: 'draft' }, status: { prompt: 'select', options: ['seed', 'working', 'published'] } } },
   },
-  audit: { ignored_directories: ['.bench'] },
+  config: { excluded_directories: ['.bench'] },
 };
 
 function pad(value: number): string { return String(value).padStart(5, '0'); }

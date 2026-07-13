@@ -130,20 +130,39 @@ describe('Discovery', () => {
 
     it('should respect BWRB_EXCLUDE env var', () => {
       const originalExclude = process.env.BWRB_EXCLUDE;
+      const originalAuditExclude = process.env.BWRB_AUDIT_EXCLUDE;
 
       try {
         process.env.BWRB_EXCLUDE = 'Archive';
+        process.env.BWRB_AUDIT_EXCLUDE = 'LegacyOnly';
 
         const excluded = getExcludedDirectories(schema);
         expect(excluded.has('Archive')).toBe(true);
+        expect(excluded.has('LegacyOnly')).toBe(false);
       } finally {
         if (originalExclude === undefined) {
           delete process.env.BWRB_EXCLUDE;
         } else {
           process.env.BWRB_EXCLUDE = originalExclude;
         }
-
+        if (originalAuditExclude === undefined) {
+          delete process.env.BWRB_AUDIT_EXCLUDE;
+        } else {
+          process.env.BWRB_AUDIT_EXCLUDE = originalAuditExclude;
+        }
       }
+    });
+
+    it('ignores the removed audit.ignored_directories schema input', () => {
+      const legacySchema = {
+        ...schema,
+        raw: {
+          ...schema.raw,
+          audit: { ignored_directories: ['LegacyOnly'] },
+        },
+      } as LoadedSchema;
+
+      expect(getExcludedDirectories(legacySchema).has('LegacyOnly')).toBe(false);
     });
   });
 

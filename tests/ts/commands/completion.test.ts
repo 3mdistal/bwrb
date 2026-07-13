@@ -200,6 +200,8 @@ describe('bwrb completion command', () => {
       expect(completions).toContain('edit');
       expect(completions).toContain('completion');
       expect(completions).toContain('lineage');
+      expect(completions).not.toContain('search');
+      expect(completions).not.toContain('open');
     });
 
     it('completes lineage adopt and its guarded mutation options', async () => {
