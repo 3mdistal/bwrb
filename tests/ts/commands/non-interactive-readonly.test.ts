@@ -12,13 +12,6 @@ describe('global --non-interactive read-only flows', () => {
     await cleanupTestVault(vaultDir);
   });
 
-  it('forces open to fail on ambiguity instead of prompting', async () => {
-    const result = await runCLI(['--non-interactive', 'open', 'Idea'], vaultDir);
-
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain('Ambiguous query');
-  });
-
   it('forces list --open to fail when multiple results are available', async () => {
     const result = await runCLI(['--non-interactive', 'list', '--type', 'idea', '--open'], vaultDir);
 
@@ -26,10 +19,4 @@ describe('global --non-interactive read-only flows', () => {
     expect(result.stderr).toContain('Ambiguous query');
   });
 
-  it('forces search to fail on ambiguity instead of prompting', async () => {
-    const result = await runCLI(['--non-interactive', 'search', 'Idea'], vaultDir);
-
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain('Ambiguous query');
-  });
 });

@@ -120,18 +120,18 @@ test_list_deep_subtype_nonexistent() {
 }
 
 # ============================================
-# List --paths Flag Tests
+# List --output paths Tests
 # ============================================
 
 test_list_paths_flag() {
-    local output=$(run_ovault "" list --paths idea)
+    local output=$(run_ovault "" list --output paths idea)
 
     assert_contains "$output" "Ideas/Sample Idea.md" "Should show full path for Sample Idea"
     assert_contains "$output" "Ideas/Another Idea.md" "Should show full path for Another Idea"
 }
 
 test_list_paths_with_subtype() {
-    local output=$(run_ovault "" list --paths objective/task)
+    local output=$(run_ovault "" list --output paths objective/task)
 
     assert_contains "$output" "Objectives/Tasks/Sample Task.md" "Should show full path for task"
 }
@@ -159,7 +159,7 @@ test_list_fields_multiple() {
 }
 
 test_list_fields_with_paths() {
-    local output=$(run_ovault "" list --paths --fields=status idea)
+    local output=$(run_ovault "" list --output paths --fields=status idea)
 
     assert_contains "$output" "PATH" "Should have PATH header instead of NAME"
     assert_contains "$output" "Ideas/" "Should show path"
@@ -295,8 +295,8 @@ test_filter_combined_with_options() {
 }
 
 test_filter_combined_with_paths() {
-    # Combine filter with --paths option
-    local output=$(run_ovault "" list --paths objective/task --status=in-flight)
+    # Combine filter with --output paths option
+    local output=$(run_ovault "" list --output paths objective/task --status=in-flight)
 
     assert_contains "$output" "Objectives/Tasks/Sample Task.md" "Should show path for matching task"
 }

@@ -167,6 +167,7 @@ describe('P1 command contracts: JSON output and vault-byte invariance', () => {
       ['open', 'Sample Idea'],
       ['list', '--text', 'sample'],
       ['list', '--paths'],
+      ['list', '--tree'],
       ['list', '--json'],
       ['list', '--roots'],
       ['list', '--children-of', 'Sample Idea'],

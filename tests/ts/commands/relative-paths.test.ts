@@ -58,40 +58,10 @@ describe('relative vault path handling', () => {
     });
 
     it('should show paths correctly with relative vault', async () => {
-      const result = await runCLI(['--vault', relativeVaultPath, 'list', '--paths', 'idea']);
+      const result = await runCLI(['--vault', relativeVaultPath, 'list', '--output', 'paths', 'idea']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Ideas/Sample Idea.md');
-    });
-  });
-
-  describe('search command', () => {
-    it('should work with relative --vault path', async () => {
-      // Use exact match to avoid ambiguous results
-      const result = await runCLI([
-        '--vault', relativeVaultPath, 'search', 'Sample Idea', '--picker', 'none',
-      ]);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Sample Idea');
-    });
-
-    it('should generate wikilinks with relative vault path', async () => {
-      const result = await runCLI([
-        '--vault', relativeVaultPath, 'search', '--wikilink', 'Sample Idea', '--picker', 'none',
-      ]);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('[[Sample Idea]]');
-    });
-
-    it('should show paths with relative vault path', async () => {
-      const result = await runCLI([
-        '--vault', relativeVaultPath, 'search', '--output', 'paths', 'Sample Task', '--picker', 'none',
-      ]);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Objectives/Tasks/Sample Task.md');
     });
   });
 

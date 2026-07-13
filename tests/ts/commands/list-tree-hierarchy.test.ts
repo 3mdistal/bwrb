@@ -56,7 +56,7 @@ describe('#637 list --output tree renders parent hierarchy', () => {
         field_order: ['type'],
       },
     },
-    audit: { ignored_directories: [] },
+    config: { excluded_directories: [] },
   };
 
   const writeNote = async (rel: string, frontmatter: string[]) => {

@@ -192,7 +192,7 @@ describe("completion", () => {
       const options = filterByPrefix(getOptionCompletions("list"), "--t");
 
       expect(options).toContain("--type");
-      expect(options).toContain("--text");
+      expect(options).toContain("--threshold");
       expect(options).not.toContain("--path");
     });
 

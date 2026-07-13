@@ -61,7 +61,7 @@ describe('#554 hierarchical scope — contexts as notes + under()', () => {
         field_order: ['type', 'status', 'context'],
       },
     },
-    audit: { ignored_directories: [] },
+    config: { excluded_directories: [] },
   };
 
   const writeNote = async (rel: string, frontmatter: string[]) => {
@@ -303,7 +303,7 @@ describe('#636 under() canonicalizes aliases', () => {
         field_order: ['type', 'status', 'context'],
       },
     },
-    audit: { ignored_directories: [] },
+    config: { excluded_directories: [] },
   };
 
   const writeNote = async (rel: string, frontmatter: string[]) => {
@@ -468,7 +468,7 @@ describe('#659 isChildOf/isDescendantOf canonicalize aliased parent values', () 
         field_order: ['type', 'parent', 'aliases'],
       },
     },
-    audit: { ignored_directories: [] },
+    config: { excluded_directories: [] },
   };
 
   const writeNote = async (rel: string, frontmatter: string[]) => {
