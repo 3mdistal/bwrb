@@ -3,14 +3,14 @@
  * 
  * This module handles building an index of vault files and resolving
  * user queries to specific files. It scans vault markdown while respecting
- * global exclusion rules (config.excluded_directories, legacy audit.ignored_directories,
- * vault-root .gitignore, hidden dot-directories, and BWRB_EXCLUDE / BWRB_AUDIT_EXCLUDE).
+ * global exclusion rules (config.excluded_directories, vault-root .gitignore,
+ * hidden dot-directories, and BWRB_EXCLUDE).
  */
 
 import { basename } from 'path';
 import type { LoadedSchema } from '../types/schema.js';
 import {
-  buildVaultNoteSnapshot,
+  buildVaultNoteSnapshotFromFiles,
   discoverFilesForNavigation,
   filterByPath,
   findSimilarFiles,
@@ -58,6 +58,20 @@ export interface ResolutionResult {
   isAmbiguous: boolean;
 }
 
+export interface BuildNoteIndexOptions {
+  /**
+   * Parse discovered notes to build the alias map. Leave this disabled only
+   * when a caller can first satisfy an exact path/basename lookup without
+   * frontmatter metadata, then hydrate aliases on a miss.
+   */
+  includeAliases?: boolean;
+  /**
+   * Add frontmatter `name` values to the alternate lookup map. This is a
+   * compatibility surface for read-only list name search, not exact identity.
+   */
+  includeFrontmatterNamesAsAliases?: boolean;
+}
+
 // Re-export ManagedFile for convenience
 export type { ManagedFile };
 
@@ -80,7 +94,8 @@ export type { ManagedFile };
 export async function buildNoteIndex(
   schema: LoadedSchema,
   vaultDir: string,
-  pathFilter?: string
+  pathFilter?: string,
+  options: BuildNoteIndexOptions = {}
 ): Promise<NoteIndex> {
   const allDiscovered = await discoverFilesForNavigation(schema, vaultDir);
 
@@ -117,22 +132,69 @@ export async function buildNoteIndex(
     }
   }
 
+  const index: NoteIndex = {
+    byPath,
+    byBasename,
+    byAlias: new Map<string, ManagedFile[]>(),
+    allFiles: files,
+    ...(fullByBasename ? { fullByBasename } : {}),
+  };
+
+  if (options.includeAliases !== false) {
+    await hydrateNoteIndexAliases(
+      schema,
+      index,
+      options.includeFrontmatterNamesAsAliases ?? false
+    );
+  }
+
+  return index;
+}
+
+/**
+ * Populate aliases on an index whose files have already been discovered.
+ *
+ * This intentionally parses only after an exact path/basename miss for the
+ * direct edit fast path. Other callers retain eager alias hydration through
+ * the default `buildNoteIndex` behavior.
+ */
+export async function hydrateNoteIndexAliases(
+  schema: LoadedSchema,
+  index: NoteIndex,
+  includeFrontmatterNamesAsAliases: boolean = false
+): Promise<void> {
   // Index entity aliases as additional resolution keys, so notes are findable by
-  // their declared aliases. Reuses the single parse pass from the vault snapshot;
-  // aliases only exist on schema-typed entities.
+  // their declared aliases. Read-only list search may opt frontmatter names into
+  // this same compatibility map. Reuses the single parse pass from the vault
+  // snapshot; aliases only exist on schema-typed entities.
   // Lowercased real-basename set so a real note wins over an alias even when they
   // differ only by case, consistent with the case-insensitive basename lookup in
   // resolveNoteQuery.
   const basenamesLower = new Set<string>();
-  for (const name of byBasename.keys()) {
+  for (const name of index.byBasename.keys()) {
     basenamesLower.add(name.toLowerCase());
   }
   const byAlias = new Map<string, ManagedFile[]>();
-  const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
+  // Reuse the exact discovery result above: this preserves ManagedFile
+  // identity/order/ownership in the navigation maps and avoids a second full
+  // vault discovery solely to parse aliases.
+  const snapshot = await buildVaultNoteSnapshotFromFiles(schema, index.allFiles);
   for (const note of snapshot.notes) {
     if (!note.resolvedType || !note.frontmatter) continue;
-    const file = byPath.get(note.relativePath);
+    const file = index.byPath.get(note.relativePath);
     if (!file) continue;
+    if (includeFrontmatterNamesAsAliases) {
+      const frontmatterName = note.frontmatter.name;
+      if (
+        typeof frontmatterName === 'string' &&
+        frontmatterName.trim() !== '' &&
+        !basenamesLower.has(frontmatterName.toLowerCase())
+      ) {
+        const existing = byAlias.get(frontmatterName) || [];
+        existing.push(file);
+        byAlias.set(frontmatterName, existing);
+      }
+    }
     const aliases = getEntityAliases(schema, note.resolvedType, note.frontmatter);
     for (const alias of aliases) {
       // A real note name always wins over an alias of the same string
@@ -144,13 +206,7 @@ export async function buildNoteIndex(
     }
   }
 
-  return {
-    byPath,
-    byBasename,
-    byAlias,
-    allFiles: files,
-    ...(fullByBasename ? { fullByBasename } : {}),
-  };
+  index.byAlias = byAlias;
 }
 
 // ============================================================================

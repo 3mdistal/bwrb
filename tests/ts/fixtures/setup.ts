@@ -335,7 +335,16 @@ const RUN_CLI_TIMEOUT_MS = Number(process.env.BWRB_TEST_CLI_TIMEOUT_MS) || 30_00
  * Default number of retries for transient spawn failures (spawn errors or the
  * per-spawn timeout). CLI non-zero exits are never retried.
  */
-const RUN_CLI_RETRIES = 2;
+const DEFAULT_RUN_CLI_RETRIES = 2;
+
+/**
+ * Reliability runs must expose a transient spawn failure on its first
+ * occurrence. The normal feedback lane deliberately keeps its two retries to
+ * reduce noise from contested developer machines.
+ */
+export function getRunCliRetries(env: NodeJS.ProcessEnv = process.env): number {
+  return env.BWRB_TEST_RELIABILITY === '1' ? 0 : DEFAULT_RUN_CLI_RETRIES;
+}
 
 class TransientSpawnError extends Error {}
 
@@ -428,7 +437,7 @@ export async function runCLI(
     cwd = PROJECT_ROOT,
     env = {},
     timeoutMs = RUN_CLI_TIMEOUT_MS,
-    retries = RUN_CLI_RETRIES,
+    retries = getRunCliRetries(),
   } = options;
 
   const cliCommand = process.execPath;

@@ -779,13 +779,6 @@
     "auditConfig": {
       "type": "object",
       "properties": {
-        "ignored_directories": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Directories to skip during audit"
-        },
         "allowed_extra_fields": {
           "type": "array",
           "items": {

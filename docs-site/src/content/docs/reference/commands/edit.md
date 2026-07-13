@@ -62,6 +62,11 @@ bwrb edit -t task --where "status == 'active'" "Deploy" --json '{"priority":"hig
 
 `--json` mode rejects patch fields that are not defined for the resolved note type. Existing legacy or unknown fields in the note are preserved unless the patch changes them.
 
+After validation, a patch that makes no semantic change is a byte-preserving
+no-op: Bowerbird still checks the expected revision, mutation lock, and current
+raw bytes, but it does not reserialize or rewrite the note. The returned
+revision therefore remains the revision of the original bytes.
+
 ### Guarded JSON edits
 
 For a contested record, retain the opaque `revision` returned by `bwrb list
@@ -151,11 +156,21 @@ bwrb edit -t task -p "Work/**" -w "status == 'active'" "Deploy"
 
 ## Query Resolution
 
-When you pass a note query and omit `--type`, `edit` uses the same name/path matching behavior as `search`:
+When you pass a note query and omit `--type`, `edit` resolves exact
+vault-relative paths, filename basenames, and declared aliases before using its
+interactive query fallback:
 
 - **1 match:** edit proceeds
 - **0 matches:** error
-- **>1 match with `--picker none` or JSON mode:** error listing candidates; disambiguate with `--type`, `--path`, or a vault-relative path
+- **>1 match with `--picker none` or JSON mode:** error listing candidates and
+  an exact-path retry; disambiguate with `--type`, `--path`, or one listed
+  vault-relative path
+
+An arbitrary frontmatter `name` is not an edit identity unless the schema
+declares it as an alias. Read-only `list --name` may display several name
+matches, but a mutating edit never chooses one of them silently. If the selected
+file has malformed YAML, the error names that path and asks you to repair the
+frontmatter before retrying.
 
 ## Picker Modes
 

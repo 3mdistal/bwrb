@@ -823,6 +823,17 @@ export function getTypeNames(schema: LoadedSchema): string[] {
 }
 
 /**
+ * Get root types in declaration order.
+ *
+ * Root types are the direct children of the internal `meta` type. This is
+ * intentionally narrower than getTypeNames(), which includes every resolved
+ * type (including descendants and `meta` itself).
+ */
+export function getRootTypeNames(schema: LoadedSchema): string[] {
+  return schema.types.get(META_TYPE)?.children ?? [];
+}
+
+/**
  * Get all concrete type names (types that can have instances).
  * In the new model, all types are potentially concrete.
  */
@@ -1039,114 +1050,6 @@ export function computeDefaultOutputDir(schema: LoadedSchema, typeName: string):
 export function getPluralName(schema: LoadedSchema, typeName: string): string {
   const type = schema.types.get(typeName);
   return type?.plural ?? autoPluralise(typeName);
-}
-
-// ============================================================================
-// Legacy API Compatibility
-// ============================================================================
-
-// These functions maintain backward compatibility with code that uses the old API.
-// They work with LoadedSchema instead of raw Schema.
-
-/**
- * @deprecated Use getTypeNames(schema) instead
- */
-export function getTypeFamilies(schema: LoadedSchema): string[] {
-  // In the new model, "families" are top-level types (direct children of meta)
-  const meta = schema.types.get(META_TYPE);
-  return meta?.children ?? [];
-}
-
-/**
- * @deprecated Type paths are no longer used. Just returns [typeName].
- */
-export function parseTypePath(typePath: string): string[] {
-  return [typePath];
-}
-
-/**
- * @deprecated Use getType(schema, typeName) instead
- */
-export function getTypeDefByPath(schema: LoadedSchema, typePath: string): ResolvedType | undefined {
-  // Direct lookup first (most common case)
-  const direct = schema.types.get(typePath);
-  if (direct) return direct;
-
-  // Support legacy slash-notation (e.g. "objective/task" → "task").
-  // Types are flat with inheritance; the last segment is the actual type name.
-  if (typePath.includes('/')) {
-    const segments = typePath.split('/');
-    const typeName = segments[segments.length - 1]!;
-    const resolved = schema.types.get(typeName);
-    if (resolved) {
-      // Validate that the ancestor chain is consistent with the slash path
-      // e.g. "objective/task" is valid only if task's ancestor chain includes "objective"
-      const ancestors = new Set(resolved.ancestors);
-      const parentSegments = segments.slice(0, -1);
-      const chainValid = parentSegments.every(seg => ancestors.has(seg));
-      if (chainValid) return resolved;
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * @deprecated Types no longer have nested subtypes
- */
-export function hasSubtypes(type: ResolvedType): boolean {
-  return type.children.length > 0;
-}
-
-/**
- * @deprecated Use type.children instead
- */
-export function getSubtypeKeys(type: ResolvedType): string[] {
-  return type.children;
-}
-
-/**
- * @deprecated Use single 'type' field
- */
-export function discriminatorName(_parentName: string | undefined): string {
-  return 'type';
-}
-
-/**
- * @deprecated Use getFieldOrder(schema, typeName) instead
- */
-export function getFrontmatterOrder(type: ResolvedType): string[] {
-  return type.fieldOrder;
-}
-
-/**
- * @deprecated Use getFieldOrder(schema, typeName) instead
- */
-export function getOrderedFieldNames(
-  _schema: LoadedSchema,
-  _typePath: string,
-  type: ResolvedType
-): string[] {
-  return type.fieldOrder;
-}
-
-/**
- * @deprecated Use resolveTypeFromFrontmatter(schema, frontmatter) instead
- */
-export function resolveTypePathFromFrontmatter(
-  schema: LoadedSchema,
-  frontmatter: Record<string, unknown>
-): string | undefined {
-  return resolveTypeFromFrontmatter(schema, frontmatter);
-}
-
-/**
- * @deprecated Use single 'type' field
- */
-export function getDiscriminatorFieldsFromTypePath(
-  typeName: string
-): Record<string, string> {
-  return { type: typeName };
 }
 
 // ============================================================================

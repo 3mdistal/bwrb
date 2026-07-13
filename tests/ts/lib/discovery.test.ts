@@ -10,6 +10,7 @@ import {
   buildNoteTypeMap,
   buildNoteTargetIndex,
   buildVaultNoteSnapshot,
+  buildVaultNoteSnapshotFromFiles,
   buildVaultNoteIndex,
   deriveAllFiles,
   deriveNotePathMap,
@@ -25,6 +26,7 @@ import {
   discoverAllTypeFiles,
   discoverUnmanagedFiles,
   discoverFilesForNavigation,
+  discoverFilesForQueryResolution,
   type ManagedFile,
 } from '../../../src/lib/discovery.js';
 import { loadSchema } from '../../../src/lib/schema.js';
@@ -127,30 +129,41 @@ describe('Discovery', () => {
       expect(excluded.has('Templates')).toBe(true);
     });
 
-    it('should respect BWRB_EXCLUDE env var (and legacy alias)', () => {
+    it('should respect BWRB_EXCLUDE env var', () => {
       const originalExclude = process.env.BWRB_EXCLUDE;
       const originalAuditExclude = process.env.BWRB_AUDIT_EXCLUDE;
 
       try {
         process.env.BWRB_EXCLUDE = 'Archive';
-        process.env.BWRB_AUDIT_EXCLUDE = 'Drafts/';
+        process.env.BWRB_AUDIT_EXCLUDE = 'LegacyOnly';
 
         const excluded = getExcludedDirectories(schema);
         expect(excluded.has('Archive')).toBe(true);
-        expect(excluded.has('Drafts')).toBe(true); // Trailing slash normalized
+        expect(excluded.has('LegacyOnly')).toBe(false);
       } finally {
         if (originalExclude === undefined) {
           delete process.env.BWRB_EXCLUDE;
         } else {
           process.env.BWRB_EXCLUDE = originalExclude;
         }
-
         if (originalAuditExclude === undefined) {
           delete process.env.BWRB_AUDIT_EXCLUDE;
         } else {
           process.env.BWRB_AUDIT_EXCLUDE = originalAuditExclude;
         }
       }
+    });
+
+    it('ignores the removed audit.ignored_directories schema input', () => {
+      const legacySchema = {
+        ...schema,
+        raw: {
+          ...schema.raw,
+          audit: { ignored_directories: ['LegacyOnly'] },
+        },
+      } as LoadedSchema;
+
+      expect(getExcludedDirectories(legacySchema).has('LegacyOnly')).toBe(false);
     });
   });
 
@@ -251,6 +264,67 @@ describe('Discovery', () => {
       const typeMap = deriveNoteTypeMap(snapshot);
       expect(typeMap.has('Malformed')).toBe(false);
       expect(typeMap.has('Ideas/Malformed')).toBe(false);
+    });
+
+    it('parses in-memory snapshot content with the normal frontmatter contract', async () => {
+      await mkdir(join(vaultDir, 'Ideas', 'Nested'), { recursive: true });
+      await writeFile(
+        join(vaultDir, 'Ideas', 'Nested', 'CRLF.md'),
+        '---\r\ntype: idea\r\ndeadline: 2026-07-12\r\nmeta:\r\n  labels:\r\n    - one\r\n---\r\nA body.\r\n'
+      );
+      await writeFile(join(vaultDir, 'Ideas', 'No Frontmatter.md'), 'Just a body.\n');
+
+      const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
+      const crlf = snapshot.notes.find((note) => note.relativePath === 'Ideas/Nested/CRLF.md');
+      const noFrontmatter = snapshot.notes.find((note) => note.relativePath === 'Ideas/No Frontmatter.md');
+
+      expect(crlf?.frontmatter).toEqual({
+        type: 'idea',
+        deadline: '2026-07-12',
+        meta: { labels: ['one'] },
+      });
+      expect(crlf?.resolvedType).toBe('idea');
+      expect(noFrontmatter?.frontmatter).toEqual({});
+      expect(noFrontmatter?.resolvedType).toBeUndefined();
+    });
+
+    it('keeps a vanished file as an unparsed snapshot entry', async () => {
+      const files = await discoverFilesForNavigation(schema, vaultDir);
+      const vanished = files.find((file) => file.relativePath === 'Ideas/Sample Idea.md')!;
+      await rm(vanished.path);
+
+      const snapshot = await buildVaultNoteSnapshotFromFiles(schema, [vanished]);
+
+      expect(snapshot.notes).toEqual([{
+        path: vanished.path,
+        relativePath: vanished.relativePath,
+        directoryType: vanished.expectedType,
+      }]);
+    });
+
+    it('builds a snapshot from an existing discovery result without changing its order or malformed-note behavior', async () => {
+      await writeFile(join(vaultDir, 'Ideas', 'Malformed.md'), `---\ntype: [\n---\n`);
+
+      const discovered = await discoverFilesForNavigation(schema, vaultDir);
+      const reordered = [
+        discovered.find((file) => file.relativePath === 'Ideas/Malformed.md')!,
+        ...discovered.filter((file) => file.relativePath !== 'Ideas/Malformed.md'),
+      ];
+      const snapshot = await buildVaultNoteSnapshotFromFiles(schema, reordered);
+
+      // This is the regression seam used by navigation: it may hand the
+      // snapshot builder its already-discovered ManagedFile[] and retain the
+      // same ordering and expected-directory metadata without another walk.
+      expect(snapshot.notes.map((note) => note.relativePath)).toEqual(
+        reordered.map((file) => file.relativePath)
+      );
+      expect(snapshot.notes[0]).toMatchObject({
+        path: reordered[0]!.path,
+        relativePath: 'Ideas/Malformed.md',
+        directoryType: reordered[0]!.expectedType,
+      });
+      expect(snapshot.notes[0]!.frontmatter).toBeUndefined();
+      expect(snapshot.notes[0]!.resolvedType).toBeUndefined();
     });
 
     it('should preserve duplicate basename ambiguity and path normalization', async () => {
@@ -591,6 +665,16 @@ describe('Discovery', () => {
   });
 
   describe('discoverAllTypeFiles', () => {
+    it('applies hierarchical ignore rules consistently across pooled type scans', async () => {
+      await writeFile(join(vaultDir, '.bwrbignore'), 'Ideas/');
+
+      const files = await discoverAllTypeFiles(schema, vaultDir);
+      const paths = files.map(file => file.relativePath);
+
+      expect(paths.some(path => path.startsWith('Ideas/'))).toBe(false);
+      expect(paths).toContain('Objectives/Tasks/Sample Task.md');
+    });
+
     it('should collect files from all type directories', async () => {
       const files = await discoverAllTypeFiles(schema, vaultDir);
       
@@ -642,7 +726,7 @@ describe('Discovery', () => {
       expect(paths).not.toContain('Objectives/Tasks/Sample Task.md');
     });
 
-    it('should respect ignored_directories for unmanaged files', async () => {
+    it('should respect config excluded_directories for unmanaged files', async () => {
       // Create unmanaged file in an ignored directory
       await mkdir(join(vaultDir, 'Templates/Notes'), { recursive: true });
       await writeFile(join(vaultDir, 'Templates/Notes/Template.md'), '---\ntitle: Template\n---\n');
@@ -670,6 +754,35 @@ describe('Discovery', () => {
   });
 
   describe('discoverFilesForNavigation', () => {
+    it('shares one hierarchical discovery context without changing managed, unmanaged, or owned results', async () => {
+      await mkdir(join(vaultDir, 'Notes'), { recursive: true });
+      await writeFile(join(vaultDir, 'Notes', '.bwrbignore'), 'hidden.md');
+      await writeFile(join(vaultDir, 'Notes', 'Visible.md'), '---\ntitle: Visible\n---\n');
+      await writeFile(join(vaultDir, 'Notes', 'hidden.md'), '---\ntitle: Hidden\n---\n');
+      await mkdir(join(vaultDir, 'Templates'), { recursive: true });
+      await writeFile(join(vaultDir, 'Templates', 'Excluded.md'), '---\ntitle: Excluded\n---\n');
+
+      await mkdir(join(vaultDir, 'Projects', 'Project Alpha', 'research'), { recursive: true });
+      await writeFile(
+        join(vaultDir, 'Projects', 'Project Alpha', 'Project Alpha.md'),
+        '---\ntype: project\nstatus: raw\nresearch: "[[Owned Research]]"\n---\n'
+      );
+      await writeFile(
+        join(vaultDir, 'Projects', 'Project Alpha', 'research', 'Owned Research.md'),
+        '---\ntype: research\nstatus: raw\n---\n'
+      );
+
+      const files = await discoverFilesForQueryResolution(schema, vaultDir);
+      const byPath = new Map(files.map(file => [file.relativePath, file]));
+
+      expect(byPath.has('Ideas/Sample Idea.md')).toBe(true);
+      expect(byPath.has('Notes/Visible.md')).toBe(true);
+      expect(byPath.has('Notes/hidden.md')).toBe(false);
+      expect(byPath.has('Templates/Excluded.md')).toBe(false);
+      expect(byPath.get('Projects/Project Alpha/research/Owned Research.md')?.expectedType).toBe('research');
+      expect(byPath.get('Projects/Project Alpha/research/Owned Research.md')?.ownership?.ownerType).toBe('project');
+    });
+
     it('should combine type files and unmanaged files', async () => {
       // Create an unmanaged file
       await mkdir(join(vaultDir, 'Notes'), { recursive: true });

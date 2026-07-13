@@ -566,6 +566,107 @@ parent: "[[Task Two]]"
       expect(content).toContain("completed");
       expect(content).not.toContain("archived");
     });
+
+    it("migrates a typed note discovered outside its configured output directory", async () => {
+      await writeStatusSchema();
+      await mkdir(join(testDir, "Archive"), { recursive: true });
+      await writeFile(
+        join(testDir, "Archive/Moved Task.md"),
+        `---\ntype: task\nname: Moved Task\nstatus: archived\n---\n# Moved Task\n`
+      );
+
+      const schema = await loadSchema(testDir);
+      const plan: MigrationPlan = {
+        fromVersion: "1.0.0",
+        toVersion: "2.0.0",
+        hasChanges: true,
+        deterministic: [],
+        nonDeterministic: [
+          {
+            op: "clear-invalid-options",
+            targetType: "task",
+            field: "status",
+            allowedValues: ["active", "completed"],
+          },
+        ],
+      };
+
+      const result = await executeMigration({
+        vaultDir: testDir,
+        schema,
+        plan,
+        execute: true,
+        backup: false,
+      });
+
+      expect(result.blockers).toEqual([]);
+      expect(result.affectedFiles).toBe(1);
+      const content = await readFile(join(testDir, "Archive/Moved Task.md"), "utf-8");
+      expect(content).not.toContain("status:");
+      expect(content).not.toContain("archived");
+    });
+
+    it("blocks atomically when clearing an invalid option would empty a required field", async () => {
+      await writeFile(
+        join(testDir, ".bwrb/schema.json"),
+        JSON.stringify({
+          version: 2,
+          schemaVersion: "2.0.0",
+          types: {
+            task: {
+              output_dir: "Tasks",
+              fields: {
+                name: { prompt: "text", required: true },
+                status: {
+                  prompt: "select",
+                  options: ["active"],
+                  required: true,
+                },
+                priority: { prompt: "text", default: "medium" },
+              },
+            },
+          },
+        })
+      );
+      const original = `---\ntype: task\nname: Task One\nstatus: retired\n---\n# Task One\n`;
+      await writeFile(join(testDir, "Tasks/Task-1.md"), original);
+
+      const schema = await loadSchema(testDir);
+      const plan: MigrationPlan = {
+        fromVersion: "1.0.0",
+        toVersion: "2.0.0",
+        hasChanges: true,
+        deterministic: [
+          { op: "add-field", targetType: "task", field: "priority", default: "medium" },
+        ],
+        nonDeterministic: [
+          {
+            op: "clear-invalid-options",
+            targetType: "task",
+            field: "status",
+            allowedValues: ["active"],
+          },
+        ],
+      };
+
+      const result = await executeMigration({
+        vaultDir: testDir,
+        schema,
+        plan,
+        execute: true,
+        backup: false,
+      });
+
+      expect(result.affectedFiles).toBe(0);
+      expect(result.blockers).toEqual([
+        expect.objectContaining({
+          relativePath: "Tasks/Task-1.md",
+          field: "status",
+          message: expect.stringContaining("Set a valid value and retry"),
+        }),
+      ]);
+      expect(await readFile(join(testDir, "Tasks/Task-1.md"), "utf-8")).toBe(original);
+    });
   });
 
   // Defect A (#728): a field-changed op on a PARENT-declared field must reach

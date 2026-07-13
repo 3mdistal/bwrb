@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { relative } from 'path';
-import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
+import { loadSchema, getType, formatUnknownTypeError } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
 import {
@@ -14,6 +14,7 @@ import {
   printJson,
   jsonSuccess,
   jsonError,
+  exitWithResolutionError,
   ExitCodes,
 } from '../lib/output.js';
 import {
@@ -28,6 +29,7 @@ import { concurrentModificationData } from '../lib/note-write-concurrency.js';
 import { createNoteFromJson } from './new/json-mode.js';
 import { resolveTypePath } from './new/type-selection.js';
 import { createNoteInteractive } from './new/interactive.js';
+import { OwnerResolutionError } from './new/ownership.js';
 import type { NewCommandOptions } from './new/types.js';
 import { JsonCommandError } from './new/errors.js';
 import { forkNote } from './new/fork.js';
@@ -209,7 +211,7 @@ Template management:
         process.exit(1);
       }
 
-      const typeDef = getTypeDefByPath(schema, resolvedPath);
+      const typeDef = getType(schema, resolvedPath);
       if (!typeDef) {
         printError(formatUnknownTypeError(schema, resolvedPath));
         process.exit(1);
@@ -260,6 +262,10 @@ Template management:
         }
         printJson(err.result);
         process.exit(err.exitCode);
+      }
+
+      if (err instanceof OwnerResolutionError) {
+        exitWithResolutionError(err.message, err.candidates, jsonMode);
       }
 
       if (err instanceof UserCancelledError) {

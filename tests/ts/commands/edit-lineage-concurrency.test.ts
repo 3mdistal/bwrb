@@ -254,13 +254,13 @@ describe('edit versus lineage identity writes', () => {
     expect(await readFile(notePath, 'utf-8')).toBe(newerRaw);
   });
 
-  it('maps stale search --edit JSON through the same numeric retryable contract', async () => {
+  it('maps stale edit JSON through the same numeric retryable contract', async () => {
     const notePath = join(vaultDir, 'Ideas/Search Retry Exhaustion.md');
     let currentRaw = '---\ntype: idea\nstatus: raw\npriority: medium\n---\nSearch body.\n';
     await writeFile(notePath, currentRaw);
     const barrierDir = join(vaultDir, '.barrier-search');
     const edit = spawnCli([
-      'search', 'Search Retry Exhaustion', '--edit', '--json', '{"priority":"high"}',
+      'edit', 'Search Retry Exhaustion', '--json', '{"priority":"high"}',
       '--output', 'json', '--picker', 'none',
     ], vaultDir, barrierDir);
     running.push(edit);

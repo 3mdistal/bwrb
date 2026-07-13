@@ -32,6 +32,11 @@ describe('Navigation', () => {
     
     // Check allFiles
     expect(index.allFiles.length).toBeGreaterThan(0);
+
+    // Navigation maps must keep the original ManagedFile objects, including
+    // expected type and ownership metadata supplied by discovery.
+    const sample = index.allFiles.find((file) => file.relativePath === 'Ideas/Sample Idea.md')!;
+    expect(index.byPath.get('Ideas/Sample Idea.md')).toBe(sample);
   });
 
   it('should resolve exact path query', async () => {
@@ -78,6 +83,24 @@ describe('Navigation', () => {
     // It might be ambiguous if it matches multiple things, or if it's the only fuzzy match
     // result.isAmbiguous depends on count > 0 (wait, logic says candidates.length > 0 => isAmbiguous=true for fuzzy)
     expect(result.isAmbiguous).toBe(true);
+  });
+
+  it('keeps frontmatter names out of exact identity unless read-only search opts in', async () => {
+    await writeFile(join(vaultDir, 'Ideas', 'machine-slug.md'), `---
+type: idea
+name: Display Identity Only
+status: raw
+---
+`);
+
+    const exactIndex = await buildNoteIndex(schema, vaultDir);
+    const searchIndex = await buildNoteIndex(schema, vaultDir, undefined, {
+      includeFrontmatterNamesAsAliases: true,
+    });
+
+    expect(resolveNoteQuery(exactIndex, 'Display Identity Only').exact).toBeNull();
+    expect(resolveNoteQuery(searchIndex, 'Display Identity Only').exact?.relativePath)
+      .toBe('Ideas/machine-slug.md');
   });
 
   it('should handle ambiguous basenames', async () => {

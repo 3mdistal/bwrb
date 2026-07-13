@@ -21,16 +21,6 @@ export function warnDeprecated(oldFlag: string, newUsage: string): void {
 }
 
 /**
- * Emit the command-level warning for a deprecated compatibility entrypoint.
- *
- * Keep this at the compatibility command's action boundary so shared command
- * implementations can also serve canonical entrypoints without warning.
- */
-export function warnDeprecatedCommand(command: string, newUsage: string): void {
-  warnDeprecated(`bwrb ${command}`, newUsage);
-}
-
-/**
  * JSON output wrapper for success results.
  */
 export interface JsonSuccess<T = unknown> {
@@ -146,6 +136,33 @@ export interface VaultErrorDetails {
   truncated?: boolean;
 }
 
+const RESOLUTION_REMEDIATION = 'Retry with one exact path from the matching files.';
+
+function resolutionErrorMessage(error: string, candidates: ErrorCandidate[] | undefined): string {
+  if (!candidates || candidates.length === 0) {
+    return error;
+  }
+  return `${error} ${RESOLUTION_REMEDIATION}`;
+}
+
+/**
+ * Create a structured resolution error with candidate paths and a safe,
+ * command-neutral next action.
+ */
+export function jsonResolutionError(
+  error: string,
+  candidates: ErrorCandidate[] | undefined
+): JsonError {
+  const errors = candidates?.map(c => ({
+    field: 'candidate',
+    value: c.relativePath,
+    message: 'Matching file',
+    suggestion: RESOLUTION_REMEDIATION,
+  }));
+
+  return jsonError(resolutionErrorMessage(error, candidates), errors ? { errors } : {});
+}
+
 /**
  * Exit with a resolution error, optionally showing candidates.
  * 
@@ -159,20 +176,11 @@ export function exitWithResolutionError(
   jsonMode: boolean
 ): never {
   if (jsonMode) {
-    const errorDetails = candidates
-      ? {
-          errors: candidates.map(c => ({
-            field: 'candidate',
-            value: c.relativePath,
-            message: 'Matching file',
-          })),
-        }
-      : {};
-    printJson(jsonError(error, errorDetails));
+    printJson(jsonResolutionError(error, candidates));
     process.exit(ExitCodes.VALIDATION_ERROR);
   }
 
-  console.error(chalk.red(error));
+  console.error(chalk.red(resolutionErrorMessage(error, candidates)));
   if (candidates && candidates.length > 0) {
     console.error('\nMatching files:');
     for (const c of candidates) {

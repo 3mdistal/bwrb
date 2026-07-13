@@ -2,9 +2,11 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { writeFile, rm, mkdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import { mkdtemp } from 'fs/promises';
+import { existsSync } from 'fs';
 import { tmpdir } from 'os';
-import { createTestVault, cleanupTestVault, runCLI } from '../fixtures/setup.js';
+import { createTestVault, cleanupTestVault, runCLI, runCLIWithOpenStdin } from '../fixtures/setup.js';
 import { extractHelpCommands } from '../helpers/help.js';
+import { ExitCodes } from '../../../src/lib/output.js';
 
 describe('schema command', () => {
   let vaultDir: string;
@@ -921,6 +923,81 @@ status: in-flight
       }
     });
 
+    it('fails closed without advancing schema state when option cleanup would empty required fields', async () => {
+      const tempVaultDir = await createTestVault();
+      try {
+        const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+        const snapshotPath = join(tempVaultDir, '.bwrb', 'schema.applied.json');
+        const currentSchema = {
+          version: 2,
+          schemaVersion: '1.0.0',
+          types: {
+            'qa-record': {
+              output_dir: 'qa-records',
+              fields: {
+                status: {
+                  prompt: 'select',
+                  options: ['draft'],
+                  required: true,
+                },
+              },
+            },
+          },
+        };
+        const previousSchema = JSON.parse(JSON.stringify(currentSchema));
+        previousSchema.types['qa-record'].fields.status.options = ['draft', 'retired'];
+
+        await writeFile(schemaPath, JSON.stringify(currentSchema, null, 2));
+        await writeFile(
+          snapshotPath,
+          JSON.stringify({
+            schemaVersion: '1.0.0',
+            snapshotAt: new Date().toISOString(),
+            schema: previousSchema,
+          }, null, 2)
+        );
+        await mkdir(join(tempVaultDir, 'qa-records'), { recursive: true });
+        await mkdir(join(tempVaultDir, 'Archive'), { recursive: true });
+        const invalidNote = `---\ntype: qa-record\nstatus: retired\n---\n`;
+        await writeFile(join(tempVaultDir, 'qa-records/Source Fork.md'), invalidNote);
+        await writeFile(join(tempVaultDir, 'Archive/Source.md'), invalidNote);
+
+        const result = await runCLI(
+          [
+            'schema',
+            'migrate',
+            '--execute',
+            '--set-version',
+            '2.0.0',
+            '--yes',
+            '--no-backup',
+            '--output',
+            'json',
+          ],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
+        const response = JSON.parse(result.stdout);
+        expect(response.success).toBe(false);
+        expect(response.error).toContain('Migration blocked by 2 required-field issues');
+        expect(response.data.blockers.map((blocker: { relativePath: string }) => blocker.relativePath)).toEqual([
+          'Archive/Source.md',
+          'qa-records/Source Fork.md',
+        ]);
+        expect(await readFile(join(tempVaultDir, 'Archive/Source.md'), 'utf8')).toBe(invalidNote);
+        expect(await readFile(join(tempVaultDir, 'qa-records/Source Fork.md'), 'utf8')).toBe(invalidNote);
+
+        const unchangedSchema = JSON.parse(await readFile(schemaPath, 'utf8'));
+        expect(unchangedSchema.schemaVersion).toBe('1.0.0');
+        const unchangedSnapshot = JSON.parse(await readFile(snapshotPath, 'utf8'));
+        expect(unchangedSnapshot.schema.types['qa-record'].fields.status.options).toContain('retired');
+        expect(existsSync(join(tempVaultDir, '.bwrb', 'migrations.json'))).toBe(false);
+      } finally {
+        await cleanupTestVault(tempVaultDir);
+      }
+    });
+
     /**
      * Regression for defect #2 / issue #719 (stale snapshot on no-op edits).
      *
@@ -1546,6 +1623,113 @@ status: paused
   // ============================================
 
   describe('schema new type (unified verb)', () => {
+    it('creates a root type non-interactively on an empty initialized vault without waiting for stdin', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-new-type-non-interactive-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({ version: 2, types: {} }, null, 2)
+      );
+
+      try {
+        const result = await runCLIWithOpenStdin(
+          [
+            '--non-interactive',
+            'schema', 'new', 'type', 'qa-record',
+            '--directory', 'qa-records',
+            '--description', 'Disposable E08 QA record',
+            '--fields', 'status:text,marker:text',
+            '--output', 'json',
+          ],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).not.toContain('Extend from type');
+        const data = JSON.parse(result.stdout);
+        expect(data.success).toBe(true);
+
+        const schema = JSON.parse(
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
+        );
+        expect(schema.types['qa-record']).toEqual({
+          description: 'Disposable E08 QA record',
+          output_dir: 'qa-records',
+          fields: {
+            status: { prompt: 'text' },
+            marker: { prompt: 'text' },
+          },
+        });
+        expect(schema.types['qa-record'].extends).toBeUndefined();
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it('uses root defaults for non-interactive text output instead of prompting', async () => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-new-type-text-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify({ version: 2, types: {} }, null, 2)
+      );
+
+      try {
+        const result = await runCLIWithOpenStdin(
+          ['--non-interactive', 'schema', 'new', 'type', 'note', '--fields', 'title:text'],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Type "note" created');
+        expect(result.stdout).not.toContain('Extend from type');
+
+        const schema = JSON.parse(
+          await readFile(join(tempVaultDir, '.bwrb', 'schema.json'), 'utf8')
+        );
+        expect(schema.types.note.extends).toBeUndefined();
+        expect(schema.types.note.fields.title).toEqual({ prompt: 'text' });
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
+    it.each([
+      ['missing separator', 'status', 'Use "name:type" entries separated by commas'],
+      ['extra separator', 'status:text:extra', 'Use "name:type" entries separated by commas'],
+      ['unknown prompt type', 'status:choice', 'Supported types: text, select, list, date, relative-date, relation, boolean, number'],
+      ['invalid field name', 'Status:text', 'Field name must start with a lowercase letter'],
+      ['duplicate field', 'status:text,status:select', 'Duplicate field definition: "status"'],
+      ['select missing options', 'status:select,marker:text', 'bwrb schema new field qa-record status'],
+      ['relation missing source', 'owner:relation', 'bwrb schema new field qa-record owner'],
+      ['relative date missing source', 'deadline:relative-date', 'bwrb schema new field qa-record deadline'],
+    ])('rejects %s field syntax immediately without partially writing', async (_label, fields, expectedError) => {
+      const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-new-type-invalid-fields-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      const originalSchema = JSON.stringify({ version: 2, types: {} }, null, 2);
+      const schemaPath = join(tempVaultDir, '.bwrb', 'schema.json');
+      await writeFile(schemaPath, originalSchema);
+
+      try {
+        const result = await runCLIWithOpenStdin(
+          [
+            '--non-interactive',
+            'schema', 'new', 'type', 'qa-record',
+            '--fields', fields,
+            '--output', 'json',
+          ],
+          tempVaultDir
+        );
+
+        expect(result.exitCode).not.toBe(0);
+        expect(result.stdout).not.toContain('Extend from type');
+        expect(JSON.parse(result.stdout).error).toContain(expectedError);
+        expect(await readFile(schemaPath, 'utf8')).toBe(originalSchema);
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
     it('should create a new type with CLI flags', async () => {
       const tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-new-type-'));
       await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });

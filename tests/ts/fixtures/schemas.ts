@@ -23,8 +23,8 @@ export interface TestSchema {
   version: number;
   schemaVersion?: string;
   types: Record<string, TestTypeDefinition>;
-  audit?: {
-    ignored_directories?: string[];
+  config?: {
+    excluded_directories?: string[];
   };
 }
 
@@ -193,8 +193,8 @@ export const BASELINE_SCHEMA: TestSchema = {
       field_order: ['type', 'status'],
     },
   },
-  audit: {
-    ignored_directories: ['Templates'],
+  config: {
+    excluded_directories: ['Templates'],
   },
 };
 

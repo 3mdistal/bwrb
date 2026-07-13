@@ -19,10 +19,10 @@ import {
   canTypeBeOwned,
   resolveTypeFromFrontmatter,
   getConcreteTypeNames,
-  getTypeFamilies,
+  getRootTypeNames,
   getEntityAliases,
 } from './schema.js';
-import { parseNote } from './frontmatter.js';
+import { parseNoteContent } from './frontmatter.js';
 import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
 import { levenshteinDistance } from './levenshtein.js';
 import type { LoadedSchema, OwnedFieldInfo } from '../types/schema.js';
@@ -244,9 +244,7 @@ export async function loadIgnoreMatcher(vaultDir: string, excluded: Set<string>)
  * Exclusions combine as a union across all sources:
  * - Always: `.bwrb`
  * - Canonical schema config: `config.excluded_directories`
- * - Legacy schema alias: `audit.ignored_directories`
  * - Canonical env var: `BWRB_EXCLUDE` (comma-separated)
- * - Legacy env var alias: `BWRB_AUDIT_EXCLUDE` (comma-separated)
  *
  * Values are treated as vault-root-relative directory prefixes.
  */
@@ -268,16 +266,8 @@ export function getExcludedDirectories(schema: LoadedSchema): Set<string> {
     }
   }
 
-  // Legacy schema alias
-  const legacySchemaExclusions = schema.raw.audit?.ignored_directories;
-  if (Array.isArray(legacySchemaExclusions)) {
-    for (const dir of legacySchemaExclusions) {
-      addDir(dir);
-    }
-  }
-
-  // Env vars (comma-separated). Treat BWRB_AUDIT_EXCLUDE as an alias.
-  const envParts = [process.env.BWRB_EXCLUDE, process.env.BWRB_AUDIT_EXCLUDE].filter(Boolean) as string[];
+  // Env vars (comma-separated).
+  const envParts = [process.env.BWRB_EXCLUDE].filter(Boolean) as string[];
   if (envParts.length > 0) {
     for (const dir of envParts.join(',').split(',')) {
       addDir(dir);
@@ -576,10 +566,26 @@ export async function buildVaultNoteSnapshot(
   vaultDir: string
 ): Promise<VaultNoteSnapshot> {
   const allFiles = await discoverFilesForQueryResolution(schema, vaultDir);
+  return buildVaultNoteSnapshotFromFiles(schema, allFiles);
+}
+
+/**
+ * Build a vault note snapshot from files that have already been discovered.
+ *
+ * Keeping discovery outside this helper lets callers that already hold the
+ * canonical `ManagedFile[]` reuse its ordering and ownership metadata without
+ * paying for another vault walk. Parsing behavior deliberately remains the
+ * same as {@link buildVaultNoteSnapshot}: malformed notes stay present in the
+ * snapshot but contribute no parsed metadata.
+ */
+export async function buildVaultNoteSnapshotFromFiles(
+  schema: LoadedSchema,
+  files: ManagedFile[]
+): Promise<VaultNoteSnapshot> {
 
   const notes: VaultNoteSnapshotEntry[] = [];
 
-  for (const file of allFiles) {
+  for (const file of files) {
     const entry: VaultNoteSnapshotEntry = {
       path: file.path,
       relativePath: file.relativePath,
@@ -587,10 +593,14 @@ export async function buildVaultNoteSnapshot(
     };
 
     try {
-      if (await hasMalformedTopFrontmatter(file.path)) {
+      // Keep the yaml@2 malformed-frontmatter preflight separate from the
+      // gray-matter parse below: they deliberately have different contracts.
+      // Read once so a snapshot cannot preflight one revision then parse another.
+      const raw = await readFile(file.path, 'utf-8');
+      if (hasMalformedTopFrontmatter(raw)) {
         throw new Error('Malformed frontmatter');
       }
-      const { frontmatter } = await parseNote(file.path);
+      const { frontmatter } = parseNoteContent(raw);
       entry.frontmatter = frontmatter;
       const resolvedType = resolveTypeFromFrontmatter(schema, frontmatter);
       if (resolvedType) {
@@ -606,8 +616,7 @@ export async function buildVaultNoteSnapshot(
   return { notes };
 }
 
-async function hasMalformedTopFrontmatter(filePath: string): Promise<boolean> {
-  const raw = await readFile(filePath, 'utf-8');
+function hasMalformedTopFrontmatter(raw: string): boolean {
   const match = raw.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/);
   if (!match) return false;
 
@@ -983,16 +992,27 @@ export function isInTypeOutputDir(relativePath: string, typeOutputDirs: Set<stri
  */
 export async function discoverAllTypeFiles(
   schema: LoadedSchema,
-  vaultDir: string
+  vaultDir: string,
+  context?: DiscoveryContext
 ): Promise<ManagedFile[]> {
   const allFiles = new Map<string, ManagedFile>(); // dedupe by path
+  // A vault-wide query visits every root type. Loading hierarchical ignore
+  // rules itself walks the vault to find nested `.bwrbignore` files, so doing
+  // it once per type turns one query into several otherwise-identical walks.
+  // Keep one immutable matcher for the complete discovery pass; the matcher is
+  // only read after loading, and all type collectors preserve their existing
+  // ownership and boundary handling.
+  const { excluded, ignoreMatcher } = context ?? await loadDiscoveryContext(schema, vaultDir);
   
   // Get root types (direct children of meta) to avoid duplicate collection
   // since collectFilesForType already includes descendants
-  const rootTypes = getTypeFamilies(schema);
+  const rootTypes = getRootTypeNames(schema);
   
   for (const typeName of rootTypes) {
-    const typeFiles = await collectFilesForType(schema, vaultDir, typeName);
+    const typeFiles = await collectFilesForType(schema, vaultDir, typeName, {
+      excluded,
+      ignoreMatcher,
+    });
     for (const file of typeFiles) {
       if (!allFiles.has(file.relativePath)) {
         allFiles.set(file.relativePath, file);
@@ -1012,10 +1032,10 @@ export async function discoverAllTypeFiles(
  */
 export async function discoverUnmanagedFiles(
   schema: LoadedSchema,
-  vaultDir: string
+  vaultDir: string,
+  context?: DiscoveryContext
 ): Promise<ManagedFile[]> {
-  const excluded = getExcludedDirectories(schema);
-  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+  const { excluded, ignoreMatcher } = context ?? await loadDiscoveryContext(schema, vaultDir);
   const typeOutputDirs = getTypeOutputDirs(schema);
   
   // Vault-wide scan with exclusions
@@ -1050,8 +1070,14 @@ export async function discoverFilesForQueryResolution(
   schema: LoadedSchema,
   vaultDir: string
 ): Promise<ManagedFile[]> {
-  const managed = await discoverAllTypeFiles(schema, vaultDir);
-  const unmanaged = await discoverUnmanagedFiles(schema, vaultDir);
+  // Both scans traverse the same immutable ignore/config context. Build it once
+  // per query-resolution pass, but deliberately do not cache discovered files:
+  // mutation relation validation must always rediscover the current vault.
+  const context = await loadDiscoveryContext(schema, vaultDir);
+  const [managed, unmanaged] = await Promise.all([
+    discoverAllTypeFiles(schema, vaultDir, context),
+    discoverUnmanagedFiles(schema, vaultDir, context),
+  ]);
 
   const allFiles = new Map<string, ManagedFile>();
   for (const file of [...managed, ...unmanaged]) {
@@ -1063,6 +1089,19 @@ export async function discoverFilesForQueryResolution(
   return Array.from(allFiles.values()).sort(stablePathCompare);
 }
 
+interface DiscoveryContext {
+  excluded: Set<string>;
+  ignoreMatcher: Ignore;
+}
+
+async function loadDiscoveryContext(
+  schema: LoadedSchema,
+  vaultDir: string
+): Promise<DiscoveryContext> {
+  const excluded = getExcludedDirectories(schema);
+  return { excluded, ignoreMatcher: await loadIgnoreMatcher(vaultDir, excluded) };
+}
+
 /**
  * Collect files for a type (and optionally its descendants).
  * Now includes owned notes that live with their owners.
@@ -1070,7 +1109,8 @@ export async function discoverFilesForQueryResolution(
 export async function collectFilesForType(
   schema: LoadedSchema,
   vaultDir: string,
-  typeName: string
+  typeName: string,
+  context?: { excluded: Set<string>; ignoreMatcher: Ignore }
 ): Promise<ManagedFile[]> {
   const type = getType(schema, typeName);
   if (!type) return [];
@@ -1078,13 +1118,13 @@ export async function collectFilesForType(
   const files: ManagedFile[] = [];
   
   // Collect files for this type (including owned)
-  const typeFiles = await collectFilesForTypeWithOwnership(schema, vaultDir, typeName);
+  const typeFiles = await collectFilesForTypeWithOwnership(schema, vaultDir, typeName, context);
   files.push(...typeFiles);
   
   // Also collect files for all descendants (including owned)
   const descendants = getDescendants(schema, typeName);
   for (const descendantName of descendants) {
-    const descendantFiles = await collectFilesForTypeWithOwnership(schema, vaultDir, descendantName);
+    const descendantFiles = await collectFilesForTypeWithOwnership(schema, vaultDir, descendantName, context);
     files.push(...descendantFiles);
   }
 
@@ -1312,15 +1352,16 @@ async function collectOwnedFiles(
 async function collectFilesForTypeWithOwnership(
   schema: LoadedSchema,
   vaultDir: string,
-  typeName: string
+  typeName: string,
+  context?: { excluded: Set<string>; ignoreMatcher: Ignore }
 ): Promise<ManagedFile[]> {
   const type = getType(schema, typeName);
   if (!type) return [];
 
   const files: ManagedFile[] = [];
 
-  const excluded = getExcludedDirectories(schema);
-  const ignoreMatcher = await loadIgnoreMatcher(vaultDir, excluded);
+  const excluded = context?.excluded ?? getExcludedDirectories(schema);
+  const ignoreMatcher = context?.ignoreMatcher ?? await loadIgnoreMatcher(vaultDir, excluded);
 
   // Collect files in the type's output_dir (non-owned notes), recursing into
   // nested subdirectories while skipping subtrees owned by other types or

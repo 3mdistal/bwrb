@@ -11,6 +11,30 @@ For the complete changelog with all details, see [CHANGELOG.md](https://github.c
 
 ### Unreleased
 
+### 0.3.0
+
+- **Removed deprecated CLI surfaces** — `search` and `open`, legacy `list`
+  aliases and hierarchy flags, `--text` aliases on mutating/audit commands,
+  and legacy audit exclusion inputs now reject. Use the documented `list`,
+  `--output`, `--body`, `--where`, `config.excluded_directories`, and
+  `BWRB_EXCLUDE` replacements.
+- **Faster exact discovery** — exact edits avoid unnecessary alias hydration,
+  query resolution shares discovery/ignore work, and snapshot parsing reads
+  each note once. Deterministic large-vault benchmarks and command byte/fault
+  contracts guard the result.
+- **Safer automation** — simple `schema new type --fields name:type` creation is
+  genuinely non-interactive, semantic no-op edits preserve exact bytes, and
+  unique list-name matches no longer open the fuzzy picker.
+- **Recoverable deletion** — `delete --backup` copies the selected files and a
+  manifest under `.bwrb/backups/` before deletion.
+- **Fail-closed schema migration** — typed notes remain migration targets after
+  moves outside their configured directory, while required-field cleanup with
+  no safe default returns structured blockers and changes no note or schema
+  state.
+- **Actionable recovery and truthful previews** — ambiguity and malformed-YAML
+  failures name exact recovery actions, and a wrong-directory `Would move`
+  preview now agrees with the aggregate `Would fix` count.
+
 ### 0.2.4
 
 - **Existing-note lineage adoption** — `bwrb lineage adopt <child> --from <parent>` adds a dry-run-first, lock-coordinated path for recording known derivation between existing same-type notes without rewriting their bodies or ordinary metadata

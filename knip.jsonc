@@ -5,6 +5,8 @@
   "vitest": {
     "entry": [
       "tests/ts/teardown.ts",
+      // Standalone benchmark suite, selected by tests/bench/vitest.config.ts.
+      "tests/bench/generate-fixtures.test.ts",
       // Spawned as a real child process by the cross-process lock suite.
       "tests/ts/fixtures/lineage-lock-worker.ts"
     ]

@@ -140,13 +140,112 @@ jobs:
       - name: Check for dead code (Knip)
         run: pnpm knip
 
-      - name: Run tests (excluding PTY)
+      - name: Run retrying feedback tests (excluding PTY)
         run: pnpm test -- --exclude='**/*.pty.test.ts'
 
-      - name: Run tests (excluding PTY) with dist
+      - name: Run retrying feedback tests (excluding PTY) with dist
         run: pnpm test -- --exclude='**/*.pty.test.ts'
         env:
           BWRB_TEST_DIST: 1
+
+      - name: Verify deterministic benchmark fixtures
+        run: pnpm test:bench
+
+  test-retry-zero:
+    name: Retry-zero reliability (non-PTY)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install ripgrep
+        run: |
+          curl -LO https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb
+          sudo dpkg -i ripgrep_14.1.1-1_amd64.deb
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Run retry-zero reliability tests (excluding PTY)
+        id: retry_zero
+        run: pnpm test:reliability
+
+      - name: Summarize retry-zero JSON results
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const input = 'artifacts/health/retry-zero-results.json';
+          const output = 'artifacts/health/retry-zero-summary.json';
+          if (!fs.existsSync(input)) {
+            console.log('Retry-zero summary: results file not found; the run is unmeasured.');
+            process.exit(0);
+          }
+          const data = JSON.parse(fs.readFileSync(input, 'utf8'));
+          const assertions = (data.testResults || []).flatMap((suite) => suite.assertionResults || []);
+          const count = (statuses) => assertions.filter((test) => statuses.includes(test.status)).length;
+          const summary = {
+            passed: count(['passed']),
+            failed: count(['failed']),
+            skipped: count(['skipped']),
+            pending: count(['pending', 'todo']),
+            retried: 0,
+            ptySupported: 0,
+            ptySkipped: 0,
+            retryMode: 'retry-zero',
+            pty: 'skipped',
+          };
+          fs.writeFileSync(output, `${JSON.stringify(summary, null, 2)}\n`);
+          console.log('Retry-zero summary:', summary);
+          NODE
+
+      - name: Write retry-zero health report
+        if: always()
+        env:
+          RETRY_ZERO_OUTCOME: ${{ steps.retry_zero.outcome }}
+        run: |
+          if [ -f artifacts/health/retry-zero-results.json ]; then
+            STATUS=failed
+            if [ "$RETRY_ZERO_OUTCOME" = "success" ]; then STATUS=passed; fi
+            CLASSIFICATION=measured
+          else
+            STATUS=not-run
+            CLASSIFICATION=unmeasured
+          fi
+          pnpm health:report -- \
+            --check test-retry-zero \
+            --status "$STATUS" \
+            --classification "$CLASSIFICATION" \
+            --fixture repository \
+            --retry-mode retry-zero \
+            --workers 1 \
+            --pty skipped \
+            --raw-artifact artifacts/health/retry-zero-results.json \
+            --raw-artifact artifacts/health/retry-zero-summary.json \
+            --out artifacts/health/retry-zero-report.json
+
+      - name: Upload health report artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-report-artifacts
+          path: artifacts/health/
+          if-no-files-found: warn
+          retention-days: 30
 
   windows_lock_tests:
     name: Windows Lock Tests
@@ -227,12 +326,13 @@ jobs:
           find tests -name "*.pty.test.ts"
 
       - name: Prepare PTY artifacts directory
-        run: mkdir -p artifacts
+        run: mkdir -p artifacts/health
 
       - name: Run PTY tests
+        id: pty_tests
         run: |
           set -o pipefail
-          pnpm test:pty:ci 2>&1 | tee artifacts/pty.log
+          pnpm test:pty:ci 2>&1 | tee artifacts/health/pty.log
         env:
           # Force color output for better debugging
           FORCE_COLOR: 1
@@ -242,7 +342,7 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('fs');
-          const path = 'artifacts/pty-results.json';
+          const path = 'artifacts/health/pty-results.json';
           if (!fs.existsSync(path)) {
             console.log('PTY summary: results file not found.');
             process.exit(0);
@@ -275,12 +375,57 @@ jobs:
           });
           NODE
 
+      - name: Record PTY availability and health result
+        if: always()
+        env:
+          PTY_OUTCOME: ${{ steps.pty_tests.outcome }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const input = 'artifacts/health/pty-results.json';
+          const output = 'artifacts/health/pty-summary.json';
+          if (!fs.existsSync(input)) {
+            fs.writeFileSync(output, `${JSON.stringify({ available: false, supported: 0, skipped: 0, reason: 'results-file-missing' }, null, 2)}\n`);
+            process.exit(0);
+          }
+          const data = JSON.parse(fs.readFileSync(input, 'utf8'));
+          const assertions = (data.testResults || []).flatMap((suite) => suite.assertionResults || []);
+          const supported = assertions.filter((test) => test.status === 'passed' || test.status === 'failed').length;
+          const skipped = assertions.filter((test) => ['pending', 'skipped', 'todo'].includes(test.status)).length;
+          fs.writeFileSync(output, `${JSON.stringify({ available: supported > 0, supported, skipped }, null, 2)}\n`);
+          NODE
+          PTY_SUPPORTED=$(node -p "require('./artifacts/health/pty-summary.json').supported")
+          if [ "$PTY_SUPPORTED" -gt 0 ]; then
+            STATUS=failed
+            if [ "$PTY_OUTCOME" = "success" ]; then STATUS=passed; fi
+            CLASSIFICATION=measured
+            PTY_STATE=available
+          else
+            STATUS=not-run
+            CLASSIFICATION=skipped
+            PTY_STATE=unavailable
+          fi
+          pnpm health:report -- \
+            --check pty-tests \
+            --status "$STATUS" \
+            --classification "$CLASSIFICATION" \
+            --fixture repository \
+            --retry-mode retry-once-feedback \
+            --workers 4 \
+            --pty "$PTY_STATE" \
+            --raw-artifact artifacts/health/pty-results.json \
+            --raw-artifact artifacts/health/pty-summary.json \
+            --out artifacts/health/pty-report.json
+
       - name: Upload PTY artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pty-test-artifacts
           path: |
-            artifacts/pty.log
-            artifacts/pty-results.json
+            artifacts/health/pty.log
+            artifacts/health/pty-results.json
+            artifacts/health/pty-summary.json
+            artifacts/health/pty-report.json
           if-no-files-found: warn
+          retention-days: 30

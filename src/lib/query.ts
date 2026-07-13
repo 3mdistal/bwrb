@@ -396,7 +396,7 @@ function notePathKey(path: string, vaultDir?: string): string | undefined {
  * Build a map from each declared alias to the canonical note name it resolves
  * to, from a vault snapshot. Reuses the same alias index that drives navigation
  * (`getEntityAliases` from #266) so `under` canonicalizes aliases identically to
- * `bwrb open <alias>`.
+ * canonical name resolution.
  *
  * Trust model (consistent with navigation's alias resolution and
  * `deriveNotePathMap`):

@@ -249,6 +249,12 @@ export interface MigrationResult {
   fileResults: FileMigrationResult[];
   /** Any errors encountered */
   errors: string[];
+  /** Unsafe note changes that require explicit user repair before execution. */
+  blockers?: Array<{
+    relativePath: string;
+    field: string;
+    message: string;
+  }>;
   /** Backup path if created */
   backupPath?: string;
 }

@@ -6,8 +6,7 @@ import {
 } from '../../lib/frontmatter.js';
 import {
   getFieldsForType,
-  getFrontmatterOrder,
-  getTypeDefByPath,
+  getType,
   formatUnknownTypeError,
 } from '../../lib/schema.js';
 import {
@@ -41,7 +40,7 @@ export async function createNoteFromJson(
   template?: Template | null,
   ownershipOptions?: { owner?: string | undefined; standalone?: boolean | undefined; noInstances?: boolean | undefined }
 ): Promise<NoteCreationResult> {
-  const typeDef = getTypeDefByPath(schema, typePath);
+  const typeDef = getType(schema, typePath);
   if (!typeDef) {
     throwJsonError(jsonError(formatUnknownTypeError(schema, typePath)), ExitCodes.VALIDATION_ERROR);
   }
@@ -310,7 +309,7 @@ function resolveJsonItemName(
 }
 
 function resolveOrderedFields(typeDef: ResolvedType, frontmatter: Record<string, unknown>): string[] {
-  const fieldOrder = getFrontmatterOrder(typeDef);
+  const fieldOrder = typeDef.fieldOrder;
   return fieldOrder.length > 0 ? fieldOrder : Object.keys(frontmatter);
 }
 

@@ -235,7 +235,10 @@ For ergonomics, the first positional argument is auto-detected:
 | `bwrb list "Ideas/"` | Contains `/`, matches path | `--path "Ideas/"` |
 | `bwrb list "status == 'x'"` | Contains operators | `--where "status == 'x'"` |
 
-**Ambiguity handling:** When detection is ambiguous, Bowerbird errors with a helpful message suggesting explicit flags.
+**Ambiguity handling:** Read-only list modes may return multiple rows. A
+mutation never chooses one silently: ambiguity errors list candidate paths and
+tell you to retry with one exact vault-relative path (or narrow with explicit
+selectors).
 
 ## Command Support Matrix
 
@@ -249,14 +252,12 @@ For ergonomics, the first positional argument is auto-detected:
 
 **Notes:**
 - `list` is the canonical query, search, picker, and open surface.
-- `open` and `search` remain callable compatibility commands but are hidden from
-  the canonical command list.
 
 ## Default Behavior
 
 Default behavior depends on command destructiveness:
 
-### Read-only commands (`list`, `audit` without `--fix`, `search`)
+### Read-only commands (`list`, `audit` without `--fix`)
 
 No selectors = implicit `--all` (operate on entire vault).
 
@@ -317,7 +318,7 @@ the short form.
 | `paths` | File paths only |
 | `link` | Wikilinks (`[[Note Name]]`) |
 | `tree` | Hierarchical tree view (list only) |
-| `content` | Full file contents (`list` and compatibility `search`) |
+| `content` | Full file contents (`list`) |
 
 ```bash
 bwrb list --type task --output json

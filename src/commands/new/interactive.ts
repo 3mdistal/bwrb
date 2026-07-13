@@ -5,7 +5,6 @@ import {
 } from '../../lib/frontmatter.js';
 import {
   getFieldsForType,
-  getFrontmatterOrder,
 } from '../../lib/schema.js';
 import {
   getFilenamePattern,
@@ -103,7 +102,7 @@ async function buildNoteContent(
 ): Promise<{ frontmatter: Record<string, unknown>; body: string; orderedFields: string[] }> {
   const frontmatter: Record<string, unknown> = {};
   const fields = getFieldsForType(schema, typePath);
-  const fieldOrder = getFrontmatterOrder(typeDef);
+  const fieldOrder = typeDef.fieldOrder;
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(fields);
 
   frontmatter.type = typeDef.name;

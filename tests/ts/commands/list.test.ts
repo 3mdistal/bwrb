@@ -166,48 +166,13 @@ describe('list command', () => {
     });
   });
 
-  describe('deprecated --paths flag', () => {
-    it('should show file paths instead of names (with deprecation warning)', async () => {
-      const result = await runCLI(['list', '--paths', 'idea'], vaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Ideas/Sample Idea.md');
-      expect(result.stdout).toContain('Ideas/Another Idea.md');
-      expect(result.stderr).toContain('Warning:');
-      expect(result.stderr).toContain('--output paths');
-    });
-
-    it('should show nested paths for subtypes', async () => {
-      const result = await runCLI(['list', '--paths', 'task'], vaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Objectives/Tasks/Sample Task.md');
-    });
-  });
-
-  describe('deprecated --tree flag', () => {
-    it('should show tree structure (with deprecation warning)', async () => {
-      const result = await runCLI(['list', '--tree', 'objective'], vaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Objectives/');
-      expect(result.stdout).toContain('Active Milestone');
-      expect(result.stderr).toContain('Warning:');
-      expect(result.stderr).toContain('--output tree');
-    });
-  });
-
-  describe('deprecated --json flag', () => {
-    it('should show JSON output (with deprecation warning)', async () => {
-      const result = await runCLI(['list', '--json', 'idea'], vaultDir);
-
-      expect(result.exitCode).toBe(0);
-      // Deprecated --json outputs raw array (backward compatible)
-      const json = JSON.parse(result.stdout);
-      expect(Array.isArray(json)).toBe(true);
-      expect(result.stderr).toContain('Warning:');
-      expect(result.stderr).toContain('--output json');
-    });
+  describe('removed output aliases', () => {
+    for (const flag of ['--paths', '--tree', '--json'] as const) {
+      it(`rejects ${flag}`, async () => {
+        const result = await runCLI(['list', flag, 'idea'], vaultDir);
+        expect(result.exitCode).not.toBe(0);
+      });
+    }
   });
 
   describe('--fields flag', () => {
@@ -1045,80 +1010,6 @@ status: raw
       await rm(tempVaultDir, { recursive: true, force: true });
     });
 
-    it('should list only root notes with --roots', async () => {
-      const result = await runCLI(['list', 'task', '--roots'], tempVaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Parent Task');
-      expect(result.stdout).toContain('Standalone Task');
-      expect(result.stdout).not.toContain('Child Task');
-      expect(result.stdout).not.toContain('Grandchild');
-    });
-
-    it('should list only direct children with --children-of', async () => {
-      const result = await runCLI(['list', 'task', '--children-of', '[[Parent Task]]'], tempVaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Child Task 1');
-      expect(result.stdout).toContain('Child Task 2');
-      expect(result.stdout).not.toContain('Parent Task');
-      expect(result.stdout).not.toContain('Grandchild');
-      expect(result.stdout).not.toContain('Standalone');
-    });
-
-    it('should list all descendants with --descendants-of', async () => {
-      const result = await runCLI(['list', 'task', '--descendants-of', '[[Parent Task]]'], tempVaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Child Task 1');
-      expect(result.stdout).toContain('Child Task 2');
-      expect(result.stdout).toContain('Grandchild Task');
-      expect(result.stdout).not.toContain('Parent Task');
-      expect(result.stdout).not.toContain('Standalone');
-    });
-
-    it('should limit descendants depth with --depth', async () => {
-      const result = await runCLI(['list', 'task', '--descendants-of', '[[Parent Task]]', '--depth', '1'], tempVaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Child Task 1');
-      expect(result.stdout).toContain('Child Task 2');
-      // Depth 1 means only direct children, not grandchildren
-      expect(result.stdout).not.toContain('Grandchild');
-    });
-
-    it('should render tree structure with --tree', async () => {
-      const result = await runCLI(['list', 'task', '--tree'], tempVaultDir);
-
-      expect(result.exitCode).toBe(0);
-      // Tree structure should show indentation/connectors
-      expect(result.stdout).toContain('Parent Task');
-      expect(result.stdout).toContain('Child Task');
-      expect(result.stdout).toContain('Grandchild');
-      expect(result.stdout).toContain('Standalone');
-      // Should have tree connectors
-      expect(result.stdout).toMatch(/[├└│]/);
-    });
-
-    it('should limit tree depth with --depth', async () => {
-      const result = await runCLI(['list', 'task', '--tree', '--depth', '2'], tempVaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Parent Task');
-      expect(result.stdout).toContain('Child Task');
-      // Depth 2 means roots + children, no grandchildren
-      expect(result.stdout).not.toContain('Grandchild');
-    });
-
-    it('should combine --roots with other filters', async () => {
-      const result = await runCLI(['list', 'task', '--roots', '--where', "status == 'raw'"], tempVaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('Parent Task');
-      expect(result.stdout).toContain('Standalone Task');
-      // Both roots have status: raw, so both should appear
-    });
-
     describe('--where hierarchy functions', () => {
       it('should filter with isRoot() in --where expression', async () => {
         const result = await runCLI(['list', 'task', '--where', 'isRoot()'], tempVaultDir);
@@ -1329,42 +1220,17 @@ milestone: "[[Milestones/Poetry]]"
       });
     });
 
-    describe('deprecated hierarchy flags', () => {
-      it('should show deprecation warning for --roots', async () => {
-        const result = await runCLI(['list', 'task', '--roots'], tempVaultDir);
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stderr).toContain('Warning:');
-        expect(result.stderr).toContain('--roots');
-        expect(result.stderr).toContain('isRoot()');
-      });
-
-      it('should show deprecation warning for --children-of', async () => {
-        const result = await runCLI(['list', 'task', '--children-of', '[[Parent Task]]'], tempVaultDir);
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stderr).toContain('Warning:');
-        expect(result.stderr).toContain('--children-of');
-        expect(result.stderr).toContain('isChildOf');
-      });
-
-      it('should show deprecation warning for --descendants-of', async () => {
-        const result = await runCLI(['list', 'task', '--descendants-of', '[[Parent Task]]'], tempVaultDir);
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stderr).toContain('Warning:');
-        expect(result.stderr).toContain('--descendants-of');
-        expect(result.stderr).toContain('isDescendantOf');
-      });
-
-      it('should accept -L as alias for --depth', async () => {
-        const result = await runCLI(['list', 'task', '--descendants-of', '[[Parent Task]]', '-L', '1'], tempVaultDir);
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain('Child Task 1');
-        expect(result.stdout).toContain('Child Task 2');
-        expect(result.stdout).not.toContain('Grandchild');
-      });
+    describe('removed hierarchy flags', () => {
+      for (const args of [
+        ['--roots'],
+        ['--children-of', '[[Parent Task]]'],
+        ['--descendants-of', '[[Parent Task]]'],
+      ]) {
+        it(`rejects ${args[0]}`, async () => {
+          const result = await runCLI(['list', 'task', ...args], tempVaultDir);
+          expect(result.exitCode).not.toBe(0);
+        });
+      }
     });
   });
 

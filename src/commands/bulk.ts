@@ -13,8 +13,8 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import {
   loadSchema,
-  getTypeDefByPath,
-  getTypeFamilies,
+  getType,
+  getRootTypeNames,
   getOptionsForField,
   resolveTypeFromFrontmatter,
   formatUnknownTypeError,
@@ -45,7 +45,6 @@ interface BulkCommandOptions {
   type?: string;
   path?: string;
   body?: string;
-  text?: string; // deprecated
   all?: boolean;
   set?: string[];
   rename?: string[];
@@ -158,7 +157,6 @@ Examples:
   .option('-t, --type <type>', 'Filter by type (e.g., task, objective/milestone)')
   .option('-p, --path <glob>', 'Filter by file path (supports globs)')
   .option('-b, --body <query>', 'Filter by body content')
-  .option('--text <query>', 'Filter by body content (deprecated: use --body)', undefined)
   .option('--set <field=value...>', 'Set field value (or clear with --set field=)')
   .option('--rename <old=new...>', 'Rename field')
   .option('--delete <field...>', 'Delete field')
@@ -199,16 +197,11 @@ Examples:
         process.exit(1);
       }
 
-      // Handle --text deprecation
-      if (options.text) {
-        console.error('Warning: --text is deprecated, use --body instead');
-      }
-
       // Build targeting options from flags
       let typePath = options.type;
       let pathGlob = options.path;
       let whereExpressions = options.where ?? [];
-      const bodyQuery = options.body ?? options.text;
+      const bodyQuery = options.body;
 
       // Handle positional argument
       if (target) {
@@ -234,7 +227,7 @@ Examples:
 
       // Validate type exists if specified
       if (typePath) {
-        const typeDef = getTypeDefByPath(schema, typePath);
+        const typeDef = getType(schema, typePath);
         if (!typeDef) {
           const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {
@@ -515,7 +508,7 @@ function validateEnumValue(
  */
 function showAvailableTypes(schema: LoadedSchema): void {
   console.log('\nAvailable types:');
-  for (const family of getTypeFamilies(schema)) {
+  for (const family of getRootTypeNames(schema)) {
     console.log(`  ${family}`);
   }
 }

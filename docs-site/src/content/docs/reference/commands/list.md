@@ -16,8 +16,7 @@ bwrb list [options] [positional] [mode]
 The first positional argument is auto-detected as type, path (contains `/`), or where expression (contains operators).
 
 The optional second positional `[mode]` is the app mode used with `--open`
-(`system`, `editor`, `visual`, `obsidian`, `print`) — parity with
-the compatibility [`bwrb open`](/reference/commands/open/). Because `[mode]` is the **second**
+(`system`, `editor`, `visual`, `obsidian`, `print`). Because `[mode]` is the **second**
 positional, a lone positional is always treated as the smart filter, never the
 mode: use `bwrb list task print --open`, not `bwrb list print --open` (which
 would treat `print` as a type filter). To set the mode without a filter
@@ -206,9 +205,7 @@ duplicate error lists every candidate path.
 
 Lineage promises a complete connected component, so it rejects positional filters and
 all query, search, hierarchy, truncation, sorting, field, dashboard, picker,
-preview, and open actions rather than silently narrowing the graph. Deprecated
-output aliases such as `--json`, `--paths`, and `--tree` are also rejected; use
-canonical `--output ...` forms.
+preview, and open actions rather than silently narrowing the graph.
 
 ```bash
 bwrb list --lineage "Briefs/Launch Brief"              # tree
@@ -385,5 +382,3 @@ bwrb list --type task --where '!isEmpty(deadline)'
 - [Targeting Model](/reference/targeting/) — Full selector reference
 - [bwrb lineage](/reference/commands/lineage/) — Adopt known existing revisions into lineage
 - [bwrb dashboard](/reference/commands/dashboard/) — Run saved queries
-- [`search` compatibility command](/reference/commands/search/) — Legacy invocation mappings
-- [`open` compatibility command](/reference/commands/open/) — Legacy invocation mappings

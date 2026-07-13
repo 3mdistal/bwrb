@@ -1,31 +1,19 @@
 /**
- * Open command - opens notes in editor or Obsidian
- *
- * This is an alias for `search --open`. It uses the unified targeting model
- * (--type, --path, --where, --body) to resolve notes, then opens them.
+ * Shared note-opening helpers for canonical commands.
  *
  * @module
  */
 
-import { Command } from "commander";
 import { basename, isAbsolute, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
-import { loadSchema, detectObsidianVault } from "../lib/schema.js";
-import { resolveVaultDirWithSelection } from "../lib/vaultSelection.js";
-import { getGlobalOpts, resolveGlobalPickerMode } from "../lib/command.js";
-import { buildNoteIndex, type ManagedFile } from "../lib/navigation.js";
-import { resolveAndPick, parsePickerMode } from "../lib/picker.js";
+import { detectObsidianVault } from "../lib/schema.js";
 import {
   printJson,
   jsonError,
   exitWithError,
   ExitCodes,
-  exitWithResolutionError,
-  warnDeprecatedCommand,
 } from "../lib/output.js";
-import { resolveTargets, type TargetingOptions } from "../lib/targeting.js";
 import type { ResolvedConfig } from "../types/schema.js";
-import { UserCancelledError } from "../lib/errors.js";
 
 // App modes for opening notes
 // - system: Open with OS default handler (default)
@@ -39,7 +27,6 @@ export interface OpenPathData {
   relativePath: string;
   fullPath: string;
 }
-
 export interface OpenResultData extends OpenPathData {
   app?: string;
 }
@@ -289,177 +276,3 @@ async function openInObsidian(
     await execAsync(`xdg-open "${obsidianUri}"`);
   }
 }
-
-interface OpenOptions {
-  app?: string;
-  picker?: string;
-  output?: string;
-  preview?: boolean;
-  type?: string;
-  path?: string;
-  where?: string[];
-  id?: string;
-  body?: string;
-  vault?: string;
-}
-
-export const openCommand = new Command("open")
-  .description("Open a note (compatibility command; use list --open)")
-  .argument("[query]", "Note name or path to open")
-  .argument("[mode]", "App mode to open with: system, editor, visual, obsidian, print")
-  .option("-a, --app <mode>", "Application to open with: system, editor, visual, obsidian, print")
-  .option("--picker <mode>", "Picker mode: fzf, numbered, none", "fzf")
-  .option("--output <format>", "Output format: text, json", "text")
-  .option("--preview", "Show preview in fzf picker")
-  .option("-t, --type <type>", "Filter by note type (e.g., task, objective/milestone)")
-  .option("-p, --path <glob>", "Filter by path pattern")
-  .option("-w, --where <expr...>", "Filter by frontmatter expression")
-  .option("--id <uuid>", "Filter by stable note id")
-  .option("-b, --body <pattern>", "Filter by body content pattern")
-  .option("--vault <path>", "Path to vault directory")
-  .addHelpText(
-    "after",
-    `
-App Modes:
-  system    Open with OS default handler (default, uses config.open_with)
-  editor    Open in terminal editor ($EDITOR or config.editor)
-  visual    Open in GUI editor ($VISUAL or config.visual)
-  obsidian  Open in Obsidian app (uses config.obsidian_vault or auto-detect)
-  print     Print path to stdout (for scripting)
-
-Picker Modes:
-  fzf       Interactive fuzzy finder (default)
-  numbered  Numbered list selection
-  none      No picker - fail if ambiguous
-
-Precedence (for default app):
-  1. --app flag (explicit)
-  2. [mode] positional argument (e.g. bwrb open "My Note" print)
-  3. BWRB_DEFAULT_APP environment variable
-  4. config.open_with in .bwrb/schema.json
-  5. Fallback: system
-
-Examples:
-  bwrb open "My Note"                   Open note (uses config default)
-  bwrb open "My Note" print             Print path to stdout (positional mode)
-  bwrb open "My Note" --app obsidian    Open in Obsidian
-  bwrb open "My Note" --app editor      Open in $EDITOR
-  bwrb open --type task                 Pick from all tasks
-  bwrb open --where "status=active"     Pick from active notes
-  bwrb open -t task -w "priority=high"  Open high-priority task
-  bwrb open --body "TODO"               Find and open note containing TODO
-`
-  )
-  // Reject excess positional args (e.g. `open "Note" print bogus`). Only
-  // [query] and [mode] are accepted; a third+ token is almost certainly a
-  // mistake and silently swallowing it (commander's default) hides the typo
-  // — which is precisely the failure mode #662 set out to fix.
-  .allowExcessArguments(false)
-  .action(async (query: string | undefined, mode: string | undefined, options: OpenOptions, cmd) => {
-    warnDeprecatedCommand("open", "bwrb list --open");
-    const jsonMode = options.output === "json";
-
-    try {
-      // Merge global options with command options (local --vault takes precedence)
-      const globalOpts = getGlobalOpts(cmd);
-      const effectiveVault = options.vault || globalOpts.vault;
-      const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
-      if (effectiveVault) vaultOptions.vault = effectiveVault;
-      const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
-      const schema = await loadSchema(vaultDir);
-
-      // Parse picker mode
-      const pickerMode = parsePickerMode(resolveGlobalPickerMode(options.picker, globalOpts, "fzf"));
-
-      // Resolve app mode using precedence:
-      //   --app flag > positional [mode] > BWRB_DEFAULT_APP > config > default
-      // The positional mode (e.g. `bwrb open "X" print`) is a convenience form;
-      // an explicit --app flag always wins. A positional that is not a valid app
-      // mode throws via parseAppMode, surfacing the typo instead of silently
-      // running the default app and producing no output.
-      const appMode = resolveAppMode(options.app ?? mode, schema.config);
-
-      // Check if we have any targeting options
-      const hasTargeting = options.type || options.path || options.where?.length || options.id || options.body;
-
-      let filteredIndex;
-
-      if (hasTargeting) {
-        // Use the unified targeting system for filtering
-        // Build targeting options, only including defined values
-        const targeting: TargetingOptions = {};
-        if (options.type) targeting.type = options.type;
-        if (options.path) targeting.path = options.path;
-        if (options.where?.length) targeting.where = options.where;
-        if (options.id) targeting.id = options.id;
-        if (options.body) targeting.body = options.body;
-
-        const targetResult = await resolveTargets(targeting, schema, vaultDir);
-
-        if (targetResult.error) {
-          exitWithResolutionError(targetResult.error, targetResult.files, jsonMode);
-        }
-
-        // Build a filtered index from the targeted files
-        const byPath = new Map<string, ManagedFile>();
-        const byBasename = new Map<string, ManagedFile[]>();
-
-        for (const file of targetResult.files) {
-          byPath.set(file.relativePath, file);
-          const name = basename(file.relativePath, ".md");
-          const existing = byBasename.get(name) || [];
-          existing.push(file);
-          byBasename.set(name, existing);
-        }
-
-        filteredIndex = {
-          byPath,
-          byBasename,
-          byAlias: new Map(),
-          allFiles: targetResult.files as ManagedFile[],
-        };
-      } else {
-        // No targeting - use full note index
-        filteredIndex = await buildNoteIndex(schema, vaultDir);
-      }
-
-      // Resolve note using shared picker logic
-      // In JSON mode, don't use interactive picker - fail on ambiguity instead
-      const effectivePickerMode = jsonMode ? "none" : pickerMode;
-      const result = await resolveAndPick(filteredIndex, query, {
-        pickerMode: effectivePickerMode,
-        prompt: "Select note to open",
-        preview: options.preview,
-        vaultDir,
-      });
-
-      if (!result.ok) {
-        if (result.cancelled) {
-          process.exit(ExitCodes.SUCCESS);
-        }
-        // Extract error info for exitWithResolutionError
-        const candidates = result.candidates?.map((c) => ({ relativePath: c.relativePath }));
-        exitWithResolutionError(result.error || "No match found", candidates, jsonMode);
-      }
-
-      // Open the selected note
-      await openNote(vaultDir, result.file.relativePath, appMode, schema.config, jsonMode);
-    } catch (error) {
-      if (error instanceof UserCancelledError) {
-        if (jsonMode) {
-          printJson(jsonError("Cancelled", { code: ExitCodes.VALIDATION_ERROR }));
-          process.exit(ExitCodes.VALIDATION_ERROR);
-        }
-        console.log("Cancelled.");
-        process.exit(1);
-      }
-      const message = error instanceof Error ? error.message : String(error);
-      if (jsonMode) {
-        printJson(jsonError(message));
-        process.exit(ExitCodes.VALIDATION_ERROR);
-      } else {
-        console.error(message);
-        process.exit(ExitCodes.VALIDATION_ERROR);
-      }
-    }
-  });

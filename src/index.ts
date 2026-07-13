@@ -6,8 +6,6 @@ import { editCommand } from './commands/edit.js';
 import { deleteCommand } from './commands/delete.js';
 import { listCommand } from './commands/list.js';
 import { recentCommand } from './commands/recent.js';
-import { openCommand } from './commands/open.js';
-import { searchCommand } from './commands/search.js';
 import { schemaCommand } from './commands/schema/index.js';
 import { auditCommand } from './commands/audit.js';
 import { bulkCommand } from './commands/bulk.js';
@@ -52,7 +50,10 @@ if (completionsIndex !== -1) {
     .name('bwrb')
     .description('Schema-driven note management for markdown vaults')
     .version(BWRB_VERSION)
-    .option('-v, --vault <path>', 'Path to the vault directory')
+    .option(
+      '-v, --vault <path>',
+      'Vault directory (precedence: --vault, nearest ancestor, BWRB_VAULT, then discovery below cwd)'
+    )
     .option('--non-interactive', 'Disable interactive prompts and require explicit non-interactive flags')
     .option('--actor <actor>', 'Logical workflow actor provenance (overrides BWRB_ACTOR)')
     .hook('preAction', (_thisCommand, actionCommand) => {
@@ -76,10 +77,6 @@ if (completionsIndex !== -1) {
   program.addCommand(listCommand);
   program.addCommand(recentCommand);
   program.addCommand(explainCommand);
-  // Compatibility commands remain callable, but `list` is the canonical
-  // query/search/open surface shown in root help and command completion.
-  program.addCommand(openCommand, { hidden: true });
-  program.addCommand(searchCommand, { hidden: true });
 
   // Schema and management
   program.addCommand(schemaCommand);

@@ -64,6 +64,14 @@ bwrb schema migrate --execute
 bwrb schema migrate --execute --no-backup
 ```
 
+Migration discovery is vault-wide for files with a valid frontmatter type, so
+a typed note moved outside its configured output directory remains in the
+plan. If a cleanup would clear a required field without a schema default,
+planning reports structured blockers and execution fails atomically before
+notes, backups, schema version, applied snapshot, or migration history change.
+The user must set an explicit valid value and retry; migration does not guess a
+replacement select option.
+
 By default the dry-run preview shows schema-level operations plus a
 files-scanned / files-affected summary. Add `--show-changes` to also print the
 concrete per-note before→after edits, e.g.:

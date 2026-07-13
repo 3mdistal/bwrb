@@ -95,7 +95,7 @@ bwrb completion fish > ~/.config/fish/completions/bwrb.fish
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `BWRB_VAULT` | Default vault path | Current directory |
+| `BWRB_VAULT` | Fallback vault path after explicit `--vault` and nearest-ancestor discovery | Unset |
 | `BWRB_DEFAULT_APP` | Default app for `bwrb list --open` | `system` |
 | `EDITOR` / `VISUAL` | Editor for `--app editor` | — |
 

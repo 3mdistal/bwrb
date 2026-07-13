@@ -26,13 +26,6 @@ describe('global --non-interactive create/edit flows', () => {
     expect(result.stderr).toContain('bwrb edit requires --json <patch>');
   });
 
-  it('requires --json for search --edit when non-interactive is set', async () => {
-    const result = await runCLI(['--non-interactive', 'search', 'Sample Idea', '--edit'], vaultDir);
-
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain('bwrb search --edit requires --json <patch>');
-  });
-
   it('requires --json for config edit when non-interactive is set', async () => {
     const result = await runCLI(['--non-interactive', 'config', 'edit', 'link_format'], vaultDir);
 

@@ -243,15 +243,15 @@ export function outputFixResults(summary: FixSummary, autoMode: boolean): void {
  */
 export async function showAvailableTypes(schema: import('../../types/schema.js').LoadedSchema): Promise<void> {
   // Import dynamically to avoid circular deps
-  const { getTypeFamilies, getTypeDefByPath, hasSubtypes, getSubtypeKeys } = await import('../schema.js');
+  const { getRootTypeNames, getType } = await import('../schema.js');
   
   console.log('');
   console.log('Available types:');
-  for (const family of getTypeFamilies(schema)) {
+  for (const family of getRootTypeNames(schema)) {
     console.log(`  ${family}`);
-    const typeDef = getTypeDefByPath(schema, family);
-    if (typeDef && hasSubtypes(typeDef)) {
-      for (const subtype of getSubtypeKeys(typeDef)) {
+    const typeDef = getType(schema, family);
+    if (typeDef && typeDef.children.length > 0) {
+      for (const subtype of typeDef.children) {
         console.log(`    ${family}/${subtype}`);
       }
     }

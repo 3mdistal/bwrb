@@ -8,7 +8,7 @@
 
 import { join } from 'path';
 import { getOptionValues, type LoadedSchema, type TransitionEffect } from '../types/schema.js';
-import { getDescendants, getEffectiveTraitNames, getFieldsForType, resolveTypePathFromFrontmatter } from './schema.js';
+import { getDescendants, getEffectiveTraitNames, getFieldsForType, resolveTypeFromFrontmatter } from './schema.js';
 import { buildNoteTargetIndex, resolveRelationTarget } from './discovery.js';
 import { extractLinkTargets } from './links.js';
 import { parseNote, writeFileAtomic, writeNote } from './frontmatter.js';
@@ -139,7 +139,7 @@ export async function prepareTransitionEffects(
   }
 
   for (const target of prepared.values()) {
-    const targetType = resolveTypePathFromFrontmatter(schema, target.after);
+    const targetType = resolveTypeFromFrontmatter(schema, target.after);
     if (!targetType) throw new Error(`Transition effect target '${relative(vaultDir, target.path)}' has no recognized type.`);
     target.after = normalizeDateFields(schema, targetType, target.after);
     const validation = validateFrontmatter(schema, targetType, target.after);

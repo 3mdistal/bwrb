@@ -362,6 +362,8 @@ Examples:
                   affectedFiles: result.affectedFiles,
                   changes: diff,
                   fileChanges: toFileChangesJson(result.fileResults),
+                  blocked: (result.blockers?.length ?? 0) > 0,
+                  blockers: result.blockers ?? [],
                 },
               }));
             } else {
@@ -369,6 +371,13 @@ Examples:
               console.log(formatDiffForDisplay(diff));
               console.log(chalk.cyan(`Files scanned: ${result.totalFiles}`));
               console.log(chalk.cyan(`Files affected: ${result.affectedFiles}`));
+
+              if (result.blockers && result.blockers.length > 0) {
+                console.log(chalk.yellow('\nMigration has remaining work:'));
+                for (const blocker of result.blockers) {
+                  console.log(chalk.yellow(`  ${blocker.message}`));
+                }
+              }
 
               // Per-note before→after changes are gated behind --show-changes
               // since a large vault could produce a great many lines.
@@ -493,6 +502,28 @@ Examples:
           execute: true,
           backup,
         });
+
+        if (result.blockers && result.blockers.length > 0) {
+          const message =
+            `Migration blocked by ${result.blockers.length} required-field ` +
+            `issue${result.blockers.length === 1 ? '' : 's'}; no notes or schema state were changed.`;
+          if (jsonMode) {
+            printJson(jsonError(message, {
+              code: ExitCodes.VALIDATION_ERROR,
+              data: {
+                totalFiles: result.totalFiles,
+                blockers: result.blockers,
+              },
+            }));
+          } else {
+            printError(message);
+            for (const blocker of result.blockers) {
+              console.error(`  ${blocker.message}`);
+            }
+          }
+          process.exitCode = ExitCodes.VALIDATION_ERROR;
+          return;
+        }
         
         // Update schema version if changed
         if (newVersion !== currentVersion) {

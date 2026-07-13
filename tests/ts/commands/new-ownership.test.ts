@@ -188,6 +188,87 @@ Owned folder placement test.
     // Error output may go to stderr for early validation errors
     const outputStr = result.stdout || result.stderr;
     expect(outputStr).toContain('Owner not found');
+    expect(outputStr).not.toContain('Ambiguous owner');
+    expect(outputStr).not.toContain('candidate');
+  });
+
+  it('reports duplicate owner names as ambiguous with exact-path candidates in JSON mode', async () => {
+    await mkdir(join(vaultDir, 'Projects/Portfolio A'), { recursive: true });
+    await mkdir(join(vaultDir, 'Projects/Portfolio B'), { recursive: true });
+    const ownerNote = `---
+type: project
+status: in-flight
+---
+`;
+    await writeFile(join(vaultDir, 'Projects/Portfolio A/Owner Twin.md'), ownerNote);
+    await writeFile(join(vaultDir, 'Projects/Portfolio B/Owner Twin.md'), ownerNote);
+
+    const result = await runCLI(
+      ['new', 'research', '--json', '{"name": "Ambiguous Research"}', '--owner', '[[Owner Twin]]'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
+    const output = JSON.parse(result.stdout);
+    expect(output.error).toMatch(/ambiguous owner/i);
+    expect(output.error).toContain('Retry with one exact path');
+    expect(output.errors.map((error: { value: string }) => error.value)).toEqual([
+      'Projects/Portfolio A/Owner Twin.md',
+      'Projects/Portfolio B/Owner Twin.md',
+    ]);
+  });
+
+  it('reports duplicate owner candidates and remediation in text mode', async () => {
+    await mkdir(join(vaultDir, 'Projects/Portfolio A'), { recursive: true });
+    await mkdir(join(vaultDir, 'Projects/Portfolio B'), { recursive: true });
+    const ownerNote = `---
+type: project
+status: in-flight
+---
+`;
+    await writeFile(join(vaultDir, 'Projects/Portfolio A/Owner Twin.md'), ownerNote);
+    await writeFile(join(vaultDir, 'Projects/Portfolio B/Owner Twin.md'), ownerNote);
+
+    const result = await runCLI(
+      ['new', 'research', '--owner', 'Owner Twin'],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
+    expect(result.stderr).toMatch(/ambiguous owner/i);
+    expect(result.stderr).toContain('Retry with one exact path');
+    expect(result.stderr).toContain('Projects/Portfolio A/Owner Twin.md');
+    expect(result.stderr).toContain('Projects/Portfolio B/Owner Twin.md');
+  });
+
+  it('accepts an exact owner path to disambiguate duplicate names', async () => {
+    await mkdir(join(vaultDir, 'Projects/Portfolio A'), { recursive: true });
+    await mkdir(join(vaultDir, 'Projects/Portfolio B'), { recursive: true });
+    const ownerNote = `---
+type: project
+status: in-flight
+---
+`;
+    await writeFile(join(vaultDir, 'Projects/Portfolio A/Owner Twin.md'), ownerNote);
+    await writeFile(join(vaultDir, 'Projects/Portfolio B/Owner Twin.md'), ownerNote);
+
+    const result = await runCLI(
+      [
+        'new',
+        'research',
+        '--json',
+        '{"name": "Path-owned Research"}',
+        '--owner',
+        '[[Projects/Portfolio B/Owner Twin]]',
+      ],
+      vaultDir
+    );
+
+    expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+    const output = JSON.parse(result.stdout);
+    expect(output.path).toBe('Projects/Portfolio B/research/Path-owned Research.md');
+    const content = await readFile(join(vaultDir, output.path), 'utf-8');
+    expect(content).toMatch(/^owner: "\[\[Projects\/Portfolio B\/Owner Twin\]\]"$/m);
   });
 
   it('should handle --owner with plain name (no brackets)', async () => {

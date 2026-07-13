@@ -8,7 +8,7 @@
 import { Command } from 'commander';
 import {
   loadSchema,
-  getTypeDefByPath,
+  getType,
   formatUnknownTypeError,
 } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
@@ -193,7 +193,6 @@ Examples:
   .option('-p, --path <glob>', 'Filter by file path pattern')
   .option('-w, --where <expr...>', 'Filter by frontmatter expression')
   .option('-b, --body <query>', 'Filter by body content')
-  .option('--text <query>', 'Filter by body content (deprecated: use --body)', undefined)
   .option('-a, --all', 'Target all files (explicit vault-wide selector)')
   .option('--strict', 'Treat unknown fields as errors instead of warnings')
   .option('--only <issue-type>', 'Only report specific issue type')
@@ -223,7 +222,6 @@ Examples:
     type?: string;
     where?: string[];
     body?: string;
-    text?: string; // deprecated
     checkSchemaDocs?: boolean;
   }, cmd: Command) => {
     const jsonMode = options.output === 'json';
@@ -317,16 +315,11 @@ Examples:
         exitWithValidationError('bwrb audit --fix requires --auto when --non-interactive is set.');
       }
 
-      // Handle --text deprecation
-      if (options.text) {
-        console.error('Warning: --text is deprecated, use --body instead');
-      }
-
       // Build targeting options from flags
       let typePath = options.type;
       let pathGlob = options.path;
       let whereExprs = options.where;
-      const bodyQuery = options.body ?? options.text;
+      const bodyQuery = options.body;
 
       // Handle positional argument with smart detection
       if (target) {
@@ -371,7 +364,7 @@ Examples:
 
       // Validate type if specified
       if (typePath) {
-        const typeDef = getTypeDefByPath(schema, typePath);
+        const typeDef = getType(schema, typePath);
         if (!typeDef) {
           const error = formatUnknownTypeError(schema, typePath);
           if (jsonMode) {

@@ -3,7 +3,7 @@
  */
 
 import { parseNote, writeNote } from '../frontmatter.js';
-import { discoverManagedFiles } from '../discovery.js';
+import { discoverFilesForQueryResolution } from '../discovery.js';
 import { createBackup } from '../bulk/backup.js';
 import { getFieldsForType, resolveTypeFromFrontmatter } from '../schema.js';
 import { toWikilink, toMarkdownLink, isWikilink, isMarkdownLink } from '../links.js';
@@ -41,6 +41,7 @@ export async function executeMigration(
     affectedFiles: 0,
     fileResults: [],
     errors: [],
+    blockers: [],
   };
 
   // If no operations, nothing to do
@@ -53,7 +54,7 @@ export async function executeMigration(
   const opsByType = groupOperationsByType(allOps);
 
   // Discover all files that might need migration
-  const allFiles = await discoverManagedFiles(schema, vaultDir);
+  const allFiles = await discoverFilesForQueryResolution(schema, vaultDir);
   result.totalFiles = allFiles.length;
 
   // Collect files that need changes
@@ -68,7 +69,11 @@ export async function executeMigration(
   for (const file of allFiles) {
     try {
       const { frontmatter, body } = await parseNote(file.path);
-      const typeName = file.expectedType ?? '';
+      // Frontmatter is authoritative for migration targeting. Directory-derived
+      // types remain a fallback for legacy managed notes, but a typed note that
+      // was moved outside its configured output directory must not disappear
+      // from a schema migration.
+      const typeName = resolveTypeFromFrontmatter(schema, frontmatter) ?? file.expectedType ?? '';
 
       // Calculate what changes this file needs
       const changes = calculateFileChanges(
@@ -79,6 +84,16 @@ export async function executeMigration(
       );
 
       if (changes.length > 0) {
+        const blockingChange = findRequiredFieldBlocker(
+          file.relativePath,
+          typeName,
+          changes,
+          schema
+        );
+        if (blockingChange) {
+          result.blockers!.push(blockingChange);
+          continue;
+        }
         filesToMigrate.push({
           path: file.path,
           relativePath: file.relativePath,
@@ -91,6 +106,13 @@ export async function executeMigration(
       const message = err instanceof Error ? err.message : String(err);
       result.errors.push(`Failed to parse ${file.relativePath}: ${message}`);
     }
+  }
+
+  // Fail closed before backups or writes. In particular, narrowing select
+  // options must not delete the last value of a required field and then advance
+  // the schema snapshot as though the vault had converged.
+  if (result.blockers!.length > 0) {
+    return result;
   }
 
   // Create backup if requested and executing
@@ -133,6 +155,38 @@ export async function executeMigration(
   result.affectedFiles = result.fileResults.filter(r => r.changes.length > 0).length;
 
   return result;
+}
+
+function findRequiredFieldBlocker(
+  relativePath: string,
+  typeName: string,
+  changes: AppliedChange[],
+  schema: LoadedSchema
+): { relativePath: string; field: string; message: string } | undefined {
+  if (!typeName) return undefined;
+
+  const fields = getFieldsForType(schema, typeName);
+  for (const change of changes) {
+    const field = fields[change.field];
+    if (!field?.required || field.default !== undefined) continue;
+
+    const clearsValue = change.kind === 'delete'
+      || change.newValue === null
+      || change.newValue === undefined
+      || change.newValue === ''
+      || (Array.isArray(change.newValue) && change.newValue.length === 0);
+    if (!clearsValue) continue;
+
+    return {
+      relativePath,
+      field: change.field,
+      message:
+        `Cannot clear required field '${change.field}' in ${relativePath}: ` +
+        'no schema default provides a safe replacement. Set a valid value and retry the migration.',
+    };
+  }
+
+  return undefined;
 }
 
 /**

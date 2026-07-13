@@ -10,10 +10,15 @@ import { basename, isAbsolute, relative } from 'path';
 import fs from 'fs/promises';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
-import { loadSchema, getTypeDefByPath, formatUnknownTypeError } from '../lib/schema.js';
+import { loadSchema, getType, formatUnknownTypeError } from '../lib/schema.js';
 import { configurePromptMode, printError, printSuccess } from '../lib/prompt.js';
 import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError } from '../lib/output.js';
-import { buildNoteIndex, type ManagedFile } from '../lib/navigation.js';
+import {
+  buildNoteIndex,
+  hydrateNoteIndexAliases,
+  resolveExactNoteQuery,
+  type ManagedFile,
+} from '../lib/navigation.js';
 import { parsePickerMode, resolveAndPick, type PickerMode } from '../lib/picker.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
 import {
@@ -174,6 +179,7 @@ Precedence (for --open app mode):
     const appModeInput = options.app ?? mode;
     let jsonMode = patchMode;
     let resolvedVaultDir: string | undefined;
+    let selectedTargetPath: string | undefined;
     try {
       const globalOpts = getGlobalOpts(cmd);
       jsonMode = resolveEditJsonMode(options, globalOpts.output);
@@ -228,7 +234,7 @@ Precedence (for --open app mode):
 
       // Validate type if provided
       if (options.type) {
-        const typeDef = getTypeDefByPath(schema, options.type);
+        const typeDef = getType(schema, options.type);
         if (!typeDef) {
           const error = formatUnknownTypeError(schema, options.type);
           if (jsonMode) {
@@ -315,7 +321,15 @@ Precedence (for --open app mode):
 
       // Build candidates based on targeting
       let candidates: ManagedFile[];
-      const index = await buildNoteIndex(schema, vaultDir);
+      // A plain `edit <query>` can resolve a path or basename solely from the
+      // canonical discovery result. Avoid parsing every note's frontmatter
+      // until that exact tier misses; aliases and fuzzy matching still hydrate
+      // below with the same discovered files. Targeted modes deliberately keep
+      // their eager behavior because filtering depends on parsed metadata.
+      const directQueryFastPath = query !== undefined && !hasTargeting;
+      const index = await buildNoteIndex(schema, vaultDir, undefined, {
+        includeAliases: !directQueryFastPath,
+      });
 
       if (hasTargeting) {
         // Use resolveTargets for proper filtering
@@ -354,6 +368,16 @@ Precedence (for --open app mode):
         filteredIndex.byBasename.set(fileBasename, existing);
       }
 
+      if (directQueryFastPath) {
+        const exactResolution = resolveExactNoteQuery(filteredIndex, query);
+        // An exact file or an ambiguous basename is already decisive. Only an
+        // actual path/basename miss pays the snapshot parse required for aliases
+        // and fuzzy fallback.
+        if (!exactResolution.exact && exactResolution.candidates.length === 0) {
+          await hydrateNoteIndexAliases(schema, filteredIndex);
+        }
+      }
+
       const result = await resolveAndPick(filteredIndex, query, {
         pickerMode: effectivePickerMode,
         prompt: 'Select note to edit',
@@ -369,6 +393,7 @@ Precedence (for --open app mode):
       }
 
       const targetFile = result.file;
+      selectedTargetPath = targetFile.relativePath;
 
       // Perform the edit
       if (patchMode) {
@@ -450,19 +475,22 @@ Precedence (for --open app mode):
         process.exit(1);
       }
       const message = err instanceof Error ? err.message : String(err);
+      const actionableMessage = err instanceof Error && err.name === 'YAMLException' && selectedTargetPath
+        ? `Could not edit ${selectedTargetPath}: malformed YAML frontmatter. ${message} Fix the YAML in that file and retry.`
+        : message;
       if (err instanceof OpenConfigurationError) {
         if (jsonMode) {
-          printJson(jsonError(message));
+          printJson(jsonError(actionableMessage));
           process.exit(ExitCodes.VALIDATION_ERROR);
         }
-        printError(message);
+        printError(actionableMessage);
         process.exit(1);
       }
       if (jsonMode) {
-        printJson(jsonError(message));
+        printJson(jsonError(actionableMessage));
         process.exit(ExitCodes.IO_ERROR);
       }
-      printError(message);
+      printError(actionableMessage);
       process.exit(1);
     }
   });

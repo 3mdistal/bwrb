@@ -1,10 +1,4 @@
-import {
-  getTypeFamilies,
-  getTypeDefByPath,
-  hasSubtypes,
-  getSubtypeKeys,
-  discriminatorName,
-} from '../../lib/schema.js';
+import { getRootTypeNames, getType } from '../../lib/schema.js';
 import { promptSelection } from '../../lib/prompt.js';
 import type { LoadedSchema } from '../../types/schema.js';
 
@@ -15,18 +9,18 @@ export async function resolveTypePath(
   let typePath = initialPath;
 
   if (!typePath) {
-    const families = getTypeFamilies(schema);
+    const families = getRootTypeNames(schema);
     const selected = await promptSelection('What would you like to create?', families);
     if (!selected) return undefined;
     typePath = selected;
   }
 
-  let typeDef = getTypeDefByPath(schema, typePath);
+  let typeDef = getType(schema, typePath);
   let currentTypeName = typePath;
 
-  while (typeDef && hasSubtypes(typeDef)) {
-    const subtypes = getSubtypeKeys(typeDef);
-    const discLabel = discriminatorName(currentTypeName);
+  while (typeDef && typeDef.children.length > 0) {
+    const subtypes = typeDef.children;
+    const discLabel = 'type';
     const selected = await promptSelection(
       `Select ${currentTypeName} subtype (${discLabel}):`,
       subtypes
@@ -34,7 +28,7 @@ export async function resolveTypePath(
     if (!selected) return undefined;
 
     currentTypeName = selected;
-    typeDef = getTypeDefByPath(schema, currentTypeName);
+    typeDef = getType(schema, currentTypeName);
   }
 
   return currentTypeName;

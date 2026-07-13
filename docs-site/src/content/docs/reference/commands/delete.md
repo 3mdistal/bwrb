@@ -38,6 +38,7 @@ Delete operates in three modes:
 |--------|-------------|
 | `-x, --execute` | Actually delete files (default is dry-run for bulk) |
 | `--dry-run` | Preview deletions without removing files |
+| `--backup` | Copy selected files and a manifest under `.bwrb/backups/` before deletion |
 | `-f, --force` | Skip confirmation prompt (single-file or multi-delete) |
 | `--picker <mode>` | Selection mode: `auto`, `fzf`, `numbered`, `none` |
 | `--output <format>` | Output format: `text`, `json` |
@@ -145,6 +146,9 @@ bwrb delete "My Note" --force
 # Scripting mode
 bwrb delete "My Note" --output json --force
 
+# Create a recoverable backup, then delete
+bwrb delete "My Note" --force --backup
+
 # Preview delete without removing (no --force needed)
 bwrb delete "My Note" --dry-run --output json
 ```
@@ -192,7 +196,11 @@ When query is ambiguous (single-file mode):
 
 ## Recovery
 
-Deletion is permanent. Use version control (git) to recover deleted notes if needed.
+Deletion removes the source file. With `--backup`, Bowerbird first copies each
+selected file byte-for-byte under a timestamped `.bwrb/backups/` directory and
+writes a manifest mapping original paths to their backup copies. JSON output
+includes the backup path. Without `--backup`, use version control or another
+external backup to recover deleted notes.
 
 `bwrb audit --fix` can offer a delete action for specific issue classes, but it remains interactive-only and never runs in `--auto` mode. For non-interactive or scripted deletion workflows, use `bwrb delete`.
 

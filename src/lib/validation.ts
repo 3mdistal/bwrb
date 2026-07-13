@@ -5,12 +5,16 @@ import { extractWikilinkTarget } from './links.js';
 import { levenshteinDistance } from './levenshtein.js';
 import { isBlankScalar } from './emptiness.js';
 import {
-  buildVaultNoteIndex,
+  buildVaultNoteSnapshotFromFiles,
+  deriveNoteTargetIndex,
+  discoverManagedFiles,
   getRelationSourceTypes,
   relationCandidateMatchesSource,
   resolveRelationTarget,
-  type VaultNoteIndex,
+  type ManagedFile,
+  type NoteTargetIndex,
 } from './discovery.js';
+import { basename } from 'path';
 import {
   expandStaticValue,
   parseDate,
@@ -945,7 +949,13 @@ export async function validateContextFields(
 ): Promise<ContextValidationResult> {
   const errors: ContextValidationError[] = [];
   const fields = getFieldsForType(schema, typeName);
-  const noteIndex = await buildVaultNoteIndex(schema, vaultDir);
+  // Most edits do not touch a populated source-constrained field. Building the
+  // vault-wide relation index in those cases is pure discovery cost: the loop
+  // below would never consult it. Keep the existing validation semantics for
+  // populated strings (including non-wikilinks, which the single-value
+  // validator intentionally leaves to other validators), but avoid the index
+  // entirely when there is nothing it could validate.
+  const valuesToValidate: Array<{ fieldName: string; field: Field; value: string }> = [];
 
   for (const [fieldName, field] of Object.entries(fields)) {
     // Skip fields without source constraint (not context fields)
@@ -953,34 +963,110 @@ export async function validateContextFields(
 
     const value = frontmatter[fieldName];
 
-    // Skip blank values, incl. whitespace-only (required field check is
-    // separate). Arrays fall through to per-element handling below (#707).
-    if (isBlankScalar(value)) continue;
-
     // Validate each value (handle both single and array values)
     const values = Array.isArray(value) ? value : [value];
-    
     for (const v of values) {
-      if (typeof v !== 'string') continue;
-      
+      // Skip blank values, incl. whitespace-only (required field check is
+      // separate). Arrays are handled element-by-element (#707).
+      if (typeof v !== 'string' || isBlankScalar(v)) continue;
+      valuesToValidate.push({ fieldName, field, value: v });
+    }
+  }
+
+  if (valuesToValidate.length === 0) {
+    return { valid: true, errors };
+  }
+
+  const wikilinkTargets = valuesToValidate
+    .map(({ value }) => extractWikilinkTarget(value))
+    .filter((target): target is string => target !== null);
+  if (wikilinkTargets.length === 0) {
+    return { valid: true, errors };
+  }
+
+  const noteTargetIndex = await buildContextNoteTargetIndex(
+    schema,
+    vaultDir,
+    wikilinkTargets
+  );
+  for (const { fieldName, field, value } of valuesToValidate) {
       const error = await validateSingleContextValue(
         schema,
         fieldName,
         field,
-        v,
-        noteIndex
+        value,
+        noteTargetIndex
       );
-      
+
       if (error) {
         errors.push(error);
       }
-    }
   }
 
   return {
     valid: errors.length === 0,
     errors,
   };
+}
+
+/**
+ * Build the relation index needed by this validation call from one fresh
+ * discovery. Exact basename/path targets need only their real candidate notes;
+ * aliases, misses, and collisions fall back to a full parse so their existing
+ * resolution semantics remain untouched.
+ */
+async function buildContextNoteTargetIndex(
+  schema: LoadedSchema,
+  vaultDir: string,
+  targets: string[]
+): Promise<NoteTargetIndex> {
+  const files = await discoverManagedFiles(schema, vaultDir);
+  const realCandidates = buildUnparsedRealCandidateIndex(files);
+  const candidateFiles = new Set<ManagedFile>();
+
+  for (const target of targets) {
+    const candidates = realCandidates.get(target.toLowerCase()) ?? [];
+    if (candidates.length !== 1) {
+      return deriveNoteTargetIndex(await buildVaultNoteSnapshotFromFiles(schema, files), schema);
+    }
+    candidateFiles.add(candidates[0]!);
+  }
+
+  // Filter the freshly discovered array rather than iterating the Set. Snapshot
+  // and error ordering therefore retain canonical discovery order.
+  const selectedFiles = files.filter((file) => candidateFiles.has(file));
+  return deriveNoteTargetIndex(
+    await buildVaultNoteSnapshotFromFiles(schema, selectedFiles),
+    schema
+  );
+}
+
+/**
+ * The unparsed fast-path index intentionally contains only the exact real
+ * basename/path keys used by deriveNoteTargetIndex. It has no aliases and no
+ * type inference: parsing remains the authority for resolvedType.
+ */
+function buildUnparsedRealCandidateIndex(files: ManagedFile[]): Map<string, ManagedFile[]> {
+  const index = new Map<string, ManagedFile[]>();
+  const add = (key: string, file: ManagedFile) => {
+    const lowerKey = key.toLowerCase();
+    const candidates = index.get(lowerKey);
+    if (candidates) {
+      // A root-level note has identical basename and path keys. Match
+      // deriveNoteTargetIndex's per-path de-duplication before judging whether
+      // the target is ambiguous.
+      if (!candidates.includes(file)) candidates.push(file);
+    } else {
+      index.set(lowerKey, [file]);
+    }
+  };
+
+  for (const file of files) {
+    add(basename(file.relativePath, '.md'), file);
+    add(file.relativePath.replace(/\.md$/, ''), file);
+  }
+
+  return index;
 }
 
 /**
@@ -991,7 +1077,7 @@ async function validateSingleContextValue(
   fieldName: string,
   field: Field,
   value: string,
-  noteIndex: VaultNoteIndex
+  noteTargetIndex: NoteTargetIndex
 ): Promise<ContextValidationError | null> {
   const source = field.source!;
   
@@ -1006,7 +1092,7 @@ async function validateSingleContextValue(
   
   // Check for "any" in sources
   if (sources.includes('any')) {
-    const resolved = resolveRelationTarget(noteIndex.noteTargetIndex, targetName);
+    const resolved = resolveRelationTarget(noteTargetIndex, targetName);
     if (resolved.candidates.length > 0) {
       return null;
     }
@@ -1028,7 +1114,7 @@ async function validateSingleContextValue(
     return null;
   }
 
-  const resolved = resolveRelationTarget(noteIndex.noteTargetIndex, targetName, {
+  const resolved = resolveRelationTarget(noteTargetIndex, targetName, {
     schema,
     source,
   });
@@ -1036,7 +1122,7 @@ async function validateSingleContextValue(
   if (
     resolved.resolution === 'unique' &&
     resolved.resolvedPath &&
-    relationCandidateMatchesSource(schema, noteIndex.noteTargetIndex, resolved.resolvedPath, source)
+    relationCandidateMatchesSource(schema, noteTargetIndex, resolved.resolvedPath, source)
   ) {
     return null;
   }
@@ -1058,7 +1144,7 @@ async function validateSingleContextValue(
       const pathKey = candidatePath.replace(/\.md$/, '');
       return {
         path: candidatePath,
-        type: noteIndex.noteTargetIndex.pathNoExtToType.get(pathKey),
+        type: noteTargetIndex.pathNoExtToType.get(pathKey),
       };
     })
     .filter((candidate): candidate is { path: string; type: string } => Boolean(candidate.type));

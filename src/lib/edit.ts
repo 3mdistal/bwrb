@@ -8,11 +8,11 @@
 
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import { join, relative } from 'path';
+import { isDeepStrictEqual } from 'util';
 import {
-  getTypeDefByPath,
-  resolveTypePathFromFrontmatter,
+  getType,
+  resolveTypeFromFrontmatter,
   getFieldsForType,
-  getFrontmatterOrder,
 } from './schema.js';
 import { parseNote, writeNote, writeFileAtomic, generateBodySections } from './frontmatter.js';
 import {
@@ -70,6 +70,28 @@ export interface EditFromJsonOptions {
   jsonMode?: boolean;
   /** Opaque raw-note revision that must still match before this patch writes. */
   expectedRevision?: string;
+  /**
+   * Internal, opt-in mutation boundary observer used by deterministic fault
+   * fixtures. It is deliberately not wired to the CLI: production callers get
+   * the same behavior unless they explicitly supply it.
+   */
+  mutationFaultInjector?: MutationFaultInjector;
+}
+
+/** Explicitly named commit boundaries for mutation fault fixtures. */
+export type MutationFaultPoint =
+  | 'source-read'
+  | 'expected-revision-check'
+  | 'lock-acquisition'
+  | 'guard-evaluation'
+  | 'source-write'
+  | 'related-effects'
+  | 'recurrence'
+  | 'compensation';
+
+export interface MutationFaultInjector {
+  before?: (point: MutationFaultPoint) => Promise<void> | void;
+  after?: (point: MutationFaultPoint) => Promise<void> | void;
 }
 
 export interface EditInteractiveOptions {
@@ -102,7 +124,7 @@ export async function editNoteFromJson(
   jsonInput: string,
   options: EditFromJsonOptions = {}
 ): Promise<EditResult> {
-  const { jsonMode = true, expectedRevision } = options;
+  const { jsonMode = true, expectedRevision, mutationFaultInjector } = options;
 
   // Parse JSON input
   let patchData: Record<string, unknown>;
@@ -142,7 +164,8 @@ export async function editNoteFromJson(
         patchData,
         jsonMode,
         attempt,
-        expectedRevision
+        expectedRevision,
+        mutationFaultInjector
       );
     } catch (error) {
       if (
@@ -165,18 +188,23 @@ async function editNoteFromJsonAttempt(
   patchData: Record<string, unknown>,
   jsonMode: boolean,
   attempt: number,
-  expectedRevision: string | undefined
+  expectedRevision: string | undefined,
+  mutationFaultInjector: MutationFaultInjector | undefined
 ): Promise<EditResult> {
 
   // Parse existing note
+  await injectMutationFault(mutationFaultInjector, 'before', 'source-read');
   const { frontmatter, body, raw } = await parseNote(filePath);
+  await injectMutationFault(mutationFaultInjector, 'after', 'source-read');
 
   if (expectedRevision !== undefined) {
+    await injectMutationFault(mutationFaultInjector, 'before', 'expected-revision-check');
     assertExpectedRevision(expectedRevision, raw);
+    await injectMutationFault(mutationFaultInjector, 'after', 'expected-revision-check');
   }
 
   // Resolve type path from existing frontmatter
-  const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
   if (!typePath) {
     const error = 'Could not determine note type from frontmatter';
     if (jsonMode) {
@@ -186,7 +214,7 @@ async function editNoteFromJsonAttempt(
     throw new Error(error);
   }
 
-  const typeDef = getTypeDefByPath(schema, typePath);
+  const typeDef = getType(schema, typePath);
   if (!typeDef) {
     const error = `Unknown type path: ${typePath}`;
     if (jsonMode) {
@@ -359,11 +387,34 @@ async function editNoteFromJsonAttempt(
     }
   }
 
+  // A semantic no-op must not pass through the YAML serializer. Rewriting an
+  // unchanged parsed document would still alter source bytes such as quote
+  // style and frontmatter key order. Keep the normal guarded-read semantics:
+  // wait at the commit barrier, acquire the source lock, and confirm that the
+  // exact bytes we observed are still current before returning their revision.
+  if (isDeepStrictEqual(resolvedFrontmatter, frontmatter)) {
+    await waitForEditCommitBarrier(attempt, filePath);
+    await injectMutationFault(mutationFaultInjector, 'before', 'lock-acquisition');
+    const revision = await withLineageMutationLocks(vaultDir, [filePath], async () => {
+      await injectMutationFault(mutationFaultInjector, 'after', 'lock-acquisition');
+      if (expectedRevision !== undefined) {
+        await injectMutationFault(mutationFaultInjector, 'before', 'expected-revision-check');
+        assertExpectedRevision(expectedRevision, await readFile(filePath, 'utf-8'));
+        await injectMutationFault(mutationFaultInjector, 'after', 'expected-revision-check');
+      }
+      await assertNoteBytesUnchanged(filePath, raw, attempt);
+      return noteRevision(raw);
+    });
+    return { updatedFields, path: filePath, revision };
+  }
+
   // Get field order
-  const fieldOrder = getFrontmatterOrder(typeDef);
+  const fieldOrder = typeDef.fieldOrder;
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(resolvedFrontmatter);
 
+  await injectMutationFault(mutationFaultInjector, 'before', 'guard-evaluation');
   await assertTransitionGuards(schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter);
+  await injectMutationFault(mutationFaultInjector, 'after', 'guard-evaluation');
   const guardTargetPaths = await transitionGuardTargetPaths(
     schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter
   );
@@ -373,20 +424,27 @@ async function editNoteFromJsonAttempt(
 
   await waitForEditCommitBarrier(attempt, filePath);
 
+  await injectMutationFault(mutationFaultInjector, 'before', 'lock-acquisition');
   const revision = await withLineageMutationLocks(vaultDir, [filePath, ...guardTargetPaths, ...transitionEffectTargetPaths(transitionEffects)], async () => {
+    await injectMutationFault(mutationFaultInjector, 'after', 'lock-acquisition');
     if (expectedRevision !== undefined) {
       // Re-read while holding the shared mutation lock, closing the
       // validation-to-write race with other Bowerbird writers.
+      await injectMutationFault(mutationFaultInjector, 'before', 'expected-revision-check');
       assertExpectedRevision(expectedRevision, await readFile(filePath, 'utf-8'));
+      await injectMutationFault(mutationFaultInjector, 'after', 'expected-revision-check');
     }
     await assertNoteBytesUnchanged(filePath, raw, attempt);
     for (const effect of transitionEffects) await assertNoteBytesUnchanged(effect.path, effect.raw, attempt);
     // Relation state can change after validation. Re-evaluate immediately
     // before the source write while its mutation lock is held.
+    await injectMutationFault(mutationFaultInjector, 'before', 'guard-evaluation');
     await assertTransitionGuards(schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter);
+    await injectMutationFault(mutationFaultInjector, 'after', 'guard-evaluation');
 
     // Recurrence prepare, predecessor write, and successor/back-link commit are
     // one guarded commit phase. A retry always re-prepares from fresh bytes.
+    await injectMutationFault(mutationFaultInjector, 'before', 'recurrence');
     const fastPathPlan = await prepareRecurrenceFastPath(
       schema,
       vaultDir,
@@ -396,24 +454,32 @@ async function editNoteFromJsonAttempt(
       resolvedFrontmatter,
       body
     );
-    await writeNote(filePath, resolvedFrontmatter, body, orderedFields);
-    const writtenSource = await readFile(filePath, 'utf-8');
+    await injectMutationFault(mutationFaultInjector, 'after', 'recurrence');
+    let writtenSource = '';
     let committedEffects;
     try {
+      await injectMutationFault(mutationFaultInjector, 'before', 'source-write');
+      await writeNote(filePath, resolvedFrontmatter, body, orderedFields);
+      writtenSource = await readFile(filePath, 'utf-8');
+      await injectMutationFault(mutationFaultInjector, 'after', 'source-write');
+      await injectMutationFault(mutationFaultInjector, 'before', 'related-effects');
       committedEffects = await commitTransitionEffects(transitionEffects);
+      await injectMutationFault(mutationFaultInjector, 'after', 'related-effects');
+      await injectMutationFault(mutationFaultInjector, 'before', 'recurrence');
       await commitRecurrenceFastPath(schema, vaultDir, fastPathPlan);
+      await injectMutationFault(mutationFaultInjector, 'after', 'recurrence');
+      return noteRevision(await readFile(filePath, 'utf-8'));
     } catch (error) {
       // Restore only the exact source bytes this invocation wrote. A newer
       // writer wins; it must never be erased by our compensating rollback.
+      await injectMutationFault(mutationFaultInjector, 'before', 'compensation');
       if (await readFile(filePath, 'utf-8').catch(() => '') === writtenSource) {
         await writeFileAtomic(filePath, raw);
       }
       if (committedEffects) await rollbackTransitionEffects(committedEffects);
+      await injectMutationFault(mutationFaultInjector, 'after', 'compensation');
       throw error;
     }
-    // Return the revision of the final bytes produced by this guarded commit
-    // while the shared Bowerbird mutation lock still excludes another writer.
-    return noteRevision(await readFile(filePath, 'utf-8'));
   });
 
   return {
@@ -421,6 +487,14 @@ async function editNoteFromJsonAttempt(
     path: filePath,
     revision,
   };
+}
+
+async function injectMutationFault(
+  injector: MutationFaultInjector | undefined,
+  phase: 'before' | 'after',
+  point: MutationFaultPoint
+): Promise<void> {
+  await injector?.[phase]?.(point);
 }
 
 // ============================================================================
@@ -449,7 +523,7 @@ export async function editNoteInteractive(
   printInfo(`\n=== Editing: ${fileName} ===`);
 
   // Resolve type path from frontmatter
-  const typePath = resolveTypePathFromFrontmatter(schema, frontmatter);
+  const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
   if (!typePath) {
     printWarning('Warning: Unknown type, showing raw frontmatter edit');
     console.log('Current frontmatter:');
@@ -457,7 +531,7 @@ export async function editNoteInteractive(
     return;
   }
 
-  const typeDef = getTypeDefByPath(schema, typePath);
+  const typeDef = getType(schema, typePath);
   if (!typeDef) {
     printWarning(`Warning: Unknown type path: ${typePath}`);
     return;
@@ -474,7 +548,7 @@ export async function editNoteInteractive(
     )
   );
   const fields = getFieldsForType(schema, typePath);
-  const fieldOrder = getFrontmatterOrder(typeDef);
+  const fieldOrder = typeDef.fieldOrder;
 
   // Determine actual field order
   const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(fields);

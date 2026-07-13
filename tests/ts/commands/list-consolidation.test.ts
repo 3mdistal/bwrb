@@ -40,14 +40,16 @@ describe('list as the canonical query/search/open surface', () => {
     const writeRegressionNote = async (
       relativePath: string,
       status: string,
-      aliases: string[] = []
+      aliases: string[] = [],
+      name?: string
     ): Promise<void> => {
       const path = join(vaultDir, relativePath);
       await mkdir(join(path, '..'), { recursive: true });
       const aliasYaml = aliases.length > 0
         ? `aliases:\n${aliases.map(alias => `  - ${alias}`).join('\n')}\n`
         : '';
-      await writeFile(path, `---\ntype: idea\nstatus: ${status}\n${aliasYaml}---\n`);
+      const nameYaml = name ? `name: ${name}\n` : '';
+      await writeFile(path, `---\ntype: idea\nstatus: ${status}\n${nameYaml}${aliasYaml}---\n`);
     };
 
     await Promise.all([
@@ -59,6 +61,9 @@ describe('list as the canonical query/search/open surface', () => {
       writeRegressionNote('Other/Hidden Alias Neighbor.md', 'backlog'),
       writeRegressionNote('Duplicates/One/Duplicate.md', 'raw'),
       writeRegressionNote('Duplicates/Two/Duplicate.md', 'raw'),
+      writeRegressionNote('Regression/machine-slug.md', 'raw', [], 'Human Facing Name'),
+      writeRegressionNote('Duplicates/One/named-one.md', 'raw', [], 'Shared Frontmatter Name'),
+      writeRegressionNote('Duplicates/Two/named-two.md', 'raw', [], 'Shared Frontmatter Name'),
     ]);
   });
 
@@ -77,6 +82,33 @@ describe('list as the canonical query/search/open surface', () => {
     expect(byPath.stdout.trim()).toBe('Ideas/Sample Idea.md');
     expect(byAlias.exitCode).toBe(0);
     expect(byAlias.stdout.trim()).toBe('Sample Idea');
+  });
+
+  it('resolves a unique frontmatter name without invoking a picker', async () => {
+    const paths = await runCLI([
+      'list', '--name', 'human facing name', '--output', 'paths',
+    ], vaultDir);
+    const opened = await runCLI([
+      'list', '--name', 'Human Facing Name', '--open', '--app', 'print',
+    ], vaultDir);
+
+    expect(paths.exitCode).toBe(0);
+    expect(paths.stdout.trim()).toBe('Regression/machine-slug.md');
+    expect(opened.exitCode).toBe(0);
+    expect(opened.stdout.trim()).toBe(join(vaultDir, 'Regression/machine-slug.md'));
+  });
+
+  it('preserves ambiguity for duplicate frontmatter names', async () => {
+    const result = await runCLI([
+      'list', '--name', 'Shared Frontmatter Name', '--open', '--app', 'print',
+      '--picker', 'none',
+    ], vaultDir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Ambiguous query: 2 matches found');
+    expect(result.stderr).toContain('Duplicates/One/named-one.md');
+    expect(result.stderr).toContain('Duplicates/Two/named-two.md');
   });
 
   it('composes type and where targeting with name and fuzzy modes', async () => {
@@ -232,24 +264,17 @@ describe('list as the canonical query/search/open surface', () => {
     expect(json.data.some(result => result.path === 'Ideas/Sample Idea.md')).toBe(true);
   });
 
-  it('excludes frontmatter-only terms in list rows and canonical/compatibility match reports', async () => {
+  it('excludes frontmatter-only terms in list rows and detailed match reports', async () => {
     const filtered = await runCLI([
       'list', '--body', '11111111-1111-4111-8111-111111111111', '--output', 'json',
     ], vaultDir);
     const canonical = await runCLI([
       'list', '--body', '11111111-1111-4111-8111-111111111111', '--matches', '--output', 'json',
     ], vaultDir);
-    const compatibility = await runCLI([
-      'search', '11111111-1111-4111-8111-111111111111', '--body', '--output', 'json',
-    ], vaultDir);
-
     expect(filtered.exitCode).toBe(0);
     expect(JSON.parse(filtered.stdout)).toEqual([]);
-    for (const result of [canonical, compatibility]) {
-      expect(result.exitCode).toBe(0);
-      expect(JSON.parse(result.stdout)).toMatchObject({ success: true, data: [], totalMatches: 0 });
-    }
-    expect(compatibility.stderr).toContain('bwrb search is deprecated');
+    expect(canonical.exitCode).toBe(0);
+    expect(JSON.parse(canonical.stdout)).toMatchObject({ success: true, data: [], totalMatches: 0 });
   });
 
   it('prints full Markdown content through list output', async () => {
@@ -279,98 +304,15 @@ describe('list as the canonical query/search/open surface', () => {
     expect(opened.stdout).toContain('Sample Idea.md');
   });
 
-  it('keeps search and open callable with their established stdout contracts', async () => {
-    const canonicalSearch = await runCLI([
-      'list', '--name', 'Sample Idea', '--output', 'link', '--picker', 'none',
-    ], vaultDir);
-    const compatibilitySearch = await runCLI([
-      'search', 'Sample Idea', '--output', 'link', '--picker', 'none',
-    ], vaultDir);
-    const canonicalOpen = await runCLI([
-      'list', '--name', 'Sample Idea', '--open', '--app', 'print', '--picker', 'none',
-    ], vaultDir);
-    const compatibilityOpen = await runCLI([
-      'open', 'Sample Idea', '--app', 'print', '--picker', 'none',
-    ], vaultDir);
-
-    expect(compatibilitySearch.exitCode).toBe(canonicalSearch.exitCode);
-    expect(compatibilitySearch.stdout).toBe(canonicalSearch.stdout);
-    expect(compatibilitySearch.stderr.split('\n')).toEqual([
-      'Warning: bwrb search is deprecated, use bwrb list --name <query> instead',
-    ]);
-    expect(compatibilityOpen.exitCode).toBe(canonicalOpen.exitCode);
-    expect(compatibilityOpen.stdout).toBe(canonicalOpen.stdout);
-    expect(compatibilityOpen.stderr.split('\n')).toEqual([
-      'Warning: bwrb open is deprecated, use bwrb list --open instead',
-    ]);
-  });
-
-  it('keeps compatibility JSON stdout parseable', async () => {
-    const search = await runCLI([
-      'search', 'Sample Idea', '--output', 'json', '--picker', 'none',
-    ], vaultDir);
-    const open = await runCLI([
-      'open', 'Sample Idea', '--app', 'print', '--output', 'json', '--picker', 'none',
-    ], vaultDir);
-
-    expect(search.exitCode).toBe(0);
-    expect(JSON.parse(search.stdout)).toMatchObject({ success: true });
-    expect(search.stderr.split('\n')).toHaveLength(1);
-    expect(search.stderr).toContain('bwrb search is deprecated');
-
-    expect(open.exitCode).toBe(0);
-    expect(JSON.parse(open.stdout)).toMatchObject({ success: true });
-    expect(open.stderr.split('\n')).toHaveLength(1);
-    expect(open.stderr).toContain('bwrb open is deprecated');
-  });
-
-  it('does not duplicate the command warning when a legacy search flag also warns', async () => {
-    const result = await runCLI([
-      'search', 'Sample Idea', '--wikilink', '--picker', 'none',
-    ], vaultDir);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe('[[Sample Idea]]');
-    expect(result.stderr.split('\n').filter(line => line.includes('bwrb search is deprecated'))).toHaveLength(1);
-    expect(result.stderr).toContain('--wikilink is deprecated, use --output link instead');
-  });
-
-  it('keeps search --edit --json as a clean structured patch flow', async () => {
-    const notePath = join(vaultDir, 'Ideas', 'Sample Idea.md');
-    const original = await readFile(notePath, 'utf-8');
-
-    try {
-      const result = await runCLI([
-        'search', 'Sample Idea', '--edit', '--json',
-        '{"status":"backlog"}', '--output', 'json', '--picker', 'none',
-      ], vaultDir);
-
-      expect(result.exitCode).toBe(0);
-      expect(JSON.parse(result.stdout)).toMatchObject({
-        success: true,
-        path: 'Ideas/Sample Idea.md',
-        updated: ['status'],
-      });
-      expect(result.stderr.split('\n')).toEqual([
-        'Warning: bwrb search is deprecated, use bwrb edit <target> --json <patch> instead',
-      ]);
-      expect(await readFile(notePath, 'utf-8')).toContain('status: backlog');
-    } finally {
-      await writeFile(notePath, original);
-    }
-  });
-
-  it('hides compatibility commands from root help but labels their own help', async () => {
+  it('removes search and open from root help and rejects them', async () => {
     const root = await runCLI(['--help']);
-    const searchHelp = await runCLI(['search', '--help']);
-    const openHelp = await runCLI(['open', '--help']);
+    const search = await runCLI(['search', 'Sample Idea'], vaultDir);
+    const open = await runCLI(['open', 'Sample Idea'], vaultDir);
 
     expect(extractHelpCommands(root.stdout)).not.toContain('search');
     expect(extractHelpCommands(root.stdout)).not.toContain('open');
-    expect(searchHelp.stdout).toContain('compatibility command; use list');
-    expect(openHelp.stdout).toContain('compatibility command; use list --open');
-    expect(searchHelp.stderr).toBe('');
-    expect(openHelp.stderr).toBe('');
+    expect(search.exitCode).not.toBe(0);
+    expect(open.exitCode).not.toBe(0);
   });
 
   it('rejects mode-specific flags instead of silently ignoring them', async () => {
