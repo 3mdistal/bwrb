@@ -65,6 +65,11 @@ export interface BuildNoteIndexOptions {
    * frontmatter metadata, then hydrate aliases on a miss.
    */
   includeAliases?: boolean;
+  /**
+   * Add frontmatter `name` values to the alternate lookup map. This is a
+   * compatibility surface for read-only list name search, not exact identity.
+   */
+  includeFrontmatterNamesAsAliases?: boolean;
 }
 
 // Re-export ManagedFile for convenience
@@ -136,7 +141,11 @@ export async function buildNoteIndex(
   };
 
   if (options.includeAliases !== false) {
-    await hydrateNoteIndexAliases(schema, index);
+    await hydrateNoteIndexAliases(
+      schema,
+      index,
+      options.includeFrontmatterNamesAsAliases ?? false
+    );
   }
 
   return index;
@@ -151,11 +160,13 @@ export async function buildNoteIndex(
  */
 export async function hydrateNoteIndexAliases(
   schema: LoadedSchema,
-  index: NoteIndex
+  index: NoteIndex,
+  includeFrontmatterNamesAsAliases: boolean = false
 ): Promise<void> {
   // Index entity aliases as additional resolution keys, so notes are findable by
-  // their declared aliases. Reuses the single parse pass from the vault snapshot;
-  // aliases only exist on schema-typed entities.
+  // their declared aliases. Read-only list search may opt frontmatter names into
+  // this same compatibility map. Reuses the single parse pass from the vault
+  // snapshot; aliases only exist on schema-typed entities.
   // Lowercased real-basename set so a real note wins over an alias even when they
   // differ only by case, consistent with the case-insensitive basename lookup in
   // resolveNoteQuery.
@@ -172,6 +183,18 @@ export async function hydrateNoteIndexAliases(
     if (!note.resolvedType || !note.frontmatter) continue;
     const file = index.byPath.get(note.relativePath);
     if (!file) continue;
+    if (includeFrontmatterNamesAsAliases) {
+      const frontmatterName = note.frontmatter.name;
+      if (
+        typeof frontmatterName === 'string' &&
+        frontmatterName.trim() !== '' &&
+        !basenamesLower.has(frontmatterName.toLowerCase())
+      ) {
+        const existing = byAlias.get(frontmatterName) || [];
+        existing.push(file);
+        byAlias.set(frontmatterName, existing);
+      }
+    }
     const aliases = getEntityAliases(schema, note.resolvedType, note.frontmatter);
     for (const alias of aliases) {
       // A real note name always wins over an alias of the same string

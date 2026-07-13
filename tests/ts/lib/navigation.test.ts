@@ -85,6 +85,24 @@ describe('Navigation', () => {
     expect(result.isAmbiguous).toBe(true);
   });
 
+  it('keeps frontmatter names out of exact identity unless read-only search opts in', async () => {
+    await writeFile(join(vaultDir, 'Ideas', 'machine-slug.md'), `---
+type: idea
+name: Display Identity Only
+status: raw
+---
+`);
+
+    const exactIndex = await buildNoteIndex(schema, vaultDir);
+    const searchIndex = await buildNoteIndex(schema, vaultDir, undefined, {
+      includeFrontmatterNamesAsAliases: true,
+    });
+
+    expect(resolveNoteQuery(exactIndex, 'Display Identity Only').exact).toBeNull();
+    expect(resolveNoteQuery(searchIndex, 'Display Identity Only').exact?.relativePath)
+      .toBe('Ideas/machine-slug.md');
+  });
+
   it('should handle ambiguous basenames', async () => {
     // Create a conflict
     // Ideas/Duplicate.md

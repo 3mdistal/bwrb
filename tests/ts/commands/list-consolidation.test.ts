@@ -40,14 +40,16 @@ describe('list as the canonical query/search/open surface', () => {
     const writeRegressionNote = async (
       relativePath: string,
       status: string,
-      aliases: string[] = []
+      aliases: string[] = [],
+      name?: string
     ): Promise<void> => {
       const path = join(vaultDir, relativePath);
       await mkdir(join(path, '..'), { recursive: true });
       const aliasYaml = aliases.length > 0
         ? `aliases:\n${aliases.map(alias => `  - ${alias}`).join('\n')}\n`
         : '';
-      await writeFile(path, `---\ntype: idea\nstatus: ${status}\n${aliasYaml}---\n`);
+      const nameYaml = name ? `name: ${name}\n` : '';
+      await writeFile(path, `---\ntype: idea\nstatus: ${status}\n${nameYaml}${aliasYaml}---\n`);
     };
 
     await Promise.all([
@@ -59,6 +61,9 @@ describe('list as the canonical query/search/open surface', () => {
       writeRegressionNote('Other/Hidden Alias Neighbor.md', 'backlog'),
       writeRegressionNote('Duplicates/One/Duplicate.md', 'raw'),
       writeRegressionNote('Duplicates/Two/Duplicate.md', 'raw'),
+      writeRegressionNote('Regression/machine-slug.md', 'raw', [], 'Human Facing Name'),
+      writeRegressionNote('Duplicates/One/named-one.md', 'raw', [], 'Shared Frontmatter Name'),
+      writeRegressionNote('Duplicates/Two/named-two.md', 'raw', [], 'Shared Frontmatter Name'),
     ]);
   });
 
@@ -77,6 +82,33 @@ describe('list as the canonical query/search/open surface', () => {
     expect(byPath.stdout.trim()).toBe('Ideas/Sample Idea.md');
     expect(byAlias.exitCode).toBe(0);
     expect(byAlias.stdout.trim()).toBe('Sample Idea');
+  });
+
+  it('resolves a unique frontmatter name without invoking a picker', async () => {
+    const paths = await runCLI([
+      'list', '--name', 'human facing name', '--output', 'paths',
+    ], vaultDir);
+    const opened = await runCLI([
+      'list', '--name', 'Human Facing Name', '--open', '--app', 'print',
+    ], vaultDir);
+
+    expect(paths.exitCode).toBe(0);
+    expect(paths.stdout.trim()).toBe('Regression/machine-slug.md');
+    expect(opened.exitCode).toBe(0);
+    expect(opened.stdout.trim()).toBe(join(vaultDir, 'Regression/machine-slug.md'));
+  });
+
+  it('preserves ambiguity for duplicate frontmatter names', async () => {
+    const result = await runCLI([
+      'list', '--name', 'Shared Frontmatter Name', '--open', '--app', 'print',
+      '--picker', 'none',
+    ], vaultDir);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Ambiguous query: 2 matches found');
+    expect(result.stderr).toContain('Duplicates/One/named-one.md');
+    expect(result.stderr).toContain('Duplicates/Two/named-two.md');
   });
 
   it('composes type and where targeting with name and fuzzy modes', async () => {

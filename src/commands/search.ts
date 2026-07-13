@@ -588,9 +588,12 @@ async function filterByFrontmatter(
 async function buildScopedSearchIndex(
   schema: import('../types/schema.js').LoadedSchema,
   vaultDir: string,
-  options: Pick<SearchOptions, 'type' | 'path' | 'where'>
+  options: Pick<SearchOptions, 'type' | 'path' | 'where'>,
+  includeFrontmatterNames: boolean = false
 ): Promise<NoteIndex> {
-  const index = await buildNoteIndex(schema, vaultDir, options.path);
+  const index = await buildNoteIndex(schema, vaultDir, options.path, {
+    includeFrontmatterNamesAsAliases: includeFrontmatterNames,
+  });
   if (!options.type && !options.where?.length) return index;
 
   if (options.type && !getType(schema, options.type)) {
@@ -898,8 +901,9 @@ async function handleNameSearch(
   // Build note index, scoping to --path when provided. Name-mode --path is
   // honored (not ignored) for consistency with content search: the same
   // filterByPath glob normalization narrows the candidate set before every
-  // resolution step (path/basename/alias/fuzzy) runs against it (#705).
-  const index = await buildScopedSearchIndex(schema, vaultDir, options);
+  // resolution step (path/basename/frontmatter name/alias/fuzzy) runs against
+  // it (#705).
+  const index = await buildScopedSearchIndex(schema, vaultDir, options, true);
 
   // Resolve exact intent against the full vault before using the scoped index.
   // Otherwise an exact path/name/alias removed by --type/--path/--where becomes
@@ -907,7 +911,9 @@ async function handleNameSearch(
   // to an unrelated fuzzy candidate. Filters are constraints, not permission to
   // improvise a replacement note.
   if (query && (options.type || options.path || options.where?.length)) {
-    const fullIndex = await buildNoteIndex(schema, vaultDir);
+    const fullIndex = await buildNoteIndex(schema, vaultDir, undefined, {
+      includeFrontmatterNamesAsAliases: true,
+    });
     const fullExact = resolveExactNoteQuery(fullIndex, query);
     const exactFiles = fullExact.exact
       ? [fullExact.exact]
