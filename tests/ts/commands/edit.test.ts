@@ -694,6 +694,38 @@ console.log("code block");
       expect(updatedContent).toContain('deadline: 2025-01-01');
     });
 
+    it('should replace the body from a raw string _body JSON patch', async () => {
+      const path = join(vaultDir, 'Ideas/Sample Idea.md');
+      const revision = noteRevision(await readFile(path, 'utf-8'));
+      const result = await runCLI(
+        ['edit', 'Ideas/Sample Idea.md', '--expected-revision', revision, '--json', JSON.stringify({ status: 'backlog', _body: 'A cleaned reading surface.\n\n- Speaker A: Hello.' })],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.updated).toContain('_body');
+      const content = await readFile(path, 'utf-8');
+      expect(content).toContain('status: backlog');
+      expect(content).toContain('A cleaned reading surface.');
+      expect(content).toContain('- Speaker A: Hello.');
+    });
+
+    it('should replace the body from schema section _body JSON input', async () => {
+      const result = await runCLI(
+        ['edit', 'Objectives/Tasks/Sample Task.md', '--json', JSON.stringify({ _body: { Steps: ['One', 'Two'], Notes: 'Cleaned notes' } })],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const content = await readFile(join(vaultDir, 'Objectives/Tasks/Sample Task.md'), 'utf-8');
+      expect(content).toContain('## Steps');
+      expect(content).toContain('One');
+      expect(content).toContain('Two');
+      expect(content).toContain('## Notes');
+      expect(content).toContain('Cleaned notes');
+    });
+
     it('should preserve empty body', async () => {
       // Create file with minimal body
       const testFilePath = join(vaultDir, 'Ideas/Minimal Body.md');

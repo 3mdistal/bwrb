@@ -144,9 +144,15 @@ Examples:
 
   # Non-interactive JSON mode (scripting)
   bwrb edit "My Task" --json '{"status":"done"}'
+  bwrb edit "My Task" --json '{"_body":"A replacement Markdown body."}'
+  bwrb edit "My Task" --json '{"_body":{"Steps":["One","Two"]}}'
   bwrb edit "My Task" --json '{"status":"done"}' --output json
   bwrb edit "My Task" --json '{"status":"done"}' --output text
   bwrb edit -t task --where "status == 'active'" "Deploy" --json '{"priority":"high"}'
+
+Body replacement (JSON mode):
+  The _body field replaces the current body atomically. It accepts a raw Markdown
+  string or section names as keys, with string or string[] values.
 
   # Edit and open
   bwrb edit "My Note" --open                # Open the note after editing
