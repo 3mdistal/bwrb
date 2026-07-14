@@ -28,6 +28,7 @@ are part of the compatibility contract:
 | Workflow | Success JSON |
 | --- | --- |
 | Normal `list --output json` | Raw array of note objects |
+| `list --receipt --output json` | Receipt with applied selectors/settings, pre-limit matched count, returned count, `truncated`, and `data` rows |
 | `list --count --output json` | Raw `{ count }` object |
 | Canonical name/fuzzy modes | `{ success: true, data: [...] }` |
 | Detailed body matches | `{ success: true, data: [...], totalMatches, truncated }` |
@@ -37,6 +38,12 @@ are part of the compatibility contract:
 
 Do not wrap a legacy raw success shape merely to make the prose look uniform.
 That would be a product/API change, not a documentation correction.
+
+`--receipt` is an explicit JSON-only opt-in for normal filtered-list output. It
+preserves the raw array when omitted and is incompatible with `--count`,
+`--open`, lineage, and name/fuzzy/detailed-match modes. Typed queries validate
+all field references against the selected schema type; queries without
+`--type` remain permissive.
 
 ## Error contract
 

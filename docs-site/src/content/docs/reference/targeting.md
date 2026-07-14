@@ -65,7 +65,7 @@ bwrb audit --where "isEmpty(tags)"
 - System fields are always available: `name` (falls back to filename) and `id`.
 
 **Type-checking behavior:**
-- With `--type`: strict validation (error on unknown fields and invalid select values)
+- With `--type`: every field reference is validated against the type's schema, including function arguments such as the relation field passed to `under()`; unknown fields and invalid select values are errors
 - Without `--type`: unknown fields are permissive (no unknown-field validation)
 - In all modes: invalid expression syntax and runtime expression errors are hard errors
 

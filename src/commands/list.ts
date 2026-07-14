@@ -130,6 +130,7 @@ interface ListCommandOptions {
   lineage?: string;
   limit?: string;
   count?: boolean;
+  receipt?: boolean;
   sort?: string;
   desc?: boolean;
   output?: string;
@@ -171,6 +172,7 @@ function validateLineageMode(
   if (options.desc === true) conflicts.push('--desc');
   if (options.limit !== undefined) conflicts.push('--limit');
   if (options.count === true) conflicts.push('--count');
+  if (options.receipt === true) conflicts.push('--receipt');
   if (options.depth !== undefined) conflicts.push('--depth');
   if (options.open === true) conflicts.push('--open');
   if (options.app !== undefined) conflicts.push('--app');
@@ -223,8 +225,8 @@ function validateCanonicalSearchMode(
   if (hasCanonicalSearchMode(options) && (positional !== undefined || mode !== undefined)) {
     return 'Search modes do not accept positional filters or app modes; use targeting flags and --app instead.';
   }
-  if (hasCanonicalSearchMode(options) && (options.fields || options.count || options.sort || options.desc || options.depth || options.saveAs || options.force)) {
-    return '--name, --fuzzy, and --matches cannot be combined with table, hierarchy, sort, count, or dashboard options.';
+  if (hasCanonicalSearchMode(options) && (options.fields || options.count || options.receipt || options.sort || options.desc || options.depth || options.saveAs || options.force)) {
+    return '--name, --fuzzy, and --matches cannot be combined with table, hierarchy, sort, count, receipt, or dashboard options.';
   }
   if (hasCanonicalSearchMode(options) && options.id) {
     return '--id cannot be combined with --name, --fuzzy, or --matches; use --id with normal list targeting.';
@@ -536,6 +538,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--desc', 'Sort descending (requires --sort)')
   .option('--limit <n>', 'Limit displayed results (never narrows --name selection)')
   .option('--count', 'Print only the number of matching notes')
+  .option('--receipt', 'Return a JSON receipt with applied query settings and result cardinality (requires --output json)')
   .option('--output <format>', 'Output format: text (default), paths, tree, link, content, json')
   // Open options
   .option('-o, --open', 'Open the first result (or pick from results interactively)')
@@ -558,6 +561,26 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       } else {
         console.error(`error: ${excessError}`);
       }
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+
+    if (options.receipt && options.output !== 'json') {
+      printError('--receipt requires --output json.');
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+
+    if (options.receipt && options.count) {
+      printJson(jsonError('--receipt cannot be combined with --count.'));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+
+    if (options.receipt && options.open) {
+      printJson(jsonError('--receipt cannot be combined with --open.'));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+
+    if (options.receipt && hasCanonicalSearchMode(options)) {
+      printJson(jsonError('--receipt is only available for normal filtered list mode; it cannot be combined with --name, --fuzzy, or --matches.'));
       process.exit(ExitCodes.VALIDATION_ERROR);
     }
 
@@ -733,6 +756,21 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
         preview: options.preview,
         depth,
         count: options.count,
+        receipt: options.receipt
+          ? {
+              query: {
+                type: targeting.type ?? null,
+                path: targeting.path ?? null,
+                where: targeting.where ?? [],
+                body: targeting.body ?? null,
+                id: targeting.id ?? null,
+                sort: options.sort ?? null,
+                desc: options.desc === true,
+                limit: limit ?? null,
+                fields: fields ?? null,
+              },
+            }
+          : undefined,
         sortField: options.sort,
         sortDesc: options.desc,
         ...(limit !== undefined && { limit }),
@@ -804,6 +842,7 @@ export interface ListOptions {
   fields?: string[] | undefined;
   limit?: number | undefined;
   count?: boolean | undefined;
+  receipt?: QueryReceiptContext | undefined;
   sortField?: string | undefined;
   sortDesc?: boolean | undefined;
   // Open options
@@ -812,6 +851,24 @@ export interface ListOptions {
   pickerMode?: string | undefined;
   preview?: boolean | undefined;
   depth?: number | undefined;
+}
+
+export interface QueryReceiptContext {
+  query: {
+    type: string | null;
+    path: string | null;
+    where: string[];
+    body: string | null;
+    id: string | null;
+    sort: string | null;
+    desc: boolean;
+    limit: number | null;
+    fields: string[] | null;
+  };
+  dashboard?: {
+    name: string;
+    definition: DashboardDefinition;
+  };
 }
 
 /**
@@ -887,8 +944,8 @@ export async function listObjects(
     filteredFiles = filteredFiles.slice(0, options.limit);
   }
 
-  // Handle no results
-  if (filteredFiles.length === 0) {
+  // Preserve legacy empty JSON arrays unless an explicit receipt was requested.
+  if (filteredFiles.length === 0 && !options.receipt) {
     if (jsonMode) {
       console.log(JSON.stringify([], null, 2));
     }
@@ -994,7 +1051,17 @@ export async function listObjects(
 
         return selected;
       }));
-      console.log(JSON.stringify(jsonOutput, null, 2));
+      const output = options.receipt
+        ? {
+            ...(options.receipt.dashboard ? { dashboard: options.receipt.dashboard } : {}),
+            query: options.receipt.query,
+            matched: matchCount,
+            returned: jsonOutput.length,
+            truncated: jsonOutput.length < matchCount,
+            data: jsonOutput,
+          }
+        : jsonOutput;
+      console.log(JSON.stringify(output, null, 2));
       return;
     }
 

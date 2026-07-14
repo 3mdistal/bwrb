@@ -40,6 +40,7 @@ complete JSON value, but success shapes differ by workflow:
 | Workflow | Success shape |
 | --- | --- |
 | `list [filters] --output json` | Raw array of note objects with `_path`, `_name`, and frontmatter |
+| `list [filters] --receipt --output json` | Query receipt with selectors/settings, counts, `truncated`, and `data` rows |
 | `list --count --output json` | Raw `{ "count": number }` object |
 | `list --name ... --output json` | `{ "success": true, "data": [...] }` |
 | `list --fuzzy ... --output json` | `{ "success": true, "data": [...] }`, including scores and match metadata |
@@ -60,6 +61,10 @@ Normal list output is intentionally a raw array:
 ```bash
 bwrb list task --output json | jq -r '.[] | ._path'
 ```
+
+The opt-in receipt adds query metadata and limit accounting without changing
+the default array contract. It is incompatible with `--count`, `--open`,
+lineage, and name/fuzzy/detailed-match modes.
 
 Name and fuzzy resolution use a success envelope:
 
