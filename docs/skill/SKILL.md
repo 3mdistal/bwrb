@@ -278,6 +278,7 @@ bwrb list task --output json
 
 # Filter by frontmatter fields
 bwrb list task --where "status == 'active'" --output json
+bwrb list task --limit 10 --receipt --output json  # selectors, counts, and rows
 bwrb list task --where "priority == 'high' && status != 'done'" --output json
 
 # Include specific fields in output

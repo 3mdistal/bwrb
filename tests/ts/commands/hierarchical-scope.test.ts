@@ -215,14 +215,17 @@ describe('#554 hierarchical scope — contexts as notes + under()', () => {
     expect(derivable.stdout).toContain('Legacy double-entry.md');
 
     // Migration: drop the redundant field (dry-run first, then execute).
+    // Because `scope` is deliberately absent from the current task schema,
+    // target the legacy directory without a type boundary. Typed queries are
+    // strict; untyped migrations remain permissive for exactly this cleanup.
     const dryRun = await runCLI(
-      ['bulk', 'task', '--where', "!isEmpty(scope)", '--delete', 'scope'],
+      ['bulk', '--path', 'Tasks', '--where', "!isEmpty(scope)", '--delete', 'scope'],
       vaultDir
     );
     expect(dryRun.exitCode).toBe(0);
 
     const execute = await runCLI(
-      ['bulk', 'task', '--where', "!isEmpty(scope)", '--delete', 'scope', '--execute'],
+      ['bulk', '--path', 'Tasks', '--where', "!isEmpty(scope)", '--delete', 'scope', '--execute'],
       vaultDir
     );
     expect(execute.exitCode).toBe(0);
@@ -230,9 +233,10 @@ describe('#554 hierarchical scope — contexts as notes + under()', () => {
     // After migration: `scope` is gone, but the note is STILL reachable from
     // its domain via the context tree. Zero information lost.
     const afterScope = await runCLI(
-      ['list', 'task', '--where', "!isEmpty(scope)", '--output', 'paths'],
+      ['list', '--path', 'Tasks', '--where', "!isEmpty(scope)", '--output', 'paths'],
       vaultDir
     );
+    expect(afterScope.exitCode).toBe(0);
     expect(afterScope.stdout).not.toContain('Legacy double-entry.md');
 
     const afterDomain = await runCLI(
