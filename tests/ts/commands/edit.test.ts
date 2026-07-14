@@ -711,6 +711,24 @@ console.log("code block");
       expect(content).toContain('- Speaker A: Hello.');
     });
 
+    it('should replace the body from a file-backed patch too large for a command-line argument', async () => {
+      const path = join(vaultDir, 'Ideas/Sample Idea.md');
+      const revision = noteRevision(await readFile(path, 'utf-8'));
+      const payloadPath = join(vaultDir, '.bwrb', 'large-edit.json');
+      const body = 'large-edit-marker\n'.repeat(20_000);
+      await writeFile(payloadPath, JSON.stringify({ _body: body }), 'utf-8');
+
+      const result = await runCLI(
+        ['edit', 'Ideas/Sample Idea.md', '--expected-revision', revision, '--json-file', payloadPath],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const content = await readFile(path, 'utf-8');
+      expect(content).toContain('large-edit-marker');
+      expect(content.length).toBeGreaterThan(300_000);
+    });
+
     it('should replace the body from schema section _body JSON input', async () => {
       const result = await runCLI(
         ['edit', 'Objectives/Tasks/Sample Task.md', '--json', JSON.stringify({ _body: { Steps: ['One', 'Two'], Notes: 'Cleaned notes' } })],

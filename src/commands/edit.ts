@@ -48,6 +48,7 @@ interface EditOptions {
   id?: string;
   body?: string;
   json?: string;
+  jsonFile?: string;
   expectedRevision?: string;
   output?: string;
   open?: boolean;
@@ -57,7 +58,7 @@ interface EditOptions {
 function resolveEditJsonMode(options: EditOptions, globalOutput?: string): boolean {
   const requested = options.output ?? globalOutput;
   if (requested === undefined) {
-    return options.json !== undefined;
+    return options.json !== undefined || options.jsonFile !== undefined;
   }
   return requested === 'json';
 }
@@ -123,6 +124,7 @@ export const editCommand = new Command('edit')
   .option('--id <uuid>', 'Filter by stable note id')
   .option('-b, --body <pattern>', 'Filter by body content')
   .option('--json <patch>', 'Non-interactive patch/merge mode')
+  .option('--json-file <path>', 'Read the non-interactive JSON patch from a file (avoids command-line size limits)')
   .option('--expected-revision <revision>', 'Require this opaque revision when using --json')
   .option('--output <format>', 'Output format: text or json (default: json with --json)')
   .option('-o, --open', 'Open the note in Obsidian after editing')
@@ -144,6 +146,7 @@ Examples:
 
   # Non-interactive JSON mode (scripting)
   bwrb edit "My Task" --json '{"status":"done"}'
+  bwrb edit "My Task" --json-file /secure/path/task-patch.json
   bwrb edit "My Task" --json '{"_body":"A replacement Markdown body."}'
   bwrb edit "My Task" --json '{"_body":{"Steps":["One","Two"]}}'
   bwrb edit "My Task" --json '{"status":"done"}' --output json
@@ -177,7 +180,7 @@ Precedence (for --open app mode):
   // typo, and silently swallowing it (commander's default) hides the mistake.
   .allowExcessArguments(false)
   .action(async (query: string | undefined, mode: string | undefined, options: EditOptions, cmd: Command) => {
-    const patchMode = options.json !== undefined;
+    const patchMode = options.json !== undefined || options.jsonFile !== undefined;
     // App-mode precedence: an explicit --app flag wins over the positional
     // [mode]; the positional is the convenience form. An invalid positional
     // mode surfaces via parseAppMode (inside resolveAppMode) as a clear error
@@ -187,6 +190,12 @@ Precedence (for --open app mode):
     let resolvedVaultDir: string | undefined;
     let selectedTargetPath: string | undefined;
     try {
+      if (options.json !== undefined && options.jsonFile !== undefined) {
+        throw new Error('--json and --json-file are mutually exclusive.');
+      }
+      const jsonPatch = options.json ?? (options.jsonFile !== undefined
+        ? await fs.readFile(options.jsonFile, 'utf8')
+        : undefined);
       const globalOpts = getGlobalOpts(cmd);
       jsonMode = resolveEditJsonMode(options, globalOpts.output);
       const outputFormat = options.output ?? globalOpts.output;
@@ -270,7 +279,7 @@ Precedence (for --open app mode):
         if (fileExists) {
           // It's a valid absolute path - use it directly.
           if (patchMode) {
-            const editResult = await editNoteFromJson(schema, vaultDir, query, options.json!, {
+            const editResult = await editNoteFromJson(schema, vaultDir, query, jsonPatch!, {
               jsonMode,
               ...(options.expectedRevision !== undefined
                 ? { expectedRevision: options.expectedRevision }
@@ -404,7 +413,7 @@ Precedence (for --open app mode):
       // Perform the edit
       if (patchMode) {
         // JSON patch mode: non-interactive patch with selectable output format
-        const editResult = await editNoteFromJson(schema, vaultDir, targetFile.path, options.json!, {
+        const editResult = await editNoteFromJson(schema, vaultDir, targetFile.path, jsonPatch!, {
           jsonMode,
           ...(options.expectedRevision !== undefined
             ? { expectedRevision: options.expectedRevision }

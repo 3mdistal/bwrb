@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { readFile } from 'fs/promises';
 import { relative } from 'path';
 import { loadSchema, getType, formatUnknownTypeError } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
@@ -40,6 +41,7 @@ export const newCommand = new Command('new')
   .option('-t, --type <type>', 'Type of note to create (alternative to positional argument)')
   .option('-o, --open', 'Open the note after creation (uses BWRB_DEFAULT_APP or system default)')
   .option('--json <frontmatter>', 'Create note non-interactively with JSON frontmatter')
+  .option('--json-file <path>', 'Read JSON frontmatter from a file (avoids command-line size limits)')
   .option('--template <name>', 'Use a specific template (use "default" for default.md)')
   // NOTE: Commander maps --no-template to options.template === false.
   .option('--no-template', 'Skip template selection, use schema only')
@@ -74,6 +76,7 @@ Instance scaffolding:
 
 Non-interactive (JSON) mode:
   bwrb new idea --json '{"name": "My Idea", "status": "raw"}'
+  bwrb new idea --json-file /secure/path/idea.json
   bwrb new task --json '{"name": "Fix bug", "status": "in-progress"}'
   bwrb new task --json '{"name": "Bug"}' --template bug-report
 
@@ -94,11 +97,17 @@ Template management:
   .action(async (positionalType: string | undefined, options: NewCommandOptions, cmd: Command) => {
     const forkMode = options.fork !== undefined;
     const forkJsonMode = forkMode && options.output === 'json';
-    const jsonMode = options.json !== undefined || forkJsonMode;
+    const jsonMode = options.json !== undefined || options.jsonFile !== undefined || forkJsonMode;
     const typePath = options.type ?? positionalType;
     let resolvedVaultDir: string | undefined;
 
     try {
+      if (options.json !== undefined && options.jsonFile !== undefined) {
+        throw new Error('--json and --json-file are mutually exclusive.');
+      }
+      const jsonInput = options.json ?? (options.jsonFile !== undefined
+        ? await readFile(options.jsonFile, 'utf8')
+        : undefined);
       const globalOpts = getGlobalOpts(cmd);
       configurePromptMode({
         forcedNonInteractive: globalOpts.nonInteractive === true,
@@ -177,7 +186,7 @@ Template management:
           schema,
           vaultDir,
           typePath,
-          options.json!,
+          jsonInput!,
           template,
           { owner: options.owner, standalone: options.standalone, noInstances: options.instances === false }
         );
@@ -368,6 +377,7 @@ function validateForkOptions(
     options.template !== undefined ? (options.template === false ? '--no-template' : '--template') : undefined,
     options.instances === false ? '--no-instances' : undefined,
     options.json !== undefined ? '--json' : undefined,
+    options.jsonFile !== undefined ? '--json-file' : undefined,
     options.owner !== undefined ? '--owner' : undefined,
     options.standalone ? '--standalone' : undefined,
   ].filter((flag): flag is string => Boolean(flag));
