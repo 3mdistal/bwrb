@@ -104,6 +104,36 @@ describe('new command', () => {
     });
   });
 
+  describe('file-backed JSON input', () => {
+    it('creates a note from a payload too large for a command-line argument', async () => {
+      const payloadPath = join(vaultDir, '.bwrb', 'large-create.json');
+      const body = 'large-payload-marker\n'.repeat(20_000);
+      await writeFile(payloadPath, JSON.stringify({ name: 'Large File Input', _body: body }), 'utf-8');
+
+      const result = await runCLI(
+        ['new', 'idea', '--json-file', payloadPath, '--no-template'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(ExitCodes.SUCCESS);
+      const output = JSON.parse(result.stdout);
+      const content = await readFile(join(vaultDir, output.path), 'utf-8');
+      expect(content).toContain('large-payload-marker');
+      expect(content.length).toBeGreaterThan(300_000);
+    });
+
+    it('rejects ambiguous direct and file-backed JSON input', async () => {
+      const payloadPath = join(vaultDir, '.bwrb', 'create.json');
+      await writeFile(payloadPath, '{"name":"From file"}', 'utf-8');
+      const result = await runCLI(
+        ['new', 'idea', '--json', '{"name":"Direct"}', '--json-file', payloadPath],
+        vaultDir
+      );
+      expect(result.exitCode).toBe(ExitCodes.VALIDATION_ERROR);
+      expect(result.stdout).toContain('mutually exclusive');
+    });
+  });
+
   describe('output directory resolution', () => {
     it('creates pooled notes in the computed hierarchy when output_dir is omitted', async () => {
       const schemaPath = join(vaultDir, '.bwrb', 'schema.json');

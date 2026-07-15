@@ -14,7 +14,7 @@ import {
   resolveTypeFromFrontmatter,
   getFieldsForType,
 } from './schema.js';
-import { parseNote, writeNote, writeFileAtomic, generateBodySections } from './frontmatter.js';
+import { parseNote, writeNote, writeFileAtomic, generateBodySections, generateBodyWithContent, parseBodyInput } from './frontmatter.js';
 import {
   isBodySectionPresent,
   flattenBodySections,
@@ -127,9 +127,9 @@ export async function editNoteFromJson(
   const { jsonMode = true, expectedRevision, mutationFaultInjector } = options;
 
   // Parse JSON input
-  let patchData: Record<string, unknown>;
+  let inputData: Record<string, unknown>;
   try {
-    patchData = JSON.parse(jsonInput) as Record<string, unknown>;
+    inputData = JSON.parse(jsonInput) as Record<string, unknown>;
   } catch (e) {
     const error = `Invalid JSON: ${(e as Error).message}`;
     if (jsonMode) {
@@ -137,6 +137,23 @@ export async function editNoteFromJson(
       process.exit(ExitCodes.VALIDATION_ERROR);
     }
     throw new Error(error);
+  }
+
+  const { _body: rawBodyInput, ...patchData } = inputData;
+  let bodyInput: string | Record<string, unknown> | undefined;
+  if (rawBodyInput !== undefined && rawBodyInput !== null) {
+    if (typeof rawBodyInput === 'string') {
+      bodyInput = rawBodyInput;
+    } else if (typeof rawBodyInput === 'object' && !Array.isArray(rawBodyInput)) {
+      bodyInput = rawBodyInput as Record<string, unknown>;
+    } else {
+      const error = '_body must be a string or an object with section names as keys';
+      if (jsonMode) {
+        printJson(jsonError(error));
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
+      throw new Error(error);
+    }
   }
 
   // Disallow editing system-managed fields
@@ -162,6 +179,7 @@ export async function editNoteFromJson(
         vaultDir,
         filePath,
         patchData,
+        bodyInput,
         jsonMode,
         attempt,
         expectedRevision,
@@ -186,6 +204,7 @@ async function editNoteFromJsonAttempt(
   vaultDir: string,
   filePath: string,
   patchData: Record<string, unknown>,
+  bodyInput: string | Record<string, unknown> | undefined,
   jsonMode: boolean,
   attempt: number,
   expectedRevision: string | undefined,
@@ -224,6 +243,12 @@ async function editNoteFromJsonAttempt(
     throw new Error(error);
   }
 
+  const resolvedBody = typeof bodyInput === 'string'
+    ? bodyInput
+    : bodyInput
+      ? generateBodyWithContent(typeDef.bodySections ?? [], parseBodyInput(bodyInput, typeDef.bodySections ?? []))
+      : body;
+
   const patchValidation = validateFrontmatter(schema, typePath, patchData, { strictFields: true });
   const unknownPatchErrors = patchValidation.errors.filter(error => error.type === 'unknown_field');
   if (unknownPatchErrors.length > 0) {
@@ -245,7 +270,10 @@ async function editNoteFromJsonAttempt(
 
   // Merge patch data into existing frontmatter
   const mergedFrontmatter = mergeFrontmatter(frontmatter, patchData);
-  const updatedFields = Object.keys(patchData).filter(k => patchData[k] !== undefined);
+  const updatedFields = [
+    ...Object.keys(patchData).filter(k => patchData[k] !== undefined),
+    ...(bodyInput !== undefined ? ['_body'] : []),
+  ];
 
   // Materialize defaults BEFORE validating/writing — but ONLY for the parity
   // case, SURGICALLY scoped to the keys the user blanked in THIS patch.
@@ -392,7 +420,7 @@ async function editNoteFromJsonAttempt(
   // style and frontmatter key order. Keep the normal guarded-read semantics:
   // wait at the commit barrier, acquire the source lock, and confirm that the
   // exact bytes we observed are still current before returning their revision.
-  if (isDeepStrictEqual(resolvedFrontmatter, frontmatter)) {
+  if (isDeepStrictEqual(resolvedFrontmatter, frontmatter) && resolvedBody === body) {
     await waitForEditCommitBarrier(attempt, filePath);
     await injectMutationFault(mutationFaultInjector, 'before', 'lock-acquisition');
     const revision = await withLineageMutationLocks(vaultDir, [filePath], async () => {
@@ -452,14 +480,14 @@ async function editNoteFromJsonAttempt(
       filePath,
       frontmatter,
       resolvedFrontmatter,
-      body
+      resolvedBody
     );
     await injectMutationFault(mutationFaultInjector, 'after', 'recurrence');
     let writtenSource = '';
     let committedEffects;
     try {
       await injectMutationFault(mutationFaultInjector, 'before', 'source-write');
-      await writeNote(filePath, resolvedFrontmatter, body, orderedFields);
+      await writeNote(filePath, resolvedFrontmatter, resolvedBody, orderedFields);
       writtenSource = await readFile(filePath, 'utf-8');
       await injectMutationFault(mutationFaultInjector, 'after', 'source-write');
       await injectMutationFault(mutationFaultInjector, 'before', 'related-effects');

@@ -5,6 +5,7 @@ import type { FilenameTransformation } from '../../lib/filename.js';
 export interface NewCommandOptions {
   open?: boolean;
   json?: string;
+  jsonFile?: string;
   type?: string;
   template?: string | boolean;
   noTemplate?: boolean;

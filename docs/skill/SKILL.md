@@ -450,9 +450,21 @@ bwrb edit --type task "Fix bug" --json '{"priority": "high"}'
 bwrb edit --type task --where "status == 'active'" "Deploy" --json '{"status": "done"}'
 ```
 
+Replace an existing note body in the same revision-guarded JSON edit:
+
+```bash
+bwrb edit --id "<uuid>" --expected-revision "<revision>" \
+  --json '{"_body":"A replacement Markdown body."}'
+bwrb edit --id "<uuid>" --expected-revision "<revision>" \
+  --json '{"_body":{"Steps":["One","Two"],"Notes":"Cleaned notes"}}'
+```
+
+`_body` is a body replacement, not frontmatter. A raw Markdown string replaces the body verbatim; an object
+uses the type's declared body-section names. Frontmatter and body are written under the same revision check.
+
 Notes:
 - If multiple notes share the same name, `bwrb edit` errors, lists candidate paths, and asks for an exact-path retry. Disambiguate with `--type`, `--path`, or a listed vault-relative path.
-- `bwrb new --json` rejects unknown frontmatter fields after merging template defaults. `bwrb edit --json` rejects unknown fields in the patch.
+- `bwrb new --json` rejects unknown frontmatter fields after merging template defaults. `bwrb edit --json` rejects unknown fields in the frontmatter patch while reserving `_body` for revision-safe body replacement.
 - A validated JSON patch with no semantic change preserves the note's exact bytes and raw-byte revision.
 - Edit commits coordinate with fork/adopt lineage writes. JSON patches make up to three total attempts (the initial attempt plus at most two retries) from fresh bytes; on exhaustion, retry only when JSON has numeric `code: 2`, `data.reason: "note-modified-concurrently"`, and `data.retryable: true`. Interactive edits do not replay answers gathered from stale values.
 
