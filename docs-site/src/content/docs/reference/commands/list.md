@@ -55,6 +55,7 @@ rejected.
 | `--desc` | Sort descending (requires `--sort`) |
 | `--limit <n>` | Limit displayed results; never narrows name-mode selection |
 | `--count` | Print only the number of matching notes |
+| `--receipt` | With `--output json`, return query metadata, counts, truncation, and data rows |
 | `-L, --depth <n>` | Limit tree depth |
 
 ### Actions
@@ -80,6 +81,12 @@ rejected.
 | `json` | Full JSON data |
 
 Name, fuzzy, and detailed-match modes use the established search JSON shapes.
+
+Use `--receipt --output json` for applied selectors/settings, pre-limit matched
+count, returned count, `truncated`, and rows under `data`. Without `--receipt`,
+normal filtered-list JSON remains the raw array. Receipt mode is JSON-only and
+incompatible with `--count`, `--open`, lineage, and name/fuzzy/detailed-match
+modes; it reports one execution's target set, not an atomic vault snapshot.
 Fuzzy JSON includes similarity scores and the field that matched; detailed body
 JSON includes line matches and context. Normal filtered-list JSON remains the
 array of note frontmatter objects used by existing scripts. Each row also has a

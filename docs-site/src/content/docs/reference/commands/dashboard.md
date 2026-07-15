@@ -26,6 +26,7 @@ bwrb dashboard inbox --output json   # Override output format
 | Option | Description |
 |--------|-------------|
 | `--output <format>` | Override output format: `text`, `paths`, `tree`, `link`, `json` |
+| `--receipt` | With JSON output, return dashboard identity, its saved definition, the applied query, counts, truncation, and data rows |
 
 ## Subcommands
 
@@ -82,6 +83,13 @@ bwrb dashboard edit my-tasks
 bwrb dashboard delete my-tasks --force
 bwrb dashboard delete my-tasks -o json --force
 ```
+
+## Query Receipts
+
+With `--receipt` and effective JSON output, dashboard output identifies the dashboard name
+and saved definition alongside the applied query, then reports matched and returned counts,
+`truncated`, and rows under `data`. It is JSON-only, incompatible with
+`--count`, and receipt metadata is not persisted when saving a dashboard.
 
 ## See Also
 

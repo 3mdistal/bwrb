@@ -241,6 +241,62 @@ describe('expression-validation', () => {
       expect(result.errors[0]!.suggestion).toBe('status');
     });
 
+    it.each([
+      'statsu < 3',
+      'statsu >= 3',
+      "statsu =~ 'raw'",
+      'status == statsu',
+    ])('rejects an unknown field in non-select comparison expressions: %s', expression => {
+      const result = validateWhereExpressions([expression], schema, 'task');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        field: 'statsu',
+        message: "Unknown field 'statsu' for type 'task'",
+        suggestion: 'status',
+      });
+    });
+
+    it.each([
+      "startsWith(statsu, 'r')",
+      "endsWith(statsu, 'w')",
+      "lower(statsu) == 'raw'",
+      'isEmpty(statsu)',
+    ])('rejects an unknown field in function arguments: %s', expression => {
+      const result = validateWhereExpressions([expression], schema, 'task');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        field: 'statsu',
+        message: "Unknown field 'statsu' for type 'task'",
+        suggestion: 'status',
+      });
+    });
+
+    it('preserves file metadata, function names, and this as non-frontmatter references', () => {
+      const result = validateWhereExpressions(
+        ["startsWith(file.name, 'Task') && file.folder == 'Tasks' && this == null && today() <= now()"],
+        schema,
+        'task'
+      );
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('validates normalized hyphenated fields inside function arguments', () => {
+      const result = validateWhereExpressions(
+        ['isEmpty(creation-date)'],
+        schema,
+        'task'
+      );
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
     it('validates multiple expressions', () => {
       const result = validateWhereExpressions(
         ["status == 'invalid1'", "status == 'invalid2'"],

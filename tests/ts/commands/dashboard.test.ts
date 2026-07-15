@@ -127,6 +127,91 @@ describe('dashboard command', () => {
       expect(result.stdout).toContain('Sample Idea');
       expect(result.stdout).toContain('Sample Task');
     });
+
+    it('returns a receipt with the saved dashboard definition and applied query', async () => {
+      await createDashboards({
+        dashboards: {
+          'limited-raw-ideas': {
+            type: 'idea',
+            where: ["status == 'raw'"],
+            fields: ['status'],
+            limit: 1,
+            output: 'json',
+          },
+        },
+      });
+
+      const result = await runCLI(['dashboard', 'limited-raw-ideas', '--receipt'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const receipt = JSON.parse(result.stdout);
+      expect(receipt).toMatchObject({
+        dashboard: {
+          name: 'limited-raw-ideas',
+          definition: {
+            type: 'idea',
+            where: ["status == 'raw'"],
+            fields: ['status'],
+            limit: 1,
+            output: 'json',
+          },
+        },
+        query: {
+          type: 'idea',
+          where: ["status == 'raw'"],
+          fields: ['status'],
+          limit: 1,
+        },
+        matched: 1,
+        returned: 1,
+        truncated: false,
+      });
+      expect(receipt.data[0]).toMatchObject({ _name: 'Sample Idea', status: 'raw' });
+    });
+
+    it('rejects receipt for a dashboard whose effective output is not JSON', async () => {
+      const result = await runCLI(['dashboard', 'all-ideas', '--receipt'], vaultDir);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain('--receipt requires JSON output');
+    });
+
+    it('returns a JSON error when receipt has no dashboard name', async () => {
+      const result = await runCLI(['dashboard', '--output', 'json', '--receipt'], vaultDir);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        success: false,
+        error: '--receipt requires a named dashboard.',
+      });
+      expect(result.stderr).toBe('');
+    });
+
+    it('allows an explicit JSON override for a receipt', async () => {
+      const result = await runCLI([
+        'dashboard', 'all-ideas', '--output', 'json', '--receipt',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const receipt = JSON.parse(result.stdout);
+      expect(receipt.dashboard.name).toBe('all-ideas');
+      expect(receipt.matched).toBe(2);
+      expect(receipt.returned).toBe(2);
+      expect(receipt.truncated).toBe(false);
+    });
+
+    it('rejects receipt for a count-only dashboard', async () => {
+      await createDashboards({
+        dashboards: {
+          'counted-ideas': { type: 'idea', count: true, output: 'json' },
+        },
+      });
+
+      const result = await runCLI(['dashboard', 'counted-ideas', '--receipt'], vaultDir);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(JSON.parse(result.stdout).error).toContain('--receipt cannot be combined');
+    });
   });
 
   describe('output format override', () => {

@@ -131,10 +131,8 @@ function extractUnderFieldRefs(expr: Expression): string[] {
     switch (node.type) {
       case 'BinaryExpression': {
         const binary = node as BinaryExpression;
-        if (binary.operator === '&&' || binary.operator === '||') {
-          walk(binary.left);
-          walk(binary.right);
-        }
+        walk(binary.left);
+        walk(binary.right);
         break;
       }
       case 'UnaryExpression': {
@@ -150,10 +148,93 @@ function extractUnderFieldRefs(expr: Expression): string[] {
           const fieldName = arg1 ? getFieldName(arg1) : null;
           if (fieldName) fields.push(fieldName);
         }
-        // `under` is never nested inside another call's args in practice, but
-        // walk any call arguments that are themselves logical/call expressions
-        // so a future `... && under(...)` inside a call still gets validated.
+        // Walk all arguments so nested `under()` calls remain visible.
         for (const arg of call.arguments) {
+          walk(arg);
+        }
+        break;
+      }
+      case 'MemberExpression': {
+        const member = node as MemberExpression;
+        walk(member.object);
+        if (member.computed) walk(member.property);
+        break;
+      }
+    }
+  }
+
+  walk(expr);
+  return fields;
+}
+
+/**
+ * Extract every frontmatter field reference from an expression AST.
+ *
+ * Bare identifiers resolve against frontmatter at evaluation time, except for
+ * the evaluator's special identifiers (`file`, `__frontmatter`, and boolean/
+ * null literals). `file.*` is metadata rather than frontmatter and must remain
+ * valid for every type. Function names are callees, not field references.
+ *
+ * `under`'s first argument is intentionally omitted here: it has a more
+ * specific validation path below which also confirms that the field is a
+ * relation. Its remaining arguments are still walked normally.
+ */
+function extractFrontmatterFieldRefs(expr: Expression): string[] {
+  const fields: string[] = [];
+
+  function walk(node: Expression): void {
+    switch (node.type) {
+      case 'Identifier': {
+        const name = (node as Identifier).name;
+        if (!isSpecialIdentifier(name)) {
+          fields.push(name);
+        }
+        break;
+      }
+
+      case 'MemberExpression': {
+        const member = node as MemberExpression;
+        const fieldName = getFieldName(member);
+        if (fieldName) {
+          fields.push(fieldName);
+          break;
+        }
+
+        // `file.*` is a documented metadata namespace, not a frontmatter
+        // field reference. Do not treat either `file` or its property as one.
+        if (member.object.type === 'Identifier' &&
+            (member.object as Identifier).name === 'file') {
+          break;
+        }
+
+        walk(member.object);
+        if (member.computed) walk(member.property);
+        break;
+      }
+
+      case 'BinaryExpression': {
+        const binary = node as BinaryExpression;
+        walk(binary.left);
+        walk(binary.right);
+        break;
+      }
+
+      case 'UnaryExpression':
+        walk((node as UnaryExpression).argument);
+        break;
+
+      case 'CallExpression': {
+        const call = node as CallExpression;
+        const callee = call.callee as Identifier;
+        const isUnder = callee?.type === 'Identifier' && callee.name === 'under';
+        for (const [index, arg] of call.arguments.entries()) {
+          // `under` validates its direct first field argument separately so it
+          // can enforce the relation-field contract without duplicate errors.
+          // Non-direct expressions still need a full walk for any fields they
+          // dereference (e.g. under(lower(statsu), ...)).
+          if (isUnder && index === 0 && getFieldName(arg) !== null) {
+            continue;
+          }
           walk(arg);
         }
         break;
@@ -163,6 +244,14 @@ function extractUnderFieldRefs(expr: Expression): string[] {
 
   walk(expr);
   return fields;
+}
+
+function isSpecialIdentifier(name: string): boolean {
+  return name === 'true' ||
+    name === 'false' ||
+    name === 'null' ||
+    name === 'file' ||
+    name === FRONTMATTER_IDENTIFIER;
 }
 
 /**
@@ -353,6 +442,34 @@ export function validateWhereExpressions(
         if (error) {
           errors.push(error);
         }
+      }
+
+      // Comparisons above retain their existing select-option behavior. This
+      // complete AST pass closes the gap for every other expression shape:
+      // relational/numeric operators, standalone truthiness checks, nested
+      // calls, and function arguments all dereference frontmatter too.
+      for (const fieldName of extractFrontmatterFieldRefs(expr)) {
+        if (allowedFields.has(fieldName)) continue;
+
+        // A comparison or `under()` reference may already have emitted the
+        // more specific historical error. Avoid turning one typo into two.
+        const alreadyReported = errors.some(error =>
+          error.expression === exprString &&
+          error.field === fieldName &&
+          error.message.startsWith('Unknown field')
+        );
+        if (alreadyReported) continue;
+
+        const fieldList = Array.from(allowedFields);
+        const suggestion = suggestFieldName(fieldName, fieldList);
+        errors.push({
+          expression: exprString,
+          field: fieldName,
+          value: '',
+          message: `Unknown field '${fieldName}' for type '${typeName}'`,
+          validOptions: fieldList,
+          ...(suggestion && { suggestion }),
+        });
       }
     } catch {
       // Parse errors are handled separately by the expression evaluator

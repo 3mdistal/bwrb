@@ -442,6 +442,100 @@ describe('list command', () => {
       expect(result.stdout.trim()).toBe('2');
     });
 
+    it('returns an opt-in JSON receipt from the same filtered result set', async () => {
+      const result = await runCLI([
+        'list', 'idea', '--where', "status == 'raw'", '--fields', 'status',
+        '--sort', '_name', '--limit', '1', '--output', 'json', '--receipt',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const receipt = JSON.parse(result.stdout);
+      expect(receipt).toMatchObject({
+        query: {
+          type: 'idea',
+          path: null,
+          where: ["status == 'raw'"],
+          body: null,
+          id: null,
+          sort: '_name',
+          desc: false,
+          limit: 1,
+          fields: ['status'],
+        },
+        matched: 1,
+        returned: 1,
+        truncated: false,
+      });
+      expect(receipt.data).toHaveLength(1);
+      expect(receipt.data[0]).toMatchObject({ _name: 'Sample Idea', status: 'raw' });
+    });
+
+    it('reports a truncated receipt without changing ordinary limited JSON', async () => {
+      const receiptResult = await runCLI([
+        'list', 'idea', '--limit', '1', '--output', 'json', '--receipt',
+      ], vaultDir);
+
+      expect(receiptResult.exitCode).toBe(0);
+      const receipt = JSON.parse(receiptResult.stdout);
+      expect(receipt.matched).toBe(2);
+      expect(receipt.returned).toBe(1);
+      expect(receipt.truncated).toBe(true);
+      expect(receipt.data).toHaveLength(1);
+
+      const ordinaryResult = await runCLI(['list', 'idea', '--limit', '1', '--output', 'json'], vaultDir);
+      expect(JSON.parse(ordinaryResult.stdout)).toHaveLength(1);
+    });
+
+    it('reports an unbounded receipt as complete', async () => {
+      const result = await runCLI([
+        'list', 'idea', '--output', 'json', '--receipt',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const receipt = JSON.parse(result.stdout);
+      expect(receipt.query.limit).toBeNull();
+      expect(receipt.matched).toBe(2);
+      expect(receipt.returned).toBe(2);
+      expect(receipt.truncated).toBe(false);
+      expect(receipt.data).toHaveLength(2);
+    });
+
+    it('returns an object receipt for empty JSON results', async () => {
+      const result = await runCLI([
+        'list', 'idea', '--where', "id == 'does-not-exist'", '--output', 'json', '--receipt',
+      ], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        matched: 0,
+        returned: 0,
+        truncated: false,
+        data: [],
+      });
+    });
+
+    it('rejects invalid receipt combinations', async () => {
+      const nonJson = await runCLI(['list', 'idea', '--receipt'], vaultDir);
+      expect(nonJson.exitCode).not.toBe(0);
+      expect(nonJson.stderr).toContain('--receipt requires --output json');
+
+      const count = await runCLI(['list', 'idea', '--count', '--output', 'json', '--receipt'], vaultDir);
+      expect(count.exitCode).not.toBe(0);
+      expect(JSON.parse(count.stdout).error).toContain('--receipt cannot be combined with --count');
+
+      const search = await runCLI(['list', '--name', 'Sample Idea', '--output', 'json', '--receipt'], vaultDir);
+      expect(search.exitCode).not.toBe(0);
+      expect(JSON.parse(search.stdout).error).toContain('cannot be combined');
+
+      const lineage = await runCLI(['list', '--lineage', 'Ideas/Sample Idea', '--output', 'json', '--receipt'], vaultDir);
+      expect(lineage.exitCode).not.toBe(0);
+      expect(JSON.parse(lineage.stdout).error).toContain('--lineage cannot be combined');
+
+      const open = await runCLI(['list', 'idea', '--open', '--output', 'json', '--receipt'], vaultDir);
+      expect(open.exitCode).not.toBe(0);
+      expect(JSON.parse(open.stdout).error).toContain('--receipt cannot be combined with --open');
+    });
+
     it('should reject invalid limit values', async () => {
       const result = await runCLI(['list', 'idea', '--limit', '0'], vaultDir);
 
@@ -1479,6 +1573,31 @@ status: done
       expect(dashboards.dashboards['json-tasks']).toEqual({
         type: 'task',
         output: 'json',
+      });
+    });
+
+    it('should not persist receipt mode when saving a dashboard', async () => {
+      const { join } = await import('path');
+
+      const result = await runCLI(
+        ['list', '--type', 'task', '--limit', '1', '--output', 'json', '--receipt', '--save-as', 'receipt-tasks'],
+        tempVaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        matched: 2,
+        returned: 1,
+        truncated: true,
+      });
+
+      const dashboardsPath = join(tempVaultDir, '.bwrb', 'dashboards.json');
+      const content = await import('fs/promises').then(fs => fs.readFile(dashboardsPath, 'utf-8'));
+      const dashboards = JSON.parse(content);
+      expect(dashboards.dashboards['receipt-tasks']).toEqual({
+        type: 'task',
+        output: 'json',
+        limit: 1,
       });
     });
 

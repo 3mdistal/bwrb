@@ -53,6 +53,7 @@ function resolveOutputFormat(format?: string): ListOutputFormat {
 
 interface DashboardRunOptions {
   output?: string;
+  receipt?: boolean;
 }
 
 interface DashboardListOptions {
@@ -63,6 +64,7 @@ export const dashboardCommand = new Command('dashboard')
   .description('Run or manage saved dashboard queries')
   .argument('[name]', 'Dashboard name to run')
   .option('--output <format>', 'Output format: text (default), paths, tree, link, json')
+  .option('--receipt', 'Return a JSON receipt with the dashboard definition and result cardinality')
   .enablePositionalOptions()
   .addHelpText('after', `
 A dashboard is a saved list query. Running a dashboard executes the saved
@@ -84,6 +86,15 @@ Examples:
   .action(async (name: string | undefined, options: DashboardRunOptions, cmd: Command) => {
     // If no name provided, show picker or run default dashboard
     if (!name) {
+      if (options.receipt) {
+        const error = '--receipt requires a named dashboard.';
+        if (options.output === 'json') {
+          printJson(jsonError(error));
+        } else {
+          printError(error);
+        }
+        process.exit(ExitCodes.VALIDATION_ERROR);
+      }
       await runDashboardPickerOrDefault(options, cmd);
       return;
     }
@@ -131,6 +142,16 @@ async function runDashboard(
       : resolveOutputFormat(dashboard.output);
     jsonMode = effectiveFormat === 'json';
 
+    if (options.receipt && !jsonMode) {
+      printError('--receipt requires JSON output. Use --output json or a dashboard with output: json.');
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+
+    if (options.receipt && dashboard.count) {
+      printJson(jsonError('--receipt cannot be combined with a dashboard configured with count: true.'));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+
     // 3. Load schema
     const schema = await loadSchema(vaultDir);
 
@@ -159,6 +180,25 @@ async function runDashboard(
       fields: dashboard.fields,
       limit: dashboard.limit,
       count: dashboard.count,
+      receipt: options.receipt
+        ? {
+            query: {
+              type: targeting.type ?? null,
+              path: targeting.path ?? null,
+              where: targeting.where ?? [],
+              body: targeting.body ?? null,
+              id: null,
+              sort: dashboard.sort ?? null,
+              desc: dashboard.desc === true,
+              limit: dashboard.limit ?? null,
+              fields: dashboard.fields ?? null,
+            },
+            dashboard: {
+              name,
+              definition: dashboard,
+            },
+          }
+        : undefined,
       sortField: dashboard.sort,
       sortDesc: dashboard.desc,
     };
