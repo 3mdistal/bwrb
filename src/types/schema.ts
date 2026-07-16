@@ -342,6 +342,34 @@ export const TransitionEffectSchema = z.object({
 });
 export type TransitionEffect = z.infer<typeof TransitionEffectSchema>;
 
+/**
+ * One deliberately narrow agent-attempt loop.
+ *
+ * The executable remains an invocation-time concern. This schema block only
+ * declares the evidence contract, deterministic acceptance rule, terminal
+ * workflow patch, and mandatory resource ceilings.
+ */
+export const AttemptLoopSchema = z.object({
+  attestation_type: z.string().min(1),
+  acceptance: z.object({
+    operator: z.enum(['gte', 'lte']),
+    threshold: z.number().finite(),
+  }),
+  limits: z.object({
+    max_iterations: z.number().int().min(1).max(100),
+    max_seconds: z.number().int().min(1).max(86_400),
+    max_tokens: z.number().int().min(1),
+  }),
+  terminal: z.object({
+    status_field: SchemaFieldNameSchema,
+    accepted_value: z.string().min(1),
+    failed_value: z.string().min(1),
+    stop_reason_field: SchemaFieldNameSchema,
+    run_id_field: SchemaFieldNameSchema,
+  }),
+});
+export type AttemptLoop = z.infer<typeof AttemptLoopSchema>;
+
 /** A type-local, explicit policy for records that have reached their end of life. */
 export const RetentionSchema = z.object({
   when: z.record(z.object({ in: z.array(z.string()).min(1) })).refine(v => Object.keys(v).length > 0, {
@@ -394,6 +422,8 @@ export const TraitSchema = z.object({
   transition_guards: z.array(TransitionGuardSchema).optional(),
   // Direct related-note patches evaluated when a note enters a configured value.
   transition_effects: z.array(TransitionEffectSchema).optional(),
+  // Explicit bounded attempt -> attest -> evaluate -> retry orchestration.
+  attempt_loop: AttemptLoopSchema.optional(),
 });
 
 // ============================================================================

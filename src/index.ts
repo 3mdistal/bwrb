@@ -16,6 +16,7 @@ import { configCommand } from './commands/config.js';
 import { dashboardCommand } from './commands/dashboard.js';
 import { initCommand } from './commands/init.js';
 import { explainCommand } from './commands/explain.js';
+import { workflowCommand } from './commands/workflow.js';
 import { handleCompletionRequest } from './lib/completion.js';
 import { cleanupPromptMode } from './lib/prompt.js';
 import { BWRB_VERSION } from './version.js';
@@ -77,6 +78,7 @@ if (completionsIndex !== -1) {
   program.addCommand(listCommand);
   program.addCommand(recentCommand);
   program.addCommand(explainCommand);
+  program.addCommand(workflowCommand);
 
   // Schema and management
   program.addCommand(schemaCommand);

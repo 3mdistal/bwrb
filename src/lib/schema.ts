@@ -11,6 +11,7 @@ import {
   type Field,
   type Trait,
   type Recurrence,
+  type AttemptLoop,
   type Retention,
   type ResolvedType,
   type ResolvedConfig,
@@ -210,6 +211,13 @@ export function resolveSchema(schema: Schema): LoadedSchema {
     throw new Error(`Invalid transition effects: ${transitionEffectErrors.join(' ')}`);
   }
   validateRetention(loaded);
+  const attemptLoopErrors = Array.from(types.keys()).flatMap((typeName) => {
+    const configured = getAttemptLoopForType(loaded, typeName);
+    return configured ? validateAttemptLoopContract(loaded, typeName, configured.attemptLoop) : [];
+  });
+  if (attemptLoopErrors.length > 0) {
+    throw new Error(`Invalid attempt loops: ${attemptLoopErrors.join(' ')}`);
+  }
   return loaded;
 }
 
@@ -1441,4 +1449,84 @@ export function getRecurrenceForType(
     }
   }
   return undefined;
+}
+
+// ============================================================================
+// Bounded agent-attempt loops
+// ============================================================================
+
+/** Resolve the last composed trait that declares an attempt loop. */
+export function getAttemptLoopForType(
+  schema: LoadedSchema,
+  typeName: string
+): { attemptLoop: AttemptLoop; trait: string } | undefined {
+  const type = getType(schema, typeName);
+  if (!type) return undefined;
+
+  const declared = schema.raw.traits ?? {};
+  for (let index = type.traits.length - 1; index >= 0; index--) {
+    const traitName = type.traits[index]!;
+    const attemptLoop = declared[traitName]?.attempt_loop;
+    if (attemptLoop) return { attemptLoop, trait: traitName };
+  }
+  return undefined;
+}
+
+/** Validate the fixed workflow and attestation field contract for one loop. */
+export function validateAttemptLoopContract(
+  schema: LoadedSchema,
+  workflowType: string,
+  policy: AttemptLoop
+): string[] {
+  const errors: string[] = [];
+  const workflow = getType(schema, workflowType);
+  const attestation = getType(schema, policy.attestation_type);
+  if (!workflow) return [`Unknown workflow type '${workflowType}'.`];
+  if (!attestation) return [`attempt_loop references unknown attestation type '${policy.attestation_type}'.`];
+
+  requireAttemptSelect(workflow.fields[policy.terminal.status_field], policy.terminal.status_field, [
+    policy.terminal.accepted_value,
+    policy.terminal.failed_value,
+  ], 'workflow', errors);
+  requireAttemptPrompt(workflow.fields[policy.terminal.stop_reason_field], policy.terminal.stop_reason_field, 'text', 'workflow', errors);
+  requireAttemptPrompt(workflow.fields[policy.terminal.run_id_field], policy.terminal.run_id_field, 'text', 'workflow', errors);
+
+  const fields = attestation.fields;
+  requireAttemptRelation(fields.workflow, 'workflow', workflowType, errors);
+  for (const field of ['run-id', 'idempotency-key', 'happened', 'failed']) {
+    requireAttemptPrompt(fields[field], field, 'text', 'attestation', errors);
+  }
+  for (const field of ['iteration', 'baseline', 'observed', 'tokens-used']) {
+    requireAttemptPrompt(fields[field], field, 'number', 'attestation', errors);
+  }
+  requireAttemptSelect(fields.outcome, 'outcome', ['accepted', 'retry'], 'attestation', errors);
+  return errors;
+}
+
+function requireAttemptPrompt(
+  field: Field | undefined,
+  name: string,
+  prompt: Field['prompt'],
+  owner: string,
+  errors: string[]
+): void {
+  if (field?.prompt !== prompt) errors.push(`${owner} field '${name}' must use prompt '${prompt}'.`);
+}
+
+function requireAttemptSelect(field: Field | undefined, name: string, values: string[], owner: string, errors: string[]): void {
+  if (field?.prompt !== 'select') {
+    errors.push(`${owner} field '${name}' must use prompt 'select'.`);
+    return;
+  }
+  const options = new Set(getOptionValues(field.options));
+  for (const value of values) if (!options.has(value)) errors.push(`${owner} field '${name}' must include option '${value}'.`);
+}
+
+function requireAttemptRelation(field: Field | undefined, name: string, workflowType: string, errors: string[]): void {
+  if (field?.prompt !== 'relation' || field.multiple === true) {
+    errors.push(`attestation field '${name}' must be a scalar relation.`);
+    return;
+  }
+  const sources = Array.isArray(field.source) ? field.source : field.source ? [field.source] : [];
+  if (!sources.includes(workflowType)) errors.push(`attestation field '${name}' must source workflow type '${workflowType}'.`);
 }

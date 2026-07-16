@@ -16,6 +16,7 @@ Use bwrb when you need to:
 - Generate wikilinks for Obsidian
 - Validate notes against a schema
 - Explain or safely advance relation-backed workflow transitions
+- Run a schema-bounded attempt/attestation loop with deterministic acceptance
 
 ## Guarded transitions
 
@@ -35,6 +36,38 @@ Traits can also declare `transition_effects` for a scalar direct relation. On
 an entered transition, bwrb validates and applies the flat target patch in the
 same guarded commit. `$ACTOR`, `$NOW`, and `$TODAY` expand; target effects do
 not cascade into more effects or recurrence. An empty relation is a no-op.
+
+## Bounded attempt loops
+
+`bwrb workflow run` is the explicit retry surface. Do not substitute recurrence
+or transition effects; both remain deliberately non-cascading.
+
+```bash
+revision=$(bwrb list workflow --output json | jq -r '.[0].revision')
+bwrb workflow run "Improve result" \
+  --expected-revision "$revision" \
+  --run-id candidate-417-eval-1 \
+  --attempt-command /absolute/path/to/attempt \
+  --attempt-arg evaluate \
+  --output json
+```
+
+The workflow type must compose a trait with `attempt_loop`. Its policy declares
+the attestation type, numeric `gte`/`lte` threshold, terminal fields/values, and
+mandatory iteration, wall-clock, and token ceilings. The executable is passed
+at invocation and runs directly without a shell.
+
+The child must exit zero and emit only:
+
+```json
+{"happened":"what ran","failed":null,"baseline":0.4,"observed":0.9,"tokens_used":120}
+```
+
+Every valid attempt becomes a typed attestation. Reuse the same run ID after an
+interruption: Bowerbird reuses existing idempotency keys and contiguous evidence
+instead of rerunning them. A nonzero CLI exit with `success: true` is a safely
+recorded terminal workflow failure; `data.stopReason` explains the ceiling or
+protocol boundary that stopped it.
 
 For schema-declared logical provenance (`{ "value": "$ACTOR" }`), establish
 identity once with root `--actor <value>` or `BWRB_ACTOR`. Explicit `--actor`

@@ -77,6 +77,8 @@ export default defineConfig({
 								{ slug: 'reference/commands/delete' },
 								{ slug: 'reference/commands/list' },
 								{ slug: 'reference/commands/recent' },
+								{ slug: 'reference/commands/explain' },
+								{ slug: 'reference/commands/workflow' },
 								{ slug: 'reference/commands/schema' },
 								{ slug: 'reference/commands/audit' },
 								{ slug: 'reference/commands/bulk' },

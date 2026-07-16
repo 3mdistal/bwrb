@@ -54,12 +54,13 @@ export interface CompletionContext {
 /**
  * Commands that have subcommands.
  */
-const COMMANDS_WITH_SUBCOMMANDS = ['schema', 'template', 'dashboard', 'lineage', 'completion'];
+const COMMANDS_WITH_SUBCOMMANDS = ['workflow', 'schema', 'template', 'dashboard', 'lineage', 'completion'];
 
 /**
  * Subcommands for each parent command.
  */
 const SUBCOMMANDS: Record<string, string[]> = {
+  workflow: ['run'],
   schema: ['types', 'fields', 'validate', 'discover', 'new', 'edit', 'delete', 'list', 'diff', 'migrate', 'history'],
   template: ['list', 'validate', 'new', 'edit', 'delete'],
   dashboard: ['list', 'new', 'edit', 'delete'],
@@ -251,6 +252,7 @@ const COMMANDS = [
   'list',
   'recent',
   'explain',
+  'workflow',
   'schema',
   'audit',
   'bulk',
@@ -339,6 +341,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
   ],
   completion: ['--help'],
   explain: ['--transition', '--output', '--help'],
+  workflow: ['--expected-revision', '--run-id', '--attempt-command', '--attempt-arg', '--output', '--vault', '-v', '--non-interactive', '--help'],
   config: ['--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
 };
 
@@ -393,6 +396,10 @@ function isValueOption(option: string): boolean {
     '--fields',
     '--body',
     '--set-version',
+    '--expected-revision',
+    '--run-id',
+    '--attempt-command',
+    '--attempt-arg',
   ];
   return valueOptions.includes(option);
 }
@@ -599,6 +606,14 @@ export async function handleCompletionRequest(
   if (ctx.command === 'lineage') {
     if (!ctx.subcommand && ctx.positionalIndex === 0) {
       return filterByPrefix(SUBCOMMANDS['lineage'] ?? [], ctx.current);
+    }
+    return [];
+  }
+
+  // === Workflow command ===
+  if (ctx.command === 'workflow') {
+    if (!ctx.subcommand && ctx.positionalIndex === 0) {
+      return filterByPrefix(SUBCOMMANDS['workflow'] ?? [], ctx.current);
     }
     return [];
   }

@@ -316,6 +316,97 @@
           "items": {
             "$ref": "#/definitions/transitionEffect"
           }
+        },
+        "attempt_loop": {
+          "type": "object",
+          "properties": {
+            "attestation_type": {
+              "type": "string",
+              "minLength": 1
+            },
+            "acceptance": {
+              "type": "object",
+              "properties": {
+                "operator": {
+                  "type": "string",
+                  "enum": [
+                    "gte",
+                    "lte"
+                  ]
+                },
+                "threshold": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "operator",
+                "threshold"
+              ],
+              "additionalProperties": false
+            },
+            "limits": {
+              "type": "object",
+              "properties": {
+                "max_iterations": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "max_seconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 86400
+                },
+                "max_tokens": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "max_iterations",
+                "max_seconds",
+                "max_tokens"
+              ],
+              "additionalProperties": false
+            },
+            "terminal": {
+              "type": "object",
+              "properties": {
+                "status_field": {
+                  "$ref": "#/definitions/trait/properties/transition_guards/items/properties/requires/items/properties/relation"
+                },
+                "accepted_value": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "failed_value": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "stop_reason_field": {
+                  "$ref": "#/definitions/trait/properties/transition_guards/items/properties/requires/items/properties/relation"
+                },
+                "run_id_field": {
+                  "$ref": "#/definitions/trait/properties/transition_guards/items/properties/requires/items/properties/relation"
+                }
+              },
+              "required": [
+                "status_field",
+                "accepted_value",
+                "failed_value",
+                "stop_reason_field",
+                "run_id_field"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "attestation_type",
+            "acceptance",
+            "limits",
+            "terminal"
+          ],
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

@@ -295,6 +295,45 @@ Target writes never trigger further effects or recurrence. If a later write
 fails, Bowerbird restores only its own earlier source bytes, never a newer
 writer's change.
 
+### Bounded attempt loops
+
+A trait may declare one explicit attempt, attestation, and acceptance loop:
+
+```json
+"attempt_loop": {
+  "attestation_type": "attempt-attestation",
+  "acceptance": { "operator": "gte", "threshold": 0.8 },
+  "limits": {
+    "max_iterations": 3,
+    "max_seconds": 300,
+    "max_tokens": 12000
+  },
+  "terminal": {
+    "status_field": "status",
+    "accepted_value": "accepted",
+    "failed_value": "failed",
+    "stop_reason_field": "stop-reason",
+    "run_id_field": "attempt-run"
+  }
+}
+```
+
+All three limits are required. `max_iterations` is 1–100 and `max_seconds` is
+1–86,400; token limits are positive integers. Acceptance supports one finite
+numeric threshold with `gte` or `lte`.
+
+The status field must be a select containing both terminal values. Stop-reason
+and run-ID fields must be text. The attestation type provides the fixed typed
+evidence fields described in the
+[`workflow` command reference](/reference/commands/workflow/), including a
+scalar `workflow` relation back to the composing type. Bowerbird validates this
+contract when loading the schema.
+
+The policy declares evidence and safety, not an executable. A caller supplies
+the executable and arguments to `bwrb workflow run`; stored Markdown never
+becomes a shell script. Attempt loops do not change the non-cascading contract
+of transition effects or recurrence.
+
 ### Precedence
 
 When the same field name comes from more than one source, resolution layers sources from least- to most-specific, so a more specific layer fully replaces a less specific one. Final precedence, **highest wins**:
