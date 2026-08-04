@@ -113,10 +113,11 @@ export async function adoptLineage(
       await applyPreparedAdoption(
         vaultDir,
         prepared,
-        dependencies.registerIds ?? registerIssuedNoteIds
+        dependencies.registerIds ?? registerIssuedNoteIds,
+        schema.config.identityStore
       );
       return prepared.result;
-    })
+    }, {}, schema.config.identityStore)
   );
 }
 
@@ -166,13 +167,13 @@ async function prepareAdoption(
   const parentExistingId = parent.frontmatter.id;
   const parentId = isValidNoteId(parentExistingId)
     ? parentExistingId
-    : await generateProspectiveId(vaultDir, usedIds);
+    : await generateProspectiveId(schema, vaultDir, usedIds);
   usedIds.add(normalizeNoteId(parentId));
 
   const childExistingId = child.frontmatter.id;
   const childId = isValidNoteId(childExistingId)
     ? childExistingId
-    : await generateProspectiveId(vaultDir, usedIds);
+    : await generateProspectiveId(schema, vaultDir, usedIds);
   usedIds.add(normalizeNoteId(childId));
 
   if (normalizeNoteId(childId) === normalizeNoteId(parentId)) {
@@ -264,7 +265,8 @@ async function prepareAdoption(
 async function applyPreparedAdoption(
   vaultDir: string,
   prepared: PreparedAdoption,
-  registerIds: typeof registerIssuedNoteIds
+  registerIds: typeof registerIssuedNoteIds,
+  identityStore: LoadedSchema['config']['identityStore']
 ): Promise<void> {
   let parentWritten = false;
   let childWritten = false;
@@ -283,7 +285,7 @@ async function applyPreparedAdoption(
     );
     await writeFileAtomic(prepared.child.file.path, prepared.childNextRaw);
     childWritten = true;
-    await registerIds(vaultDir, prepared.registrations);
+    await registerIds(vaultDir, prepared.registrations, identityStore);
   } catch (error) {
     const rollbackErrors: string[] = [];
     if (childWritten) {
@@ -411,9 +413,13 @@ function withProspectiveEdge(
   return { notes };
 }
 
-async function generateProspectiveId(vaultDir: string, usedIds: Set<string>): Promise<string> {
+async function generateProspectiveId(
+  schema: LoadedSchema,
+  vaultDir: string,
+  usedIds: Set<string>
+): Promise<string> {
   for (let attempt = 0; attempt < 100; attempt++) {
-    const id = await generateUniqueNoteId(vaultDir);
+    const id = await generateUniqueNoteId(vaultDir, schema);
     if (!usedIds.has(normalizeNoteId(id))) return id;
   }
   throw new Error('Could not assign a unique note ID; retry the command.');

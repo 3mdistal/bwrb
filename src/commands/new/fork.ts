@@ -109,7 +109,7 @@ export async function forkNote(
         sourceId
       )
     );
-    const childId = await generateUniqueNoteId(vaultDir);
+    const childId = await generateUniqueNoteId(vaultDir, schema);
     frontmatter.id = childId;
 
     const pathResult = buildNotePath(dirname(source.file.path), childName, 'interactive');
@@ -140,7 +140,12 @@ export async function forkNote(
     }
 
     try {
-      await registerIssuedNoteId(vaultDir, childId, pathResult.path);
+      await registerIssuedNoteId(
+        vaultDir,
+        childId,
+        pathResult.path,
+        schema.config.identityStore
+      );
     } catch (error) {
       // A note without a registry row is not a completed creation. Roll it
       // back; the source ID backfill intentionally remains durable.
@@ -207,7 +212,7 @@ async function ensureSourceId(
       return existing;
     }
 
-    const id = await generateUniqueNoteId(vaultDir);
+    const id = await generateUniqueNoteId(vaultDir, schema);
     const collisions = await findNotesWithId(schema, vaultDir, id);
     if (collisions.length > 0) {
       throw new Error('Generated source ID collides with an existing note; retry the command.');
@@ -216,7 +221,7 @@ async function ensureSourceId(
     await assertNoteBytesUnchanged(sourcePath, parsed.raw);
     await writeFileAtomic(sourcePath, nextRaw);
     try {
-      await registerIssuedNoteId(vaultDir, id, sourcePath);
+      await registerIssuedNoteId(vaultDir, id, sourcePath, schema.config.identityStore);
     } catch (error) {
       const rolledBack = await rollbackNoteIfUnchanged(sourcePath, nextRaw, parsed.raw);
       if (!rolledBack) {
@@ -228,7 +233,7 @@ async function ensureSourceId(
       throw error;
     }
     return id;
-  });
+  }, {}, schema.config.identityStore);
 }
 
 function formatError(error: unknown): string {

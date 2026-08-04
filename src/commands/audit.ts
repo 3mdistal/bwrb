@@ -120,6 +120,8 @@ Issue Types:
   invalid-forked-from   forked-from is not a UUID string
   missing-lineage-id    Note with forked-from lacks a valid note id
   dangling-forked-from  forked-from references a missing note id (warning)
+  missing-note-id       Frontmatter-v1 note has no stable id
+  invalid-note-id       Frontmatter-v1 note id is not a UUID
   duplicate-note-id     Stable note id is used by multiple notes
   self-reference        Relation field references the same note
   ambiguous-link-target Relation target matches multiple files

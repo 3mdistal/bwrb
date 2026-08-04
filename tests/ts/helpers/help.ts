@@ -10,6 +10,7 @@ const CANONICAL_HELP_COMMAND_ORDER = [
   'bulk',
   'template',
   'lineage',
+  'identity',
   'dashboard',
   'init',
   'config',

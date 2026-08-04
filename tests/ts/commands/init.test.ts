@@ -49,6 +49,7 @@ describe('init command', () => {
       const schema = JSON.parse(schemaContent);
 
       expect(schema.config.link_format).toBe('wikilink');
+      expect(schema.config.identity_store).toBe('frontmatter-v1');
     });
 
     it('should output success message', async () => {
@@ -69,6 +70,7 @@ describe('init command', () => {
       expect(json.data.vault).toBe(tempDir);
       expect(json.data.schema_path).toContain('.bwrb/schema.json');
       expect(json.data.config.link_format).toBe('wikilink');
+      expect(json.data.config.identity_store).toBe('frontmatter-v1');
     });
   });
 

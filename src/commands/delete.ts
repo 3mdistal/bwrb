@@ -667,7 +667,11 @@ async function handleBulkDelete(
     for (const file of files) {
       try {
         await unlink(file.path);
-        await unregisterIssuedNotePath(vaultDir, file.relativePath);
+        await unregisterIssuedNotePath(
+          vaultDir,
+          file.relativePath,
+          schema.config.identityStore
+        );
         deleted.push(file.relativePath);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -875,7 +879,7 @@ async function deleteResolvedFile({
       backupPath = await createBackup(vaultDir, [fullPath], `delete ${relativePath}`);
     }
     await unlink(fullPath);
-    await unregisterIssuedNotePath(vaultDir, relativePath);
+    await unregisterIssuedNotePath(vaultDir, relativePath, schema.config.identityStore);
   } else {
     try {
       await withLineageMutationLocks(vaultDir, [fullPath], async () => {
@@ -885,7 +889,7 @@ async function deleteResolvedFile({
           backupPath = await createBackup(vaultDir, [fullPath], `delete ${relativePath}`);
         }
         await unlink(fullPath);
-        await unregisterIssuedNotePath(vaultDir, relativePath);
+        await unregisterIssuedNotePath(vaultDir, relativePath, schema.config.identityStore);
       });
     } catch (error) {
       if (error instanceof LineageDeleteRefusalError) {

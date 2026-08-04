@@ -54,7 +54,7 @@ export interface CompletionContext {
 /**
  * Commands that have subcommands.
  */
-const COMMANDS_WITH_SUBCOMMANDS = ['schema', 'template', 'dashboard', 'lineage', 'completion'];
+const COMMANDS_WITH_SUBCOMMANDS = ['schema', 'template', 'dashboard', 'lineage', 'identity', 'completion'];
 
 /**
  * Subcommands for each parent command.
@@ -64,6 +64,7 @@ const SUBCOMMANDS: Record<string, string[]> = {
   template: ['list', 'validate', 'new', 'edit', 'delete'],
   dashboard: ['list', 'new', 'edit', 'delete'],
   lineage: ['adopt'],
+  identity: ['migrate'],
   completion: ['bash', 'zsh', 'fish'],
 };
 
@@ -256,6 +257,7 @@ const COMMANDS = [
   'bulk',
   'template',
   'lineage',
+  'identity',
   'dashboard',
   'init',
   'config',
@@ -320,6 +322,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
   ],
   template: ['--vault', '-v', '--non-interactive', '--help'],
   lineage: ['--from', '--dry-run', '--execute', '-x', '--output', '--vault', '-v', '--non-interactive', '--help'],
+  identity: ['--to', '--dry-run', '--execute', '-x', '--output', '--vault', '-v', '--non-interactive', '--help'],
   dashboard: ['--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
   delete: [
     '--type', '-t',
@@ -599,6 +602,14 @@ export async function handleCompletionRequest(
   if (ctx.command === 'lineage') {
     if (!ctx.subcommand && ctx.positionalIndex === 0) {
       return filterByPrefix(SUBCOMMANDS['lineage'] ?? [], ctx.current);
+    }
+    return [];
+  }
+
+  // === Identity command ===
+  if (ctx.command === 'identity') {
+    if (!ctx.subcommand && ctx.positionalIndex === 0) {
+      return filterByPrefix(SUBCOMMANDS['identity'] ?? [], ctx.current);
     }
     return [];
   }

@@ -679,6 +679,7 @@ function resolveConfig(
   types: Map<string, ResolvedType>
 ): ResolvedConfig {
   return {
+    identityStore: config?.identity_store ?? 'registry-v1',
     linkFormat: config?.link_format ?? 'wikilink',
     editor: config?.editor ?? process.env.EDITOR,
     visual: config?.visual ?? process.env.VISUAL,

@@ -85,6 +85,7 @@ import { buildRelativeDateFieldMap, validateRelativeDateValue } from '../relativ
 import { parseCalendarDate } from '../calendar-date.js';
 import { formatLocalDate } from '../local-date.js';
 import { collectLineageIssues } from './lineage.js';
+import { collectRequiredNoteIdentityIssues } from './identity.js';
 
 // Import ownership tracking
 import {
@@ -211,6 +212,9 @@ export async function runAuditDetailed(
   // Build parent map for cycle detection on recursive types
   const parentMap = await buildParentMap(schema, filteredFiles, noteIndex);
   const lineageIssuesByPath = collectLineageIssues(noteIndex.snapshot);
+  const identityIssuesByPath = schema.config.identityStore === 'frontmatter-v1'
+    ? collectRequiredNoteIdentityIssues(noteIndex.snapshot)
+    : new Map<string, AuditIssue[]>();
 
   const wantUnlinkedMention =
     options.ignoreIssue !== 'unlinked-mention' &&
@@ -244,6 +248,7 @@ export async function runAuditDetailed(
     const issues = [
       ...(await auditFile(schema, vaultDir, file, { ...options, retentionToday }, noteIndex, ownershipIndex, parentMap, entityMentionIndex)),
       ...(lineageIssuesByPath.get(file.relativePath) ?? []),
+      ...(identityIssuesByPath.get(file.relativePath) ?? []),
     ];
 
     // Apply issue filters

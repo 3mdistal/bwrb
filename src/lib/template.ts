@@ -1570,7 +1570,7 @@ export async function createScaffoldedInstances(
       }
 
       // System-managed stable note id (v1.0)
-      const noteId = await generateUniqueNoteId(vaultDir);
+      const noteId = await generateUniqueNoteId(vaultDir, schema);
       frontmatter['id'] = noteId;
 
       // Generate body
@@ -1598,7 +1598,12 @@ export async function createScaffoldedInstances(
 
       // Write file
       await writeNote(filePath, frontmatter, body, orderedFields);
-      await registerIssuedNoteId(vaultDir, noteId, filePath);
+      await registerIssuedNoteId(
+        vaultDir,
+        noteId,
+        filePath,
+        schema.config.identityStore
+      );
       created.push(filePath);
 
     } catch (e) {

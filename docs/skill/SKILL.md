@@ -420,6 +420,22 @@ bwrb template validate --output json
 
 Notes created via `bwrb new` always include a system-managed frontmatter `id` (UUIDv4). The `id` is reserved: you cannot set it in `bwrb new --json`, and you cannot modify it via `bwrb edit`.
 
+New vaults use `config.identity_store: frontmatter-v1`, where note frontmatter
+is the identity authority and `.bwrb/ids.jsonl` is not mutated. Existing vaults
+without the setting remain in legacy `registry-v1` mode. Never edit the setting
+directly; preview and execute the guarded migration:
+
+```bash
+bwrb identity migrate --to frontmatter-v1 --output json
+bwrb identity migrate --to frontmatter-v1 --execute --output json
+# Roll back only after previewing the reverse rebuild
+bwrb identity migrate --to registry-v1 --execute --output json
+```
+
+Migration fails closed on unreadable notes, missing or invalid IDs, and copied
+notes with duplicate IDs. Resolve exact paths deliberately; Bowerbird does not
+guess which copy owns an identity.
+
 `forked-from` is also reserved. If an agent encounters it, treat the value as an
 immediate source note UUID and leave it unchanged. `bwrb audit --output json`
 reports malformed, dangling, duplicate-ID, and cyclic lineage metadata.

@@ -35,6 +35,7 @@ describe('help output contract snapshots', () => {
       'bulk',
       'template',
       'lineage',
+      'identity',
       'dashboard',
       'init',
       'config',

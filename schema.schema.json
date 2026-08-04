@@ -47,6 +47,14 @@
     "config": {
       "type": "object",
       "properties": {
+        "identity_store": {
+          "type": "string",
+          "enum": [
+            "registry-v1",
+            "frontmatter-v1"
+          ],
+          "description": "Stable note identity storage: legacy shared registry or authoritative per-note frontmatter"
+        },
         "link_format": {
           "type": "string",
           "enum": [

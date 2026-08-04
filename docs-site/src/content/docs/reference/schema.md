@@ -845,6 +845,7 @@ Vault-wide settings:
 ```json
 {
   "config": {
+    "identity_store": "frontmatter-v1",
     "link_format": "wikilink",
     "open_with": "obsidian",
     "editor": "nvim",
@@ -859,6 +860,7 @@ Vault-wide settings:
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
+| `identity_store` | string | `"registry-v1"` when omitted | Stable identity authority: legacy `registry-v1`, or distributed `frontmatter-v1`. New vaults explicitly use `frontmatter-v1`; change modes only with [`bwrb identity migrate`](/reference/commands/identity/) |
 | `link_format` | string | `"wikilink"` | Link format for relations: `wikilink` (`[[Note]]`) or `markdown` (`[Note](Note.md)`) |
 | `open_with` | string | `"system"` | Default for `--open`: `system`, `editor`, `visual`, or `obsidian` |
 | `editor` | string | `$EDITOR` | Terminal editor command |

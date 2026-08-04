@@ -109,6 +109,8 @@ Delete semantics in repair mode:
 | `missing-lineage-id` | A note declares `forked-from` but lacks its own valid UUID `id` (error; flag-only) |
 | `dangling-forked-from` | `forked-from` references a UUID not present on any discovered note (warning; flag-only). Provenance is retained because the source may be restored later; this is also the deliberate result of deleting a fork parent with `bwrb delete --force` |
 | `duplicate-note-id` | Two or more notes use the same stable UUID `id` (error; flag-only) |
+| `missing-note-id` | A discovered parseable note has no `id` while the vault uses `frontmatter-v1` identity (error; flag-only) |
+| `invalid-note-id` | A discovered parseable note has a non-UUID `id` while the vault uses `frontmatter-v1` identity (error; flag-only) |
 | `fork-cycle` | Following immediate `forked-from` references forms a cycle (error; flag-only). Traversal is cycle-safe and always terminates |
 | `format-violation` | Field value doesn't match expected format (wikilink, etc.) |
 | `stale-reference` | Wikilink points to non-existent file |
