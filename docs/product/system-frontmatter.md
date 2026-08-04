@@ -54,6 +54,13 @@ changes only `schema.json`. Reverse migration atomically rebuilds the legacy
 registry from live notes before changing the schema mode. Both directions fail
 closed on unreadable, missing, invalid, or duplicate identity.
 
+Execute mode raises a short-lived migration fence. Identity-relevant Bowerbird
+transactions already in flight drain before the snapshot; newcomers fail with
+a retryable error until the schema mode has changed. Independent transactions
+otherwise keep separate leases and do not serialize with each other. Because
+external editors and raw Git moves do not honor Bowerbird's fence, the operator
+must keep those writers quiescent between the final preview and execution.
+
 ## Policy
 
 - Keep the system-managed allowlist small and explicit.

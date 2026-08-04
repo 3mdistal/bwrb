@@ -12,6 +12,11 @@ afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { 
 
 async function fixture() {
   const vault = await mkdtemp(join(tmpdir(), 'bwrb-effects-')); dirs.push(vault);
+  await mkdir(join(vault, '.bwrb'), { recursive: true });
+  await writeFile(
+    join(vault, '.bwrb/schema.json'),
+    JSON.stringify({ version: 2, config: {}, types: {} })
+  );
   await mkdir(join(vault, 'Candidates'), { recursive: true });
   await mkdir(join(vault, 'Tasks'), { recursive: true });
   const schema = resolveSchema({ version: 2, traits: { advancing: { transition_effects: [{ on: 'status = accepted', relation: 'task', set: { status: 'done' } }] } }, types: {

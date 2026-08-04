@@ -5,6 +5,9 @@ import { join } from 'path';
 import { promisify } from 'util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runCLI } from '../fixtures/setup.js';
+import { loadSchema } from '../../../src/lib/schema.js';
+import { migrateIdentityStore } from '../../../src/lib/identity-migration.js';
+import { withNoteIdentityTransaction } from '../../../src/lib/identity-transaction.js';
 
 const execFile = promisify(execFileCallback);
 const IDS = [
@@ -190,6 +193,45 @@ describe('identity migrate', () => {
     }));
     expect(new Set(ids).size).toBe(8);
     expect(await readFile(registryPath, 'utf-8')).toBe(dirtyRegistry);
+  });
+
+  it('waits for an active create before rebuilding and activating the legacy registry', async () => {
+    const vault = await makeVault({ identityStore: 'frontmatter-v1' });
+    const schema = await loadSchema(vault);
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let entered!: () => void;
+    const active = new Promise<void>(resolve => { entered = resolve; });
+
+    const create = withNoteIdentityTransaction(vault, 'frontmatter-v1', async () => {
+      await writeFile(join(vault, 'Notes/Late.md'), note('Late', IDS[1]));
+      entered();
+      await held;
+    });
+    await active;
+    let migrationSettled = false;
+    const migration = migrateIdentityStore(schema, vault, 'registry-v1', true)
+      .finally(() => { migrationSettled = true; });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(migrationSettled).toBe(false);
+
+    release();
+    await create;
+    await migration;
+    const registry = await readFile(join(vault, '.bwrb/ids.jsonl'), 'utf-8');
+    expect(registry).toContain('Notes/One.md');
+    expect(registry).toContain('Notes/Late.md');
+  });
+
+  it('treats an already-selected identity store as an idempotent no-op', async () => {
+    const vault = await makeVault({ identityStore: 'frontmatter-v1', notes: [{ name: 'Missing' }] });
+    const schemaBefore = await readFile(join(vault, '.bwrb/schema.json'), 'utf-8');
+    const result = await runCLI([
+      'identity', 'migrate', '--to', 'frontmatter-v1', '--execute', '--output', 'json',
+    ], vault);
+    expect(result.exitCode, result.stderr || result.stdout).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ changes: [], from: 'frontmatter-v1' });
+    expect(await readFile(join(vault, '.bwrb/schema.json'), 'utf-8')).toBe(schemaBefore);
   });
 });
 

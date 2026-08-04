@@ -83,6 +83,29 @@ Words worth keeping.
     expect(fork.body).toBe('## Draft\n\nWords worth keeping.\n');
   });
 
+  it('forks in frontmatter-v1 without taking custody of the legacy registry', async () => {
+    const schemaPath = join(vaultDir, '.bwrb/schema.json');
+    const schema = JSON.parse(await readFile(schemaPath, 'utf-8')) as any;
+    schema.config = { ...schema.config, identity_store: 'frontmatter-v1' };
+    await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+    const registryPath = join(vaultDir, '.bwrb/ids.jsonl');
+    const dirtyRegistry = '{"id":"unfinished","path":"Elsewhere.md"}\n';
+    await writeFile(registryPath, dirtyRegistry);
+    await writeFile(
+      join(vaultDir, 'Ideas/Frontmatter Source.md'),
+      `---\ntype: idea\nid: ${SOURCE_ID}\nname: Frontmatter Source\nstatus: raw\n---\nBody\n`
+    );
+
+    const result = await runCLI([
+      'new', '--fork', 'Frontmatter Source', '--name', 'Frontmatter Child', '--output', 'json',
+    ], vaultDir);
+
+    expect(result.exitCode, result.stderr || result.stdout).toBe(0);
+    expect(await readFile(registryPath, 'utf-8')).toBe(dirtyRegistry);
+    expect((await parseNote(join(vaultDir, 'Ideas/Frontmatter Child.md'))).frontmatter.id)
+      .toBe(JSON.parse(result.stdout).id);
+  });
+
   it('evaluates dynamic schema date defaults for new, edit restoration, and fork, and stays audit-clean', async () => {
     const schemaPath = join(vaultDir, '.bwrb/schema.json');
     const schema = JSON.parse(await readFile(schemaPath, 'utf-8')) as any;

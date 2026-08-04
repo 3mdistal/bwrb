@@ -434,7 +434,10 @@ bwrb identity migrate --to registry-v1 --execute --output json
 
 Migration fails closed on unreadable notes, missing or invalid IDs, and copied
 notes with duplicate IDs. Resolve exact paths deliberately; Bowerbird does not
-guess which copy owns an identity.
+guess which copy owns an identity. Pause external editors and raw Git moves
+between the final preview and execute command. Bowerbird drains its own
+identity-relevant transactions and asks newcomers to retry during the brief
+mode switch, but it cannot fence writers that bypass the CLI.
 
 `forked-from` is also reserved. If an agent encounters it, treat the value as an
 immediate source note UUID and leave it unchanged. `bwrb audit --output json`

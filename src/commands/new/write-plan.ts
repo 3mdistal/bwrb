@@ -18,6 +18,7 @@ import { buildNotePath } from './paths.js';
 import { throwJsonError } from './errors.js';
 import { handleInstanceScaffolding } from './scaffolding.js';
 import type { LoadedSchema } from '../../types/schema.js';
+import { withNoteIdentityTransaction } from '../../lib/identity-transaction.js';
 
 const PORTABLE_PATH_WARNING_LENGTH = 200;
 const PORTABLE_PATH_MAX_LENGTH = 260;
@@ -36,6 +37,16 @@ async function resolveOutputDir(
 }
 
 export async function writeNotePlan(
+  args: WritePlanArgs,
+  fileExistsStrategy: FileExistsStrategy,
+  skipInstances: boolean
+): Promise<NoteCreationResult> {
+  return withNoteIdentityTransaction(args.vaultDir, args.schema.config.identityStore, () =>
+    writeNotePlanWithinIdentityTransaction(args, fileExistsStrategy, skipInstances)
+  );
+}
+
+async function writeNotePlanWithinIdentityTransaction(
   args: WritePlanArgs,
   fileExistsStrategy: FileExistsStrategy,
   skipInstances: boolean

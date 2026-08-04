@@ -45,6 +45,19 @@ describe('bulk command', () => {
       // Error goes to stderr via printError
       expect(result.stderr).toContain("Invalid value 'invalid' for field 'status'");
     });
+
+    it.each([
+      ['--set', 'id=11111111-1111-4111-8111-111111111111'],
+      ['--delete', 'id'],
+      ['--append', 'id=value'],
+      ['--remove', 'id=value'],
+      ['--rename', 'id=legacy-id'],
+      ['--rename', 'status=id'],
+    ])('rejects reserved identity mutation through %s', async (flag, value) => {
+      const result = await runCLI(['bulk', 'idea', '--all', flag, value], vaultDir);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Cannot mutate reserved system-managed field 'id'");
+    });
   });
 
   describe('targeting gate (--all flag)', () => {

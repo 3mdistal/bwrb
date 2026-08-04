@@ -1,6 +1,7 @@
 import { unlink } from 'fs/promises';
 import { basename, dirname, relative, resolve } from 'path';
 import type { LoadedSchema } from '../../types/schema.js';
+import { withNoteIdentityTransaction } from '../../lib/identity-transaction.js';
 import type { ManagedFile } from '../../lib/navigation.js';
 import { buildNoteIndex } from '../../lib/navigation.js';
 import {
@@ -70,6 +71,16 @@ interface ResolvedForkSource {
 }
 
 export async function forkNote(
+  schema: LoadedSchema,
+  vaultDir: string,
+  options: ForkNoteOptions
+): Promise<ForkNoteResult> {
+  return withNoteIdentityTransaction(vaultDir, schema.config.identityStore, () =>
+    forkNoteWithinIdentityTransaction(schema, vaultDir, options)
+  );
+}
+
+async function forkNoteWithinIdentityTransaction(
   schema: LoadedSchema,
   vaultDir: string,
   options: ForkNoteOptions

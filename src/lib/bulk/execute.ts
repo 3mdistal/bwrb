@@ -22,6 +22,7 @@ import type {
   FileChange,
   BulkOperation,
 } from './types.js';
+import { withNoteIdentityTransaction } from '../identity-transaction.js';
 
 /**
  * Check if operations include a move operation.
@@ -34,6 +35,17 @@ function hasMoveOperation(operations: BulkOperation[]): BulkOperation | undefine
  * Execute bulk operations on matching files.
  */
 export async function executeBulk(options: BulkOptions): Promise<BulkResult> {
+  if (options.execute) {
+    return withNoteIdentityTransaction(
+      options.vaultDir,
+      options.schema.config.identityStore,
+      () => executeBulkWithinTransaction(options)
+    );
+  }
+  return executeBulkWithinTransaction(options);
+}
+
+async function executeBulkWithinTransaction(options: BulkOptions): Promise<BulkResult> {
   const {
     typePath,
     pathGlob,

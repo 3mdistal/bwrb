@@ -48,6 +48,7 @@ import {
 } from '../lib/delete-lineage-guard.js';
 import { withLineageMutationLocks } from '../lib/lineage-lock.js';
 import { createBackup } from '../lib/bulk/backup.js';
+import { withNoteIdentityTransaction } from '../lib/identity-transaction.js';
 
 // ============================================================================
 // Types
@@ -680,28 +681,30 @@ async function handleBulkDelete(
     }
   };
 
-  if (options.force) {
-    if (options.backup) {
-      backupPath = await createBackup(vaultDir, files.map(file => file.path), `delete ${files.length} file(s)`);
-    }
-    await deleteFiles();
-  } else {
-    try {
-      await withLineageMutationLocks(vaultDir, files.map(file => file.path), async () => {
-        const assessment = await assessCurrentDeleteLineage(schema, vaultDir, files, true);
-        if (assessment.length > 0) throw new LineageDeleteRefusalError(assessment);
+  try {
+    await withNoteIdentityTransaction(vaultDir, schema.config.identityStore, async () => {
+      if (options.force) {
         if (options.backup) {
           backupPath = await createBackup(vaultDir, files.map(file => file.path), `delete ${files.length} file(s)`);
         }
         await deleteFiles();
-      });
-    } catch (error) {
-      if (error instanceof LineageDeleteRefusalError) {
-        reportLineageRefusal(error.blocked, jsonMode, true);
-        return;
+      } else {
+        await withLineageMutationLocks(vaultDir, files.map(file => file.path), async () => {
+          const assessment = await assessCurrentDeleteLineage(schema, vaultDir, files, true);
+          if (assessment.length > 0) throw new LineageDeleteRefusalError(assessment);
+          if (options.backup) {
+            backupPath = await createBackup(vaultDir, files.map(file => file.path), `delete ${files.length} file(s)`);
+          }
+          await deleteFiles();
+        });
       }
-      throw error;
+    });
+  } catch (error) {
+    if (error instanceof LineageDeleteRefusalError) {
+      reportLineageRefusal(error.blocked, jsonMode, true);
+      return;
     }
+    throw error;
   }
 
   // Output results
@@ -874,30 +877,32 @@ async function deleteResolvedFile({
   // Delete the file. Non-force deletion rechecks under the same path-keyed
   // lock used by `new --fork`, after every prompt and backlink scan has ended.
   let backupPath: string | undefined;
-  if (options.force) {
-    if (options.backup) {
-      backupPath = await createBackup(vaultDir, [fullPath], `delete ${relativePath}`);
-    }
-    await unlink(fullPath);
-    await unregisterIssuedNotePath(vaultDir, relativePath, schema.config.identityStore);
-  } else {
-    try {
-      await withLineageMutationLocks(vaultDir, [fullPath], async () => {
-        const assessment = await assessCurrentDeleteLineage(schema, vaultDir, [file], true);
-        if (assessment.length > 0) throw new LineageDeleteRefusalError(assessment);
+  try {
+    await withNoteIdentityTransaction(vaultDir, schema.config.identityStore, async () => {
+      if (options.force) {
         if (options.backup) {
           backupPath = await createBackup(vaultDir, [fullPath], `delete ${relativePath}`);
         }
         await unlink(fullPath);
         await unregisterIssuedNotePath(vaultDir, relativePath, schema.config.identityStore);
-      });
-    } catch (error) {
-      if (error instanceof LineageDeleteRefusalError) {
-        reportLineageRefusal(error.blocked, jsonMode, false);
-        return;
+      } else {
+        await withLineageMutationLocks(vaultDir, [fullPath], async () => {
+          const assessment = await assessCurrentDeleteLineage(schema, vaultDir, [file], true);
+          if (assessment.length > 0) throw new LineageDeleteRefusalError(assessment);
+          if (options.backup) {
+            backupPath = await createBackup(vaultDir, [fullPath], `delete ${relativePath}`);
+          }
+          await unlink(fullPath);
+          await unregisterIssuedNotePath(vaultDir, relativePath, schema.config.identityStore);
+        });
       }
-      throw error;
+    });
+  } catch (error) {
+    if (error instanceof LineageDeleteRefusalError) {
+      reportLineageRefusal(error.blocked, jsonMode, false);
+      return;
     }
+    throw error;
   }
 
   // Success output

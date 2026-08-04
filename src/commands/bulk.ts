@@ -26,6 +26,7 @@ import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
 import { configurePromptMode, printError, promptConfirm } from '../lib/prompt.js';
 import { UserCancelledError } from '../lib/errors.js';
+import { isBwrbReservedFrontmatterField } from '../lib/frontmatter/systemFields.js';
 import {
   printJson,
   jsonError,
@@ -349,6 +350,18 @@ Hint: Bulk operations require explicit targeting to prevent accidents.
       // (--set, --delete, --append, --remove). Users may want to set arbitrary
       // custom fields not defined in the schema. Field validation is enforced
       // for --where expressions (filtering) where typos cause silent bugs.
+      for (const operation of operations) {
+        if (
+          isBwrbReservedFrontmatterField(operation.field) ||
+          (operation.newField !== undefined && isBwrbReservedFrontmatterField(operation.newField))
+        ) {
+          validationErrors.push(
+            `Cannot mutate reserved system-managed field '${
+              isBwrbReservedFrontmatterField(operation.field) ? operation.field : operation.newField
+            }' with bwrb bulk`
+          );
+        }
+      }
 
       // Check for validation errors
       if (validationErrors.length > 0) {

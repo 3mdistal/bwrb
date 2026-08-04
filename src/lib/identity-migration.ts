@@ -6,8 +6,10 @@ import {
   type NoteIdentityStore,
   type NoteIdRegistration,
 } from './note-id.js';
-import { loadRawSchemaJson, writeSchema } from './schema-writer.js';
+import { withSchemaMutation } from './schema-writer.js';
 import type { LoadedSchema } from '../types/schema.js';
+import { loadSchema } from './schema.js';
+import { withIdentityMigrationFence } from './identity-transaction.js';
 
 export interface IdentityMigrationBlocker {
   code: 'unreadable-note' | 'missing-note-id' | 'invalid-note-id' | 'duplicate-note-id';
@@ -47,6 +49,36 @@ export async function migrateIdentityStore(
   target: NoteIdentityStore,
   execute: boolean
 ): Promise<IdentityMigrationResult> {
+  if (!execute) {
+    return planIdentityMigration(schema, vaultDir, target, false);
+  }
+
+  return withIdentityMigrationFence(vaultDir, () =>
+    withSchemaMutation(vaultDir, async raw => {
+      const liveSchema = await loadSchema(vaultDir);
+      if (liveSchema.config.identityStore !== schema.config.identityStore) {
+        throw new Error(
+          `Identity storage changed during migration (${schema.config.identityStore} -> ` +
+          `${liveSchema.config.identityStore}); retry the command.`
+        );
+      }
+      const result = await planIdentityMigration(liveSchema, vaultDir, target, true);
+      const write = liveSchema.config.identityStore !== target;
+      if (write) {
+        raw.config ??= {};
+        raw.config.identity_store = target;
+      }
+      return { result, write };
+    })
+  );
+}
+
+async function planIdentityMigration(
+  schema: LoadedSchema,
+  vaultDir: string,
+  target: NoteIdentityStore,
+  execute: boolean
+): Promise<IdentityMigrationResult> {
   const current = schema.config.identityStore;
   const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
   const preflight = preflightIdentity(snapshot);
@@ -60,7 +92,7 @@ export async function migrateIdentityStore(
     changes.push({ path: '.bwrb/schema.json', action: 'set-identity-store', status });
   }
 
-  if (execute && preflight.blockers.length > 0) {
+  if (execute && current !== target && preflight.blockers.length > 0) {
     throw new IdentityMigrationBlockedError(preflight.blockers);
   }
 
@@ -71,17 +103,6 @@ export async function migrateIdentityStore(
       // inert, so retry is safe.
       await rebuildIssuedNoteRegistry(vaultDir, preflight.registrations);
     }
-
-    const raw = await loadRawSchemaJson(vaultDir);
-    const liveMode = raw.config?.identity_store ?? 'registry-v1';
-    if (liveMode !== current) {
-      throw new Error(
-        `Identity storage changed during migration (${current} -> ${liveMode}); retry the command.`
-      );
-    }
-    raw.config ??= {};
-    raw.config.identity_store = target;
-    await writeSchema(vaultDir, raw);
   }
 
   return {

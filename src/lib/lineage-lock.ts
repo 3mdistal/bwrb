@@ -102,6 +102,28 @@ export async function withOwnershipFileLock<T>(
   }
 }
 
+/**
+ * Report whether an ownership-safe lock is live, recovering it only when the
+ * same PID-aware rules used by lock acquisition prove the owner is gone.
+ */
+export async function ownershipFileLockIsLive(
+  lockPath: string,
+  optionOverrides: Partial<OwnershipFileLockOptions> = {}
+): Promise<boolean> {
+  const resolvedLockPath = resolve(lockPath);
+  const recoveryPath = `${resolvedLockPath}.recovery`;
+  const options = { ...DEFAULT_OPTIONS, ...optionOverrides };
+  if (await recoveryIsInProgress(recoveryPath, options)) return true;
+
+  const snapshotRead = await readLockSnapshot(resolvedLockPath);
+  if (snapshotRead.kind === 'missing') return false;
+  if (snapshotRead.kind === 'busy') return true;
+  if (!await isRecoverable(snapshotRead.snapshot, options.staleMs)) return true;
+
+  await recoverStaleLock(resolvedLockPath, recoveryPath, options);
+  return pathExists(resolvedLockPath) || pathExists(recoveryPath);
+}
+
 export function getLineageMutationLockPath(vaultDir: string, sourcePath: string): string {
   const vaultRoot = resolve(vaultDir);
   const absoluteSource = resolve(sourcePath);

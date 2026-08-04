@@ -215,9 +215,11 @@ describe('init command', () => {
 
       await runCLI(['init', tempDir, '--force', '--yes']);
 
-      // Only schema.json should exist
+      // Reinitialization removes user/config state. The schema writer may leave
+      // its empty coordination directory after releasing the schema lock.
       const contents = await readdir(join(tempDir, '.bwrb'));
-      expect(contents).toEqual(['schema.json']);
+      expect(contents).toEqual(['locks', 'schema.json']);
+      expect(await readdir(join(tempDir, '.bwrb', 'locks'))).toEqual([]);
     });
   });
 

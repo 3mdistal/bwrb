@@ -50,6 +50,13 @@ atomically rebuilds `.bwrb/ids.jsonl` from current note frontmatter, preserving
 known `createdAt` values where possible, then switches the schema mode. If the
 schema mode changes concurrently, migration stops and asks for a retry.
 
+Execute mode briefly fences Bowerbird operations that can create, remove, move,
+or backfill note identity. Operations already in flight finish first; new ones
+fail with a retryable error until the mode switch completes. Unrelated ordinary
+operations remain concurrent at every other time. External editors and raw Git
+filesystem changes cannot participate in this fence, so pause them between the
+final preview and execute command.
+
 ## Git workflow
 
 With `frontmatter-v1`, unrelated note creates modify unrelated Markdown files,

@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'util';
 import { readFile } from 'fs/promises';
 import { resolve } from 'path';
 import type { LoadedSchema } from '../../types/schema.js';
+import { withNoteIdentityTransaction } from '../../lib/identity-transaction.js';
 import {
   insertFrontmatterScalarPreservingBytes,
   parseNoteContent,
@@ -99,25 +100,27 @@ export async function adoptLineage(
   }
 
   const lockedPaths = [initial.child.file.path, initial.parent.file.path];
-  return withLineageMutationLocks(vaultDir, lockedPaths, async () =>
-    withNoteIdAssignmentLock(vaultDir, async () => {
-      const current = await resolveTargets(schema, vaultDir, options.child, options.parent);
-      assertTargetsStayedLocked(vaultDir, initial, current);
-      const prepared = await prepareAdoption(
-        schema,
-        vaultDir,
-        current.child,
-        current.parent,
-        'execute'
-      );
-      await applyPreparedAdoption(
-        vaultDir,
-        prepared,
-        dependencies.registerIds ?? registerIssuedNoteIds,
-        schema.config.identityStore
-      );
-      return prepared.result;
-    }, {}, schema.config.identityStore)
+  return withNoteIdentityTransaction(vaultDir, schema.config.identityStore, () =>
+    withLineageMutationLocks(vaultDir, lockedPaths, async () =>
+      withNoteIdAssignmentLock(vaultDir, async () => {
+        const current = await resolveTargets(schema, vaultDir, options.child, options.parent);
+        assertTargetsStayedLocked(vaultDir, initial, current);
+        const prepared = await prepareAdoption(
+          schema,
+          vaultDir,
+          current.child,
+          current.parent,
+          'execute'
+        );
+        await applyPreparedAdoption(
+          vaultDir,
+          prepared,
+          dependencies.registerIds ?? registerIssuedNoteIds,
+          schema.config.identityStore
+        );
+        return prepared.result;
+      }, {}, schema.config.identityStore)
+    )
   );
 }
 
