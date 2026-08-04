@@ -42,6 +42,8 @@ export type IssueCode =
   | 'invalid-forked-from'
   | 'missing-lineage-id'
   | 'dangling-forked-from'
+  | 'missing-note-id'
+  | 'invalid-note-id'
   | 'duplicate-note-id'
   | 'self-reference'
   | 'ambiguous-link-target'

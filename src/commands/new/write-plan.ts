@@ -18,6 +18,7 @@ import { buildNotePath } from './paths.js';
 import { throwJsonError } from './errors.js';
 import { handleInstanceScaffolding } from './scaffolding.js';
 import type { LoadedSchema } from '../../types/schema.js';
+import { withNoteIdentityTransaction } from '../../lib/identity-transaction.js';
 
 const PORTABLE_PATH_WARNING_LENGTH = 200;
 const PORTABLE_PATH_MAX_LENGTH = 260;
@@ -36,6 +37,16 @@ async function resolveOutputDir(
 }
 
 export async function writeNotePlan(
+  args: WritePlanArgs,
+  fileExistsStrategy: FileExistsStrategy,
+  skipInstances: boolean
+): Promise<NoteCreationResult> {
+  return withNoteIdentityTransaction(args.vaultDir, args.schema.config.identityStore, () =>
+    writeNotePlanWithinIdentityTransaction(args, fileExistsStrategy, skipInstances)
+  );
+}
+
+async function writeNotePlanWithinIdentityTransaction(
   args: WritePlanArgs,
   fileExistsStrategy: FileExistsStrategy,
   skipInstances: boolean
@@ -84,7 +95,7 @@ export async function writeNotePlan(
     args.content.frontmatter
   );
 
-  const noteId = await generateUniqueNoteId(args.vaultDir);
+  const noteId = await generateUniqueNoteId(args.vaultDir, args.schema);
   args.content.frontmatter.id = noteId;
   if (args.ownership.kind === 'owned') {
     args.content.frontmatter.owner = cleanRelationLink(args.ownership.owner.ownerName, args.schema.config.linkFormat);
@@ -92,7 +103,12 @@ export async function writeNotePlan(
   const orderedFields = ensureIdInFieldOrder(args.content.orderedFields);
 
   await writeNote(filePath, args.content.frontmatter, args.content.body, orderedFields);
-  await registerIssuedNoteId(args.vaultDir, noteId, filePath);
+  await registerIssuedNoteId(
+    args.vaultDir,
+    noteId,
+    filePath,
+    args.schema.config.identityStore
+  );
 
   let scaffoldResult = null;
   if (args.template) {

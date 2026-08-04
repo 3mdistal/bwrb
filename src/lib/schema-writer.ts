@@ -10,6 +10,10 @@ import { readFile, writeFile, rename } from 'fs/promises';
 import { join } from 'path';
 import { BwrbSchema, type Schema } from '../types/schema.js';
 import { SCHEMA_RELATIVE_PATH } from './bwrb-paths.js';
+import { withOwnershipFileLock } from './lineage-lock.js';
+
+const SCHEMA_LOCK_RELATIVE_PATH = '.bwrb/locks/schema.lock';
+const schemaSources = new WeakMap<object, string>();
 
 /**
  * Load the raw schema JSON from a vault directory.
@@ -19,7 +23,9 @@ export async function loadRawSchemaJson(vaultDir: string): Promise<Schema> {
   const schemaPath = join(vaultDir, SCHEMA_RELATIVE_PATH);
   const content = await readFile(schemaPath, 'utf-8');
   const json = JSON.parse(content) as unknown;
-  return BwrbSchema.parse(json);
+  const schema = BwrbSchema.parse(json);
+  schemaSources.set(schema, content);
+  return schema;
 }
 
 /**
@@ -27,6 +33,39 @@ export async function loadRawSchemaJson(vaultDir: string): Promise<Schema> {
  * Uses atomic write (temp file + rename) for safety.
  */
 export async function writeSchema(vaultDir: string, schema: Schema): Promise<void> {
+  await withSchemaLock(vaultDir, async () => {
+    const expected = schemaSources.get(schema);
+    if (expected !== undefined) {
+      const current = await readFile(join(vaultDir, SCHEMA_RELATIVE_PATH), 'utf-8');
+      if (current !== expected) {
+        throw new Error('Schema changed concurrently; retry the command.');
+      }
+    }
+    await writeSchemaUnlocked(vaultDir, schema);
+  });
+}
+
+/** Hold the schema read-modify-write lock for one guarded mutation. */
+export async function withSchemaMutation<T>(
+  vaultDir: string,
+  task: (schema: Schema) => Promise<{ result: T; write: boolean }>
+): Promise<T> {
+  return withSchemaLock(vaultDir, async () => {
+    const schema = await loadRawSchemaJson(vaultDir);
+    const expected = schemaSources.get(schema)!;
+    const outcome = await task(schema);
+    if (outcome.write) {
+      const current = await readFile(join(vaultDir, SCHEMA_RELATIVE_PATH), 'utf-8');
+      if (current !== expected) {
+        throw new Error('Schema changed concurrently; retry the command.');
+      }
+      await writeSchemaUnlocked(vaultDir, schema);
+    }
+    return outcome.result;
+  });
+}
+
+async function writeSchemaUnlocked(vaultDir: string, schema: Schema): Promise<void> {
   const schemaPath = join(vaultDir, SCHEMA_RELATIVE_PATH);
   const tempPath = join(vaultDir, SCHEMA_RELATIVE_PATH + '.tmp');
   
@@ -39,6 +78,16 @@ export async function writeSchema(vaultDir: string, schema: Schema): Promise<voi
   
   // Atomic rename
   await rename(tempPath, schemaPath);
+  schemaSources.set(schema, content);
+}
+
+async function withSchemaLock<T>(vaultDir: string, task: () => Promise<T>): Promise<T> {
+  return withOwnershipFileLock(
+    join(vaultDir, SCHEMA_LOCK_RELATIVE_PATH),
+    task,
+    {},
+    'Timed out waiting to update the schema; retry the command.'
+  );
 }
 
 /**

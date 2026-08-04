@@ -118,6 +118,28 @@ describe('lineage adopt', () => {
       .toEqual([]);
   });
 
+  it('adopts lineage in frontmatter-v1 without taking custody of the legacy registry', async () => {
+    const schemaPath = join(vaultDir, '.bwrb/schema.json');
+    const rawSchema = JSON.parse(await readFile(schemaPath, 'utf-8')) as any;
+    rawSchema.config = { ...rawSchema.config, identity_store: 'frontmatter-v1' };
+    await writeFile(schemaPath, JSON.stringify(rawSchema, null, 2));
+    const registryPath = join(vaultDir, '.bwrb/ids.jsonl');
+    const dirtyRegistry = '{"id":"unfinished","path":"Elsewhere.md"}\n';
+    await writeFile(registryPath, dirtyRegistry);
+    await writeFile(join(vaultDir, 'Ideas/Frontmatter Parent.md'), noteRaw({ id: A }));
+    await writeFile(join(vaultDir, 'Ideas/Frontmatter Child.md'), noteRaw({ id: B }));
+
+    const result = await runCLI([
+      'lineage', 'adopt', 'Frontmatter Child', '--from', 'Frontmatter Parent',
+      '--execute', '--output', 'json',
+    ], vaultDir);
+
+    expect(result.exitCode, result.stderr || result.stdout).toBe(0);
+    expect(await readFile(registryPath, 'utf-8')).toBe(dirtyRegistry);
+    expect((await parseNote(join(vaultDir, 'Ideas/Frontmatter Child.md'))).frontmatter['forked-from'])
+      .toBe(A);
+  });
+
   it('resolves child and parent by exact UUID, path, basename, name, and schema alias', async () => {
     const schemaPath = join(vaultDir, '.bwrb/schema.json');
     const schema = JSON.parse(await readFile(schemaPath, 'utf-8')) as any;

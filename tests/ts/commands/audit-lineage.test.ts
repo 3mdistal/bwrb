@@ -102,4 +102,47 @@ describe('audit command lineage UUID identity', () => {
     expect(result.stdout).toContain('Ideas/A.md');
     expect(result.stdout).toContain('Ideas/B.md');
   });
+
+  it('enforces required note identity only after frontmatter-v1 migration', async () => {
+    await writeFile(
+      join(vaultDir, 'Ideas', 'Missing.md'),
+      `---\ntype: idea\nstatus: raw\npriority: medium\n---\n`
+    );
+    await writeFile(
+      join(vaultDir, 'Ideas', 'Invalid.md'),
+      `---\ntype: idea\nid: definitely-not-a-uuid\nstatus: raw\npriority: medium\n---\n`
+    );
+
+    const legacy = await runCLI(
+      ['audit', 'idea', '--only', 'missing-note-id', '--output', 'json'],
+      vaultDir
+    );
+    expect(legacy.exitCode).toBe(0);
+
+    await writeFile(
+      join(vaultDir, '.bwrb', 'schema.json'),
+      JSON.stringify({
+        ...TEST_SCHEMA,
+        config: { ...TEST_SCHEMA.config, identity_store: 'frontmatter-v1' },
+      }, null, 2)
+    );
+
+    const missing = await runCLI(
+      ['audit', 'idea', '--only', 'missing-note-id', '--output', 'json'],
+      vaultDir
+    );
+    expect(missing.exitCode).toBe(1);
+    expect(JSON.parse(missing.stdout).files).toMatchObject([
+      { path: 'Ideas/Missing.md', issues: [{ code: 'missing-note-id' }] },
+    ]);
+
+    const invalid = await runCLI(
+      ['audit', 'idea', '--only', 'invalid-note-id', '--output', 'json'],
+      vaultDir
+    );
+    expect(invalid.exitCode).toBe(1);
+    expect(JSON.parse(invalid.stdout).files).toMatchObject([
+      { path: 'Ideas/Invalid.md', issues: [{ code: 'invalid-note-id' }] },
+    ]);
+  });
 });

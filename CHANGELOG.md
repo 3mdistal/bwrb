@@ -4,6 +4,22 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Distributed stable note identity** — new vaults keep the authoritative UUID
+  with each note instead of mutating a shared registry. Existing vaults remain
+  on the legacy registry until `bwrb identity migrate` validates every note and
+  explicitly switches modes; reverse migration rebuilds the registry for safe
+  rollback.
+
+### Changed
+
+- **Independent Git transactions** — frontmatter-identity creation, fork,
+  template scaffolding, lineage adoption, and deletion no longer take custody
+  of `.bwrb/ids.jsonl` or a vault-wide identity-assignment lock. Audit reports
+  missing, invalid, and copied duplicate IDs while stable targeting continues
+  across renames and moves.
+
 ## [0.3.0] - 2026-07-13
 
 ### Breaking changes

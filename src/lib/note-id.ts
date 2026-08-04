@@ -6,6 +6,10 @@ import {
   type OwnershipFileLockOptions,
   withOwnershipFileLock,
 } from './lineage-lock.js';
+import { buildVaultNoteSnapshot } from './discovery.js';
+import type { LoadedSchema } from '../types/schema.js';
+
+export type NoteIdentityStore = 'registry-v1' | 'frontmatter-v1';
 
 const ID_REGISTRY_RELATIVE_PATH = '.bwrb/ids.jsonl';
 const ID_ASSIGNMENT_LOCK = '.bwrb/locks/fork-source-id.lock';
@@ -84,8 +88,13 @@ async function readIssuedIds(vaultDir: string): Promise<Set<string>> {
   return ids;
 }
 
-export async function generateUniqueNoteId(vaultDir: string): Promise<string> {
-  const issued = await readIssuedIds(vaultDir);
+export async function generateUniqueNoteId(
+  vaultDir: string,
+  schema?: LoadedSchema
+): Promise<string> {
+  const issued = schema?.config.identityStore === 'frontmatter-v1'
+    ? await readFrontmatterIds(schema, vaultDir)
+    : await readIssuedIds(vaultDir);
 
   for (let attempt = 0; attempt < MAX_ID_GENERATION_ATTEMPTS; attempt++) {
     const id = randomUUID();
@@ -100,17 +109,19 @@ export async function generateUniqueNoteId(vaultDir: string): Promise<string> {
 export async function registerIssuedNoteId(
   vaultDir: string,
   id: string,
-  notePath: string
+  notePath: string,
+  identityStore: NoteIdentityStore = 'registry-v1'
 ): Promise<void> {
-  await registerIssuedNoteIds(vaultDir, [{ id, notePath }]);
+  await registerIssuedNoteIds(vaultDir, [{ id, notePath }], identityStore);
 }
 
 /** Register several newly assigned IDs as one atomic registry mutation. */
 export async function registerIssuedNoteIds(
   vaultDir: string,
-  registrations: NoteIdRegistration[]
+  registrations: NoteIdRegistration[],
+  identityStore: NoteIdentityStore = 'registry-v1'
 ): Promise<void> {
-  if (registrations.length === 0) return;
+  if (identityStore === 'frontmatter-v1' || registrations.length === 0) return;
   await withNoteIdRegistryLock(vaultDir, async () => {
     const registryPath = getIdRegistryPath(vaultDir);
     const current = await readFile(registryPath, 'utf-8').catch(error => {
@@ -130,8 +141,10 @@ export async function registerIssuedNoteIds(
 
 export async function unregisterIssuedNotePath(
   vaultDir: string,
-  relativePath: string
+  relativePath: string,
+  identityStore: NoteIdentityStore = 'registry-v1'
 ): Promise<void> {
+  if (identityStore === 'frontmatter-v1') return;
   await withNoteIdRegistryLock(vaultDir, async () => {
     const registryPath = getIdRegistryPath(vaultDir);
     if (!existsSync(registryPath)) return;
@@ -162,14 +175,35 @@ export async function unregisterIssuedNotePath(
 export async function withNoteIdAssignmentLock<T>(
   vaultDir: string,
   task: () => Promise<T>,
-  optionOverrides: Partial<OwnershipFileLockOptions> = {}
+  optionOverrides: Partial<OwnershipFileLockOptions> = {},
+  identityStore: NoteIdentityStore = 'registry-v1'
 ): Promise<T> {
+  if (identityStore === 'frontmatter-v1') return task();
   return withOwnershipFileLock(
     resolve(vaultDir, ID_ASSIGNMENT_LOCK),
     task,
     { ...NOTE_ID_LOCK_OPTIONS, ...optionOverrides },
     'Timed out waiting to assign a note ID; retry the command.'
   );
+}
+
+/** Rebuild the legacy registry from authoritative live-note frontmatter. */
+export async function rebuildIssuedNoteRegistry(
+  vaultDir: string,
+  registrations: NoteIdRegistration[],
+  rebuiltAt = new Date().toISOString()
+): Promise<void> {
+  await withNoteIdRegistryLock(vaultDir, async () => {
+    const existingCreatedAt = await readRegistryCreatedAtById(vaultDir);
+    const rows = [...registrations]
+      .sort((a, b) => relative(vaultDir, a.notePath).localeCompare(relative(vaultDir, b.notePath), 'en'))
+      .map(({ id, notePath }) => JSON.stringify({
+        id,
+        createdAt: existingCreatedAt.get(normalizeNoteId(id)) ?? rebuiltAt,
+        path: relative(vaultDir, notePath),
+      } satisfies IdRegistryEntry));
+    await writeRegistryAtomic(getIdRegistryPath(vaultDir), rows.length > 0 ? `${rows.join('\n')}\n` : '');
+  });
 }
 
 export function ensureIdInFieldOrder(order: string[]): string[] {
@@ -213,4 +247,35 @@ async function writeRegistryAtomic(registryPath: string, content: string): Promi
 
 function isFileMissingError(error: unknown): boolean {
   return error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT';
+}
+
+async function readFrontmatterIds(schema: LoadedSchema, vaultDir: string): Promise<Set<string>> {
+  const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
+  const ids = new Set<string>();
+  for (const note of snapshot.notes) {
+    const id = note.frontmatter?.id;
+    if (isValidNoteId(id)) ids.add(normalizeNoteId(id));
+  }
+  return ids;
+}
+
+async function readRegistryCreatedAtById(vaultDir: string): Promise<Map<string, string>> {
+  const registryPath = getIdRegistryPath(vaultDir);
+  const content = await readFile(registryPath, 'utf-8').catch(error => {
+    if (isFileMissingError(error)) return '';
+    throw error;
+  });
+  const values = new Map<string, string>();
+  for (const line of content.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const parsed = JSON.parse(line) as Partial<IdRegistryEntry>;
+      if (isValidNoteId(parsed.id) && typeof parsed.createdAt === 'string') {
+        values.set(normalizeNoteId(parsed.id), parsed.createdAt);
+      }
+    } catch {
+      // Malformed legacy rows carry no trustworthy timestamp to preserve.
+    }
+  }
+  return values;
 }

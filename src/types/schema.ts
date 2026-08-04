@@ -499,6 +499,12 @@ export const AuditConfigSchema = z.object({
  * These settings apply to the entire vault and control CLI behavior.
  */
 export const ConfigSchema = z.object({
+  identity_store: z
+    .enum(['registry-v1', 'frontmatter-v1'])
+    .optional()
+    .describe(
+      'Stable note identity storage: legacy shared registry or authoritative per-note frontmatter'
+    ),
   // Link format for relation fields in frontmatter
   // wikilink: "[[Note Name]]" (default, Obsidian-compatible)
   // markdown: "[Note Name](Note Name.md)"
@@ -783,6 +789,8 @@ export interface ResolvedType {
  * Resolved configuration with defaults applied.
  */
 export interface ResolvedConfig {
+  /** Stable note identity storage (omitted legacy vaults remain registry-v1). */
+  identityStore: 'registry-v1' | 'frontmatter-v1';
   /** Link format for relation fields: 'wikilink' or 'markdown' */
   linkFormat: 'wikilink' | 'markdown';
   /** Terminal editor command (from config or $EDITOR) */

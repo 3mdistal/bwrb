@@ -46,6 +46,7 @@ interface InitResult {
   vault: string;
   schema_path: string;
   config: {
+    identity_store: 'frontmatter-v1';
     link_format: string;
     obsidian_vault?: string;
     editor?: string;
@@ -168,6 +169,7 @@ Examples:
 
       // Build config
       const config: Config = {
+        identity_store: 'frontmatter-v1',
         link_format: linkFormat,
       };
 
@@ -198,6 +200,7 @@ Examples:
         vault: vaultDir,
         schema_path: schemaPath,
         config: {
+          identity_store: 'frontmatter-v1',
           link_format: linkFormat,
           ...(obsidianVault && { obsidian_vault: obsidianVault }),
           ...(editor && { editor }),

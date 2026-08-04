@@ -219,6 +219,21 @@ describe('bwrb completion command', () => {
       expect(options).not.toContain('--force');
     });
 
+    it('completes identity migrate and its guarded migration options', async () => {
+      const subcommands = (await runCliOutput([
+        '--completions', 'bwrb', 'identity', '',
+      ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
+      expect(subcommands).toEqual(['migrate']);
+
+      const options = (await runCliOutput([
+        '--completions', 'bwrb', 'identity', 'migrate', '--',
+      ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
+      expect(options).toEqual(expect.arrayContaining([
+        '--to', '--dry-run', '--execute', '--output', '--vault', '--help',
+      ]));
+      expect(options).not.toContain('--force');
+    });
+
     it('should return option completions when current word starts with -', async () => {
       const output = await runCliOutput(['--completions', 'bwrb', 'list', '--'], {
         vault: VAULT_DIR,

@@ -4,6 +4,8 @@ description: Initialize a new Bowerbird vault
 ---
 
 Create a `.bwrb/` directory and a version 2 `.bwrb/schema.json` in a new vault.
+New vaults use distributed `frontmatter-v1` note identity: each note carries
+its stable UUID in `id`, and no shared identity registry is authoritative.
 
 ## Synopsis
 

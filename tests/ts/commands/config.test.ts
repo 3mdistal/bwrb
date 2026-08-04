@@ -8,6 +8,8 @@ import { CONFIG_OPTION_KEYS } from '../../../src/commands/config.js';
 import { ConfigSchema, type Config } from '../../../src/types/schema.js';
 
 const INTENTIONALLY_UNEXPOSED_CONFIG_KEYS = [
+  // Identity mode changes require guarded `bwrb identity migrate`, never a flat edit.
+  'identity_store',
   // Calendar objects need guided authoring rather than a flat config editor (#790).
   'calendars',
   // Advanced mention tuning remains schema-only; dedicated command UX has not been designed.

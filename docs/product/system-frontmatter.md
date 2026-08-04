@@ -18,6 +18,9 @@ Audit/validation behavior:
 - `forked-from` cannot be declared as a type or trait schema field. Schema load,
   validation, and field creation reject the reserved name.
 - Existing `id` schema declarations retain their current behavior.
+- In `frontmatter-v1`, each parseable discovered note must have one valid,
+  vault-unique UUID `id`. The note is authoritative; any global index is a
+  rebuildable cache, never identity state.
 
 ## Reserved (immutable) fields
 
@@ -34,6 +37,29 @@ The only in-place exception is `bwrb lineage adopt`, which revalidates two exact
 existing notes under lineage locks, refuses reparenting, cycles, and unsafe
 graph state, and can add only missing `id` fields plus the child's
 `forked-from` value.
+
+## Identity storage modes
+
+- `registry-v1` preserves the legacy `.bwrb/ids.jsonl` issuance registry and
+  its registry/assignment locks. Omitted `config.identity_store` resolves to
+  this mode for compatibility with existing vaults.
+- `frontmatter-v1` derives identity from live note frontmatter. Creation,
+  deletion, fork, template scaffolding, and lineage adoption never mutate
+  `.bwrb/ids.jsonl` and take no vault-wide identity-assignment lock. Path-level
+  mutation locks remain authoritative for writes to the same note.
+
+`bwrb identity migrate` is the only supported mode switch. Forward migration
+requires every discovered parseable note to have a valid unique UUID and then
+changes only `schema.json`. Reverse migration atomically rebuilds the legacy
+registry from live notes before changing the schema mode. Both directions fail
+closed on unreadable, missing, invalid, or duplicate identity.
+
+Execute mode raises a short-lived migration fence. Identity-relevant Bowerbird
+transactions already in flight drain before the snapshot; newcomers fail with
+a retryable error until the schema mode has changed. Independent transactions
+otherwise keep separate leases and do not serialize with each other. Because
+external editors and raw Git moves do not honor Bowerbird's fence, the operator
+must keep those writers quiescent between the final preview and execution.
 
 ## Policy
 

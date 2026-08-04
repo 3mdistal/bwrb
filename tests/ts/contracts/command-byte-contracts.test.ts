@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { spawn } from 'child_process';
-import { readdir, readFile } from 'fs/promises';
+import { readdir, readFile, writeFile } from 'fs/promises';
 import { join, relative } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanupTestVault, createTestVault, PROJECT_ROOT } from '../fixtures/setup.js';
@@ -138,6 +138,33 @@ describe('P1 command contracts: JSON output and vault-byte invariance', () => {
       '.bwrb/ids.jsonl',
       'Ideas/Contract Created.md',
     ]);
+    expect(changed).toEqual([]);
+    expect(removed).toEqual([]);
+  });
+
+  it('P1 write isolation: frontmatter-v1 new owns only the new note bytes', async () => {
+    const schemaPath = join(vaultDir, '.bwrb/schema.json');
+    const schema = JSON.parse(await readFile(schemaPath, 'utf-8')) as {
+      config?: Record<string, unknown>;
+    };
+    schema.config = { ...schema.config, identity_store: 'frontmatter-v1' };
+    await writeFile(schemaPath, JSON.stringify(schema, null, 2));
+    const before = await vaultFileHashes(vaultDir);
+
+    const result = await runRawCli([
+      'new', 'idea', '--json', '{"name":"Isolated Contract","status":"raw"}',
+    ], vaultDir);
+    const json = expectOneJsonValue(result) as { path: string; success: boolean };
+    const after = await vaultFileHashes(vaultDir);
+    const added = after.filter((file) => !before.some((prior) => prior.path === file.path));
+    const changed = after.filter((file) => {
+      const prior = before.find((candidate) => candidate.path === file.path);
+      return prior !== undefined && prior.sha256 !== file.sha256;
+    });
+    const removed = before.filter((file) => !after.some((later) => later.path === file.path));
+
+    expect(json.success).toBe(true);
+    expect(added.map((file) => file.path)).toEqual(['Ideas/Isolated Contract.md']);
     expect(changed).toEqual([]);
     expect(removed).toEqual([]);
   });

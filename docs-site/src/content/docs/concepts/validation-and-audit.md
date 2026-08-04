@@ -38,6 +38,11 @@ allowed and never reported as `unknown-field`. Ordinary interactive and JSON
 creation writes `id` and `name`; the name remains the note identity even when
 the physical filename is normalized or pattern-derived.
 
+In a `frontmatter-v1` vault, audit also enforces that every discovered,
+parseable note has one valid UUID `id`, and reports copied notes that duplicate
+an existing ID. Missing and invalid IDs are never repaired automatically:
+choose the surviving identity explicitly, then rerun audit.
+
 ## Fixing Issues
 
 `bwrb audit --fix` applies fixes by default, but requires explicit targeting (use `--all` to target the full vault).

@@ -153,7 +153,9 @@ bwrb delete "My Note" --force --backup
 bwrb delete "My Note" --dry-run --output json
 ```
 
-When a note is actually deleted, bwrb also removes the matching path from `.bwrb/ids.jsonl`.
+In legacy `registry-v1` vaults, deleting a note also removes its matching path
+from `.bwrb/ids.jsonl`. In `frontmatter-v1` vaults, deletion owns only the note
+path; the optional registry is inert and unchanged.
 
 ### Bulk Mode
 
