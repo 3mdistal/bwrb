@@ -54,7 +54,7 @@ export interface CompletionContext {
 /**
  * Commands that have subcommands.
  */
-const COMMANDS_WITH_SUBCOMMANDS = ['schema', 'template', 'dashboard', 'lineage', 'identity', 'completion'];
+const COMMANDS_WITH_SUBCOMMANDS = ['schema', 'template', 'dashboard', 'lineage', 'identity', 'priority', 'completion'];
 
 /**
  * Subcommands for each parent command.
@@ -64,7 +64,8 @@ const SUBCOMMANDS: Record<string, string[]> = {
   template: ['list', 'validate', 'new', 'edit', 'delete'],
   dashboard: ['list', 'new', 'edit', 'delete'],
   lineage: ['adopt'],
-  identity: ['migrate'],
+  identity: ['migrate', 'backfill'],
+  priority: ['suggest', 'validate', 'approve'],
   completion: ['bash', 'zsh', 'fish'],
 };
 
@@ -252,6 +253,7 @@ const COMMANDS = [
   'list',
   'recent',
   'explain',
+  'priority',
   'schema',
   'audit',
   'bulk',
@@ -322,7 +324,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
   ],
   template: ['--vault', '-v', '--non-interactive', '--help'],
   lineage: ['--from', '--dry-run', '--execute', '-x', '--output', '--vault', '-v', '--non-interactive', '--help'],
-  identity: ['--to', '--dry-run', '--execute', '-x', '--output', '--vault', '-v', '--non-interactive', '--help'],
+  identity: ['--to', '--type', '-t', '--path', '-p', '--dry-run', '--execute', '-x', '--output', '--vault', '-v', '--non-interactive', '--help'],
   dashboard: ['--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
   delete: [
     '--type', '-t',
@@ -342,6 +344,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
   ],
   completion: ['--help'],
   explain: ['--transition', '--output', '--help'],
+  priority: ['--type', '--as-of', '--complete', '--json-file', '--approval-id', '--execute', '--output', '--vault', '-v', '--non-interactive', '--help'],
   config: ['--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
 };
 
@@ -610,6 +613,14 @@ export async function handleCompletionRequest(
   if (ctx.command === 'identity') {
     if (!ctx.subcommand && ctx.positionalIndex === 0) {
       return filterByPrefix(SUBCOMMANDS['identity'] ?? [], ctx.current);
+    }
+    return [];
+  }
+
+  // === Priority command ===
+  if (ctx.command === 'priority') {
+    if (!ctx.subcommand && ctx.positionalIndex === 0) {
+      return filterByPrefix(SUBCOMMANDS['priority'] ?? [], ctx.current);
     }
     return [];
   }

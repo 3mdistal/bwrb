@@ -588,6 +588,14 @@
           ],
           "description": "Type of prompt: text (free text), select (from options), relation (from vault query), list (comma-separated list), date (date picker), relative-date (constraints relative to another note date), boolean (yes/no), number (numeric input)"
         },
+        "minimum": {
+          "type": "number",
+          "description": "Inclusive minimum for number fields"
+        },
+        "maximum": {
+          "type": "number",
+          "description": "Inclusive maximum for number fields"
+        },
         "granularity": {
           "type": "string",
           "enum": [

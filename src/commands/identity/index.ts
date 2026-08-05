@@ -8,6 +8,7 @@ import { ExitCodes, jsonError, printJson } from '../../lib/output.js';
 import { printError, printInfo, printSuccess } from '../../lib/prompt.js';
 import { loadSchema } from '../../lib/schema.js';
 import type { NoteIdentityStore } from '../../lib/note-id.js';
+import { backfillRegistryIdentities } from '../../lib/identity-backfill.js';
 import { resolveVaultDirWithSelection } from '../../lib/vaultSelection.js';
 
 interface IdentityMigrateOptions {
@@ -87,4 +88,31 @@ Examples:
 
 export const identityCommand = new Command('identity')
   .description('Inspect and migrate stable note identity storage')
-  .addCommand(migrateCommand);
+  .addCommand(migrateCommand)
+  .addCommand(
+    new Command('backfill')
+      .description('Backfill missing registry identities for one note type')
+      .requiredOption('--type <type>', 'Exact Bowerbird note type')
+      .option('--path <path>', 'Restrict the backfill to one exact vault-relative note path')
+      .option('--dry-run', 'Preview the backfill (default)')
+      .option('-x, --execute', 'Append generated identities after revalidation')
+      .option('--output <format>', 'Output format: text or json', 'text')
+      .action(async (options: { type: string; path?: string; dryRun?: boolean; execute?: boolean; output?: string }, command: Command) => {
+        const jsonMode = options.output === 'json';
+        try {
+          if (options.output !== 'text' && options.output !== 'json') throw new Error('--output must be text or json.');
+          if (options.execute && options.dryRun) throw new Error('--execute cannot be combined with --dry-run.');
+          const globalOpts = getGlobalOpts(command);
+          const vaultDir = await resolveVaultDirWithSelection({ ...(globalOpts.vault ? { vault: globalOpts.vault } : {}), allowFindDown: true, jsonMode });
+          const result = await backfillRegistryIdentities(vaultDir, options.type, options.execute === true, options.path);
+          if (jsonMode) printJson({ success: true, ...result });
+          else if (result.mode === 'execute') printSuccess(`Backfilled ${result.missing} ${result.type} identities.`);
+          else printInfo(`Dry run: would backfill ${result.missing} ${result.type} identities.`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (jsonMode) printJson(jsonError(message, { code: ExitCodes.VALIDATION_ERROR }));
+          else printError(message);
+          process.exitCode = ExitCodes.VALIDATION_ERROR;
+        }
+      })
+  );

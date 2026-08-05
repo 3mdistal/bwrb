@@ -96,6 +96,10 @@ export const FieldSchema = z.object({
     .describe(
       'Type of prompt: text (free text), select (from options), relation (from vault query), list (comma-separated list), date (date picker), relative-date (constraints relative to another note date), boolean (yes/no), number (numeric input)'
     ),
+  // Inclusive bounds for numeric fields. Kept generic so schemas can express
+  // small ordinal scales without a priority-specific validator.
+  minimum: z.number().optional().describe('Inclusive minimum for number fields'),
+  maximum: z.number().optional().describe('Inclusive maximum for number fields'),
   // Coarsest date precision allowed for `date` fields (finer is always allowed).
   // - day (default): full YYYY-MM-DD only
   // - month: YYYY-MM or YYYY-MM-DD (e.g. last-contact known to the month)
