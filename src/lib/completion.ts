@@ -66,7 +66,7 @@ const SUBCOMMANDS: Record<string, string[]> = {
   lineage: ['adopt'],
   identity: ['migrate', 'backfill'],
   priority: ['suggest', 'validate', 'approve'],
-  triage: ['status', 'approve'],
+  triage: ['validate', 'status', 'approve'],
   completion: ['bash', 'zsh', 'fish'],
 };
 

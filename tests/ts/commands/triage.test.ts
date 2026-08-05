@@ -45,4 +45,24 @@ describe('triage command', () => {
     await writeFile(notePath, `${await readFile(notePath, 'utf8')}\nChanged.\n`);
     expect((await runCLI(['triage', 'approve', '--json-file', planPath, '--approval-id', 'alice-triage-1', '--execute', '--output', 'json'], vault)).exitCode).toBe(1);
   });
+
+  it('binds actionable dispositions to exact target task revisions and validates ledger authority', async () => {
+    const targetPath = 'Objectives/Tasks/Target Task.md';
+    const targetId = '22222222-2222-4222-8222-222222222222';
+    await writeFile(join(vault, targetPath), '---\ntype: task\nstatus: next\n---\n\nTarget.\n');
+    await writeFile(join(vault, '.bwrb/ids.jsonl'), `${await readFile(join(vault, '.bwrb/ids.jsonl'), 'utf8')}${JSON.stringify({ id: targetId, createdAt: '2026-08-01T00:00:00.000Z', path: targetPath })}\n`);
+    const source = JSON.parse((await runCLI(['triage', 'status', '--path', relativePath, '--output', 'json'], vault)).stdout).data;
+    const target = JSON.parse((await runCLI(['triage', 'status', '--path', targetPath, '--output', 'json'], vault)).stdout).data;
+    const planPath = join(vault, 'target-plan.json');
+    await writeFile(planPath, JSON.stringify({ items: [{ id: source.id, path: source.path, revision: source.revision, disposition: 'link-existing', targets: [{ id: target.id, path: target.path, revision: target.revision }] }] }));
+    await writeFile(join(vault, targetPath), `${await readFile(join(vault, targetPath), 'utf8')}\nChanged target.\n`);
+    const stale = await runCLI(['triage', 'approve', '--json-file', planPath, '--approval-id', 'alice-triage-1', '--execute', '--output', 'json'], vault);
+    expect(stale.exitCode).toBe(1);
+    expect(JSON.parse(stale.stdout).error).toContain('target task identity or revision changed');
+
+    await writeFile(join(vault, '.bwrb/triage.jsonl'), `${JSON.stringify({ id: ID, path: relativePath, revision: source.revision, disposition: 'no-action', reviewedAt: 'not-a-date', approvalId: '' })}\n`);
+    const invalid = await runCLI(['triage', 'validate', '--output', 'json'], vault);
+    expect(invalid.exitCode).toBe(1);
+    expect(JSON.parse(invalid.stdout).error).toContain('Malformed triage ledger row');
+  });
 });

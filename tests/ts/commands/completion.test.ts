@@ -259,7 +259,7 @@ describe('bwrb completion command', () => {
       const subcommands = (await runCliOutput([
         '--completions', 'bwrb', 'triage', '',
       ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
-      expect(subcommands).toEqual(['status', 'approve']);
+      expect(subcommands).toEqual(['validate', 'status', 'approve']);
       const options = (await runCliOutput([
         '--completions', 'bwrb', 'triage', 'approve', '--',
       ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
