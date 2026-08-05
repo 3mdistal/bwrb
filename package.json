@@ -1,6 +1,6 @@
 {
   "name": "bwrb",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Schema-driven note management for markdown vaults",
   "type": "module",
   "main": "dist/index.js",
