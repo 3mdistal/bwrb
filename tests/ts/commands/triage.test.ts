@@ -65,4 +65,17 @@ describe('triage command', () => {
     expect(invalid.exitCode).toBe(1);
     expect(JSON.parse(invalid.stdout).error).toContain('Malformed triage ledger row');
   });
+
+  it('validates the latest identity path while preserving renamed historical rows', async () => {
+    const item = JSON.parse((await runCLI(['triage', 'status', '--path', relativePath, '--output', 'json'], vault)).stdout).data;
+    const common = { id: ID, revision: item.revision, disposition: 'no-action', reviewedAt: '2026-08-05T20:00:00.000Z', approvalId: 'alice-triage-1' };
+    await writeFile(join(vault, '.bwrb/triage.jsonl'), `${JSON.stringify({ ...common, path: 'Objectives/Tasks/Old Name.md' })}\n${JSON.stringify({ ...common, path: relativePath })}\n`);
+    const valid = await runCLI(['triage', 'validate', '--output', 'json'], vault);
+    expect(valid.exitCode, valid.stderr || valid.stdout).toBe(0);
+
+    await writeFile(join(vault, '.bwrb/triage.jsonl'), `${JSON.stringify({ ...common, path: relativePath, disposition: 'link-existing' })}\n`);
+    const missingTargets = await runCLI(['triage', 'validate', '--output', 'json'], vault);
+    expect(missingTargets.exitCode).toBe(1);
+    expect(JSON.parse(missingTargets.stdout).error).toContain('Malformed triage ledger row');
+  });
 });

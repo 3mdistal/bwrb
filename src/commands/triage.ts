@@ -48,10 +48,11 @@ async function evidence(vaultDir: string, exactPath: string): Promise<{ id: stri
   return { id: normalizeNoteId(id), path: exactPath, revision: semanticEvidenceRevision(await readFile(note.path, 'utf8')), type: note.resolvedType ?? '' };
 }
 function validTimestamp(value: unknown): value is string { return typeof value === 'string' && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString() === value; }
-function validTargets(value: unknown): value is TriageTarget[] { return Array.isArray(value) && value.every((target) => target && typeof target === 'object' && isValidNoteId((target as TriageTarget).id) && typeof (target as TriageTarget).path === 'string' && typeof (target as TriageTarget).revision === 'string' && (target as TriageTarget).revision.length > 0); }
+function validRevision(value: unknown): value is string { return typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value); }
+function validTargets(value: unknown): value is TriageTarget[] { return Array.isArray(value) && value.every((target) => target && typeof target === 'object' && isValidNoteId((target as TriageTarget).id) && typeof (target as TriageTarget).path === 'string' && validRevision((target as TriageTarget).revision)); }
 async function ledger(vaultDir: string): Promise<TriageRow[]> {
   const raw = await readFile(join(vaultDir, TRIAGE_LEDGER), 'utf8').catch(() => ''); const rows: TriageRow[] = [];
-  for (const [index, line] of raw.split('\n').entries()) { if (!line.trim()) continue; try { const row = JSON.parse(line) as TriageRow; if (!isValidNoteId(row.id) || !row.path || !row.revision || !DISPOSITIONS.has(row.disposition) || !row.approvalId || !validTimestamp(row.reviewedAt) || (row.targets !== undefined && !validTargets(row.targets)) || (row.disposition === 'defer' && !row.reason)) throw new Error(); rows.push(row); } catch { throw new Error(`Malformed triage ledger row ${index + 1}`); } }
+  for (const [index, line] of raw.split('\n').entries()) { if (!line.trim()) continue; try { const row = JSON.parse(line) as TriageRow; const needsTargets = ['link-existing', 'update-existing', 'create-task'].includes(row.disposition); if (!isValidNoteId(row.id) || !row.path || !validRevision(row.revision) || !DISPOSITIONS.has(row.disposition) || !row.approvalId || !validTimestamp(row.reviewedAt) || (row.targets !== undefined && !validTargets(row.targets)) || (needsTargets && (!row.targets || row.targets.length === 0)) || (row.disposition === 'defer' && !row.reason)) throw new Error(); rows.push(row); } catch { throw new Error(`Malformed triage ledger row ${index + 1}`); } }
   return rows;
 }
 async function appendLedgerUnlocked(vaultDir: string, rows: TriageRow[]): Promise<void> {
@@ -65,8 +66,10 @@ async function appendLedgerUnlocked(vaultDir: string, rows: TriageRow[]): Promis
 export const triageCommand = new Command('triage').description('Inspect and approve revision-bound evidence dispositions');
 triageCommand.command('validate').option('--output <format>', 'json').action(async (_options, command) => {
   try {
-    const vaultDir = await vault(command); const rows = await ledger(vaultDir);
-    for (const row of rows) { const live = await evidence(vaultDir, row.path); if (live.id !== normalizeNoteId(row.id)) throw new Error(`${row.path}: triage ledger identity disagrees with live evidence`); for (const target of row.targets ?? []) { const liveTarget = await evidence(vaultDir, target.path); if (liveTarget.type !== 'task' || liveTarget.id !== normalizeNoteId(target.id)) throw new Error(`${row.path}: triage target identity is invalid`); } }
+    const vaultDir = await vault(command); const rows = await ledger(vaultDir); const latest = new Map<string, TriageRow>();
+    for (const row of rows) latest.set(normalizeNoteId(row.id), row);
+    const latestPaths = new Set<string>();
+    for (const row of latest.values()) { if (latestPaths.has(row.path)) throw new Error(`${row.path}: duplicate current triage evidence path`); latestPaths.add(row.path); const live = await evidence(vaultDir, row.path); if (live.id !== normalizeNoteId(row.id)) throw new Error(`${row.path}: triage ledger identity disagrees with live evidence`); for (const target of row.targets ?? []) { const liveTarget = await evidence(vaultDir, target.path); if (liveTarget.type !== 'task' || liveTarget.id !== normalizeNoteId(target.id)) throw new Error(`${row.path}: triage target identity is invalid`); } }
     printJson(jsonSuccess({ data: { valid: true, rows: rows.length } }));
   } catch (error) { fail(error instanceof Error ? error.message : String(error)); }
 });
