@@ -54,7 +54,7 @@ export interface CompletionContext {
 /**
  * Commands that have subcommands.
  */
-const COMMANDS_WITH_SUBCOMMANDS = ['schema', 'template', 'dashboard', 'lineage', 'identity', 'priority', 'completion'];
+const COMMANDS_WITH_SUBCOMMANDS = ['schema', 'template', 'dashboard', 'lineage', 'identity', 'priority', 'triage', 'completion'];
 
 /**
  * Subcommands for each parent command.
@@ -66,6 +66,7 @@ const SUBCOMMANDS: Record<string, string[]> = {
   lineage: ['adopt'],
   identity: ['migrate', 'backfill'],
   priority: ['suggest', 'validate', 'approve'],
+  triage: ['status', 'approve'],
   completion: ['bash', 'zsh', 'fish'],
 };
 
@@ -254,6 +255,7 @@ const COMMANDS = [
   'recent',
   'explain',
   'priority',
+  'triage',
   'schema',
   'audit',
   'bulk',
@@ -345,6 +347,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
   completion: ['--help'],
   explain: ['--transition', '--output', '--help'],
   priority: ['--type', '--as-of', '--complete', '--json-file', '--approval-id', '--execute', '--output', '--vault', '-v', '--non-interactive', '--help'],
+  triage: ['--path', '-p', '--json-file', '--approval-id', '--execute', '--output', '--vault', '-v', '--non-interactive', '--help'],
   config: ['--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
 };
 
@@ -622,6 +625,11 @@ export async function handleCompletionRequest(
     if (!ctx.subcommand && ctx.positionalIndex === 0) {
       return filterByPrefix(SUBCOMMANDS['priority'] ?? [], ctx.current);
     }
+    return [];
+  }
+
+  if (ctx.command === 'triage') {
+    if (!ctx.subcommand && ctx.positionalIndex === 0) return filterByPrefix(SUBCOMMANDS['triage'] ?? [], ctx.current);
     return [];
   }
 

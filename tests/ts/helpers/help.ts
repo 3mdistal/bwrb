@@ -6,6 +6,7 @@ const CANONICAL_HELP_COMMAND_ORDER = [
   'recent',
   'explain',
   'priority',
+  'triage',
   'schema',
   'audit',
   'bulk',

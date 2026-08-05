@@ -10,17 +10,7 @@ import { assertExpectedRevision, noteRevision } from '../lib/note-revision.js';
 import { printJson, jsonError, jsonSuccess } from '../lib/output.js';
 import { isValidNoteId, normalizeNoteId } from '../lib/note-id.js';
 import { PRIORITY_ALGORITHM, suggestPriorities, type PriorityInput } from '../lib/priority.js';
-
-const PRIORITY_METADATA = new Set([
-  'priority-rank',
-  'priority-override',
-  'priority-reason',
-  'priority-algorithm',
-  'priority-as-of',
-  'priority-basis-revision',
-  'priority-reviewed',
-  'priority-approval-id',
-]);
+import { semanticEvidenceRevision } from '../lib/semantic-revision.js';
 type TaskRecord = PriorityInput & { path: string; rawRevision: string };
 type ApprovedFactor = number | null | undefined;
 interface PriorityPlanItem {
@@ -49,33 +39,54 @@ function validateApprovedFactor(value: ApprovedFactor, field: string, path: stri
   if (value === undefined || value === null) return;
   if (!Number.isInteger(value) || value < 0 || value > 4) errors.push(`${path}: ${field} must be null or an integer from 0 to 4`);
 }
-function semanticEvidenceRevision(raw: string): string {
-  const parsed = parseNoteContent(raw);
-  const evidence = { ...parsed.frontmatter };
-  for (const key of PRIORITY_METADATA) delete evidence[key];
-  return noteRevision(buildNoteContent(evidence, parsed.body));
+function validDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number); const date = new Date(Date.UTC(year!, month! - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month! - 1 && date.getUTCDate() === day;
 }
-async function registryIdentities(vaultDir: string): Promise<Map<string, string[]>> {
+async function registryIdentities(vaultDir: string): Promise<{ byPath: Map<string, string[]>; errors: string[] }> {
   const byPath = new Map<string, string[]>();
+  const byId = new Map<string, string[]>();
+  const errors: string[] = [];
   const content = await readFile(join(vaultDir, '.bwrb/ids.jsonl'), 'utf8').catch(() => '');
-  for (const line of content.split('\n')) {
-    try { const row = JSON.parse(line) as { id?: unknown; path?: unknown }; if (typeof row.path === 'string' && isValidNoteId(row.id)) byPath.set(row.path, [...(byPath.get(row.path) ?? []), row.id]); } catch { /* malformed rows do not establish identity */ }
+  for (const [index, line] of content.split('\n').entries()) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line) as { id?: unknown; path?: unknown };
+      if (typeof row.path !== 'string' || !isValidNoteId(row.id)) { errors.push(`identity registry row ${index + 1} is invalid`); continue; }
+      const id = normalizeNoteId(row.id);
+      byPath.set(row.path, [...(byPath.get(row.path) ?? []), id]);
+      byId.set(id, [...(byId.get(id) ?? []), row.path]);
+    } catch { errors.push(`identity registry row ${index + 1} is malformed`); }
   }
-  return byPath;
+  for (const [path, ids] of byPath) if (ids.length !== 1) errors.push(`${path}: duplicate identity registry path`);
+  for (const [id, paths] of byId) if (paths.length !== 1) errors.push(`${id}: duplicate identity registry ID`);
+  return { byPath, errors };
 }
 async function readTasks(vaultDir: string): Promise<{ tasks: TaskRecord[]; errors: string[] }> {
   const schema = await loadSchema(vaultDir);
   const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
-  const registry = schema.config.identityStore === 'registry-v1' ? await registryIdentities(vaultDir) : new Map<string, string[]>();
-  const seen = new Set<string>(); const errors: string[] = []; const tasks: TaskRecord[] = [];
+  const registry = schema.config.identityStore === 'registry-v1' ? await registryIdentities(vaultDir) : { byPath: new Map<string, string[]>(), errors: [] };
+  const seen = new Set<string>(); const errors: string[] = [...registry.errors]; const tasks: TaskRecord[] = [];
+  if (schema.config.identityStore === 'frontmatter-v1') {
+    const allIds = new Map<string, string[]>();
+    for (const note of snapshot.notes) if (isValidNoteId(note.frontmatter?.id)) { const id = normalizeNoteId(note.frontmatter.id); allIds.set(id, [...(allIds.get(id) ?? []), note.relativePath]); }
+    for (const [id, paths] of allIds) if (paths.length !== 1) errors.push(`${id}: duplicate frontmatter identity across ${paths.join(', ')}`);
+  }
   for (const note of snapshot.notes) {
     const fm = note.frontmatter;
     if (note.resolvedType !== 'task' || !fm || ['done', 'dropped'].includes(String(fm.status ?? ''))) continue;
-    const candidates = typeof fm.id === 'string' ? [fm.id] : (registry.get(note.relativePath) ?? []);
+    const candidates = schema.config.identityStore === 'registry-v1'
+      ? (registry.byPath.get(note.relativePath) ?? [])
+      : (typeof fm.id === 'string' ? [fm.id] : []);
     if (candidates.length !== 1 || !isValidNoteId(candidates[0])) { errors.push(`${note.relativePath}: missing or ambiguous stable identity`); continue; }
     const id = normalizeNoteId(candidates[0]!);
+    if (schema.config.identityStore === 'registry-v1' && typeof fm.id === 'string' && normalizeNoteId(fm.id) !== id) errors.push(`${note.relativePath}: frontmatter identity disagrees with registry`);
     if (seen.has(id)) { errors.push(`${note.relativePath}: duplicate stable identity ${id}`); continue; }
-    seen.add(id); const raw = await readFile(note.path, 'utf8');
+    seen.add(id);
+    if (Object.prototype.hasOwnProperty.call(fm, 'importance') && fm.importance !== null && ordinal(fm.importance) === null) errors.push(`${note.relativePath}: importance must be null or an integer from 0 to 4`);
+    if (Object.prototype.hasOwnProperty.call(fm, 'excitement') && fm.excitement !== null && ordinal(fm.excitement) === null) errors.push(`${note.relativePath}: excitement must be null or an integer from 0 to 4`);
+    const raw = await readFile(note.path, 'utf8');
     tasks.push({ id, path: note.relativePath, rawRevision: noteRevision(raw), revision: semanticEvidenceRevision(raw), importance: ordinal(fm.importance), excitement: ordinal(fm.excitement), deadline: typeof fm.deadline === 'string' ? fm.deadline : null, deadlineKind: typeof fm['deadline-kind'] === 'string' ? fm['deadline-kind'] : null, priorRank: rank(fm['priority-rank']), effectiveRank: rank(fm['priority-rank']), override: fm['priority-override'] === true, reason: typeof fm['priority-reason'] === 'string' ? fm['priority-reason'] : null, algorithm: typeof fm['priority-algorithm'] === 'string' ? fm['priority-algorithm'] : null, asOf: typeof fm['priority-as-of'] === 'string' ? fm['priority-as-of'] : null, basisRevision: typeof fm['priority-basis-revision'] === 'string' ? fm['priority-basis-revision'] : null, reviewed: typeof fm['priority-reviewed'] === 'string' ? fm['priority-reviewed'] : null, approvalId: typeof fm['priority-approval-id'] === 'string' ? fm['priority-approval-id'] : null });
   }
   return { tasks, errors };
@@ -87,14 +98,14 @@ function priorityVault(command: Command): Promise<string> {
 
 export const priorityCommand = new Command('priority').description('Suggest, validate, and explicitly approve deterministic task priorities');
 priorityCommand.command('suggest').requiredOption('--type <type>', 'Task type (task)').requiredOption('--as-of <date>', 'YYYY-MM-DD').option('--output <format>', 'json').addHelpText('after', '\nRead-only: no task files are modified.').action(async (options, command) => {
-  if (options.type !== 'task' || !/^\d{4}-\d{2}-\d{2}$/.test(options.asOf)) return fail('priority suggest requires --type task and --as-of YYYY-MM-DD');
+  if (options.type !== 'task' || !validDate(options.asOf)) return fail('priority suggest requires --type task and a valid --as-of YYYY-MM-DD');
   const vaultDir = await priorityVault(command); const result = await readTasks(vaultDir);
   if (result.errors.length) return fail('Stable identity closure failed', { errors: result.errors });
   const tasks = suggestPriorities(result.tasks, options.asOf).map((task) => ({ ...task, algorithm: PRIORITY_ALGORITHM, effectiveRank: task.effectiveRank, semanticEvidenceRevision: task.revision, explanation: `importance ${(task.importance ?? 2)}*4 + deadline pressure ${task.deadlinePressure}*3 + excitement ${(task.excitement ?? 2)}` }));
   printJson(jsonSuccess({ data: { algorithm: PRIORITY_ALGORITHM, asOf: options.asOf, tasks } }));
 });
 priorityCommand.command('validate').option('--complete', 'Require a complete contiguous live queue').option('--as-of <date>', 'Evaluation date for staleness checks (YYYY-MM-DD)').option('--output <format>', 'json').action(async (options, command) => {
-  if (options.complete && !/^\d{4}-\d{2}-\d{2}$/.test(options.asOf ?? '')) return fail('priority validate --complete requires --as-of YYYY-MM-DD');
+  if (options.complete && !validDate(options.asOf)) return fail('priority validate --complete requires a valid --as-of YYYY-MM-DD');
   const vaultDir = await priorityVault(command); const result = await readTasks(vaultDir); const errors = [...result.errors]; const ranks = new Set<number>(); const approvalIds = new Set<string>();
   for (const task of result.tasks) {
     if (task.override && !task.reason) errors.push(`${task.path}: priority override requires priority-reason`);
@@ -117,7 +128,7 @@ priorityCommand.command('validate').option('--complete', 'Require a complete con
 });
 priorityCommand.command('approve').requiredOption('--json-file <path>', 'Suggestion plan JSON').requiredOption('--approval-id <id>', 'External approval receipt').option('--execute', 'Apply the approved plan').option('--output <format>', 'json').addHelpText('after', '\nDry-run by default; --execute is required to modify task files.').action(async (options, command) => {
   const plan = JSON.parse(await readFile(options.jsonFile, 'utf8')) as PriorityPlan;
-  if (!options.approvalId || !plan.asOf || !Array.isArray(plan.tasks) || !plan.algorithm) return fail('Approval plan requires algorithm, asOf, and tasks plus --approval-id');
+  if (!options.approvalId || !validDate(plan.asOf) || !Array.isArray(plan.tasks) || !plan.algorithm) return fail('Approval plan requires algorithm, a valid asOf date, and tasks plus --approval-id');
   const vaultDir = await priorityVault(command); const live = await readTasks(vaultDir); if (live.errors.length) return fail('Stable identity closure failed', { errors: live.errors });
   const byId = new Map(live.tasks.map((task) => [task.id, task])); const errors: string[] = []; const planned = new Set<string>();
   if (plan.algorithm !== PRIORITY_ALGORITHM) errors.push(`plan algorithm ${plan.algorithm} does not match ${PRIORITY_ALGORITHM}`);

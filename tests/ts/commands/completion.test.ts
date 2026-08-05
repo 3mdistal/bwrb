@@ -255,6 +255,19 @@ describe('bwrb completion command', () => {
       ]));
     });
 
+    it('completes triage status and approval-only disposition options', async () => {
+      const subcommands = (await runCliOutput([
+        '--completions', 'bwrb', 'triage', '',
+      ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
+      expect(subcommands).toEqual(['status', 'approve']);
+      const options = (await runCliOutput([
+        '--completions', 'bwrb', 'triage', 'approve', '--',
+      ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
+      expect(options).toEqual(expect.arrayContaining([
+        '--path', '--json-file', '--approval-id', '--execute', '--output', '--vault', '--help',
+      ]));
+    });
+
     it('should return option completions when current word starts with -', async () => {
       const output = await runCliOutput(['--completions', 'bwrb', 'list', '--'], {
         vault: VAULT_DIR,

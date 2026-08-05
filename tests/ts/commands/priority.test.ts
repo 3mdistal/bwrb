@@ -25,11 +25,30 @@ describe('priority command', () => {
     expect(await readFile(taskPath, 'utf8')).toBe(before);
   });
 
+  it('rejects calendar-invalid evaluation dates', async () => {
+    const result = await runCLI(['priority', 'suggest', '--type', 'task', '--as-of', '2026-02-31', '--output', 'json'], vault);
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).error).toContain('valid --as-of');
+  });
+
   it('fails closed when registry identity is missing', async () => {
     await writeFile(join(vault, '.bwrb/ids.jsonl'), '');
     const result = await runCLI(['priority', 'suggest', '--type', 'task', '--as-of', '2026-08-05', '--output', 'json'], vault);
     expect(result.exitCode).toBe(1);
     expect(JSON.parse(result.stdout).error).toContain('identity');
+  });
+
+  it('fails closed on invalid factor values and malformed global identity state', async () => {
+    await writeFile(taskPath, '---\ntype: task\nstatus: in-flight\nimportance: 2.5\nexcitement: 99\n---\n');
+    await writeFile(join(vault, '.bwrb/ids.jsonl'), `${JSON.stringify({ id: ID, createdAt: '2026-08-01T00:00:00.000Z', path: 'Objectives/Tasks/Sample Task.md' })}\n{bad row}\n`);
+    const result = await runCLI(['priority', 'suggest', '--type', 'task', '--as-of', '2026-08-05', '--output', 'json'], vault);
+    expect(result.exitCode).toBe(1);
+    const errors = JSON.parse(result.stdout).data.errors as string[];
+    expect(errors).toEqual(expect.arrayContaining([
+      'identity registry row 2 is malformed',
+      'Objectives/Tasks/Sample Task.md: importance must be null or an integer from 0 to 4',
+      'Objectives/Tasks/Sample Task.md: excitement must be null or an integer from 0 to 4',
+    ]));
   });
 
   it('keeps approval dry-run until execute and records the exact accepted rank', async () => {
@@ -123,5 +142,17 @@ describe('priority command', () => {
     const accepted = await readFile(taskPath, 'utf8');
     expect(accepted).toContain('priority-override: true');
     expect(accepted).toContain('priority-reason: Alice chose this order');
+  });
+
+  it('does not reopen rank review for orchestration-only checkpoint metadata', async () => {
+    const suggested = JSON.parse((await runCLI(['priority', 'suggest', '--type', 'task', '--as-of', '2026-08-05', '--output', 'json'], vault)).stdout).data.tasks[0];
+    const planPath = join(vault, 'checkpoint-plan.json');
+    await writeFile(planPath, JSON.stringify({ algorithm: 'thin-hybrid-v1', asOf: '2026-08-05', tasks: [{ id: suggested.id, path: suggested.path, revision: suggested.rawRevision, semanticEvidenceRevision: suggested.semanticEvidenceRevision, rank: 1 }] }));
+    expect((await runCLI(['priority', 'approve', '--json-file', planPath, '--approval-id', 'alice-message-1', '--execute', '--output', 'json'], vault)).exitCode).toBe(0);
+    const approved = await readFile(taskPath, 'utf8');
+    await writeFile(taskPath, approved.replace('status: in-flight', 'status: in-flight\ncodex-attention: alice-needed\ncodex-last-reconciled-at: 2026-08-05T20:00:00Z'));
+    const validate = await runCLI(['priority', 'validate', '--complete', '--as-of', '2026-08-05', '--output', 'json'], vault);
+    expect(validate.exitCode, validate.stderr || validate.stdout).toBe(0);
+    expect(await readFile(taskPath, 'utf8')).toContain('priority-rank: 1');
   });
 });
