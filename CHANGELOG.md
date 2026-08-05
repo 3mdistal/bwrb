@@ -4,13 +4,25 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-05
+
+Patch release for distributed stable note identity, revision-safe file-backed
+JSON writes, and bounded query receipts with strict typed validation.
+
 ### Added
 
 - **Distributed stable note identity** — new vaults keep the authoritative UUID
   with each note instead of mutating a shared registry. Existing vaults remain
   on the legacy registry until `bwrb identity migrate` validates every note and
   explicitly switches modes; reverse migration rebuilds the registry for safe
-  rollback.
+  rollback (#836).
+- **File-backed JSON writes** — `bwrb new --json-file` and
+  `bwrb edit --json-file` accept large private payloads without exposing them
+  through command-line arguments, while edit `_body` replacement remains
+  revision-guarded (#834).
+- **Bounded query receipts** — list and saved-dashboard JSON output can include
+  opt-in matched, returned, and truncated cardinality evidence without changing
+  legacy raw-array or count output (#835).
 
 ### Changed
 
@@ -18,7 +30,10 @@ All notable changes to Bowerbird are documented in this file.
   template scaffolding, lineage adoption, and deletion no longer take custody
   of `.bwrb/ids.jsonl` or a vault-wide identity-assignment lock. Audit reports
   missing, invalid, and copied duplicate IDs while stable targeting continues
-  across renames and moves.
+  across renames and moves (#836).
+- **Strict typed query validation** — typed `--where` expressions reject unknown
+  fields across supported operators and function arguments with actionable
+  errors instead of silently returning an empty result (#835).
 
 ## [0.3.0] - 2026-07-13
 

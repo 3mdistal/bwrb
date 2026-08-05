@@ -11,6 +11,27 @@ For the complete changelog with all details, see [CHANGELOG.md](https://github.c
 
 ### Unreleased
 
+### 0.3.1
+
+- **Distributed stable note identity** — new vaults store their authoritative
+  UUID with each note, while existing vaults remain on the legacy registry
+  until an explicit whole-vault `identity migrate` preflight succeeds. The
+  migration is reversible and leaves a dirty legacy registry untouched when
+  moving forward.
+- **Independent Git transactions** — frontmatter-identity creation, forks,
+  templates, lineage adoption, and deletion no longer contend on a shared ID
+  registry. Audit reports missing, invalid, and duplicate copied IDs without
+  choosing an automatic winner.
+- **Revision-safe file-backed writes** — `new` and `edit` accept large private
+  JSON payloads from files, including guarded body replacement, without placing
+  those payloads in command-line arguments.
+- **Bounded query receipts** — list and saved-dashboard JSON output can prove
+  matched, returned, and truncated counts while preserving legacy output when
+  receipts are not requested.
+- **Strict typed query validation** — supported typed query operators and
+  functions reject unknown fields with actionable errors instead of silently
+  returning no rows.
+
 ### 0.3.0
 
 - **Removed deprecated CLI surfaces** — `search` and `open`, legacy `list`
