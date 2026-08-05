@@ -1,5 +1,5 @@
 export const PRIORITY_ALGORITHM = 'thin-hybrid-v1';
-export const SUBJECTIVE_REVIEW_DAYS = 30;
+const SUBJECTIVE_REVIEW_DAYS = 30;
 
 export interface PriorityInput {
   id: string;
