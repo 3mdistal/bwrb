@@ -109,4 +109,19 @@ describe('priority command', () => {
     expect(JSON.parse(validate.stdout).data.errors).toContain('Objectives/Tasks/Sample Task.md: semantic evidence changed after priority approval');
     expect(await readFile(taskPath, 'utf8')).toContain('priority-rank: 1');
   });
+
+  it('preserves an existing human override when a later approval omits override fields', async () => {
+    const initial = JSON.parse((await runCLI(['priority', 'suggest', '--type', 'task', '--as-of', '2026-08-05', '--output', 'json'], vault)).stdout).data.tasks[0];
+    const firstPlan = join(vault, 'first-override-plan.json');
+    await writeFile(firstPlan, JSON.stringify({ algorithm: 'thin-hybrid-v1', asOf: '2026-08-05', tasks: [{ id: initial.id, path: initial.path, revision: initial.rawRevision, semanticEvidenceRevision: initial.semanticEvidenceRevision, rank: 1, override: true, reason: 'Alice chose this order' }] }));
+    expect((await runCLI(['priority', 'approve', '--json-file', firstPlan, '--approval-id', 'alice-message-1', '--execute', '--output', 'json'], vault)).exitCode).toBe(0);
+
+    const refreshed = JSON.parse((await runCLI(['priority', 'suggest', '--type', 'task', '--as-of', '2026-08-05', '--output', 'json'], vault)).stdout).data.tasks[0];
+    const secondPlan = join(vault, 'second-plan.json');
+    await writeFile(secondPlan, JSON.stringify({ algorithm: 'thin-hybrid-v1', asOf: '2026-08-05', tasks: [{ id: refreshed.id, path: refreshed.path, revision: refreshed.rawRevision, semanticEvidenceRevision: refreshed.semanticEvidenceRevision, rank: 1 }] }));
+    expect((await runCLI(['priority', 'approve', '--json-file', secondPlan, '--approval-id', 'alice-message-2', '--execute', '--output', 'json'], vault)).exitCode).toBe(0);
+    const accepted = await readFile(taskPath, 'utf8');
+    expect(accepted).toContain('priority-override: true');
+    expect(accepted).toContain('priority-reason: Alice chose this order');
+  });
 });
