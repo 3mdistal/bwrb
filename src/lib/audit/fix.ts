@@ -693,6 +693,7 @@ async function applyMissingFrontmatterFix(
 
           let written = false;
           try {
+            await assertNoteBytesUnchanged(filePath, raw);
             await writeFileAtomic(filePath, nextRaw);
             written = true;
             await registerIssuedNoteId(vaultDir, id, filePath, schema.config.identityStore);
