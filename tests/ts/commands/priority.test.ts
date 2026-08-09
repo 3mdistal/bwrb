@@ -201,4 +201,25 @@ describe('priority command', () => {
     expect(JSON.parse(result.stdout).error).toContain('vault-tx/wrong');
     expect(await readFile(taskPath, 'utf8')).toBe(before);
   });
+
+  it('refuses a scoped bootstrap until the entire shared order already exists', async () => {
+    const otherPath = join(vault, 'Objectives/Tasks/Ranked Outside.md');
+    await writeFile(otherPath, '---\ntype: task\nstatus: backlog\npriority-rank: 1\n---\n');
+    await writeFile(join(vault, '.bwrb/ids.jsonl'), [
+      { id: ID, path: 'Objectives/Tasks/Sample Task.md' },
+      { id: OTHER_ID, path: 'Objectives/Tasks/Ranked Outside.md' },
+    ].map((row) => JSON.stringify(row)).join('\n') + '\n');
+    const all = JSON.parse((await runCLI(['priority', 'suggest', '--type', 'task', '--as-of', '2026-08-05', '--output', 'json'], vault)).stdout).data.tasks;
+    const byId = new Map(all.map((task: { id: string }) => [task.id, task]));
+    const item = (id: string, rank: number) => { const task = byId.get(id) as { path: string; rawRevision: string; semanticEvidenceRevision: string }; return { id, path: task.path, revision: task.rawRevision, semanticEvidenceRevision: task.semanticEvidenceRevision, rank }; };
+    const planPath = join(vault, 'bootstrap-plan.json');
+    await writeFile(planPath, JSON.stringify({ algorithm: 'thin-hybrid-v1', asOf: '2026-08-05', scope: { taskIds: [ID] }, tasks: [item(ID, 1), item(OTHER_ID, 2)] }));
+    const approval = await runCLI(['priority', 'approve', '--json-file', planPath, '--approval-id', 'scoped-bootstrap', '--output', 'json'], vault);
+    expect(approval.exitCode).toBe(1);
+    expect(JSON.parse(approval.stdout).data.errors).toContain('scoped approval requires an existing complete shared order; use an everything scope to establish it');
+    const scopePath = join(vault, 'bootstrap-scope.json'); await writeFile(scopePath, JSON.stringify([OTHER_ID]));
+    const validation = await runCLI(['priority', 'validate', '--complete', '--as-of', '2026-08-05', '--ids-file', scopePath, '--output', 'json'], vault);
+    expect(validation.exitCode).toBe(1);
+    expect(JSON.parse(validation.stdout).data.errors).toContain('live queue ranks must be unique and contiguous from 1 before any scope is complete');
+  });
 });

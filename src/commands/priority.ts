@@ -115,6 +115,10 @@ function selectScope(tasks: TaskRecord[], scopeIds: Set<string> | null): { tasks
   const errors = [...scopeIds].filter((id) => !liveIds.has(id)).map((id) => `scope contains unknown or terminal task ${id}`);
   return { tasks: tasks.filter((task) => scopeIds.has(task.id)), errors };
 }
+function hasCompleteSharedOrder(tasks: TaskRecord[]): boolean {
+  const ranks = tasks.map((task) => task.effectiveRank).sort((a, b) => (a ?? 0) - (b ?? 0));
+  return ranks.length > 0 && ranks.every((value, index) => value === index + 1);
+}
 async function assertVaultTransactionWorktree(vaultDir: string, transactionId: string): Promise<void> {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$/.test(transactionId)) throw new Error('transaction ID is invalid');
   const { stdout } = await execFileAsync('git', ['-C', vaultDir, 'branch', '--show-current']);
@@ -155,7 +159,7 @@ priorityCommand.command('validate').option('--complete', 'Require complete appro
   }
   const orderedRanks = [...allRanks].sort((a, b) => a - b);
   if (options.complete && ranks.size !== scoped.tasks.length) errors.push('every task in the selected scope must have an effective rank');
-  if (options.complete && !scopeIds && (allRanks.size !== result.tasks.length || orderedRanks.some((value, index) => value !== index + 1))) errors.push('live queue ranks must be unique and contiguous from 1');
+  if (options.complete && (allRanks.size !== result.tasks.length || orderedRanks.some((value, index) => value !== index + 1))) errors.push('live queue ranks must be unique and contiguous from 1 before any scope is complete');
   if (options.complete && approvalIds.size > 1) errors.push('selected scope must share one approved complete-order receipt');
   if (errors.length) return fail('Priority validation failed', { errors }); printJson(jsonSuccess({ data: { valid: true, scopeTaskIds: scoped.tasks.map((task) => task.id) } }));
 });
@@ -173,7 +177,7 @@ priorityCommand.command('approve').requiredOption('--json-file <path>', 'Suggest
   const ranks = plan.tasks.map((item) => item.rank).sort((a,b) => a-b); if (ranks.some((value,index) => !Number.isInteger(value) || value !== index + 1)) errors.push('approved ranks must be unique and contiguous');
   const outside = plan.tasks.filter((item) => !scopeIds.has(normalizeNoteId(item.id))); const liveOutside = outside.map((item) => byId.get(normalizeNoteId(item.id))).filter((task): task is TaskRecord => Boolean(task));
   if (outside.length) {
-    if (liveOutside.some((task) => task.effectiveRank === null || task.effectiveRank === undefined)) errors.push('scoped approval requires an existing complete shared order; use an everything scope to establish it');
+    if (!hasCompleteSharedOrder(live.tasks)) errors.push('scoped approval requires an existing complete shared order; use an everything scope to establish it');
     const before = [...liveOutside].sort((a, b) => a.effectiveRank! - b.effectiveRank!).map((task) => task.id);
     const after = [...outside].sort((a, b) => a.rank - b.rank).map((item) => normalizeNoteId(item.id));
     if (before.join('\0') !== after.join('\0')) errors.push('scoped approval must preserve out-of-scope relative order');
