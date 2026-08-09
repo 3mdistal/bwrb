@@ -7021,7 +7021,7 @@ priority: medium
 
     it('leaves mapping-like thematic body content as prose while adopting the note', async () => {
       const notePath = join(tempVaultDir, 'Ideas', 'Body YAML.md');
-      const body = 'Intro paragraph\n---\nexample: prose, not metadata\n---\nTail\n';
+      const body = '---\nexample: prose, not metadata\nimage: rain\n---\nTail\n';
       await writeFile(notePath, body);
 
       const report = await runCLI(['audit', '--path', 'Body YAML.md', '--output', 'json'], tempVaultDir);

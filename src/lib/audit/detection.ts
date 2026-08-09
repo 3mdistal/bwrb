@@ -13,6 +13,7 @@ import {
   resolveTypeFromFrontmatter,
   getOutputDir,
   getRootTypeNames,
+  getConcreteTypeNames,
   getDescendants,
   getOwnedFields,
   resolveDateCalendar,
@@ -404,7 +405,24 @@ export async function auditFile(
   const displacedType = structural.primaryBlock && !structural.atTop
     ? resolveTypeFromFrontmatter(schema, structural.frontmatter)
     : undefined;
-  if (!structural.primaryBlock || (structural.primaryBlock && !structural.atTop && !displacedType)) {
+  const knownFrontmatterKeys = new Set(['type', 'id', 'name', 'forked-from']);
+  for (const typeName of getConcreteTypeNames(schema)) {
+    for (const fieldName of Object.keys(getFieldsForType(schema, typeName))) {
+      knownFrontmatterKeys.add(fieldName);
+    }
+  }
+  const topMappingLooksLikeProse = Boolean(
+    structural.primaryBlock &&
+    structural.atTop &&
+    !Object.prototype.hasOwnProperty.call(structural.frontmatter, 'type') &&
+    Object.keys(structural.frontmatter).length > 0 &&
+    Object.keys(structural.frontmatter).every(key => !knownFrontmatterKeys.has(key))
+  );
+  if (
+    !structural.primaryBlock ||
+    (structural.primaryBlock && !structural.atTop && !displacedType) ||
+    topMappingLooksLikeProse
+  ) {
     const inferredType = file.expectedType;
     const autoFixable = Boolean(
       inferredType && hasDeterministicAdoptionFields(schema, inferredType)
