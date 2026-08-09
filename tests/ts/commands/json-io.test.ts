@@ -24,6 +24,13 @@ describe('JSON I/O', () => {
     await writeFile(schemaPath, JSON.stringify(schema, null, 2), 'utf-8');
   }
 
+  async function setIdeaOutputDir(outputDir: string): Promise<void> {
+    const schemaPath = join(vaultDir, '.bwrb', 'schema.json');
+    const schema = JSON.parse(await readFile(schemaPath, 'utf-8'));
+    schema.types.idea.output_dir = outputDir;
+    await writeFile(schemaPath, JSON.stringify(schema, null, 2), 'utf-8');
+  }
+
   describe('bwrb new --json', () => {
     it('should create a note with JSON frontmatter', async () => {
       const result = await runCLI(
@@ -118,6 +125,7 @@ describe('JSON I/O', () => {
     });
 
     it('should include a path length warning for long portable paths', async () => {
+      await setIdeaOutputDir('Ideas/LongerFolder');
       const longName = 'L'.repeat(196);
       const result = await runCLI(
         ['new', 'idea', '--json', JSON.stringify({ name: longName, status: 'raw' })],
@@ -138,6 +146,7 @@ describe('JSON I/O', () => {
     });
 
     it('should reject paths above the portable path limit', async () => {
+      await setIdeaOutputDir(`Ideas/${'D'.repeat(70)}`);
       const tooLongName = 'L'.repeat(252);
       const result = await runCLI(
         ['new', 'idea', '--json', JSON.stringify({ name: tooLongName, status: 'raw' })],
