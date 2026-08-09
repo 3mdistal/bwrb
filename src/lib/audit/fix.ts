@@ -732,6 +732,8 @@ async function applyUnsafeFilenameFix(
   }
 
   const targetBasename = `${safe.sanitized}.md`;
+  let originalRaw: string | undefined;
+  let titleUpdatedRaw: string | undefined;
   if (!isDryRunEnabled()) {
     const targetPath = join(dirname(filePath), targetBasename);
     try {
@@ -747,6 +749,7 @@ async function applyUnsafeFilenameFix(
     }
 
     const raw = await readFile(filePath, 'utf8');
+    originalRaw = raw;
     const parsed = parseNoteContent(raw);
     if (parsed.frontmatter.name === undefined) {
       const updated = insertFrontmatterStringPreservingBytes(raw, 'name', originalBase);
@@ -754,6 +757,7 @@ async function applyUnsafeFilenameFix(
         throw new Error('Filename title preservation changed note body');
       }
       await writeFileAtomic(filePath, updated);
+      titleUpdatedRaw = updated;
     }
   }
 
@@ -765,6 +769,17 @@ async function applyUnsafeFilenameFix(
     targetBasenames: new Map([[filePath, targetBasename]]),
   });
   if (moveResult.errors.length > 0) {
+    if (originalRaw !== undefined && titleUpdatedRaw !== undefined) {
+      const rolledBack = await rollbackNoteIfUnchanged(filePath, titleUpdatedRaw, originalRaw);
+      if (!rolledBack) {
+        return {
+          file: filePath,
+          issue,
+          action: 'failed',
+          message: `${moveResult.errors[0]}; title insertion rollback was blocked by newer source bytes`,
+        };
+      }
+    }
     return { file: filePath, issue, action: 'failed', message: moveResult.errors[0] ?? 'Rename failed' };
   }
   return { file: filePath, issue, action: 'fixed' };

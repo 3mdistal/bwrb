@@ -441,7 +441,18 @@ async function moveFile(
     try {
       await unlink(filePath);
     } catch (error) {
-      await unlink(newPath).catch(() => undefined);
+      const [sourceInfo, destinationInfo] = await Promise.all([
+        stat(filePath).catch(() => undefined),
+        stat(newPath).catch(() => undefined),
+      ]);
+      if (
+        sourceInfo &&
+        destinationInfo &&
+        sourceInfo.dev === destinationInfo.dev &&
+        sourceInfo.ino === destinationInfo.ino
+      ) {
+        await unlink(newPath).catch(() => undefined);
+      }
       throw error;
     }
     result.applied = true;
