@@ -7,8 +7,8 @@
  * - Updating wikilinks to point to new locations
  */
 
-import { readFile, writeFile, rename, mkdir, readdir, stat } from 'fs/promises';
-import { join, relative, basename, extname } from 'path';
+import { readFile, writeFile, link, unlink, mkdir, readdir, stat } from 'fs/promises';
+import { join, relative, basename, extname, resolve } from 'path';
 
 // ============================================================================
 // Types
@@ -417,6 +417,11 @@ async function moveFile(
     return result;
   }
 
+  if (resolve(filePath) === resolve(newPath)) {
+    result.applied = true;
+    return result;
+  }
+
   try {
     // Ensure target directory exists
     await mkdir(targetDir, { recursive: true });
@@ -429,8 +434,16 @@ async function moveFile(
       return result;
     }
 
-    // Move the file
-    await rename(filePath, newPath);
+    // Claim the destination atomically without replacement, then remove the
+    // source link. Unlike rename(), link() fails with EEXIST if a concurrent
+    // writer wins the destination path after our preflight check.
+    await link(filePath, newPath);
+    try {
+      await unlink(filePath);
+    } catch (error) {
+      await unlink(newPath).catch(() => undefined);
+      throw error;
+    }
     result.applied = true;
   } catch (err) {
     result.error = err instanceof Error ? err.message : String(err);

@@ -31,9 +31,9 @@ import {
   isCanonicalIsoDate,
 } from './fix-policy.js';
 import {
-  buildNoteContent,
   parseNote,
   parseNoteContent,
+  insertFrontmatterStringPreservingBytes,
   serializeFrontmatter,
   writeFileAtomic,
   writeNote,
@@ -721,7 +721,6 @@ async function applyMissingFrontmatterFix(
 }
 
 async function applyUnsafeFilenameFix(
-  schema: LoadedSchema,
   vaultDir: string,
   filePath: string,
   issue: AuditIssue
@@ -747,12 +746,14 @@ async function applyUnsafeFilenameFix(
       if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
     }
 
-    const parsed = await parseNote(filePath);
+    const raw = await readFile(filePath, 'utf8');
+    const parsed = parseNoteContent(raw);
     if (parsed.frontmatter.name === undefined) {
-      const nextFrontmatter = { ...parsed.frontmatter, name: originalBase };
-      const typePath = resolveTypeFromFrontmatter(schema, nextFrontmatter);
-      const order = typePath ? getType(schema, typePath)?.fieldOrder : undefined;
-      await writeFileAtomic(filePath, buildNoteContent(nextFrontmatter, parsed.body, order));
+      const updated = insertFrontmatterStringPreservingBytes(raw, 'name', originalBase);
+      if (parseNoteContent(updated).body !== parsed.body) {
+        throw new Error('Filename title preservation changed note body');
+      }
+      await writeFileAtomic(filePath, updated);
     }
   }
 
@@ -1556,7 +1557,7 @@ export async function runAutoFix(
           failed++;
         }
       } else if (issue.code === 'unsafe-filename') {
-        const fixResult = await applyUnsafeFilenameFix(schema, vaultDir, result.path, issue);
+        const fixResult = await applyUnsafeFilenameFix(vaultDir, result.path, issue);
         console.log(chalk.cyan(`  ${result.relativePath}`));
         if (fixResult.action === 'fixed') {
           console.log(chalk.green(`    ✓ Repaired filename to ${String(issue.meta?.safeFilename ?? issue.fixedValue)}`));
@@ -2563,7 +2564,6 @@ async function handleUnsafeFilenameFix(
   if (selected === null || selected === '[quit]') return 'quit';
   if (selected === '[skip]') return 'skipped';
   const fixResult = await applyUnsafeFilenameFix(
-    context.schema,
     context.vaultDir,
     result.path,
     issue

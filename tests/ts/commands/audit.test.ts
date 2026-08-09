@@ -7079,7 +7079,7 @@ priority: medium
       const originalBase = `A ${'very-long-title-'.repeat(14)}ending`;
       const originalPath = join(tempVaultDir, 'Ideas', `${originalBase}.md`);
       const id = '123e4567-e89b-42d3-a456-426614174000';
-      await writeFile(originalPath, `---\ntype: idea\nid: ${id}\nstatus: raw\n---\nBody\n`);
+      await writeFile(originalPath, `---\ntype: idea\n# preserve this comment\nid: ${id}\nstatus: "raw"\n---\nBody\n`);
       const backlinkPath = join(tempVaultDir, 'Ideas', 'Backlink.md');
       await writeFile(backlinkPath, `---\ntype: idea\nid: 123e4567-e89b-42d3-a456-426614174001\nstatus: raw\n---\n[[${originalBase}]]\n`);
 
@@ -7102,6 +7102,8 @@ priority: medium
       const repaired = await readFile(join(tempVaultDir, 'Ideas', repairedName!), 'utf8');
       expect(repaired).toContain(`id: ${id}`);
       expect(parseFrontmatter(repaired).name).toBe(originalBase);
+      expect(repaired).toContain('# preserve this comment');
+      expect(repaired).toContain('status: "raw"');
       expect(await readFile(backlinkPath, 'utf8')).toContain(`[[${repairedName!.slice(0, -3)}]]`);
     });
 
