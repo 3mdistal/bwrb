@@ -128,7 +128,7 @@ bwrb new project --json '{"name": "My Project"}' --template with-research
 
 The `_body` field accepts either a raw Markdown string or an object whose keys are schema body section names. Section-object values may be strings or string arrays. A raw string is written as the note body as-is and bypasses template/body-section generation.
 
-If the note name or resolved filename pattern contains characters that are not portable in filenames, `bwrb new` normalizes the filename by removing invalid characters, collapsing doubled whitespace, and trimming the result. Interactive creation prints a warning. JSON mode includes `nameTransformed` metadata:
+If the note name or resolved filename pattern is not filesystem-portable, `bwrb new` removes invalid characters, avoids Windows device basenames, trims trailing dots/spaces, and deterministically shortens long UTF-8 names to keep the complete Markdown filename at or below 192 bytes. Shortened names include a stable digest, so distinct long titles remain distinct. Interactive creation prints a warning. JSON mode includes `nameTransformed` metadata:
 
 ```json
 {
@@ -144,6 +144,8 @@ If the note name or resolved filename pattern contains characters that are not p
 
 The persisted `name` remains the original note identity. Only the physical
 filename is normalized.
+
+Creation uses an exclusive write for new paths: a concurrent collision is refused rather than overwriting the file that appeared.
 
 Paths longer than 200 characters include `pathLengthWarning` in JSON mode and print a warning in interactive mode. Paths longer than 260 characters are rejected.
 

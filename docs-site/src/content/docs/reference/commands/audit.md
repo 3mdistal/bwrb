@@ -96,6 +96,8 @@ Delete semantics in repair mode:
 
 | Type | Description |
 |------|-------------|
+| `missing-frontmatter` | Plain Markdown in a managed directory has no valid top frontmatter. Guided repair adopts it by adding only the minimal valid frontmatter and a UUID while preserving the body bytes; auto-repair runs only when type and required values are deterministic. Mapping-like prose is not relocated. |
+| `unsafe-filename` | The filename contains non-portable characters, a Windows device basename, a trailing dot/space, or exceeds Bowerbird's 192-byte Markdown filename budget. Repair deterministically renames it, preserves the full title in `name`, and updates backlinks; collisions fail without overwrite. |
 | `orphan-file` | File in managed directory but no `type` field |
 | `invalid-type` | Type field value not recognized in schema |
 | `missing-required` | Required field is missing |
@@ -111,6 +113,7 @@ Delete semantics in repair mode:
 | `duplicate-note-id` | Two or more notes use the same stable UUID `id` (error; flag-only) |
 | `missing-note-id` | A discovered parseable note has no `id` while the vault uses `frontmatter-v1` identity (error; flag-only) |
 | `invalid-note-id` | A discovered parseable note has a non-UUID `id` while the vault uses `frontmatter-v1` identity (error; flag-only) |
+| `frontmatter-not-at-top` | Exactly one displaced YAML block is repairable only when it resolves to a valid schema type, has no duplicate keys, contains a valid or absent UUID, and validates against that type. Multiple candidates or conflicting identity remain untouched for manual resolution. |
 | `fork-cycle` | Following immediate `forked-from` references forms a cycle (error; flag-only). Traversal is cycle-safe and always terminates |
 | `format-violation` | Field value doesn't match expected format (wikilink, etc.) |
 | `stale-reference` | Wikilink points to non-existent file |

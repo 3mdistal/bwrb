@@ -5,7 +5,7 @@
  */
 
 import chalk from 'chalk';
-import { readFile, writeFile, unlink } from 'fs/promises';
+import { readFile, writeFile, unlink, stat } from 'fs/promises';
 import { join, dirname, basename } from 'path';
 import { parseDocument, isMap, isSeq, isScalar } from 'yaml';
 import type { YAMLSeq } from 'yaml';
@@ -30,7 +30,15 @@ import {
   getUnambiguousDateNormalization,
   isCanonicalIsoDate,
 } from './fix-policy.js';
-import { parseNote, writeNote, generateBodySections } from '../frontmatter.js';
+import {
+  buildNoteContent,
+  parseNote,
+  parseNoteContent,
+  serializeFrontmatter,
+  writeFileAtomic,
+  writeNote,
+  generateBodySections,
+} from '../frontmatter.js';
 import { levenshteinDistance } from '../levenshtein.js';
 import { promptSelection, promptConfirm, promptInput } from '../prompt.js';
 import type { LoadedSchema, Field, BodySection } from '../../types/schema.js';
@@ -44,6 +52,19 @@ import { formatValue } from '../vault.js';
 import { buildNoteTargetIndex, type NoteTargetIndex } from '../discovery.js';
 import { BacklinkScanner } from './backlink-index.js';
 import { isBwrbBuiltinFrontmatterField } from '../frontmatter/systemFields.js';
+import {
+  generateUniqueNoteId,
+  isValidNoteId,
+  registerIssuedNoteId,
+  withNoteIdAssignmentLock,
+} from '../note-id.js';
+import { withNoteIdentityTransaction } from '../identity-transaction.js';
+import { withLineageMutationLocks } from '../lineage-lock.js';
+import { rollbackNoteIfUnchanged } from '../note-write-concurrency.js';
+import { normalizeDateFields, validateFrontmatter } from '../validation.js';
+import { expandStaticValue } from '../local-date.js';
+import { promptField } from '../field-prompt.js';
+import { sanitizeFilenameBase } from '../filename.js';
 
 import {
   type AuditIssue,
@@ -73,7 +94,7 @@ import {
   parseSimpleYamlKeyValueLine,
   isBlockScalarHeader,
 } from './raw.js';
-import { extractYamlNodeValue, isEffectivelyEmpty } from './value-utils.js';
+import { detectEol, extractYamlNodeValue, isEffectivelyEmpty } from './value-utils.js';
 import {
   getAutoUnknownFieldMigrationTarget,
   getSimilarFieldCandidates,
@@ -569,6 +590,185 @@ async function applyFrontmatterKeyRenameFix(
 // Fix Application
 // ============================================================================
 
+function deterministicAdoptionFields(
+  schema: LoadedSchema,
+  typePath: string,
+  explicitFields: Record<string, unknown> = {}
+): { frontmatter: Record<string, unknown>; missing: string[] } {
+  const typeDef = getType(schema, typePath);
+  if (!typeDef) return { frontmatter: {}, missing: [`unknown type '${typePath}'`] };
+
+  const fields = getFieldsForType(schema, typePath);
+  const frontmatter: Record<string, unknown> = { type: typeDef.name };
+  const missing: string[] = [];
+  const now = new Date();
+
+  const fieldNames = [...new Set([...typeDef.fieldOrder, ...Object.keys(fields)])];
+  for (const fieldName of fieldNames) {
+    if (isBwrbBuiltinFrontmatterField(fieldName)) continue;
+    const field = fields[fieldName];
+    if (!field) continue;
+
+    if (Object.prototype.hasOwnProperty.call(explicitFields, fieldName)) {
+      frontmatter[fieldName] = explicitFields[fieldName];
+    } else if (field.value !== undefined) {
+      frontmatter[fieldName] = expandStaticValue(
+        field.value,
+        now,
+        schema.config.dateFormat
+      );
+    } else if (field.required && field.default !== undefined) {
+      frontmatter[fieldName] = field.default;
+    } else if (field.required) {
+      missing.push(fieldName);
+    }
+  }
+
+  return {
+    frontmatter: normalizeDateFields(schema, typePath, frontmatter),
+    missing,
+  };
+}
+
+async function applyMissingFrontmatterFix(
+  schema: LoadedSchema,
+  vaultDir: string,
+  filePath: string,
+  issue: AuditIssue,
+  typePath: string,
+  explicitFields: Record<string, unknown> = {}
+): Promise<FixResult> {
+  if (isDryRunEnabled()) return { file: filePath, issue, action: 'fixed' };
+
+  try {
+    return await withNoteIdentityTransaction(vaultDir, schema.config.identityStore, () =>
+      withLineageMutationLocks(vaultDir, [filePath], () =>
+        withNoteIdAssignmentLock(vaultDir, async () => {
+          const raw = await readFile(filePath, 'utf-8');
+          const structural = readStructuralFrontmatterFromRaw(raw);
+          const displacedType = structural.primaryBlock && !structural.atTop
+            ? resolveTypeFromFrontmatter(schema, structural.frontmatter)
+            : undefined;
+          if (structural.primaryBlock && (structural.atTop || displacedType)) {
+            return {
+              file: filePath,
+              issue,
+              action: 'skipped' as const,
+              message: 'File gained recognizable frontmatter; re-run audit',
+            };
+          }
+
+          const prepared = deterministicAdoptionFields(schema, typePath, explicitFields);
+          if (prepared.missing.length > 0) {
+            return {
+              file: filePath,
+              issue,
+              action: 'skipped' as const,
+              message: `Required fields need explicit values: ${prepared.missing.join(', ')}`,
+            };
+          }
+
+          const id = await generateUniqueNoteId(vaultDir, schema);
+          const frontmatter = { ...prepared.frontmatter, id };
+          const validation = validateFrontmatter(schema, typePath, frontmatter);
+          if (!validation.valid) {
+            return {
+              file: filePath,
+              issue,
+              action: 'skipped' as const,
+              message: `Adoption would not produce valid frontmatter: ${validation.errors.map(error => error.message).join('; ')}`,
+            };
+          }
+
+          const bom = raw.startsWith('\uFEFF') ? '\uFEFF' : '';
+          const body = bom ? raw.slice(1) : raw;
+          const eol = detectEol(raw);
+          const order = ['type', 'id', ...getType(schema, typePath)!.fieldOrder];
+          const yaml = serializeFrontmatter(frontmatter, order).replace(/\n/g, eol);
+          const nextRaw = `${bom}---${eol}${yaml}${eol}---${eol}${body}`;
+          const parsedNext = parseNoteContent(nextRaw);
+          if (parsedNext.body !== body) {
+            throw new Error('Adoption body-preservation check failed');
+          }
+
+          let written = false;
+          try {
+            await writeFileAtomic(filePath, nextRaw);
+            written = true;
+            await registerIssuedNoteId(vaultDir, id, filePath, schema.config.identityStore);
+          } catch (error) {
+            if (written) {
+              const rolledBack = await rollbackNoteIfUnchanged(filePath, nextRaw, raw);
+              if (!rolledBack) {
+                throw new Error(`Adoption failed and rollback was blocked by newer file bytes: ${String(error)}`);
+              }
+            }
+            throw error;
+          }
+
+          return { file: filePath, issue, action: 'fixed' as const };
+        }, {}, schema.config.identityStore)
+      )
+    );
+  } catch (error) {
+    return {
+      file: filePath,
+      issue,
+      action: 'failed',
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function applyUnsafeFilenameFix(
+  schema: LoadedSchema,
+  vaultDir: string,
+  filePath: string,
+  issue: AuditIssue
+): Promise<FixResult> {
+  const originalBase = basename(filePath, '.md');
+  const safe = sanitizeFilenameBase(originalBase);
+  if (!safe.transformation || !safe.sanitized) {
+    return { file: filePath, issue, action: 'skipped', message: 'Filename is already safe' };
+  }
+
+  const targetBasename = `${safe.sanitized}.md`;
+  if (!isDryRunEnabled()) {
+    const targetPath = join(dirname(filePath), targetBasename);
+    try {
+      await stat(targetPath);
+      return {
+        file: filePath,
+        issue,
+        action: 'failed',
+        message: `Destination already exists, left source untouched: ${targetBasename}`,
+      };
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+    }
+
+    const parsed = await parseNote(filePath);
+    if (parsed.frontmatter.name === undefined) {
+      const nextFrontmatter = { ...parsed.frontmatter, name: originalBase };
+      const typePath = resolveTypeFromFrontmatter(schema, nextFrontmatter);
+      const order = typePath ? getType(schema, typePath)?.fieldOrder : undefined;
+      await writeFileAtomic(filePath, buildNoteContent(nextFrontmatter, parsed.body, order));
+    }
+  }
+
+  const moveResult = await executeBulkMove({
+    vaultDir,
+    targetDir: dirname(filePath),
+    filesToMove: [filePath],
+    execute: !isDryRunEnabled(),
+    targetBasenames: new Map([[filePath, targetBasename]]),
+  });
+  if (moveResult.errors.length > 0) {
+    return { file: filePath, issue, action: 'failed', message: moveResult.errors[0] ?? 'Rename failed' };
+  }
+  return { file: filePath, issue, action: 'fixed' };
+}
+
 /**
  * Apply a single fix to a file.
  */
@@ -581,7 +781,7 @@ async function applyFix(
   try {
     // Phase 4 structural fixes operate on raw content.
     if (issue.code === 'frontmatter-not-at-top' || issue.code === 'duplicate-frontmatter-keys' || issue.code === 'malformed-wikilink') {
-      return await applyStructuralFix(filePath, issue, newValue);
+      return await applyStructuralFix(schema, filePath, issue, newValue);
     }
 
     if (issue.code === 'trailing-whitespace') {
@@ -828,6 +1028,7 @@ async function applyFix(
 }
 
 async function applyStructuralFix(
+  schema: LoadedSchema,
   filePath: string,
   issue: AuditIssue,
   newValue?: unknown
@@ -842,11 +1043,16 @@ async function applyStructuralFix(
 
   switch (issue.code) {
     case 'frontmatter-not-at-top': {
+      const resolvedType = resolveTypeFromFrontmatter(schema, structural.frontmatter);
+      const identityValid = structural.frontmatter.id === undefined || isValidNoteId(structural.frontmatter.id);
       const eligible =
         !structural.atTop &&
         structural.frontmatterBlocks.length === 1 &&
         !structural.unterminated &&
-        structural.yamlErrors.length === 0;
+        structural.yamlErrors.length === 0 &&
+        Boolean(resolvedType) &&
+        identityValid &&
+        Boolean(resolvedType && validateFrontmatter(schema, resolvedType, structural.frontmatter).valid);
 
       if (!eligible) {
         return { file: filePath, issue, action: 'skipped', message: 'Ambiguous frontmatter; manual fix required' };
@@ -854,7 +1060,7 @@ async function applyStructuralFix(
 
       const updated = movePrimaryBlockToTop(raw, block);
       if (!isDryRunEnabled()) {
-        await writeFile(filePath, updated, 'utf-8');
+        await writeFileAtomic(filePath, updated);
       }
       return { file: filePath, issue, action: 'fixed' };
     }
@@ -1329,7 +1535,40 @@ export async function runAutoFix(
 
     // Apply auto-fixes
     for (const issue of fixableIssues) {
-      if (issue.code === 'orphan-file' && issue.inferredType) {
+      if (issue.code === 'missing-frontmatter' && issue.inferredType) {
+        const fixResult = await applyMissingFrontmatterFix(
+          schema,
+          vaultDir,
+          result.path,
+          issue,
+          issue.inferredType
+        );
+        console.log(chalk.cyan(`  ${result.relativePath}`));
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.green(`    ✓ Adopted plain Markdown as ${issue.inferredType} with a stable id`));
+          fixed++;
+        } else if (fixResult.action === 'skipped') {
+          console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+          skipped++;
+          registerManualReview(manualReviewNeeded, result.relativePath, issue);
+        } else {
+          console.log(chalk.red(`    ✗ Failed to adopt note: ${fixResult.message}`));
+          failed++;
+        }
+      } else if (issue.code === 'unsafe-filename') {
+        const fixResult = await applyUnsafeFilenameFix(schema, vaultDir, result.path, issue);
+        console.log(chalk.cyan(`  ${result.relativePath}`));
+        if (fixResult.action === 'fixed') {
+          console.log(chalk.green(`    ✓ Repaired filename to ${String(issue.meta?.safeFilename ?? issue.fixedValue)}`));
+          fixed++;
+        } else if (fixResult.action === 'skipped') {
+          console.log(chalk.yellow(`    ⚠ ${fixResult.message}`));
+          skipped++;
+        } else {
+          console.log(chalk.red(`    ✗ Failed to repair filename: ${fixResult.message}`));
+          failed++;
+        }
+      } else if (issue.code === 'orphan-file' && issue.inferredType) {
         // Auto-fix orphan-file when we have inferred type from directory
         const fixResult = await applyFix(schema, result.path, issue, issue.inferredType);
         if (fixResult.action === 'fixed') {
@@ -1983,6 +2222,8 @@ async function handleInteractiveFix(
   const { schema } = context;
   
   switch (issue.code) {
+    case 'missing-frontmatter':
+      return handleMissingFrontmatterFix(context, result, issue);
     case 'orphan-file':
       return handleOrphanFileFix(schema, result, issue, context);
     case 'missing-required':
@@ -2018,6 +2259,8 @@ async function handleInteractiveFix(
     // Phase 4: Structural integrity issues
     case 'frontmatter-not-at-top':
       return handleFrontmatterNotAtTopFix(schema, result, issue);
+    case 'unsafe-filename':
+      return handleUnsafeFilenameFix(context, result, issue);
     case 'duplicate-frontmatter-keys':
       return handleDuplicateFrontmatterKeysFix(schema, result, issue);
     case 'malformed-wikilink':
@@ -2254,6 +2497,83 @@ async function deleteNoteWithSafety(
     console.log(chalk.red(`    ✗ Failed to delete note: ${message}`));
     return 'failed';
   }
+}
+
+async function handleMissingFrontmatterFix(
+  context: FixContext,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  const { schema, vaultDir } = context;
+  if (!issue.inferredType) {
+    console.log(chalk.dim('    → Type and destination are ambiguous; target a managed type directory first'));
+    return 'skipped';
+  }
+
+  const selected = await promptSelection('    Adopt plain Markdown?', [
+    `[adopt as ${issue.inferredType}]`,
+    '[skip]',
+    '[quit]',
+  ]);
+  if (selected === null || selected === '[quit]') return 'quit';
+  if (selected === '[skip]') return 'skipped';
+
+  const typePath = issue.inferredType;
+  const fields = getFieldsForType(schema, typePath);
+  const explicitFields: Record<string, unknown> = {};
+  const deterministic = deterministicAdoptionFields(schema, typePath);
+  for (const fieldName of deterministic.missing) {
+    const field = fields[fieldName];
+    if (!field) continue;
+    const value = await promptField(schema, vaultDir, fieldName, field, { mode: 'create' });
+    if (value === undefined || value === '') {
+      console.log(chalk.dim(`    → Required field '${fieldName}' was not supplied`));
+      return 'skipped';
+    }
+    explicitFields[fieldName] = value;
+  }
+
+  const fixResult = await applyMissingFrontmatterFix(
+    schema,
+    vaultDir,
+    result.path,
+    issue,
+    typePath,
+    explicitFields
+  );
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Adopted as ${typePath} with a stable id`));
+    return 'fixed';
+  }
+  console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+  return fixResult.action === 'skipped' ? 'skipped' : 'failed';
+}
+
+async function handleUnsafeFilenameFix(
+  context: FixContext,
+  result: FileAuditResult,
+  issue: AuditIssue
+): Promise<'fixed' | 'skipped' | 'failed' | 'quit'> {
+  const safeFilename = String(issue.meta?.safeFilename ?? `${issue.fixedValue ?? ''}.md`);
+  const selected = await promptSelection(`    Repair filename to ${safeFilename}?`, [
+    '[repair filename]',
+    '[skip]',
+    '[quit]',
+  ]);
+  if (selected === null || selected === '[quit]') return 'quit';
+  if (selected === '[skip]') return 'skipped';
+  const fixResult = await applyUnsafeFilenameFix(
+    context.schema,
+    context.vaultDir,
+    result.path,
+    issue
+  );
+  if (fixResult.action === 'fixed') {
+    console.log(chalk.green(`    ✓ Renamed to ${safeFilename}`));
+    return 'fixed';
+  }
+  console.log(chalk.red(`    ✗ Failed: ${fixResult.message}`));
+  return fixResult.action === 'skipped' ? 'skipped' : 'failed';
 }
 
 async function handleOrphanFileFix(

@@ -605,13 +605,17 @@ on the named notes and retry—do not infer a replacement option.
 Audit resolves each file's type from its frontmatter `type` field. Understanding this is critical for automation:
 
 - **Type resolution**: Each file's `type` field is read and matched to the schema by short name (e.g., `task`, not `objective/task`)
-- **Early termination**: If `type` is missing or invalid, audit reports `orphan-file` or `invalid-type` and **skips all type-dependent checks**
+- **Plain Markdown adoption**: A managed Markdown file without valid top frontmatter reports `missing-frontmatter`. Auto-repair is available only when its path determines the type and all required values; otherwise use guided repair. The body is preserved byte-for-byte.
+- **Displaced YAML**: `frontmatter-not-at-top` is auto-repairable only for one schema-valid block with unambiguous identity. Multiple blocks, duplicate keys, or an invalid/conflicting UUID fail closed.
+- **Early termination**: If top frontmatter has a missing or invalid `type`, audit reports `orphan-file` or `invalid-type` and **skips all type-dependent checks**
 - **Filtering vs fixing**: `--type` filters which files to audit; it does not fix missing type fields
 
 **Check dependency table:**
 
 | Check | Requires Type Resolution |
 |-------|-------------------------|
+| `missing-frontmatter` | No (path inference may make adoption deterministic) |
+| `unsafe-filename` | Yes |
 | `orphan-file` | No (reports missing type) |
 | `invalid-type` | No (reports unrecognized type) |
 | `trailing-whitespace` | No (operates on raw frontmatter lines; schema/type not needed) |

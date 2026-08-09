@@ -2,6 +2,7 @@ import { existsSync } from 'fs';
 import { join, relative } from 'path';
 import {
   writeNote,
+  writeNoteExclusive,
 } from '../../lib/frontmatter.js';
 import {
   ensureIdInFieldOrder,
@@ -78,7 +79,8 @@ async function writeNotePlanWithinIdentityTransaction(
     }
   }
 
-  if (existsSync(filePath)) {
+  const overwriteExisting = existsSync(filePath);
+  if (overwriteExisting) {
     await fileExistsStrategy.onExists(filePath, args.vaultDir);
   }
 
@@ -102,7 +104,11 @@ async function writeNotePlanWithinIdentityTransaction(
   }
   const orderedFields = ensureIdInFieldOrder(args.content.orderedFields);
 
-  await writeNote(filePath, args.content.frontmatter, args.content.body, orderedFields);
+  if (overwriteExisting) {
+    await writeNote(filePath, args.content.frontmatter, args.content.body, orderedFields);
+  } else {
+    await writeNoteExclusive(filePath, args.content.frontmatter, args.content.body, orderedFields);
+  }
   await registerIssuedNoteId(
     args.vaultDir,
     noteId,

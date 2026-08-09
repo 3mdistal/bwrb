@@ -104,6 +104,8 @@ export const auditCommand = new Command('audit')
   .description('Validate vault files against schema and report issues')
   .addHelpText('after', `
 Issue Types:
+  missing-frontmatter    Plain Markdown note has no valid top frontmatter block
+  unsafe-filename       Filename is not portable or exceeds Bowerbird's byte budget
   orphan-file           File in managed directory but no 'type' field
   invalid-type          Type field value not recognized
   missing-required      Required field is missing

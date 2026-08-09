@@ -2,7 +2,7 @@ import matter from 'gray-matter';
 import { isMap, stringify } from 'yaml';
 import type { Pair, Scalar, YAMLMap } from 'yaml';
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'fs/promises';
-import { basename, dirname, join } from 'path';
+import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 import type { BodySection } from '../types/schema.js';
 import { readStructuralFrontmatterFromRaw } from './audit/structural.js';
@@ -138,7 +138,7 @@ export async function writeFileAtomic(filePath: string, content: string): Promis
   const mode = await stat(filePath).then(info => info.mode).catch(() => undefined);
   const tempPath = join(
     dirname(filePath),
-    `.${basename(filePath)}.bwrb-${process.pid}-${randomUUID()}.tmp`
+    `.bwrb-${process.pid}-${randomUUID()}.tmp`
   );
   const handle = await open(tempPath, 'wx', mode);
   let renamed = false;

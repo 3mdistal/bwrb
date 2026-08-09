@@ -42,7 +42,7 @@ import { isBlankScalar } from '../emptiness.js';
 import { isMap } from 'yaml';
 import type { Pair, Scalar, YAMLMap } from 'yaml';
 import { isDeepStrictEqual } from 'node:util';
-import { suggestOptionValue, suggestFieldName } from '../validation.js';
+import { suggestOptionValue, suggestFieldName, validateFrontmatter } from '../validation.js';
 import { searchContent } from '../content-search.js';
 import { applyWhereExpressions } from '../where-targeting.js';
 import { type LoadedSchema, type Field, getOptionValues } from '../../types/schema.js';
@@ -86,6 +86,8 @@ import { parseCalendarDate } from '../calendar-date.js';
 import { formatLocalDate } from '../local-date.js';
 import { collectLineageIssues } from './lineage.js';
 import { collectRequiredNoteIdentityIssues } from './identity.js';
+import { isValidNoteId } from '../note-id.js';
+import { sanitizeFilenameBase } from '../filename.js';
 
 // Import ownership tracking
 import {
@@ -245,11 +247,24 @@ export async function runAuditDetailed(
   const results: FileAuditResult[] = [];
 
   for (const file of filteredFiles) {
+    const fileIssues = await auditFile(schema, vaultDir, file, { ...options, retentionToday }, noteIndex, ownershipIndex, parentMap, entityMentionIndex);
+    const isPlainMarkdown = fileIssues.some(issue => issue.code === 'missing-frontmatter');
     const issues = [
-      ...(await auditFile(schema, vaultDir, file, { ...options, retentionToday }, noteIndex, ownershipIndex, parentMap, entityMentionIndex)),
+      ...fileIssues,
       ...(lineageIssuesByPath.get(file.relativePath) ?? []),
-      ...(identityIssuesByPath.get(file.relativePath) ?? []),
+      ...(isPlainMarkdown
+        ? (identityIssuesByPath.get(file.relativePath) ?? []).filter(issue => issue.code !== 'missing-note-id')
+        : (identityIssuesByPath.get(file.relativePath) ?? [])),
     ];
+
+    if (issues.some(issue => issue.code === 'duplicate-note-id')) {
+      for (const issue of issues) {
+        if (issue.code === 'frontmatter-not-at-top') {
+          issue.autoFixable = false;
+          issue.message = 'Frontmatter is not at the top of the file (conflicting identity; not auto-fixable)';
+        }
+      }
+    }
 
     // Apply issue filters
     let filteredIssues = issues;
@@ -386,6 +401,26 @@ export async function auditFile(
     return issues;
   }
 
+  const displacedType = structural.primaryBlock && !structural.atTop
+    ? resolveTypeFromFrontmatter(schema, structural.frontmatter)
+    : undefined;
+  if (!structural.primaryBlock || (structural.primaryBlock && !structural.atTop && !displacedType)) {
+    const inferredType = file.expectedType;
+    const autoFixable = Boolean(
+      inferredType && hasDeterministicAdoptionFields(schema, inferredType)
+    );
+    issues.push({
+      severity: 'error',
+      code: 'missing-frontmatter',
+      message: structural.primaryBlock
+        ? 'No valid top frontmatter; YAML-like body content was left as prose'
+        : 'No frontmatter block; plain Markdown can be adopted explicitly',
+      autoFixable,
+      ...(inferredType ? { inferredType } : {}),
+    });
+    return issues;
+  }
+
   const frontmatter: Record<string, unknown> = structural.frontmatter;
 
   const getDeleteRecommendationMeta = (
@@ -400,7 +435,7 @@ export async function auditFile(
   });
 
   // Phase 4: Structural integrity issues
-  issues.push(...collectStructuralIssues(structural, frontmatter));
+  issues.push(...collectStructuralIssues(schema, structural, frontmatter));
 
   // Raw-level hygiene: detect trailing whitespace before YAML parsing
   issues.push(...detectTrailingWhitespaceInRawFrontmatter(structural));
@@ -450,6 +485,24 @@ export async function auditFile(
       meta: getDeleteRecommendationMeta('invalid-type'),
     });
     return issues;
+  }
+
+  const filenameBase = basename(file.path, '.md');
+  const filenameSafety = sanitizeFilenameBase(filenameBase);
+  if (filenameSafety.transformation) {
+    issues.push({
+      severity: 'error',
+      code: 'unsafe-filename',
+      message: `Filename component is not portable; repair to '${filenameSafety.transformation.filename}'`,
+      autoFixable: filenameSafety.sanitized.length > 0,
+      fixedValue: filenameSafety.sanitized,
+      meta: {
+        originalFilename: `${filenameBase}.md`,
+        safeFilename: filenameSafety.transformation.filename,
+        originalBytes: Buffer.byteLength(`${filenameBase}.md`, 'utf8'),
+        safeBytes: Buffer.byteLength(filenameSafety.transformation.filename, 'utf8'),
+      },
+    });
   }
 
   // Check wrong directory
@@ -1501,7 +1554,20 @@ function repairNearWikilink(trimmed: string): string | null {
   return null;
 }
 
+function hasDeterministicAdoptionFields(schema: LoadedSchema, typePath: string): boolean {
+  const typeDef = getType(schema, typePath);
+  if (!typeDef) return false;
+  const fields = getFieldsForType(schema, typePath);
+  return Object.entries(fields).every(([fieldName, field]) =>
+    isBwrbBuiltinFrontmatterField(fieldName) ||
+    !field.required ||
+    field.default !== undefined ||
+    field.value !== undefined
+  );
+}
+
 function collectStructuralIssues(
+  schema: LoadedSchema,
   structural: Awaited<ReturnType<typeof readStructuralFrontmatter>>,
   frontmatter: Record<string, unknown>
 ): AuditIssue[] {
@@ -1509,10 +1575,18 @@ function collectStructuralIssues(
 
   // frontmatter-not-at-top
   if (structural.primaryBlock && !structural.atTop) {
+    const resolvedType = resolveTypeFromFrontmatter(schema, frontmatter);
+    const id = frontmatter.id;
+    const validIdentity = id === undefined || isValidNoteId(id);
+    const validSchema = resolvedType
+      ? validateFrontmatter(schema, resolvedType, frontmatter).valid
+      : false;
     const autoFixable =
       structural.frontmatterBlocks.length === 1 &&
       !structural.unterminated &&
-      structural.yamlErrors.length === 0;
+      structural.yamlErrors.length === 0 &&
+      validIdentity &&
+      validSchema;
 
     issues.push({
       severity: 'error',

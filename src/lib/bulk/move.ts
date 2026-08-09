@@ -397,9 +397,10 @@ async function moveFile(
   filePath: string,
   targetDir: string,
   vaultDir: string,
-  execute: boolean
+  execute: boolean,
+  targetBasename?: string
 ): Promise<MoveResult> {
-  const fileName = basename(filePath);
+  const fileName = targetBasename ?? basename(filePath);
   const newPath = join(targetDir, fileName);
   const oldRelativePath = relative(vaultDir, filePath);
   const newRelativePath = relative(vaultDir, newPath);
@@ -447,6 +448,8 @@ export async function executeBulkMove(options: {
   filesToMove: string[];
   execute: boolean;
   allVaultFiles?: string[];
+  /** Optional exact destination basenames, keyed by source path, for safe renames. */
+  targetBasenames?: ReadonlyMap<string, string>;
 }): Promise<BulkMoveResult> {
   const { vaultDir, targetDir, filesToMove, execute } = options;
   
@@ -479,7 +482,10 @@ export async function executeBulkMove(options: {
     allReferences.set(filePath, refs);
     
     // Calculate new path
-    const newPath = join(absoluteTargetDir, basename(filePath));
+    const newPath = join(
+      absoluteTargetDir,
+      options.targetBasenames?.get(filePath) ?? basename(filePath)
+    );
     
     // Group by source file
     for (const ref of refs) {
@@ -503,7 +509,13 @@ export async function executeBulkMove(options: {
   // as "moved" to preserve the existing preview behaviour (link-update counts).
   const movedFiles = new Set<string>();
   for (const filePath of filesToMove) {
-    const moveResult = await moveFile(filePath, absoluteTargetDir, vaultDir, execute);
+    const moveResult = await moveFile(
+      filePath,
+      absoluteTargetDir,
+      vaultDir,
+      execute,
+      options.targetBasenames?.get(filePath)
+    );
     result.moveResults.push(moveResult);
 
     if (moveResult.error) {
@@ -518,7 +530,7 @@ export async function executeBulkMove(options: {
   // its original path so links to it stay valid.
   const newFilePaths = allVaultFiles.map(f => {
     if (movedFiles.has(f)) {
-      return join(absoluteTargetDir, basename(f));
+      return join(absoluteTargetDir, options.targetBasenames?.get(f) ?? basename(f));
     }
     return f;
   });
