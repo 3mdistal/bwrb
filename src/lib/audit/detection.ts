@@ -412,6 +412,7 @@ export async function auditFile(
     }
   }
   const topMappingLooksLikeProse = Boolean(
+    file.expectedType &&
     structural.primaryBlock &&
     structural.atTop &&
     !Object.prototype.hasOwnProperty.call(structural.frontmatter, 'type') &&
