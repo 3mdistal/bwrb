@@ -1,11 +1,13 @@
 import { Command } from 'commander';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { loadSchema } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
 import { buildVaultNoteSnapshot } from '../lib/discovery.js';
-import { buildNoteContent, parseNoteContent, writeNote } from '../lib/frontmatter.js';
+import { buildNoteContent, parseNoteContent, writeFileAtomic } from '../lib/frontmatter.js';
 import { assertExpectedRevision, noteRevision } from '../lib/note-revision.js';
 import { printJson, jsonError, jsonSuccess } from '../lib/output.js';
 import { isValidNoteId, normalizeNoteId } from '../lib/note-id.js';
@@ -27,8 +29,11 @@ interface PriorityPlanItem {
 interface PriorityPlan {
   algorithm?: string;
   asOf?: string;
+  scope?: { taskIds?: string[] };
   tasks?: PriorityPlanItem[];
 }
+
+const execFileAsync = promisify(execFile);
 
 function ordinal(value: unknown): number | null {
   const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
@@ -91,26 +96,53 @@ async function readTasks(vaultDir: string): Promise<{ tasks: TaskRecord[]; error
   }
   return { tasks, errors };
 }
+async function readScopeIds(path: string | undefined): Promise<Set<string> | null> {
+  if (!path) return null;
+  const parsed = JSON.parse(await readFile(path, 'utf8')) as unknown;
+  const values = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === 'object' && Array.isArray((parsed as { taskIds?: unknown }).taskIds)
+      ? (parsed as { taskIds: unknown[] }).taskIds
+      : null;
+  if (!values || values.some((value) => typeof value !== 'string' || !isValidNoteId(value))) throw new Error('scope file must be a JSON array of stable task IDs or an object with taskIds');
+  const ids = values.map((value) => normalizeNoteId(value as string));
+  if (new Set(ids).size !== ids.length) throw new Error('scope file contains duplicate task IDs');
+  return new Set(ids);
+}
+function selectScope(tasks: TaskRecord[], scopeIds: Set<string> | null): { tasks: TaskRecord[]; errors: string[] } {
+  if (!scopeIds) return { tasks, errors: [] };
+  const liveIds = new Set(tasks.map((task) => task.id));
+  const errors = [...scopeIds].filter((id) => !liveIds.has(id)).map((id) => `scope contains unknown or terminal task ${id}`);
+  return { tasks: tasks.filter((task) => scopeIds.has(task.id)), errors };
+}
+async function assertVaultTransactionWorktree(vaultDir: string, transactionId: string): Promise<void> {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$/.test(transactionId)) throw new Error('transaction ID is invalid');
+  const { stdout } = await execFileAsync('git', ['-C', vaultDir, 'branch', '--show-current']);
+  if (stdout.trim() !== `vault-tx/${transactionId}`) throw new Error(`priority approval execute requires isolated branch vault-tx/${transactionId}`);
+}
 function fail(message: string, data?: unknown): void { printJson(jsonError(message, { data })); process.exitCode = 1; }
 function priorityVault(command: Command): Promise<string> {
   return resolveVaultDirWithSelection({ ...getGlobalOpts(command), jsonMode: true });
 }
 
 export const priorityCommand = new Command('priority').description('Suggest, validate, and explicitly approve deterministic task priorities');
-priorityCommand.command('suggest').requiredOption('--type <type>', 'Task type (task)').requiredOption('--as-of <date>', 'YYYY-MM-DD').option('--output <format>', 'json').addHelpText('after', '\nRead-only: no task files are modified.').action(async (options, command) => {
+priorityCommand.command('suggest').requiredOption('--type <type>', 'Task type (task)').requiredOption('--as-of <date>', 'YYYY-MM-DD').option('--ids-file <path>', 'JSON stable-ID scope').option('--output <format>', 'json').addHelpText('after', '\nRead-only: no task files are modified.').action(async (options, command) => {
   if (options.type !== 'task' || !validDate(options.asOf)) return fail('priority suggest requires --type task and a valid --as-of YYYY-MM-DD');
   const vaultDir = await priorityVault(command); const result = await readTasks(vaultDir);
   if (result.errors.length) return fail('Stable identity closure failed', { errors: result.errors });
-  const tasks = suggestPriorities(result.tasks, options.asOf).map((task) => ({ ...task, algorithm: PRIORITY_ALGORITHM, effectiveRank: task.effectiveRank, semanticEvidenceRevision: task.revision, explanation: `importance ${(task.importance ?? 2)}*4 + deadline pressure ${task.deadlinePressure}*3 + excitement ${(task.excitement ?? 2)}` }));
-  printJson(jsonSuccess({ data: { algorithm: PRIORITY_ALGORITHM, asOf: options.asOf, tasks } }));
+  const scopeIds = await readScopeIds(options.idsFile); const scoped = selectScope(result.tasks, scopeIds);
+  if (scoped.errors.length) return fail('Priority scope resolution failed', { errors: scoped.errors });
+  const tasks = suggestPriorities(scoped.tasks, options.asOf).map((task) => ({ ...task, algorithm: PRIORITY_ALGORITHM, effectiveRank: task.effectiveRank, semanticEvidenceRevision: task.revision, explanation: `importance ${(task.importance ?? 2)}*4 + deadline pressure ${task.deadlinePressure}*3 + excitement ${(task.excitement ?? 2)}` }));
+  printJson(jsonSuccess({ data: { algorithm: PRIORITY_ALGORITHM, asOf: options.asOf, scopeTaskIds: [...(scopeIds ?? new Set(result.tasks.map((task) => task.id)))], tasks } }));
 });
-priorityCommand.command('validate').option('--complete', 'Require a complete contiguous live queue').option('--as-of <date>', 'Evaluation date for staleness checks (YYYY-MM-DD)').option('--output <format>', 'json').action(async (options, command) => {
+priorityCommand.command('validate').option('--complete', 'Require complete approved metadata for the selected shared-order view').option('--as-of <date>', 'Evaluation date for staleness checks (YYYY-MM-DD)').option('--ids-file <path>', 'JSON stable-ID scope').option('--output <format>', 'json').action(async (options, command) => {
   if (options.complete && !validDate(options.asOf)) return fail('priority validate --complete requires a valid --as-of YYYY-MM-DD');
-  const vaultDir = await priorityVault(command); const result = await readTasks(vaultDir); const errors = [...result.errors]; const ranks = new Set<number>(); const approvalIds = new Set<string>();
-  for (const task of result.tasks) {
+  const vaultDir = await priorityVault(command); const result = await readTasks(vaultDir); const scopeIds = await readScopeIds(options.idsFile); const scoped = selectScope(result.tasks, scopeIds); const errors = [...result.errors, ...scoped.errors]; const ranks = new Set<number>(); const allRanks = new Set<number>(); const approvalIds = new Set<string>();
+  for (const task of result.tasks) if (task.effectiveRank !== null && task.effectiveRank !== undefined) { if (allRanks.has(task.effectiveRank)) errors.push(`${task.path}: duplicate priority-rank ${task.effectiveRank}`); allRanks.add(task.effectiveRank); }
+  for (const task of scoped.tasks) {
     if (task.override && !task.reason) errors.push(`${task.path}: priority override requires priority-reason`);
     const effectiveRank = task.effectiveRank;
-    if (effectiveRank !== null && effectiveRank !== undefined) { if (ranks.has(effectiveRank)) errors.push(`${task.path}: duplicate priority-rank ${effectiveRank}`); ranks.add(effectiveRank); }
+    if (effectiveRank !== null && effectiveRank !== undefined) ranks.add(effectiveRank);
     if (options.complete) {
       if (!task.algorithm || !task.asOf || !task.basisRevision || !task.reviewed || !task.approvalId) errors.push(`${task.path}: approved priority metadata is incomplete`);
       if (task.approvalId) approvalIds.add(task.approvalId);
@@ -121,22 +153,40 @@ priorityCommand.command('validate').option('--complete', 'Require a complete con
       if (suggestion.staleReasons.includes('review')) errors.push(`${task.path}: subjective priority factors require review`);
     }
   }
-  const orderedRanks = [...ranks].sort((a, b) => a - b);
-  if (options.complete && (ranks.size !== result.tasks.length || orderedRanks.some((value, index) => value !== index + 1))) errors.push('live queue ranks must be unique and contiguous from 1');
-  if (options.complete && approvalIds.size > 1) errors.push('live queue must share one approved complete-order receipt');
-  if (errors.length) return fail('Priority validation failed', { errors }); printJson(jsonSuccess({ data: { valid: true } }));
+  const orderedRanks = [...allRanks].sort((a, b) => a - b);
+  if (options.complete && ranks.size !== scoped.tasks.length) errors.push('every task in the selected scope must have an effective rank');
+  if (options.complete && !scopeIds && (allRanks.size !== result.tasks.length || orderedRanks.some((value, index) => value !== index + 1))) errors.push('live queue ranks must be unique and contiguous from 1');
+  if (options.complete && approvalIds.size > 1) errors.push('selected scope must share one approved complete-order receipt');
+  if (errors.length) return fail('Priority validation failed', { errors }); printJson(jsonSuccess({ data: { valid: true, scopeTaskIds: scoped.tasks.map((task) => task.id) } }));
 });
-priorityCommand.command('approve').requiredOption('--json-file <path>', 'Suggestion plan JSON').requiredOption('--approval-id <id>', 'External approval receipt').option('--execute', 'Apply the approved plan').option('--output <format>', 'json').addHelpText('after', '\nDry-run by default; --execute is required to modify task files.').action(async (options, command) => {
+priorityCommand.command('approve').requiredOption('--json-file <path>', 'Suggestion plan JSON').requiredOption('--approval-id <id>', 'External approval receipt').option('--transaction-id <id>', 'Required isolated vault transaction for execute').option('--execute', 'Apply the approved plan').option('--output <format>', 'json').addHelpText('after', '\nDry-run by default; --execute is required to modify task files and is accepted only in the named vault-tx branch.').action(async (options, command) => {
   const plan = JSON.parse(await readFile(options.jsonFile, 'utf8')) as PriorityPlan;
   if (!options.approvalId || !validDate(plan.asOf) || !Array.isArray(plan.tasks) || !plan.algorithm) return fail('Approval plan requires algorithm, a valid asOf date, and tasks plus --approval-id');
   const vaultDir = await priorityVault(command); const live = await readTasks(vaultDir); if (live.errors.length) return fail('Stable identity closure failed', { errors: live.errors });
   const byId = new Map(live.tasks.map((task) => [task.id, task])); const errors: string[] = []; const planned = new Set<string>();
+  const scopeValues = plan.scope?.taskIds; const scopeIds = scopeValues === undefined ? new Set(live.tasks.map((task) => task.id)) : new Set(Array.isArray(scopeValues) ? scopeValues.filter((id) => typeof id === 'string' && isValidNoteId(id)).map(normalizeNoteId) : []);
+  if (scopeValues !== undefined && (!Array.isArray(scopeValues) || scopeIds.size !== scopeValues.length || scopeIds.size === 0)) errors.push('plan scope.taskIds must contain unique stable task IDs');
+  for (const id of scopeIds) if (!byId.has(id)) errors.push(`plan scope contains unknown or terminal task ${id}`);
   if (plan.algorithm !== PRIORITY_ALGORITHM) errors.push(`plan algorithm ${plan.algorithm} does not match ${PRIORITY_ALGORITHM}`);
   if (plan.tasks.length !== live.tasks.length) errors.push('plan must cover every nonterminal task');
   for (const item of plan.tasks) { const task = byId.get(normalizeNoteId(item.id)); if (!task || task.path !== item.path) errors.push(`unknown or path-mismatched task ${item.id}`); else { if (task.rawRevision !== item.revision) errors.push(`stale raw revision for ${item.path}`); if (task.revision !== item.semanticEvidenceRevision) errors.push(`stale semantic evidence for ${item.path}`); const effectiveOverride = item.override ?? task.override ?? false; const effectiveReason = item.reason !== undefined ? item.reason : task.reason; if (effectiveOverride && !effectiveReason) errors.push(`override requires a reason for ${item.path}`); } if (planned.has(normalizeNoteId(item.id))) errors.push(`duplicate plan id ${item.id}`); planned.add(normalizeNoteId(item.id)); validateApprovedFactor(item.importance, 'importance', item.path, errors); validateApprovedFactor(item.excitement, 'excitement', item.path, errors); }
   const ranks = plan.tasks.map((item) => item.rank).sort((a,b) => a-b); if (ranks.some((value,index) => !Number.isInteger(value) || value !== index + 1)) errors.push('approved ranks must be unique and contiguous');
+  const outside = plan.tasks.filter((item) => !scopeIds.has(normalizeNoteId(item.id))); const liveOutside = outside.map((item) => byId.get(normalizeNoteId(item.id))).filter((task): task is TaskRecord => Boolean(task));
+  if (outside.length) {
+    if (liveOutside.some((task) => task.effectiveRank === null || task.effectiveRank === undefined)) errors.push('scoped approval requires an existing complete shared order; use an everything scope to establish it');
+    const before = [...liveOutside].sort((a, b) => a.effectiveRank! - b.effectiveRank!).map((task) => task.id);
+    const after = [...outside].sort((a, b) => a.rank - b.rank).map((item) => normalizeNoteId(item.id));
+    if (before.join('\0') !== after.join('\0')) errors.push('scoped approval must preserve out-of-scope relative order');
+    for (const item of outside) { const task = byId.get(normalizeNoteId(item.id)); if (!task) continue; if (item.importance !== undefined || item.excitement !== undefined || item.override !== undefined || item.reason !== undefined) errors.push(`out-of-scope plan item may carry rank only: ${item.path}`); }
+  }
   if (errors.length) return fail('Priority approval preflight failed', { errors });
-  if (!options.execute) { printJson(jsonSuccess({ data: { mode: 'dry-run', approvalId: options.approvalId, tasks: plan.tasks } })); return; }
-  for (const item of plan.tasks) { const task = byId.get(normalizeNoteId(item.id))!; const path = join(vaultDir, task.path); const raw = await readFile(path, 'utf8'); assertExpectedRevision(item.revision, raw); const parsed = parseNoteContent(raw); const next: Record<string, unknown> = { ...parsed.frontmatter }; if (item.importance !== undefined) { if (item.importance === null) delete next.importance; else next.importance = item.importance; } if (item.excitement !== undefined) { if (item.excitement === null) delete next.excitement; else next.excitement = item.excitement; } const effectiveOverride = item.override ?? task.override ?? false; const effectiveReason = item.reason !== undefined ? item.reason : task.reason; Object.assign(next, { 'priority-rank': item.rank, 'priority-override': effectiveOverride, 'priority-algorithm': PRIORITY_ALGORITHM, 'priority-as-of': plan.asOf, 'priority-basis-revision': semanticEvidenceRevision(buildNoteContent(next, parsed.body)), 'priority-reviewed': plan.asOf, 'priority-approval-id': options.approvalId }); if (effectiveOverride) next['priority-reason'] = effectiveReason; else delete next['priority-reason']; await writeNote(path, next, parsed.body); }
+  if (!options.execute) { printJson(jsonSuccess({ data: { mode: 'dry-run', approvalId: options.approvalId, scopeTaskIds: [...scopeIds], tasks: plan.tasks } })); return; }
+  if (!options.transactionId) return fail('Priority approval execute requires --transaction-id');
+  try { await assertVaultTransactionWorktree(vaultDir, options.transactionId); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+  const prepared = [] as Array<{ path: string; before: string; after: string }>;
+  for (const item of plan.tasks) { const task = byId.get(normalizeNoteId(item.id))!; const path = join(vaultDir, task.path); const raw = await readFile(path, 'utf8'); assertExpectedRevision(item.revision, raw); const parsed = parseNoteContent(raw); const next: Record<string, unknown> = { ...parsed.frontmatter }; if (item.importance !== undefined) { if (item.importance === null) delete next.importance; else next.importance = item.importance; } if (item.excitement !== undefined) { if (item.excitement === null) delete next.excitement; else next.excitement = item.excitement; } const effectiveOverride = item.override ?? task.override ?? false; const effectiveReason = item.reason !== undefined ? item.reason : task.reason; Object.assign(next, { 'priority-rank': item.rank, 'priority-override': effectiveOverride, 'priority-algorithm': PRIORITY_ALGORITHM, 'priority-as-of': plan.asOf, 'priority-basis-revision': semanticEvidenceRevision(buildNoteContent(next, parsed.body)), 'priority-reviewed': plan.asOf, 'priority-approval-id': options.approvalId }); if (effectiveOverride) next['priority-reason'] = effectiveReason; else delete next['priority-reason']; prepared.push({ path, before: raw, after: buildNoteContent(next, parsed.body) }); }
+  const written: Array<{ path: string; before: string }> = [];
+  try { for (const mutation of prepared) { await writeFileAtomic(mutation.path, mutation.after); written.push(mutation); } }
+  catch (error) { for (const mutation of written.reverse()) await writeFileAtomic(mutation.path, mutation.before); throw error; }
   printJson(jsonSuccess({ data: { mode: 'execute', approvalId: options.approvalId, updated: plan.tasks.map((task) => task.path) } }));
 });
