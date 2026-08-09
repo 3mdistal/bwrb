@@ -251,7 +251,7 @@ describe('bwrb completion command', () => {
         '--completions', 'bwrb', 'priority', 'approve', '--',
       ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
       expect(options).toEqual(expect.arrayContaining([
-        '--json-file', '--approval-id', '--execute', '--output', '--vault', '--help',
+        '--json-file', '--approval-id', '--transaction-id', '--execute', '--output', '--vault', '--help',
       ]));
     });
 

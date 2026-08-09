@@ -346,7 +346,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
   ],
   completion: ['--help'],
   explain: ['--transition', '--output', '--help'],
-  priority: ['--type', '--as-of', '--complete', '--json-file', '--approval-id', '--execute', '--output', '--vault', '-v', '--non-interactive', '--help'],
+  priority: ['--type', '--as-of', '--ids-file', '--complete', '--json-file', '--approval-id', '--transaction-id', '--execute', '--output', '--vault', '-v', '--non-interactive', '--help'],
   triage: ['--path', '-p', '--json-file', '--approval-id', '--execute', '--output', '--vault', '-v', '--non-interactive', '--help'],
   config: ['--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
 };
