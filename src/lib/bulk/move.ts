@@ -438,23 +438,9 @@ async function moveFile(
     // source link. Unlike rename(), link() fails with EEXIST if a concurrent
     // writer wins the destination path after our preflight check.
     await link(filePath, newPath);
-    try {
-      await unlink(filePath);
-    } catch (error) {
-      const [sourceInfo, destinationInfo] = await Promise.all([
-        stat(filePath).catch(() => undefined),
-        stat(newPath).catch(() => undefined),
-      ]);
-      if (
-        sourceInfo &&
-        destinationInfo &&
-        sourceInfo.dev === destinationInfo.dev &&
-        sourceInfo.ino === destinationInfo.ino
-      ) {
-        await unlink(newPath).catch(() => undefined);
-      }
-      throw error;
-    }
+    // On unlink failure preserve both names. Duplicate hardlinks are
+    // recoverable; cleanup could race and delete another writer's file.
+    await unlink(filePath);
     result.applied = true;
   } catch (err) {
     result.error = err instanceof Error ? err.message : String(err);

@@ -60,7 +60,7 @@ import {
 } from '../note-id.js';
 import { withNoteIdentityTransaction } from '../identity-transaction.js';
 import { withLineageMutationLocks } from '../lineage-lock.js';
-import { rollbackNoteIfUnchanged } from '../note-write-concurrency.js';
+import { assertNoteBytesUnchanged, rollbackNoteIfUnchanged } from '../note-write-concurrency.js';
 import { normalizeDateFields, validateFrontmatter } from '../validation.js';
 import { expandStaticValue } from '../local-date.js';
 import { promptField } from '../field-prompt.js';
@@ -646,10 +646,10 @@ async function applyMissingFrontmatterFix(
         withNoteIdAssignmentLock(vaultDir, async () => {
           const raw = await readFile(filePath, 'utf-8');
           const structural = readStructuralFrontmatterFromRaw(raw);
-          const displacedType = structural.primaryBlock && !structural.atTop
+          const recognizableType = structural.primaryBlock
             ? resolveTypeFromFrontmatter(schema, structural.frontmatter)
             : undefined;
-          if (structural.primaryBlock && (structural.atTop || displacedType)) {
+          if (structural.primaryBlock && recognizableType) {
             return {
               file: filePath,
               issue,
@@ -725,6 +725,16 @@ async function applyUnsafeFilenameFix(
   filePath: string,
   issue: AuditIssue
 ): Promise<FixResult> {
+  return withLineageMutationLocks(vaultDir, [filePath], () =>
+    applyUnsafeFilenameFixLocked(vaultDir, filePath, issue)
+  );
+}
+
+async function applyUnsafeFilenameFixLocked(
+  vaultDir: string,
+  filePath: string,
+  issue: AuditIssue
+): Promise<FixResult> {
   const originalBase = basename(filePath, '.md');
   const safe = sanitizeFilenameBase(originalBase);
   if (!safe.transformation || !safe.sanitized) {
@@ -756,6 +766,7 @@ async function applyUnsafeFilenameFix(
       if (parseNoteContent(updated).body !== parsed.body) {
         throw new Error('Filename title preservation changed note body');
       }
+      await assertNoteBytesUnchanged(filePath, raw);
       await writeFileAtomic(filePath, updated);
       titleUpdatedRaw = updated;
     }
