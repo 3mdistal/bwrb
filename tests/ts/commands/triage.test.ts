@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readFile, writeFile } from 'fs/promises';
+import { readFile, rename, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { cleanupTestVault, createTestVault, runCLI } from '../fixtures/setup.js';
 
@@ -77,5 +77,27 @@ describe('triage command', () => {
     const missingTargets = await runCLI(['triage', 'validate', '--output', 'json'], vault);
     expect(missingTargets.exitCode).toBe(1);
     expect(JSON.parse(missingTargets.stdout).error).toContain('Malformed triage ledger row');
+  });
+
+  it('reopens renamed evidence and preserves its prior-path history after reapproval', async () => {
+    const initial = JSON.parse((await runCLI(['triage', 'status', '--path', relativePath, '--output', 'json'], vault)).stdout).data;
+    const initialPlan = join(vault, 'initial-plan.json');
+    await writeFile(initialPlan, JSON.stringify({ items: [{ id: initial.id, path: initial.path, revision: initial.revision, disposition: 'no-action' }] }));
+    expect((await runCLI(['triage', 'approve', '--json-file', initialPlan, '--approval-id', 'alice-triage-1', '--execute', '--output', 'json'], vault)).exitCode).toBe(0);
+
+    const renamedPath = 'Objectives/Tasks/Renamed Task.md';
+    await rename(notePath, join(vault, renamedPath));
+    await writeFile(join(vault, '.bwrb/ids.jsonl'), `${JSON.stringify({ id: ID, createdAt: '2026-08-01T00:00:00.000Z', path: renamedPath })}\n`);
+
+    const reopened = JSON.parse((await runCLI(['triage', 'status', '--path', renamedPath, '--output', 'json'], vault)).stdout).data;
+    expect(reopened.state).toBe('changed');
+    expect(reopened.prior.path).toBe(relativePath);
+
+    const renamedPlan = join(vault, 'renamed-plan.json');
+    await writeFile(renamedPlan, JSON.stringify({ items: [{ id: reopened.id, path: reopened.path, revision: reopened.revision, disposition: 'no-action' }] }));
+    expect((await runCLI(['triage', 'approve', '--json-file', renamedPlan, '--approval-id', 'alice-triage-2', '--execute', '--output', 'json'], vault)).exitCode).toBe(0);
+    const rows = (await readFile(join(vault, '.bwrb/triage.jsonl'), 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+    expect(rows.map((row) => row.path)).toEqual([relativePath, renamedPath]);
+    expect((await runCLI(['triage', 'validate', '--output', 'json'], vault)).exitCode).toBe(0);
   });
 });
