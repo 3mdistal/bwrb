@@ -2,7 +2,7 @@ import matter from 'gray-matter';
 import { isMap, stringify } from 'yaml';
 import type { Pair, Scalar, YAMLMap } from 'yaml';
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'fs/promises';
-import { basename, dirname, join } from 'path';
+import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 import type { BodySection } from '../types/schema.js';
 import { readStructuralFrontmatterFromRaw } from './audit/structural.js';
@@ -132,13 +132,44 @@ export function insertFrontmatterScalarPreservingBytes(
   return `${before}${separator}${key}: ${value}${eol}${content.slice(insertionPoint)}`;
 }
 
+/** Insert an arbitrary YAML-safe string while preserving every unrelated note byte. */
+export function insertFrontmatterStringPreservingBytes(
+  content: string,
+  key: string,
+  value: string
+): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(key)) {
+    throw new Error(`Cannot insert unsafe frontmatter key: ${key}`);
+  }
+  const structural = readStructuralFrontmatterFromRaw(content);
+  const block = structural.primaryBlock;
+  const doc = structural.doc;
+  if (!block || !structural.atTop || !doc || structural.yamlErrors.length > 0 || !isMap(doc.contents)) {
+    throw new Error('Cannot insert field: note does not have valid top-level mapping frontmatter');
+  }
+  const pairs = (doc.contents as YAMLMap).items as Pair[];
+  if (pairs.some(pair => String((pair.key as Scalar | null | undefined)?.value ?? '') === key)) {
+    throw new Error(`Cannot insert field: frontmatter already contains '${key}'`);
+  }
+  const yaml = structural.yaml ?? '';
+  const typePair = pairs.find(pair => String((pair.key as Scalar | null | undefined)?.value ?? '') === 'type');
+  const typeEnd = (typePair?.value as { range?: [number, number, number] } | null | undefined)?.range?.[2];
+  const insertionOffset = typeof typeEnd === 'number' ? typeEnd : yaml.length;
+  const insertionPoint = block.yamlStart + insertionOffset;
+  const eol = detectEol(content);
+  const before = content.slice(0, insertionPoint);
+  const separator = before.endsWith('\n') ? '' : eol;
+  const serialized = stringify({ [key]: value }).trimEnd().replace(/\n/g, eol);
+  return `${before}${separator}${serialized}${eol}${content.slice(insertionPoint)}`;
+}
+
 /** Replace a UTF-8 file atomically via a same-directory temporary file. */
 export async function writeFileAtomic(filePath: string, content: string): Promise<void> {
   await mkdir(dirname(filePath), { recursive: true });
   const mode = await stat(filePath).then(info => info.mode).catch(() => undefined);
   const tempPath = join(
     dirname(filePath),
-    `.${basename(filePath)}.bwrb-${process.pid}-${randomUUID()}.tmp`
+    `.bwrb-${process.pid}-${randomUUID()}.tmp`
   );
   const handle = await open(tempPath, 'wx', mode);
   let renamed = false;

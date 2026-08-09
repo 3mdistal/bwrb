@@ -3,6 +3,7 @@ import { mkdtemp, rm, mkdir, writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { createTestVault, cleanupTestVault, runCLI, TEST_SCHEMA } from '../fixtures/setup.js';
+import { parseFrontmatter } from '../../../src/lib/frontmatter.js';
 
 describe('audit command', () => {
   let vaultDir: string;
@@ -6969,6 +6970,158 @@ priority: medium
       const trigger = await runCLI(['audit', '--only', 'retention-due'], tempVaultDir);
       expect(trigger.exitCode).toBe(1);
       expect(trigger.stderr).toContain('cannot modify transition trigger field "status"');
+    });
+  });
+
+  describe('preserve-first note repair', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-preserve-repair-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      const schema = structuredClone(TEST_SCHEMA) as typeof TEST_SCHEMA & {
+        config?: Record<string, unknown>;
+      };
+      schema.config = { ...(schema.config ?? {}), identity_store: 'frontmatter-v1' };
+      await writeFile(join(tempVaultDir, '.bwrb', 'schema.json'), JSON.stringify(schema, null, 2));
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('adopts plain Markdown with minimal valid frontmatter and preserves every body byte', async () => {
+      const notePath = join(tempVaultDir, 'Ideas', 'Plain.md');
+      const body = '# Plain\r\n\r\nParagraph with  trailing spaces.  \r\n';
+      await writeFile(notePath, body);
+
+      const report = await runCLI(['audit', '--path', 'Plain.md', '--output', 'json'], tempVaultDir);
+      const reportJson = JSON.parse(report.stdout);
+      expect(reportJson.files[0].issues.map((issue: { code: string }) => issue.code)).toContain('missing-frontmatter');
+      expect(reportJson.files[0].issues.map((issue: { code: string }) => issue.code)).not.toContain('orphan-file');
+
+      const repair = await runCLI(
+        ['audit', '--fix', '--auto', '--execute', '--path', 'Plain.md'],
+        tempVaultDir
+      );
+      expect(repair.stdout).toContain('Adopted plain Markdown as idea with a stable id');
+
+      const repaired = await readFile(notePath, 'utf8');
+      const closing = repaired.indexOf('---\r\n', 4);
+      expect(closing).toBeGreaterThan(0);
+      expect(repaired.slice(closing + 5)).toBe(body);
+      expect(repaired).toMatch(/^---\r\ntype: idea\r\nid: [0-9a-f-]{36}\r\nstatus: raw\r\n---\r\n/);
+
+      const rerun = await runCLI(['audit', '--path', 'Plain.md', '--output', 'json'], tempVaultDir);
+      const rerunJson = JSON.parse(rerun.stdout);
+      expect(rerunJson.files.flatMap((file: { issues: Array<{ code: string }> }) => file.issues))
+        .not.toContainEqual(expect.objectContaining({ code: 'missing-frontmatter' }));
+    });
+
+    it('leaves mapping-like thematic body content as prose while adopting the note', async () => {
+      const notePath = join(tempVaultDir, 'Ideas', 'Body YAML.md');
+      const body = '---\nexample: prose, not metadata\nimage: rain\n---\nTail\n';
+      await writeFile(notePath, body);
+
+      const report = await runCLI(['audit', '--path', 'Body YAML.md', '--output', 'json'], tempVaultDir);
+      const reportJson = JSON.parse(report.stdout);
+      expect(reportJson.files[0].issues).toContainEqual(expect.objectContaining({ code: 'missing-frontmatter' }));
+      expect(reportJson.files[0].issues).not.toContainEqual(expect.objectContaining({ code: 'frontmatter-not-at-top' }));
+
+      await runCLI(['audit', '--fix', '--auto', '--execute', '--path', 'Body YAML.md'], tempVaultDir);
+      const repaired = await readFile(notePath, 'utf8');
+      expect(repaired.endsWith(body)).toBe(true);
+      expect(repaired.match(/example: prose, not metadata/g)).toHaveLength(1);
+    });
+
+    it('moves only one schema-valid displaced block and preserves the UUID and prose bytes', async () => {
+      const id = '123e4567-e89b-42d3-a456-426614174000';
+      const notePath = join(tempVaultDir, 'Ideas', 'Misplaced.md');
+      const original = `Leading prose\n---\ntype: idea\nid: ${id}\nstatus: raw\n---\nTrailing prose\n`;
+      await writeFile(notePath, original);
+
+      const repair = await runCLI(
+        ['audit', '--fix', '--auto', '--execute', '--path', 'Misplaced.md'],
+        tempVaultDir
+      );
+      expect(repair.stdout).toContain('Moved frontmatter to top');
+      const repaired = await readFile(notePath, 'utf8');
+      expect(repaired.startsWith(`---\ntype: idea\nid: ${id}\nstatus: raw\n---\n`)).toBe(true);
+      expect(repaired.slice(repaired.indexOf('Leading prose'))).toBe('Leading prose\nTrailing prose\n');
+
+      const rerun = await runCLI(['audit', '--path', 'Misplaced.md', '--output', 'json'], tempVaultDir);
+      expect(JSON.parse(rerun.stdout).files).toEqual([]);
+    });
+
+    it('fails closed for multiple candidates, duplicate keys, and invalid displaced identity', async () => {
+      const cases = [
+        ['Multiple.md', 'Lead\n---\ntype: idea\nid: 123e4567-e89b-42d3-a456-426614174000\nstatus: raw\n---\nMid\n---\ntype: idea\nid: 123e4567-e89b-42d3-a456-426614174001\nstatus: raw\n---\n'],
+        ['Duplicate.md', 'Lead\n---\ntype: idea\nid: 123e4567-e89b-42d3-a456-426614174000\nstatus: raw\nstatus: backlog\n---\n'],
+        ['Bad Id.md', 'Lead\n---\ntype: idea\nid: not-a-uuid\nstatus: raw\n---\n'],
+      ] as const;
+      for (const [name, content] of cases) {
+        await writeFile(join(tempVaultDir, 'Ideas', name), content);
+      }
+
+      for (const [name, content] of cases) {
+        const report = await runCLI(['audit', '--path', name, '--output', 'json'], tempVaultDir);
+        const issue = JSON.parse(report.stdout).files[0].issues.find(
+          (candidate: { code: string }) => candidate.code === 'frontmatter-not-at-top'
+        );
+        expect(issue?.autoFixable).toBe(false);
+        await runCLI(['audit', '--fix', '--auto', '--execute', '--path', name], tempVaultDir);
+        expect(await readFile(join(tempVaultDir, 'Ideas', name), 'utf8')).toBe(content);
+      }
+    });
+
+    it('repairs an over-budget filename, preserves title and UUID, and updates backlinks', async () => {
+      const originalBase = `A ${'very-long-title-'.repeat(14)}ending`;
+      const originalPath = join(tempVaultDir, 'Ideas', `${originalBase}.md`);
+      const id = '123e4567-e89b-42d3-a456-426614174000';
+      await writeFile(originalPath, `---\ntype: idea\n# preserve this comment\nid: ${id}\nstatus: "raw"\n---\nBody\n`);
+      const backlinkPath = join(tempVaultDir, 'Ideas', 'Backlink.md');
+      await writeFile(backlinkPath, `---\ntype: idea\nid: 123e4567-e89b-42d3-a456-426614174001\nstatus: raw\n---\n[[${originalBase}]]\n`);
+
+      const report = await runCLI(['audit', '--path', `${originalBase}.md`, '--output', 'json'], tempVaultDir);
+      const unsafe = JSON.parse(report.stdout).files[0].issues.find(
+        (issue: { code: string }) => issue.code === 'unsafe-filename'
+      );
+      expect(unsafe.autoFixable).toBe(true);
+      expect(unsafe.meta.safeBytes).toBeLessThanOrEqual(192);
+
+      const repair = await runCLI(
+        ['audit', '--fix', '--auto', '--execute', '--path', `${originalBase}.md`],
+        tempVaultDir
+      );
+      expect(repair.stdout).toContain('Repaired filename');
+      const files = await import('fs/promises').then(fs => fs.readdir(join(tempVaultDir, 'Ideas')));
+      const repairedName = files.find(name => name.includes('--') && name.endsWith('.md'));
+      expect(repairedName).toBeDefined();
+      expect(Buffer.byteLength(repairedName!, 'utf8')).toBeLessThanOrEqual(192);
+      const repaired = await readFile(join(tempVaultDir, 'Ideas', repairedName!), 'utf8');
+      expect(repaired).toContain(`id: ${id}`);
+      expect(parseFrontmatter(repaired).name).toBe(originalBase);
+      expect(repaired).toContain('# preserve this comment');
+      expect(repaired).toContain('status: "raw"');
+      expect(await readFile(backlinkPath, 'utf8')).toContain(`[[${repairedName!.slice(0, -3)}]]`);
+    });
+
+    it('leaves the source and destination untouched when a repaired filename collides', async () => {
+      const sourcePath = join(tempVaultDir, 'Ideas', 'Bad?.md');
+      const destinationPath = join(tempVaultDir, 'Ideas', 'Bad.md');
+      const source = '---\ntype: idea\nid: 123e4567-e89b-42d3-a456-426614174010\nstatus: raw\n---\nSource\n';
+      const destination = '---\ntype: idea\nid: 123e4567-e89b-42d3-a456-426614174011\nstatus: raw\n---\nDestination\n';
+      await writeFile(sourcePath, source);
+      await writeFile(destinationPath, destination);
+
+      const repair = await runCLI(
+        ['audit', '--fix', '--auto', '--execute', '--path', 'Bad?.md'],
+        tempVaultDir
+      );
+      expect(repair.stdout).toContain('Destination already exists, left source untouched');
+      expect(await readFile(sourcePath, 'utf8')).toBe(source);
+      expect(await readFile(destinationPath, 'utf8')).toBe(destination);
     });
   });
 });

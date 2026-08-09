@@ -19,6 +19,7 @@ export type IssueSeverity = 'error' | 'warning';
  * Issue codes for audit findings.
  */
 export type IssueCode =
+  | 'missing-frontmatter'
   | 'orphan-file'
   | 'invalid-type'
   | 'missing-required'
@@ -62,6 +63,7 @@ export type IssueCode =
   | 'invalid-date-format'
   // Phase 4: Structural integrity fixes
   | 'frontmatter-not-at-top'
+  | 'unsafe-filename'
   | 'duplicate-frontmatter-keys'
   | 'malformed-wikilink'
   // Ingest safety net (#600): a known entity name/alias mentioned in body prose
