@@ -55,7 +55,7 @@ import { createDashboard, updateDashboard, getDashboard } from '../lib/dashboard
 import { suggestFieldName } from '../lib/validation.js';
 import { getTtyContext } from '../lib/tty/context.js';
 import { renderTable } from '../lib/tty/table.js';
-import { buildVaultNoteIndex } from '../lib/discovery.js';
+import { buildVaultNoteIndex, type VaultNoteIndex } from '../lib/discovery.js';
 import {
   buildRelativeDateFieldMap,
   type RelativeDateFieldMap,
@@ -76,7 +76,15 @@ import {
 import { isValidNoteId, normalizeNoteId } from '../lib/note-id.js';
 import { renderFlatNotePaths } from '../lib/flat-note-presenter.js';
 import { resolveAsOf } from '../lib/as-of.js';
-import { getDerivedFieldPlan, projectDerivedFields } from '../lib/derived-fields.js';
+import {
+  getDerivedFieldPlan,
+  getDerivedRelationQuantifierExpressions,
+  projectDerivedFields,
+} from '../lib/derived-fields.js';
+import {
+  buildRelationQuantifierContext,
+  createRelationQuantifierIndexContext,
+} from '../lib/query.js';
 
 /**
  * Resolve the output format from --output flag.
@@ -894,18 +902,51 @@ export async function listObjects(
   options: ListOptions
 ): Promise<void> {
   const asOf = resolveAsOf(options.asOf);
+  const needsRelationQuantifiers = files.some((file) => {
+    const typePath = _typePath ?? resolveTypeFromFrontmatter(schema, file.frontmatter);
+    return typePath
+      ? getDerivedRelationQuantifierExpressions(getDerivedFieldPlan(schema, typePath)).length > 0
+      : false;
+  });
+  const needsVaultIndex = needsRelationQuantifiers || schemaHasRelativeDateFields(schema);
+  const vaultIndex = needsVaultIndex ? await buildVaultNoteIndex(schema, vaultDir) : undefined;
+  const relationIndex = needsRelationQuantifiers && vaultIndex
+    ? createRelationQuantifierIndexContext(vaultIndex)
+    : undefined;
+  const projectListFields = (
+    frontmatter: Record<string, unknown>,
+    notePath: string,
+    typePath: string | undefined
+  ): Record<string, unknown> => {
+    if (!typePath) return { ...frontmatter };
+    const plan = getDerivedFieldPlan(schema, typePath);
+    const expressions = getDerivedRelationQuantifierExpressions(plan);
+    const relationQuantifiers = expressions.length > 0 && relationIndex
+      ? buildRelationQuantifierContext(
+          frontmatter,
+          notePath,
+          expressions,
+          schema,
+          relationIndex,
+          new Map(
+            Object.entries(getFieldsForType(schema, typePath))
+              .filter(([, field]) => field.prompt === 'relation')
+              .map(([field, definition]) => [field, definition.source])
+          )
+        )
+      : undefined;
+    return projectDerivedFields(plan, frontmatter, {
+      asOf,
+      notePath,
+      ...(relationQuantifiers ? { relationQuantifiers } : {}),
+    });
+  };
   // Convert to the format expected by the rest of the function
   let filteredFiles = files.map(f => {
     const typePath = _typePath ?? resolveTypeFromFrontmatter(schema, f.frontmatter);
     return {
       path: f.path,
-      frontmatter: typePath
-        ? projectDerivedFields(
-            getDerivedFieldPlan(schema, typePath),
-            f.frontmatter,
-            { asOf, notePath: f.relativePath }
-          )
-        : { ...f.frontmatter },
+      frontmatter: projectListFields(f.frontmatter, f.relativePath, typePath),
     };
   });
 
@@ -923,7 +964,7 @@ export async function listObjects(
     ? await collectFileStats(filteredFiles.map(f => f.path))
     : undefined;
 
-  const relativeDateFields = await resolveRelativeDateFieldsForList(schema, vaultDir);
+  const relativeDateFields = await resolveRelativeDateFieldsForList(schema, vaultDir, vaultIndex);
   const fileComparator = createFileComparator(
     vaultDir,
     options.sortField,
@@ -1030,13 +1071,7 @@ export async function listObjects(
         const notePath = relative(vaultDir, path);
         const noteName = basename(path, '.md');
         const typePath = _typePath ?? resolveTypeFromFrontmatter(schema, rawFrontmatter);
-        const frontmatter = typePath
-          ? projectDerivedFields(
-              getDerivedFieldPlan(schema, typePath),
-              rawFrontmatter,
-              { asOf, notePath }
-            )
-          : rawFrontmatter;
+        const frontmatter = projectListFields(rawFrontmatter, notePath, typePath);
         const base = {
           _path: notePath,
           _name: noteName,
@@ -1278,11 +1313,12 @@ function printTable(
 
 async function resolveRelativeDateFieldsForList(
   schema: LoadedSchema,
-  vaultDir: string
+  vaultDir: string,
+  existingIndex?: VaultNoteIndex
 ): Promise<RelativeDateFieldMap> {
   if (!schemaHasRelativeDateFields(schema)) return new Map();
 
-  const index = await buildVaultNoteIndex(schema, vaultDir);
+  const index = existingIndex ?? await buildVaultNoteIndex(schema, vaultDir);
   const result = buildRelativeDateFieldMap(
     schema,
     vaultDir,

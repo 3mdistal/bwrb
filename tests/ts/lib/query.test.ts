@@ -327,6 +327,56 @@ describe('query', () => {
         expect(result).toHaveLength(0);
       });
 
+      it('evaluates one-hop any()/all() predicates against the shared snapshot', async () => {
+        const files = makeFiles([
+          { path: 'Objectives/Tasks/Leaf.md', fm: { type: 'task', status: 'backlog', milestone: ['[[Active Milestone]]', '[[Settled Milestone]]'] } },
+        ]);
+
+        await expect(applyFrontmatterFilters(files, {
+          whereExpressions: ["any(milestone, target.status == 'settled')"],
+          vaultDir, schema, typePath: 'task',
+        })).resolves.toHaveLength(1);
+        await expect(applyFrontmatterFilters(files, {
+          whereExpressions: ["all(milestone, target.status != 'backlog')"],
+          vaultDir, schema, typePath: 'task',
+        })).resolves.toHaveLength(1);
+      });
+
+      it('fails closed when a quantifier relation target cannot resolve', async () => {
+        const files = makeFiles([
+          { path: 'Objectives/Tasks/Leaf.md', fm: { type: 'task', status: 'backlog', milestone: '[[Ghost]]' } },
+        ]);
+        await expect(applyFrontmatterFilters(files, {
+          whereExpressions: ["any(milestone, target.status == 'backlog')"],
+          vaultDir, schema, typePath: 'task',
+        })).rejects.toThrow('Relation quantifier resolution failed');
+      });
+
+      it('builds one vault index for quantifier evaluation and rejects malformed relation values', async () => {
+        const indexSpy = vi.spyOn(discovery, 'buildVaultNoteIndex');
+        try {
+          const files = makeFiles([
+            { path: 'Objectives/Tasks/Leaf.md', fm: { type: 'task', status: 'backlog', milestone: '[[Active Milestone]]' } },
+          ]);
+          await expect(applyFrontmatterFilters(files, {
+            whereExpressions: ["any(milestone, target.status == 'in-flight')"], vaultDir, schema, typePath: 'task',
+          })).resolves.toHaveLength(1);
+          expect(indexSpy).toHaveBeenCalledTimes(1);
+          await expect(applyFrontmatterFilters(makeFiles([
+            { path: 'Objectives/Tasks/Bad.md', fm: { type: 'task', milestone: { bad: true } } },
+          ]), {
+            whereExpressions: ["any(milestone, target.status == 'in-flight')"], vaultDir, schema, typePath: 'task',
+          })).rejects.toThrow('malformed relation value');
+          await expect(applyFrontmatterFilters(makeFiles([
+            { path: 'Objectives/Tasks/Bad.md', fm: { type: 'task', milestone: 'see [[Active Milestone]]' } },
+          ]), {
+            whereExpressions: ["any(milestone, target.status == 'in-flight')"], vaultDir, schema, typePath: 'task',
+          })).rejects.toThrow('expected one wikilink or Markdown link');
+        } finally {
+          indexSpy.mockRestore();
+        }
+      });
+
       it('resolves same-name relation targets by the field source type', async () => {
         const created: string[] = [];
         const writeNote = async (

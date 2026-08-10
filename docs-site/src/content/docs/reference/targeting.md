@@ -59,7 +59,8 @@ bwrb audit --where "isEmpty(tags)"
 - Supports comparison operators: `==`, `!=`, `<`, `>`, `<=`, `>=`
 - Supports regex match operator: `=~` (e.g., `name =~ '^\\[ERROR\\]'`)
 - Supports boolean operators: `&&`, `||`, `!`
-- Supports functions: `isEmpty()`, `contains()`, `startsWith()`
+- Supports functions: `isEmpty()`, `contains()`, `startsWith()`, and the typed
+  one-hop relation quantifiers `all()` and `any()`
 - Multiple `--where` flags are ANDed together
 - Field names may include hyphens and are treated literally in `--where` (e.g., `creation-date == '2026-01-28'`).
 - System fields are always available: `name` (falls back to filename) and `id`.
@@ -68,6 +69,33 @@ bwrb audit --where "isEmpty(tags)"
 - With `--type`: every field reference is validated against the type's schema, including function arguments such as the relation field passed to `under()`; unknown fields and invalid select values are errors
 - Without `--type`: unknown fields are permissive (no unknown-field validation)
 - In all modes: invalid expression syntax and runtime expression errors are hard errors
+
+**Relation quantifiers** inspect stored fields on each directly related note:
+
+```bash
+# Ready means every dependency is in a terminal state. Empty is ready.
+bwrb list --type task --where \
+  "all(depends-on, target.status == 'done' || target.status == 'cancelled')"
+
+# A book linked to at least one currently available edition.
+bwrb list --type book --where "any(editions, target.available == true)"
+```
+
+The grammar is `all(relation-field, target-predicate)` or
+`any(relation-field, target-predicate)`. The first argument must be a direct
+relation field. Predicate fields must be explicitly qualified as
+`target.field` or `target['hyphenated-field']`; bare source fields, `file.*`,
+hierarchy functions, and nested quantifiers are rejected. The predicate must
+return a boolean. `all()` returns true for an empty relation and `any()` returns
+false.
+
+Bowerbird resolves every target before evaluating the predicate, using the
+relation's declared source type plus ordinary path, name, and alias rules.
+Malformed values, dangling or ambiguous links, source-type mismatches, and
+unreadable targets are hard errors that identify the source note, field, raw
+target, and candidates. The operation is read-only and one hop only: it does
+not compute reverse edges, transitive closure, topological order, or a critical
+path.
 
 **Hierarchy functions** (for parent-child note relationships):
 - `isRoot()` — note has no parent-like note link of any kind (for example `parent`, `owner`, or a singular relation like `milestone`)

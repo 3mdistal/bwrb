@@ -4,6 +4,13 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Typed one-hop relation quantifiers** — `--where` and schema-derived boolean
+  fields can use `all(relation, target.predicate)` and `any(...)`. Target
+  resolution is source-aware, alias/path-aware, snapshot-based, and read-only;
+  malformed, missing, ambiguous, or wrong-source edges fail explicitly.
+
 ### Changed
 
 - **Bounded default audit scope** — bare `bwrb audit` now runs core integrity

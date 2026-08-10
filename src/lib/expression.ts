@@ -125,7 +125,23 @@ export interface EvalContext {
   hierarchyData?: HierarchyData;
   /** Source constraints for relation fields on the current note's resolved type. */
   relationSourcesByField?: Map<string, string | string[] | undefined>;
+  /** Pre-resolved one-hop targets for all()/any(). Built once by the query layer. */
+  relationQuantifiers?: RelationQuantifierContext;
 }
+
+export interface RelationQuantifierTarget {
+  path: string;
+  frontmatter: Record<string, unknown>;
+}
+
+export interface RelationQuantifierContext {
+  targetsByField: Map<string, RelationQuantifierTarget[]>;
+}
+
+const RELATION_PREDICATE_FUNCTIONS = new Set([
+  'contains', 'startsWith', 'endsWith', 'lower', 'upper', 'length', 'trim', 'replace',
+  'today', 'date', 'year', 'month', 'day', 'isEmpty', 'isNull', 'isDefined',
+]);
 
 /**
  * Parse an expression string into an AST.
@@ -284,6 +300,9 @@ function evaluateUnary(expr: UnaryExpression, context: EvalContext): unknown {
 function evaluateCall(expr: CallExpression, context: EvalContext): unknown {
   const callee = expr.callee as Identifier;
   const fnName = callee.name;
+  if (fnName === 'all' || fnName === 'any') {
+    return evaluateRelationQuantifier(fnName, expr, context);
+  }
   const args = expr.arguments.map(arg => evaluateExpression(arg, context));
 
   const fn = FUNCTIONS[fnName];
@@ -292,6 +311,95 @@ function evaluateCall(expr: CallExpression, context: EvalContext): unknown {
   }
 
   return fn(args, context, expr);
+}
+
+/** Validate the intentionally narrow predicate grammar used by all()/any(). */
+export function getRelationQuantifierField(call: CallExpression): string {
+  if (call.arguments.length !== 2) throw new Error('all()/any() expects exactly two arguments');
+  const field = call.arguments[0] ? getRelationFieldNameFromExpression(call.arguments[0]) : null;
+  if (!field) throw new Error('all()/any() expects a direct relation field as its first argument');
+  validateRelationQuantifierPredicate(call.arguments[1]!);
+  return field;
+}
+
+export function collectRelationQuantifierFields(expr: Expression): string[] {
+  const fields: string[] = [];
+  const visit = (node: Expression): void => {
+    if (node.type === 'CallExpression') {
+      const call = node as CallExpression;
+      const name = call.callee.type === 'Identifier' ? (call.callee as Identifier).name : '';
+      if (name === 'all' || name === 'any') fields.push(getRelationQuantifierField(call));
+      for (const arg of call.arguments) visit(arg);
+      return;
+    }
+    if (node.type === 'BinaryExpression' || node.type === 'LogicalExpression') {
+      const binary = node as Expression & { left: Expression; right: Expression };
+      visit(binary.left); visit(binary.right);
+    } else if (node.type === 'UnaryExpression') visit((node as Expression & { argument: Expression }).argument);
+    else if (node.type === 'MemberExpression') {
+      const member = node as MemberExpression;
+      visit(member.object); if (member.computed) visit(member.property);
+    }
+  };
+  visit(expr);
+  return fields;
+}
+
+function validateRelationQuantifierPredicate(predicate: Expression): void {
+  const visit = (node: Expression, isCallee = false): void => {
+    if (node.type === 'Identifier') {
+      const name = (node as Identifier).name;
+      if (!isCallee && !['true', 'false', 'null'].includes(name)) {
+        throw new Error(`all()/any() predicate fields must use target.<field>; found "${name}"`);
+      }
+      return;
+    }
+    if (node.type === 'MemberExpression') {
+      const member = node as MemberExpression;
+      if (member.object.type !== 'Identifier' || (member.object as Identifier).name !== 'target') {
+        throw new Error('all()/any() predicate only permits target.field access');
+      }
+      if (member.computed && (
+        member.property.type !== 'Literal' ||
+        typeof (member.property as Literal).value !== 'string'
+      )) {
+        throw new Error('all()/any() predicate computed target access requires a string literal');
+      }
+      return;
+    }
+    if (node.type === 'CallExpression') {
+      const call = node as CallExpression;
+      if (call.callee.type !== 'Identifier') throw new Error('all()/any() predicate only permits named functions');
+      const name = (call.callee as Identifier).name;
+      if (name === 'all' || name === 'any') throw new Error('nested all()/any() predicates are not supported');
+      if (!RELATION_PREDICATE_FUNCTIONS.has(name)) {
+        throw new Error(`all()/any() predicate does not permit ${name}()`);
+      }
+      for (const arg of call.arguments) visit(arg);
+      return;
+    }
+    if (node.type === 'BinaryExpression' || node.type === 'LogicalExpression') {
+      const binary = node as Expression & { left: Expression; right: Expression };
+      visit(binary.left); visit(binary.right); return;
+    }
+    if (node.type === 'UnaryExpression') { visit((node as Expression & { argument: Expression }).argument); return; }
+    if (node.type === 'ThisExpression') throw new Error('all()/any() predicate only permits target fields');
+  };
+  visit(predicate);
+}
+
+function evaluateRelationQuantifier(kind: 'all' | 'any', call: CallExpression, context: EvalContext): boolean {
+  const field = getRelationQuantifierField(call);
+  const targets = context.relationQuantifiers?.targetsByField.get(field);
+  if (!targets) throw new Error(`all()/any() relation context is unavailable for field "${field}"`);
+  if (targets.length === 0) return kind === 'all';
+  for (const target of targets) {
+    const value = evaluateExpression(call.arguments[1]!, { ...context, frontmatter: { target: target.frontmatter } });
+    if (typeof value !== 'boolean') throw new Error(`all()/any() predicate for "${field}" must return boolean`);
+    if (kind === 'all' && !value) return false;
+    if (kind === 'any' && value) return true;
+  }
+  return kind === 'all';
 }
 
 function evaluateIdentifier(expr: Identifier, context: EvalContext): unknown {

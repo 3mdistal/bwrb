@@ -14,6 +14,8 @@ import type { Field } from '../types/schema.js';
 import { validateSelectOptionValue, suggestFieldName } from './validation.js';
 import { normalizeWhereExpression } from './where-normalize.js';
 import { FRONTMATTER_IDENTIFIER } from './where-constants.js';
+import { getRelationSourceTypes } from './discovery.js';
+import { getRelationQuantifierField } from './expression.js';
 
 // ============================================================================
 // Types
@@ -57,6 +59,110 @@ export interface WhereValidationResult {
   valid: boolean;
   /** List of validation errors */
   errors: WhereValidationError[];
+}
+
+/** Schema-only validation shared by --where and schema-derived booleans. */
+export function validateRelationQuantifierTyping(
+  expr: Expression,
+  schema: LoadedSchema,
+  typeName: string
+): string[] {
+  const errors: string[] = [];
+  const sourceFields = getFieldsForType(schema, typeName);
+  const visit = (node: Expression): void => {
+    if (node.type === 'CallExpression') {
+      const call = node as CallExpression;
+      const name = call.callee.type === 'Identifier' ? (call.callee as Identifier).name : '';
+      if (name === 'all' || name === 'any') {
+        let relationField: string;
+        try { relationField = getRelationQuantifierField(call); } catch (error) { errors.push((error as Error).message); return; }
+        const definition = sourceFields[relationField];
+        if (!definition) errors.push(`Unknown field '${relationField}' for type '${typeName}' in ${name}()`);
+        else if (definition.prompt !== 'relation') errors.push(`${name}() expects a relation field, but '${relationField}' is a '${definition.prompt ?? 'non-relation'}' field on type '${typeName}'`);
+        else {
+          const targetTypes = getRelationSourceTypes(schema, definition.source);
+          // Unconstrained relations are checked against each target's resolved
+          // runtime type. A declared source can be checked completely here.
+          for (const targetField of collectTargetFields(call.arguments[1]!)) {
+            const missing = [...targetTypes].filter(targetType => {
+              const targetDefinition = getFieldsForType(schema, targetType)[targetField];
+              return !targetDefinition || Boolean(targetDefinition.derived);
+            });
+            if (missing.length > 0) errors.push(`${name}() target field '${targetField}' must be a stored field on every allowed target type (${missing.join(', ')})`);
+          }
+          for (const comparison of collectTargetComparisons(call.arguments[1]!)) {
+            for (const targetType of targetTypes) {
+              const targetDefinition = getFieldsForType(schema, targetType)[comparison.field];
+              if (!targetDefinition) continue;
+              const options = getFieldOptions(targetDefinition);
+              if (options.length === 0) continue;
+              const invalid = validateSelectOptionValue(comparison.value, options);
+              if (invalid) {
+                errors.push(`${name}() target value '${comparison.value}' is invalid for field '${comparison.field}' on type '${targetType}'; valid options: ${options.join(', ')}`);
+              }
+            }
+          }
+        }
+      }
+      for (const arg of call.arguments) visit(arg);
+    } else if (node.type === 'BinaryExpression' || node.type === 'LogicalExpression') {
+      const binary = node as Expression & { left: Expression; right: Expression }; visit(binary.left); visit(binary.right);
+    } else if (node.type === 'UnaryExpression') visit((node as Expression & { argument: Expression }).argument);
+  };
+  visit(expr);
+  return errors;
+}
+
+function collectTargetFields(node: Expression): string[] {
+  const result: string[] = [];
+  const visit = (current: Expression): void => {
+    if (current.type === 'MemberExpression') {
+      const member = current as MemberExpression;
+      if (member.object.type === 'Identifier' && (member.object as Identifier).name === 'target') {
+        const property = member.computed ? (member.property as Literal).value : (member.property as Identifier).name;
+        if (typeof property === 'string') result.push(property);
+        return;
+      }
+    }
+    if (current.type === 'CallExpression') for (const arg of (current as CallExpression).arguments) visit(arg);
+    else if (current.type === 'BinaryExpression' || current.type === 'LogicalExpression') { const binary = current as Expression & { left: Expression; right: Expression }; visit(binary.left); visit(binary.right); }
+    else if (current.type === 'UnaryExpression') visit((current as Expression & { argument: Expression }).argument);
+  };
+  visit(node); return result;
+}
+
+function collectTargetComparisons(node: Expression): Array<{ field: string; value: string }> {
+  const result: Array<{ field: string; value: string }> = [];
+  const targetField = (candidate: Expression): string | undefined => {
+    if (candidate.type !== 'MemberExpression') return undefined;
+    const member = candidate as MemberExpression;
+    if (member.object.type !== 'Identifier' || (member.object as Identifier).name !== 'target') return undefined;
+    const property = member.computed ? (member.property as Literal).value : (member.property as Identifier).name;
+    return typeof property === 'string' ? property : undefined;
+  };
+  const literal = (candidate: Expression): string | undefined => {
+    if (candidate.type !== 'Literal') return undefined;
+    const value = (candidate as Literal).value;
+    return typeof value === 'string' ? value : undefined;
+  };
+  const visit = (current: Expression): void => {
+    if (current.type === 'BinaryExpression') {
+      const binary = current as BinaryExpression;
+      const leftField = targetField(binary.left);
+      const rightField = targetField(binary.right);
+      const leftValue = literal(binary.left);
+      const rightValue = literal(binary.right);
+      if (leftField && rightValue !== undefined) result.push({ field: leftField, value: rightValue });
+      if (rightField && leftValue !== undefined) result.push({ field: rightField, value: leftValue });
+      visit(binary.left); visit(binary.right);
+    } else if (current.type === 'CallExpression') {
+      for (const argument of (current as CallExpression).arguments) visit(argument);
+    } else if (current.type === 'UnaryExpression') {
+      visit((current as UnaryExpression).argument);
+    }
+  };
+  visit(node);
+  return result;
 }
 
 // ============================================================================
@@ -194,6 +300,11 @@ function extractFrontmatterFieldRefs(expr: Expression): string[] {
 
       case 'MemberExpression': {
         const member = node as MemberExpression;
+        // all()/any() predicates have their own target-type validation below;
+        // `target` is never a source-note frontmatter field.
+        if (member.object.type === 'Identifier' && (member.object as Identifier).name === 'target') {
+          break;
+        }
         const fieldName = getFieldName(member);
         if (fieldName) {
           fields.push(fieldName);
@@ -386,6 +497,10 @@ export function validateWhereExpressions(
     try {
       const normalized = normalizeWhereExpression(exprString, allFieldNames);
       const expr = parseExpression(normalized);
+
+      for (const message of validateRelationQuantifierTyping(expr, schema, typeName)) {
+        errors.push({ expression: exprString, field: '', value: '', message, validOptions: [] });
+      }
 
       // Validate the FIRST argument of any `under(field, '[[Node]]')` call: it
       // must be a known field on the type, and a relation-typed field (since

@@ -44,6 +44,23 @@ describe('derived fields', () => {
     expect(() => plan({ x: { derived: { expression: 'isRoot()', type: 'boolean' } } })).toThrow('isRoot() is not supported');
   });
 
+  it('normalizes hyphenated relation fields and requires boolean quantifier results', () => {
+    const derived = plan({
+      'depends-on': { prompt: 'relation', source: 'task', multiple: true },
+      ready: {
+        derived: {
+          expression: "all(depends-on, target.status == 'done')",
+          type: 'boolean',
+        },
+      },
+    });
+    expect(derived.fields.get('ready')?.dependencies).toEqual(['depends-on']);
+    expect(() => plan({
+      related: { prompt: 'relation', source: 'task' },
+      invalid: { derived: { expression: 'any(related, target.done)', type: 'string' } },
+    })).toThrow('must declare type "boolean"');
+  });
+
   it('enforces declared scalar result types and finite numbers', () => {
     const number = plan({ x: { derived: { expression: '1 / 0', type: 'number' } } });
     expect(() => projectDerivedFields(number, {}, { asOf: '2026-08-10' })).toThrow('expected number');
