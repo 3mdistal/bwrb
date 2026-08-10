@@ -84,6 +84,7 @@ import {
 import {
   buildRelationQuantifierContext,
   createRelationQuantifierIndexContext,
+  type QueryExecutionContext,
 } from '../lib/query.js';
 
 /**
@@ -763,6 +764,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
 
       await listObjects(schema, vaultDir, targeting.type, targetResult.files, {
         outputFormat,
+        queryContext: targetResult.queryContext,
         ...(fields !== undefined && { fields }),
         // Open options
         open: options.open,
@@ -863,6 +865,7 @@ export interface ListOptions {
   sortField?: string | undefined;
   sortDesc?: boolean | undefined;
   asOf?: string | undefined;
+  queryContext?: QueryExecutionContext | undefined;
   // Open options
   open?: boolean | undefined;
   app?: string | undefined;
@@ -909,7 +912,10 @@ export async function listObjects(
       : false;
   });
   const needsVaultIndex = needsRelationQuantifiers || schemaHasRelativeDateFields(schema);
-  const vaultIndex = needsVaultIndex ? await buildVaultNoteIndex(schema, vaultDir) : undefined;
+  const vaultIndex = needsVaultIndex
+    ? (options.queryContext?.vaultIndex ?? await buildVaultNoteIndex(schema, vaultDir))
+    : undefined;
+  if (vaultIndex && options.queryContext) options.queryContext.vaultIndex = vaultIndex;
   const relationIndex = needsRelationQuantifiers && vaultIndex
     ? createRelationQuantifierIndexContext(vaultIndex)
     : undefined;

@@ -23,7 +23,6 @@ import {
   type VaultNoteSnapshot,
   type VaultNoteIndex,
 } from './discovery.js';
-import { extractLinkTargets } from './links.js';
 import {
   buildRelativeDateFieldMap,
   type RelativeDateFieldMap,
@@ -69,6 +68,12 @@ export interface FrontmatterFilterOptions {
   typePath?: string;
   /** Stable date used by time-sensitive expressions for this query. */
   asOf?: string;
+  /** Mutable command-scoped holder used only to share one immutable vault index. */
+  queryContext?: QueryExecutionContext;
+}
+
+export interface QueryExecutionContext {
+  vaultIndex?: VaultNoteIndex;
 }
 
 // ============================================================================
@@ -695,9 +700,15 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
     }
   });
   const directExpressionAsts = expressionPairs.map(pair => pair.ast);
+  const candidateTypes = schema
+    ? new Set(files.map(file => resolveHierarchyType(file.frontmatter, {
+        schema,
+        ...(typePath ? { typePath } : {}),
+      })).filter((name): name is string => Boolean(name)))
+    : new Set<string>();
   const schemaDerivedQuantifierAsts = schema
-    ? [...schema.types.values()].flatMap(type => {
-        const plan = getDerivedFieldPlan(schema, type.name);
+    ? [...candidateTypes].flatMap(typeName => {
+        const plan = getDerivedFieldPlan(schema, typeName);
         return plan ? plan.order.map(field => plan.fields.get(field)!.expressionAst) : [];
       })
     : [];
@@ -706,8 +717,9 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
   // A quantifier needs every target frontmatter record, and hierarchy augmentation
   // may need the same snapshot. Build it once for this command.
   const vaultIndex = (schema && usesRelationQuantifiers)
-    ? await buildVaultNoteIndex(schema, vaultDir)
+    ? (options.queryContext?.vaultIndex ?? await buildVaultNoteIndex(schema, vaultDir))
     : undefined;
+  if (vaultIndex && options.queryContext) options.queryContext.vaultIndex = vaultIndex;
   const vaultSnapshot = (schema && !usesRelationQuantifiers && expressionsNeedVaultAugmentation(normalizedExpressions))
     ? await buildVaultNoteSnapshot(schema, vaultDir)
     : vaultIndex?.snapshot;
@@ -763,6 +775,14 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
         ? (getDerivedFieldPlan(schema, relationType)?.order.map(field => getDerivedFieldPlan(schema, relationType)!.fields.get(field)!.expressionAst) ?? [])
         : [];
       const quantifierExpressions = [...directExpressionAsts, ...derivedExpressionAsts];
+      if (quantifierExpressions.some(expression => collectRelationQuantifierFields(expression).length > 0)) {
+        assertRelationQuantifierFields(
+          quantifierExpressions,
+          relationSources,
+          relationType,
+          relative(vaultDir, file.path)
+        );
+      }
       const relationQuantifiers = usesRelationQuantifiers && schema && relationQuantifierIndex
         ? buildRelationQuantifierContext(
             baseFrontmatter,
@@ -815,6 +835,27 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
   }
 
   return result;
+}
+
+function assertRelationQuantifierFields(
+  expressions: Expression[],
+  relationSources: Map<string, string | string[] | undefined> | undefined,
+  relationType: string | undefined,
+  sourcePath: string
+): void {
+  if (!relationType || !relationSources) {
+    throw new Error(`Relation quantifier source at ${sourcePath} has no resolved schema type`);
+  }
+  for (const expression of expressions) {
+    for (const field of collectRelationQuantifierFields(expression)) {
+      if (!relationSources.has(field)) {
+        throw new Error(
+          `Relation quantifier at ${sourcePath} expects a relation field, but "${field}" ` +
+          `is not a relation field on type "${relationType}"`
+        );
+      }
+    }
+  }
 }
 
 async function resolveRelativeDateFieldsForQuery(

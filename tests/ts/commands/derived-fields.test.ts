@@ -1,7 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { cleanupTestVault, createTestVault, runCLI } from '../fixtures/setup.js';
+import { loadSchema } from '../../../src/lib/schema.js';
+import { resolveTargets } from '../../../src/lib/targeting.js';
+import { listObjects } from '../../../src/commands/list.js';
+import * as discovery from '../../../src/lib/discovery.js';
 
 describe('schema-derived fields through the public CLI', () => {
   let vaultDir: string;
@@ -113,6 +117,34 @@ describe('schema-derived fields through the public CLI', () => {
     expect(dashboard.exitCode).toBe(0);
     expect(dashboard.stdout).toContain('Blocked');
     expect(dashboard.stdout).not.toContain('Waiting');
+  });
+
+  it('shares one relation index across filtering and list projection', async () => {
+    const schema = await loadSchema(vaultDir);
+    const indexSpy = vi.spyOn(discovery, 'buildVaultNoteIndex');
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const targets = await resolveTargets(
+        { type: 'task', where: ['ready == true'] }, schema, vaultDir
+      );
+      expect(targets.error).toBeUndefined();
+      await listObjects(schema, vaultDir, 'task', targets.files, {
+        outputFormat: 'json',
+        queryContext: targets.queryContext,
+      });
+      expect(indexSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      indexSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
+
+  it('rejects a non-relation quantifier field without an explicit type filter', async () => {
+    const result = await runCLI([
+      'list', '--where', "any(status, target.status == 'settled')", '--output', 'json',
+    ], vaultDir);
+    expect(result.exitCode).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toContain('is not a relation field');
   });
 
   it('fails closed when a relation target cannot be resolved', async () => {

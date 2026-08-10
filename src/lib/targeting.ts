@@ -24,6 +24,7 @@ import { parseNote } from './frontmatter.js';
 import { searchContent } from './content-search.js';
 import { getType, getTypeNames } from './schema.js';
 import { applyWhereExpressions } from './where-targeting.js';
+import type { QueryExecutionContext } from './query.js';
 
 // ============================================================================
 // Types
@@ -68,6 +69,8 @@ export interface TargetingResult {
   hasTargeting: boolean;
   /** Error message if targeting failed */
   error?: string;
+  /** Command-scoped immutable query resources reusable by rendering. */
+  queryContext?: QueryExecutionContext;
 }
 
 /**
@@ -219,6 +222,7 @@ export async function resolveTargets(
   const hasTargeting = !!(
     options.type || options.path || options.where?.length || options.id || bodyFilter
   );
+  const queryContext: QueryExecutionContext = {};
 
   try {
     // Step 1: Discover base files
@@ -334,6 +338,7 @@ export async function resolveTargets(
         ...(options.asOf ? { asOf: options.asOf } : {}),
         whereExpressions: options.where,
         vaultDir,
+        queryContext,
       });
 
       if (!filtered.ok) {
@@ -347,6 +352,7 @@ export async function resolveTargets(
       return {
         files: filtered.files as TargetedFile[],
         hasTargeting,
+        queryContext,
       };
     }
 

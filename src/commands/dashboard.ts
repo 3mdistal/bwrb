@@ -208,6 +208,7 @@ async function runDashboard(
       sortField: dashboard.sort,
       sortDesc: dashboard.desc,
       asOf,
+      queryContext: targetResult.queryContext,
     };
 
     await listObjects(schema, vaultDir, targeting.type, targetResult.files, listOpts);
