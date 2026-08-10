@@ -871,7 +871,7 @@ Vault-wide settings:
 | `date_format` | string | `"YYYY-MM-DD"` | Generated full-date and parsing pattern (`YYYY`, `MM`, `DD` tokens); Gregorian date fields are stored canonically as ISO |
 | `date_granularity` | string | `"day"` | Default coarsest date precision for all date fields: `day`, `month`, or `year`. Per-field [`granularity`](#partial-dates-and-granularity) overrides it |
 | `calendars` | object | `{}` | Named custom-calendar definitions available to type `calendar_default` and field `calendar`; see [Custom Calendars](/concepts/custom-calendars/) |
-| `mention_fuzzy_threshold` | integer | `2` | Maximum fuzzy edit distance for `unlinked-mention` suggestions (`0` disables fuzzy matching; range `0`–`5`) |
+| `mention_fuzzy_threshold` | integer | `2` | Maximum fuzzy edit distance after mention fuzzy analysis is explicitly selected (`0` disables fuzzy matching; range `0`–`5`; config alone does not opt in) |
 | `mention_corpus_calibration` | boolean | `true` | Damp vault-common single-word mention targets using corpus casing statistics |
 | `mention_corpus_min_notes` | integer | `3` | Minimum distinct non-self notes required before corpus damping can apply |
 | `mention_corpus_noncanonical_ratio` | number | `0.5` | Strict non-canonical-case share threshold for corpus damping (`0`–`1`) |

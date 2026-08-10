@@ -1236,7 +1236,7 @@ describe('unlinked-mention: end-to-end audit + fix', () => {
     );
     const schema = await loadSchema(vaultDir);
 
-    const results = await runAudit(schema, vaultDir, { strict: false });
+    const results = await runAudit(schema, vaultDir, { strict: false, includeMentions: true });
     const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
     expect(daily?.issues.some((i) => i.code === 'unlinked-mention' && i.autoFixable)).toBe(true);
 
@@ -1252,7 +1252,7 @@ describe('unlinked-mention: end-to-end audit + fix', () => {
       `---\ntype: note\n---\nNotes from Stevey.\n`
     );
     const schema = await loadSchema(vaultDir);
-    const results = await runAudit(schema, vaultDir, { strict: false });
+    const results = await runAudit(schema, vaultDir, { strict: false, includeMentions: true });
     await runAutoFix(results, schema, vaultDir, { dryRun: false });
     const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
     expect(after).toContain('[[Steve Yegge|Stevey]]');
@@ -1262,7 +1262,7 @@ describe('unlinked-mention: end-to-end audit + fix', () => {
     const original = `---\ntype: note\n---\nI spoke with [[Steve Yegge]] today.\n`;
     await writeFile(join(vaultDir, 'Notes', 'Daily.md'), original);
     const schema = await loadSchema(vaultDir);
-    const results = await runAudit(schema, vaultDir, { strict: false });
+    const results = await runAudit(schema, vaultDir, { strict: false, includeMentions: true });
     const daily = results.find((r) => r.relativePath === 'Notes/Daily.md');
     expect(daily?.issues.some((i) => i.code === 'unlinked-mention')).toBeFalsy();
   });
@@ -1273,7 +1273,11 @@ describe('unlinked-mention: end-to-end audit + fix', () => {
       `---\ntype: note\n---\nReading Steve Yeg today.\n`
     );
     const schema = await loadSchema(vaultDir);
-    const results = await runAudit(schema, vaultDir, { strict: false });
+    const results = await runAudit(schema, vaultDir, {
+      strict: false,
+      includeMentions: true,
+      mentionFuzzyEnabled: true,
+    });
     await runAutoFix(results, schema, vaultDir, { dryRun: false });
     const after = await readFile(join(vaultDir, 'Notes', 'Daily.md'), 'utf-8');
     // The fuzzy mention is left untouched.

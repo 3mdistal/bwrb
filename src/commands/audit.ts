@@ -72,6 +72,12 @@ const FIX_TARGETING_ERROR_MESSAGE = [
   '  bwrb audit --path "Ideas/**" --fix --dry-run --auto',
 ].join('\n');
 
+const BUILT_IN_MENTION_FUZZY_THRESHOLD = 2;
+
+function commandHasRawFlag(flag: string): boolean {
+  return process.argv.includes(flag);
+}
+
 /**
  * Print the schema documentation coverage report (opt-in --check-schema-docs).
  */
@@ -135,9 +141,9 @@ Issue Types:
   frontmatter-not-at-top Frontmatter block is not at top
   duplicate-frontmatter-keys Duplicate YAML keys in frontmatter
   malformed-wikilink    Near-wikilink bracket typo (frontmatter only)
-  unlinked-mention      Known entity name/alias in body prose, not wikilinked
+  unlinked-mention      Optional: known entity name/alias in body prose, not wikilinked
                         (exact/alias auto-fixable; fuzzy/ambiguous flag-only)
-  frequent-unlinked-term Proper-noun-ish term mentioned often across the vault
+  frequent-unlinked-term Optional: proper-noun-ish term mentioned often across the vault
                         with no note yet (advisory heuristic; never auto-fixed)
   missing-body-section  Heading section declared in the type's body_sections is
                         missing from the note body (auto-fixable: appends it)
@@ -184,8 +190,10 @@ Examples:
   bwrb audit --ignore unknown-field
   bwrb audit --output json        # JSON output for CI
   bwrb audit --allow-field custom # Allow specific extra field
-  bwrb audit --only unlinked-mention --mention-fuzzy-threshold 3 # Raise fuzzy "did you mean?" cap
-  bwrb audit --only unlinked-mention --no-mention-fuzzy          # Disable fuzzy tier
+  bwrb audit --mentions                  # Include exact/alias and frequent-term prose analysis
+  bwrb audit --mention-fuzzy             # Include mentions plus fuzzy "did you mean?" suggestions
+  bwrb audit --only unlinked-mention      # Run only exact/alias mention analysis (fuzzy off)
+  bwrb audit --only unlinked-mention --mention-fuzzy-threshold 3 # Opt into fuzzy with cap 3
   bwrb audit --all --fix                  # Interactive guided fixes across vault (writes)
   bwrb audit --fix --path "Ideas/**"      # Interactive guided fixes (writes)
   bwrb audit --fix --dry-run --path "Ideas/**"    # Preview guided fixes (no writes)
@@ -208,11 +216,13 @@ Examples:
   .option('--execute', 'With --fix --auto: apply fixes (omit to preview)')
   .option('--retention-action <kind>', 'Explicit retention action: archive, tombstone, or delete (requires --only retention-due --fix)')
   .option('--allow-field <fields...>', 'Allow additional fields beyond schema (repeatable)')
+  .option('--mentions', 'Include optional unlinked-mention and frequent-term prose analysis')
   .option(
     '--mention-fuzzy-threshold <n>',
-    'unlinked-mention fuzzy "did you mean?" max edit-distance cap (0-5; default from config or 2)'
+    'Opt into fuzzy unlinked-mention suggestions with max edit-distance cap (0-5)'
   )
-  .option('--no-mention-fuzzy', 'Disable the unlinked-mention fuzzy "did you mean?" tier')
+  .option('--mention-fuzzy', 'Include mention analysis and fuzzy "did you mean?" suggestions')
+  .option('--no-mention-fuzzy', 'Explicitly keep the optional fuzzy mention tier disabled')
   .option(
     '--mention-link-once',
     'With --fix --auto: link at most one unlinked mention per note/target pair'
@@ -234,6 +244,8 @@ Examples:
     const dryRunMode = options.dryRun ?? false;
     const executeMode = options.execute ?? false;
     const retentionAction = options.retentionAction as 'archive' | 'tombstone' | 'delete' | undefined;
+    const mentionFuzzyRequested = commandHasRawFlag('--mention-fuzzy');
+    const mentionFuzzyDisabled = commandHasRawFlag('--no-mention-fuzzy');
     const exitWithValidationError = (
       message: string,
       {
@@ -288,6 +300,11 @@ Examples:
     if (retentionAction && autoMode) {
       exitWithValidationError('--retention-action cannot be combined with --auto');
     }
+    if (mentionFuzzyRequested && mentionFuzzyDisabled) {
+      exitWithValidationError(
+        '--mention-fuzzy cannot be combined with --no-mention-fuzzy. Remove one of the two flags and rerun.'
+      );
+    }
 
     try {
       const globalOpts = getGlobalOpts(cmd);
@@ -300,19 +317,42 @@ Examples:
       const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
       const schema = await loadSchema(vaultDir);
 
-      // Resolve the unlinked-mention fuzzy tuning (#622). Precedence: CLI flag
-      // > schema config > built-in default. `--no-mention-fuzzy` disables the
-      // tier outright. The CLI threshold is validated to a sensible range.
-      const mentionFuzzyEnabled = options.mentionFuzzy !== false;
+      // Mention analysis is an explicit profile. Fuzzy suggestions require a
+      // second opt-in; the configured threshold tunes that tier but does not
+      // enable it by itself.
       let mentionFuzzyThreshold = schema.config.mentionFuzzyThreshold;
+      let explicitMentionFuzzyThreshold: number | undefined;
       if (options.mentionFuzzyThreshold !== undefined) {
         const parsed = parseFuzzyThreshold(options.mentionFuzzyThreshold);
         if (!parsed.ok) {
           exitWithValidationError(parsed.error);
         } else {
           mentionFuzzyThreshold = parsed.value;
+          explicitMentionFuzzyThreshold = parsed.value;
         }
       }
+      const thresholdEnablesMentionFuzzy =
+        explicitMentionFuzzyThreshold !== undefined && explicitMentionFuzzyThreshold > 0;
+      if (mentionFuzzyDisabled && thresholdEnablesMentionFuzzy) {
+        exitWithValidationError(
+          '--mention-fuzzy-threshold greater than 0 cannot be combined with --no-mention-fuzzy. Use threshold 0 or remove --no-mention-fuzzy.'
+        );
+      }
+      if (mentionFuzzyRequested && explicitMentionFuzzyThreshold === 0) {
+        exitWithValidationError(
+          '--mention-fuzzy cannot be combined with --mention-fuzzy-threshold 0. Remove --mention-fuzzy or choose a threshold from 1 to 5.'
+        );
+      }
+      const mentionFuzzyEnabled = mentionFuzzyRequested || thresholdEnablesMentionFuzzy;
+      if (mentionFuzzyRequested && mentionFuzzyThreshold === 0) {
+        mentionFuzzyThreshold = BUILT_IN_MENTION_FUZZY_THRESHOLD;
+      }
+      if (mentionFuzzyEnabled && options.only && options.only !== 'unlinked-mention') {
+        exitWithValidationError(
+          '--mention-fuzzy requires --only unlinked-mention when --only is used'
+        );
+      }
+      const includeMentions = options.mentions === true || mentionFuzzyEnabled;
       const mentionLinkOnce = options.mentionLinkOnce ?? schema.config.mentionLinkOnce;
 
       if (globalOpts.nonInteractive && fixMode && !autoMode && !retentionAction) {
@@ -401,6 +441,7 @@ Examples:
         allowedFields,
         vaultDir,
         schema,
+        includeMentions,
         mentionFuzzyThreshold,
         mentionFuzzyEnabled,
       });

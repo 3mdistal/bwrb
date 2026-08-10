@@ -18,6 +18,12 @@ Check your entire vault:
 bwrb audit
 ```
 
+The default profile checks structural and schema integrity without scanning
+body prose for link suggestions. Add `--mentions` for exact, alias, ambiguous,
+and frequent unlinked-term analysis; add `--mention-fuzzy` when you also want
+fuzzy "did you mean?" suggestions. Exact `--only unlinked-mention` and
+`--only frequent-unlinked-term` selectors remain direct opt-ins.
+
 Check specific types:
 
 ```bash
