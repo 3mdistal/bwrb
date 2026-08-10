@@ -130,7 +130,7 @@ bwrb supports vault-wide configuration in `.bwrb/schema.json` under the `config`
 | `obsidian_vault` | String | auto | Obsidian vault name for URI opening |
 | `default_dashboard` | String | none | Dashboard run with no name |
 | `excluded_directories` | `string[]` | `[]` | Directory prefixes to exclude from discovery/targeting |
-| `mention_fuzzy_threshold` | Integer `0`–`5` | `2` | Fuzzy edit-distance cap for mention suggestions |
+| `mention_fuzzy_threshold` | Integer `0`–`5` | `2` | Fuzzy edit-distance cap after an audit run explicitly selects fuzzy mention analysis; config alone does not opt in |
 | `mention_corpus_calibration` | Boolean | `true` | Dampen vault-common single-word targets |
 | `mention_corpus_min_notes` | Integer | `3` | Corpus damping minimum note count |
 | `mention_corpus_noncanonical_ratio` | Number `0`–`1` | `0.5` | Corpus damping casing threshold |
@@ -534,6 +534,13 @@ bwrb list --id "<uuid>" --open --app print --picker none
 # Audit all notes against schema
 bwrb audit
 
+# Optional prose-linking analysis (exact/alias/ambiguous + frequent terms;
+# fuzzy suggestions remain off)
+bwrb audit --mentions
+
+# Include the optional fuzzy "did you mean?" tier too
+bwrb audit --mention-fuzzy
+
 # Audit specific type
 bwrb audit --type task
 
@@ -568,6 +575,10 @@ bwrb audit --path "Ideas/**" --fix --auto
 #       and capitalized single-word names are ignored at sentence/list/heading
 #       starts where capitalization carries no signal. Declared aliases remain
 #       explicit link intent.
+# Note: bare audit runs core integrity checks only. Unlinked mentions and
+#       frequent unlinked terms require --mentions or an exact --only selector;
+#       fuzzy matching additionally requires --mention-fuzzy or a positive
+#       --mention-fuzzy-threshold. Config only tunes an opted-in fuzzy run.
 # Note: to link each mention target at most once per note (dense repeats read
 #       poorly), enable link-once: pass --mention-link-once (or set config
 #       mention_link_once: true; --no-mention-link-once overrides it off).

@@ -56,7 +56,11 @@ describe('benchmark fixtures', () => {
   it('has the recorded advisory-only audit state in the built CLI', async () => {
     const dir = await fixtureDir('audit');
     await generateFixture('realistic', dir);
-    const result = await execFileAsync(process.execPath, ['dist/index.js', '--vault', dir, 'audit', '--output', 'json'], { cwd: process.cwd() });
+    const result = await execFileAsync(
+      process.execPath,
+      ['dist/index.js', '--vault', dir, 'audit', '--mentions', '--output', 'json'],
+      { cwd: process.cwd() }
+    );
     const parsed = JSON.parse(result.stdout) as { files: Array<{ issues: unknown[] }> };
     expect(parsed.files.flatMap(file => file.issues)).toHaveLength(3);
   }, 20_000);

@@ -91,6 +91,169 @@ describe('audit command', () => {
     });
   });
 
+  describe('optional mention analysis profile', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-mentions-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Steve Yegge.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Mentions A.md'),
+        `---
+type: idea
+status: invalid-status
+priority: medium
+---
+Met Steve Yegge. Reading Steve Yeg today.
+Project Phoenix matters. Project Phoenix grows.
+See [[Missing Target]].
+`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Mentions B.md'),
+        `---
+type: idea
+status: raw
+priority: medium
+---
+Project Phoenix returns. Project Phoenix persists.
+`
+      );
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('keeps prose heuristics out of the default text and JSON audit', async () => {
+      const textResult = await runCLI(['audit'], tempVaultDir);
+      expect(textResult.stdout).toContain('Invalid status value');
+      expect(textResult.stdout).toContain('Broken wikilink');
+      expect(textResult.stdout).not.toContain('Unlinked mention');
+      expect(textResult.stdout).not.toContain('Project Phoenix');
+
+      const jsonResult = await runCLI(['audit', '--output', 'json'], tempVaultDir);
+      const json = JSON.parse(jsonResult.stdout);
+      const codes = json.files.flatMap((file: { issues: Array<{ code: string }> }) =>
+        file.issues.map((issue) => issue.code)
+      );
+      expect(codes).toContain('invalid-option');
+      expect(codes).toContain('broken-body-wikilink');
+      expect(codes).not.toContain('unlinked-mention');
+      expect(codes).not.toContain('frequent-unlinked-term');
+    });
+
+    it('--mentions enables exact and frequent-term findings but not fuzzy suggestions', async () => {
+      const result = await runCLI(['audit', '--mentions'], tempVaultDir);
+      expect(result.stdout).toContain("Unlinked mention on line 1: 'Steve Yegge'");
+      expect(result.stdout).toContain('Project Phoenix');
+      expect(result.stdout).not.toContain("Possible unlinked mention on line 1: 'Steve Yeg'");
+    });
+
+    it('positive fuzzy selectors imply mention analysis', async () => {
+      const flagResult = await runCLI(['audit', '--mention-fuzzy'], tempVaultDir);
+      expect(flagResult.stdout).toContain("Possible unlinked mention on line 1: 'Steve Yeg'");
+      expect(flagResult.stdout).toContain('Project Phoenix');
+
+      const thresholdResult = await runCLI(
+        ['audit', '--mention-fuzzy-threshold', '2'],
+        tempVaultDir
+      );
+      expect(thresholdResult.stdout).toContain("Possible unlinked mention on line 1: 'Steve Yeg'");
+    });
+
+    it('treats a zero fuzzy threshold as disabled rather than as mention opt-in', async () => {
+      const zeroOnly = await runCLI(
+        ['audit', '--mention-fuzzy-threshold', '0'],
+        tempVaultDir
+      );
+      expect(zeroOnly.stdout).not.toContain('Unlinked mention');
+      expect(zeroOnly.stdout).not.toContain('Project Phoenix');
+
+      const mentionsWithZero = await runCLI(
+        ['audit', '--mentions', '--mention-fuzzy-threshold', '0'],
+        tempVaultDir
+      );
+      expect(mentionsWithZero.stdout).toContain("Unlinked mention on line 1: 'Steve Yegge'");
+      expect(mentionsWithZero.stdout).toContain('Project Phoenix');
+      expect(mentionsWithZero.stdout).not.toContain('Possible unlinked mention');
+    });
+
+    it('keeps explicit mention issue selectors working without --mentions', async () => {
+      const exactResult = await runCLI(
+        ['audit', '--only', 'unlinked-mention'],
+        tempVaultDir
+      );
+      expect(exactResult.stdout).toContain("Unlinked mention on line 1: 'Steve Yegge'");
+      expect(exactResult.stdout).not.toContain('Possible unlinked mention');
+      expect(exactResult.stdout).not.toContain('Project Phoenix');
+
+      const frequentResult = await runCLI(
+        ['audit', '--only', 'frequent-unlinked-term'],
+        tempVaultDir
+      );
+      expect(frequentResult.stdout).toContain('Project Phoenix');
+      expect(frequentResult.stdout).not.toContain('Steve Yegge');
+    });
+
+    it('rejects incompatible fuzzy selectors independent of flag order', async () => {
+      for (const args of [
+        ['audit', '--mention-fuzzy', '--no-mention-fuzzy'],
+        ['audit', '--no-mention-fuzzy', '--mention-fuzzy'],
+        ['audit', '--mention-fuzzy-threshold', '2', '--no-mention-fuzzy'],
+        ['audit', '--no-mention-fuzzy', '--mention-fuzzy-threshold', '2'],
+        ['audit', '--mention-fuzzy', '--mention-fuzzy-threshold', '0'],
+        ['audit', '--mention-fuzzy-threshold', '0', '--mention-fuzzy'],
+      ]) {
+        const result = await runCLI(args, tempVaultDir);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('cannot be combined');
+        expect(result.stderr).toMatch(/Remove|Use/);
+      }
+    });
+
+    it('rejects fuzzy analysis when --only excludes unlinked-mention', async () => {
+      for (const args of [
+        ['audit', '--mention-fuzzy', '--only', 'frequent-unlinked-term'],
+        ['audit', '--only', 'frequent-unlinked-term', '--mention-fuzzy'],
+      ]) {
+        const result = await runCLI(args, tempVaultDir);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain(
+          '--mention-fuzzy requires --only unlinked-mention when --only is used'
+        );
+      }
+    });
+
+    it('requires explicit mention selection before auto-fixing prose', async () => {
+      const notePath = join(tempVaultDir, 'Ideas', 'Mentions A.md');
+      const before = await readFile(notePath, 'utf-8');
+
+      await runCLI(['audit', '--all', '--fix', '--auto', '--execute'], tempVaultDir);
+      expect(await readFile(notePath, 'utf-8')).toBe(before);
+
+      await runCLI(
+        ['audit', '--mentions', '--all', '--fix', '--auto', '--execute'],
+        tempVaultDir
+      );
+      expect(await readFile(notePath, 'utf-8')).toContain('Met [[Steve Yegge]].');
+    });
+  });
+
   describe('relation field integrity', () => {
     let tempVaultDir: string;
 

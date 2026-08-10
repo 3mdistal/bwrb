@@ -4,6 +4,10 @@ description: Validate notes against schema
 ---
 
 Validate vault files against schema and report issues, with optional interactive repair.
+The default profile checks core structural and schema integrity. Prose-linking
+heuristics are opt-in because they are more expensive and more judgment-shaped:
+use `--mentions` for exact, alias, ambiguous, and frequent-term analysis, or
+`--mention-fuzzy` to include the fuzzy suggestion tier too.
 
 ## Synopsis
 
@@ -33,8 +37,10 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `--ignore <issue-type>` | Ignore specific issue type |
 | `--strict` | Treat unknown fields as errors instead of warnings |
 | `--allow-field <fields>` | Allow additional fields beyond schema (repeatable) |
-| `--mention-fuzzy-threshold <n>` | Max edit-distance cap (0–5) for the `unlinked-mention` fuzzy "did you mean?" tier (default: `config.mention_fuzzy_threshold` or `2`; candidate length also caps the effective distance) |
-| `--no-mention-fuzzy` | Disable the `unlinked-mention` fuzzy "did you mean?" tier entirely |
+| `--mentions` | Add exact, alias, and ambiguous `unlinked-mention` checks plus `frequent-unlinked-term`; fuzzy suggestions stay off |
+| `--mention-fuzzy` | Add mention analysis, including the fuzzy "did you mean?" tier |
+| `--mention-fuzzy-threshold <n>` | Set the fuzzy edit-distance cap (0–5); a positive value opts into fuzzy mention analysis, while `0` leaves it disabled |
+| `--no-mention-fuzzy` | Explicitly keep the optional fuzzy tier disabled |
 | `--mention-link-once` | With `--fix --auto`: link at most one `unlinked-mention` occurrence per note/target pair, overriding `config.mention_link_once` |
 | `--no-mention-link-once` | With `--fix --auto`: link every eligible `unlinked-mention` occurrence, overriding `config.mention_link_once` |
 | `--check-schema-docs` | Also report schema types/fields that have no `description` |
@@ -120,8 +126,8 @@ Delete semantics in repair mode:
 | `trailing-whitespace` | Trailing spaces/tabs on raw frontmatter `key: value` lines (warning; auto-fixable) |
 | `wrong-scalar-type` | Scalar value has wrong type for schema |
 | `illegal-aliases` | An [`alias`-role field](/reference/schema/#alias) violates the Obsidian aliases format (array of **non-empty, unique** strings): an empty/whitespace entry, a **duplicate** entry, or a non-string entry (**error** — matching what `bwrb new`/`bwrb edit` reject on write; empty/whitespace + duplicate cases are **auto-fixable**, a non-string entry is **flag-only** — see below) |
-| `unlinked-mention` | A known entity's name or [registered alias](/reference/schema/#alias) appears in body prose as plain text but is not wikilinked (warning; exact/alias matches auto-fixable, fuzzy/ambiguous matches flag-only — see below) |
-| `frequent-unlinked-term` | A proper-noun-ish term mentioned frequently across the vault that has **no note yet** (warning; **advisory heuristic, never auto-fixable** — see below) |
+| `unlinked-mention` | **Opt-in.** A known entity's name or [registered alias](/reference/schema/#alias) appears in body prose as plain text but is not wikilinked (warning; exact/alias matches auto-fixable, fuzzy/ambiguous matches flag-only — see below) |
+| `frequent-unlinked-term` | **Opt-in.** A proper-noun-ish term mentioned frequently across the vault that has **no note yet** (warning; **advisory heuristic, never auto-fixable** — see below) |
 | `missing-body-section` | A heading section declared in the type's [`body_sections`](/reference/schema/) is missing from the note body, or present at the wrong heading level (warning; **auto-fixable** — `--fix` appends the canonical heading scaffold — see below) |
 | `broken-body-wikilink` | A well-formed `[[wikilink]]` in the note **body** whose target resolves to **no note** via the alias-aware, case-insensitive note index (warning; **flag-only** — offers a "did you mean?" hint but never auto-links — see below) |
 | `malformed-body-wikilink` | Wikilink bracket syntax in the body that is broken — an empty target (`[[]]`/`[[ ]]`) or an unclosed `[[` (warning; **flag-only**) |
@@ -270,6 +276,11 @@ after:  status: "raw"
 
 `unlinked-mention` is the closed-world web-integrity check: bwrb knows every note (by name) and, via the [`alias`-role field](/reference/schema/#alias), every registered alias. It scans note **bodies** for any known name or alias that appears as plain text but is **not** wikilinked, so the vault stays a connected graph instead of islands.
 
+This check is optional. `--mentions` enables exact, alias, and ambiguous matches
+without fuzzy suggestions. `--mention-fuzzy` enables the same profile plus the
+fuzzy tier. An exact `--only unlinked-mention` selector is also an explicit
+opt-in, but remains non-fuzzy unless one of the fuzzy flags enables that tier.
+
 It enforces a strict **trust line** — only matches bwrb can be certain about are auto-linked; everything uncertain becomes a visible review item that is never silently resolved:
 
 | Tier | What it matches | Behavior |
@@ -301,24 +312,30 @@ False-positive guards (none of these are scanned or rewritten):
 - Single-word note-name matches with capitalized canonical casing are skipped at positions where capitalization carries no signal: the start of the body, sentence starts after `.`, `!`, or `?`, line starts, markdown list starts, headings, and blockquotes. Multi-word names, aliases, and lowercase canonical names are unaffected.
 - Corpus calibration catches vault-local common words that the static list cannot know. During an audit run, bwrb counts single-token word casing across the full vault snapshot's prose (with code, links, URLs, and wikilinks masked for prose matching), and separately counts wikilink targets/display text as entity evidence. A single-word note name is dropped for that run when it appears in at least `mention_corpus_min_notes` distinct non-self notes and the non-canonical-case occurrence share is strictly greater than `mention_corpus_noncanonical_ratio`. Dropped names are also removed from fuzzy suggestions and `frequent-unlinked-term` nudges; declared aliases remain linkable.
 
-Only frontmatter is exempt from scanning — this detection looks at body prose only. Surfaces shorter than three characters are ignored to avoid noise. The entity index is built once per run and each body is scanned in a single pass, so cost scales with body size rather than notes × entities. Scoped audits such as `--path` still build the mention index and corpus calibration from the full vault snapshot, then scan only the targeted files for issues.
+Only frontmatter is exempt from scanning — this detection looks at body prose only. Surfaces shorter than three characters are ignored to avoid noise. When mention analysis is selected, the entity index is built once per run and exact/alias matching scans each body in a single pass. Fuzzy candidate comparison is a separate, more expensive opt-in tier. Scoped mention audits such as `--path` still build the mention index and corpus calibration from the full vault snapshot, then scan only the targeted files for issues. Bare audit runs build neither mention corpus.
 
 ```bash
 # Report unlinked mentions only
 bwrb audit --only unlinked-mention
 
+# Include exact/alias/ambiguous mentions and frequent terms, without fuzzy matching
+bwrb audit --mentions
+
+# Add fuzzy "did you mean?" suggestions
+bwrb audit --mention-fuzzy
+
 # Auto-link trusted (exact/alias) mentions across the Notes directory
-bwrb audit --path "Notes/**" --fix --auto --execute
+bwrb audit --path "Notes/**" --mentions --fix --auto --execute
 ```
 
 Fuzzy and ambiguous mentions are **never** modified by `--fix --auto`. Fuzzy matches are always flag-only (resolve them with interactive `--fix`, which skips them with the suggestion, or by editing manually). Ambiguous matches can be resolved in an interactive `--fix` session — see below.
 
 #### Tuning the fuzzy tier (#622)
 
-The fuzzy "did you mean?" tier is deliberately conservative. The configured threshold is a **cap** (default **2**), and bwrb also scales the effective distance by candidate length: `min(configured threshold, floor(candidate length / 4))`. In practice, 4–7 character candidates allow distance 1, 8–11 allow distance 2, and short sentence-initial words like `This` or `What` do not get a loose edit budget.
+The fuzzy "did you mean?" tier is deliberately conservative and always opt-in. The configured threshold is a **cap** (default **2**), and bwrb also scales the effective distance by candidate length: `min(configured threshold, floor(candidate length / 4))`. In practice, 4–7 character candidates allow distance 1, 8–11 allow distance 2, and short sentence-initial words like `This` or `What` do not get a loose edit budget.
 
-- **Per run (flag):** `--mention-fuzzy-threshold <n>` sets the max edit-distance cap, where `n` is an integer in `0`–`5`. Raising it can surface looser matches only when candidate length also permits that distance; lowering it surfaces fewer. `0` (or `--no-mention-fuzzy`) disables the fuzzy tier entirely. Out-of-range or non-integer values produce a clear validation error.
-- **Persistent (config):** set `mention_fuzzy_threshold` in your vault `config` (integer `0`–`5`). The flag, when present, overrides the config value for that run.
+- **Per run (flag):** `--mention-fuzzy` opts in with the configured cap. `--mention-fuzzy-threshold <n>` sets the cap, where `n` is an integer in `0`–`5`; a positive value also opts in. Raising it can surface looser matches only when candidate length permits that distance. `0` does not opt in, and `--no-mention-fuzzy` explicitly disables the tier. Contradictory positive/negative selectors produce a validation error regardless of flag order.
+- **Persistent (config):** `mention_fuzzy_threshold` tunes the cap used after fuzzy analysis is selected; it does **not** opt bare audit runs into fuzzy matching. Edit the schema config with an integer `0`–`5`.
 
 ```bash
 # Raise the fuzzy cap for one run (candidate length still applies)
@@ -329,7 +346,7 @@ bwrb audit --only unlinked-mention --no-mention-fuzzy
 ```
 
 ```json
-// .bwrb/schema.json — persist a higher cap for every run
+// .bwrb/schema.json — persist the cap used by opt-in fuzzy runs
 {
   "config": { "mention_fuzzy_threshold": 3 }
 }
@@ -407,6 +424,9 @@ This is **interactive-only**. In `--auto` / `--fix --auto` and any non-TTY (head
 
 `frequent-unlinked-term` is the **open-world** counterpart to `unlinked-mention`. Where `unlinked-mention` keeps *known* entities linked, this detection points at entities that probably *should* exist but don't yet — it surfaces proper-noun-ish terms mentioned a lot across the vault that have **no note**. It attacks the failure mode where the AI agent (or you) never links something because it doesn't know the entity exists in the first place. Create the note, and `unlinked-mention` keeps it wired up forever after.
 
+This heuristic is opt-in through `--mentions` or an exact
+`--only frequent-unlinked-term` selector; bare audits do not run it.
+
 **Advisory only — this detection NEVER takes action.** It is always reported as a warning and is **never auto-fixable**: there is no `--fix` path for it, `--fix --auto` ignores it, and interactive `--fix` lists it as a manual item only. Because it never acts, it is *allowed* to be a little noisy; the thresholds exist purely to keep the report readable, not for correctness. Just ignore any suggestion that isn't a real entity.
 
 **The heuristic (and its honest limits).** Discovering an unknown "thing" in prose without an LLM is inherently fuzzy. The detection approximates proper nouns with **runs of Capitalized words** (1–3 words: `Rust`, `Steve Yegge`, `New York Times`), counted only in prose. Known limits, stated plainly:
@@ -428,8 +448,8 @@ Because the threshold is vault-wide, this detection aggregates across all scanne
 # Report frequent unlinked terms only
 bwrb audit --only frequent-unlinked-term
 
-# Suppress them (e.g. while focusing on fixable issues)
-bwrb audit --ignore frequent-unlinked-term
+# Include both optional mention heuristics (with fuzzy matching still off)
+bwrb audit --mentions
 ```
 
 ### Missing-body-section semantics (body structure)
