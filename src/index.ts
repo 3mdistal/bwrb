@@ -17,6 +17,8 @@ import { configCommand } from './commands/config.js';
 import { dashboardCommand } from './commands/dashboard.js';
 import { initCommand } from './commands/init.js';
 import { explainCommand } from './commands/explain.js';
+import { priorityCommand } from './commands/priority.js';
+import { triageCommand } from './commands/triage.js';
 import { handleCompletionRequest } from './lib/completion.js';
 import { cleanupPromptMode } from './lib/prompt.js';
 import { BWRB_VERSION } from './version.js';
@@ -78,6 +80,8 @@ if (completionsIndex !== -1) {
   program.addCommand(listCommand);
   program.addCommand(recentCommand);
   program.addCommand(explainCommand);
+program.addCommand(priorityCommand);
+program.addCommand(triageCommand);
 
   // Schema and management
   program.addCommand(schemaCommand);

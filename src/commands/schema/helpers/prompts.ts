@@ -23,6 +23,29 @@ async function promptFieldDescription(): Promise<string | null> {
   return result.trim();
 }
 
+export function parseNumberBounds(minimum: string, maximum: string): Pick<Field, 'minimum' | 'maximum'> {
+  const parseBound = (value: string, label: string): number | undefined => {
+    if (!value.trim()) return undefined;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) throw new Error(`${label} must be a finite number`);
+    return parsed;
+  };
+  const bounds = { minimum: parseBound(minimum, 'Minimum'), maximum: parseBound(maximum, 'Maximum') };
+  if (bounds.minimum !== undefined && bounds.maximum !== undefined && bounds.minimum > bounds.maximum) {
+    throw new Error('Minimum cannot be greater than maximum');
+  }
+  return bounds;
+}
+
+async function promptNumberBounds(field: Field): Promise<boolean> {
+  const minimum = await promptInput('Minimum value (blank for none)');
+  if (minimum === null) return false;
+  const maximum = await promptInput('Maximum value (blank for none)');
+  if (maximum === null) return false;
+  Object.assign(field, parseNumberBounds(minimum, maximum));
+  return true;
+}
+
 /**
  * Given the raw option values, prompt for an optional description per option.
  * Returns options as bare strings (when skipped) or { value, description }
@@ -124,6 +147,8 @@ export async function promptFieldDefinition(
       field.source = sourceResult;
       // Note: Link format is now a vault-wide config option (config.link_format)
     }
+
+    if (promptType === 'number' && !await promptNumberBounds(field)) return null;
     
     // Ask if required
     const requiredResult = await promptConfirm('Required?');
@@ -238,6 +263,8 @@ export async function promptSingleFieldDefinition(
       field.source = sourceResult;
       // Note: Link format is now a vault-wide config option (config.link_format)
     }
+
+    if (promptType === 'number' && !await promptNumberBounds(field)) return null;
     
     // Ask if required
     const requiredResult = await promptConfirm('Required?');

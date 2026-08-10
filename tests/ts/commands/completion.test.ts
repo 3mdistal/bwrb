@@ -217,13 +217,20 @@ describe('bwrb completion command', () => {
         '--from', '--dry-run', '--execute', '--output', '--vault', '--help',
       ]));
       expect(options).not.toContain('--force');
+
+      const backfillOptions = (await runCliOutput([
+        '--completions', 'bwrb', 'identity', 'backfill', '--',
+      ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
+      expect(backfillOptions).toEqual(expect.arrayContaining([
+        '--type', '--path', '--dry-run', '--execute', '--output', '--vault', '--help',
+      ]));
     });
 
     it('completes identity migrate and its guarded migration options', async () => {
       const subcommands = (await runCliOutput([
         '--completions', 'bwrb', 'identity', '',
       ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
-      expect(subcommands).toEqual(['migrate']);
+      expect(subcommands).toEqual(['migrate', 'backfill']);
 
       const options = (await runCliOutput([
         '--completions', 'bwrb', 'identity', 'migrate', '--',
@@ -232,6 +239,33 @@ describe('bwrb completion command', () => {
         '--to', '--dry-run', '--execute', '--output', '--vault', '--help',
       ]));
       expect(options).not.toContain('--force');
+    });
+
+    it('completes priority subcommands and approval-only mutation options', async () => {
+      const subcommands = (await runCliOutput([
+        '--completions', 'bwrb', 'priority', '',
+      ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
+      expect(subcommands).toEqual(['suggest', 'validate', 'approve']);
+
+      const options = (await runCliOutput([
+        '--completions', 'bwrb', 'priority', 'approve', '--',
+      ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
+      expect(options).toEqual(expect.arrayContaining([
+        '--json-file', '--approval-id', '--transaction-id', '--execute', '--output', '--vault', '--help',
+      ]));
+    });
+
+    it('completes triage status and approval-only disposition options', async () => {
+      const subcommands = (await runCliOutput([
+        '--completions', 'bwrb', 'triage', '',
+      ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
+      expect(subcommands).toEqual(['validate', 'status', 'approve']);
+      const options = (await runCliOutput([
+        '--completions', 'bwrb', 'triage', 'approve', '--',
+      ], { vault: VAULT_DIR })).split('\n').filter(Boolean);
+      expect(options).toEqual(expect.arrayContaining([
+        '--path', '--json-file', '--approval-id', '--execute', '--output', '--vault', '--help',
+      ]));
     });
 
     it('should return option completions when current word starts with -', async () => {

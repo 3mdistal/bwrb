@@ -665,14 +665,15 @@ function validateFieldType(
   // Number fields
   if (field.prompt === 'number') {
     // Accept numbers or numeric strings
-    if (typeof value === 'number') {
+    const numeric = typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim() !== ''
+        ? Number(value)
+        : NaN;
+    if (Number.isFinite(numeric)) {
+      if (field.minimum !== undefined && numeric < field.minimum) return { type: 'invalid_type', field: fieldName, value, message: `Invalid value for ${fieldName}: must be at least ${field.minimum}`, expected: `number >= ${field.minimum}` };
+      if (field.maximum !== undefined && numeric > field.maximum) return { type: 'invalid_type', field: fieldName, value, message: `Invalid value for ${fieldName}: must be at most ${field.maximum}`, expected: `number <= ${field.maximum}` };
       return null;
-    }
-    if (typeof value === 'string') {
-      const parsed = parseFloat(value);
-      if (!isNaN(parsed)) {
-        return null;
-      }
     }
     return {
       type: 'invalid_type',
