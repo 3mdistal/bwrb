@@ -179,6 +179,14 @@ async function validateJsonFrontmatter(
   mergedInput: Record<string, unknown>,
   template?: Template | null
 ): Promise<void> {
+  const fields = getFieldsForType(schema, typePath);
+  const derivedInput = Object.keys(mergedInput).find((fieldName) => fields[fieldName]?.derived);
+  if (derivedInput) {
+    throwJsonError(
+      jsonError(`Derived field '${derivedInput}' is virtual and cannot be set during note creation`),
+      ExitCodes.VALIDATION_ERROR
+    );
+  }
   const validation = validateFrontmatter(schema, typePath, mergedInput, { strictFields: true });
   if (!validation.valid) {
     throwJsonError({

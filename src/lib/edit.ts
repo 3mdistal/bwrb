@@ -243,6 +243,17 @@ async function editNoteFromJsonAttempt(
     throw new Error(error);
   }
 
+  const fields = getFieldsForType(schema, typePath);
+  const derivedPatchField = Object.keys(patchData).find((fieldName) => fields[fieldName]?.derived);
+  if (derivedPatchField) {
+    const error = `Derived field '${derivedPatchField}' is virtual and cannot be edited`;
+    if (jsonMode) {
+      printJson(jsonError(error));
+      process.exit(ExitCodes.VALIDATION_ERROR);
+    }
+    throw new Error(error);
+  }
+
   const resolvedBody = typeof bodyInput === 'string'
     ? bodyInput
     : bodyInput
@@ -296,7 +307,6 @@ async function editNoteFromJsonAttempt(
   //
   // Keys the user blanked but whose field has NO default stay blank: optional →
   // unset (trim-everywhere preserved), required → still rejected at validation.
-  const fields = getFieldsForType(schema, typePath);
   const blankPatchKeys = new Set(
     Object.keys(patchData).filter((key) => {
       if (typeof patchData[key] !== 'string' || !isBlankScalar(patchData[key])) return false;
@@ -585,6 +595,7 @@ export async function editNoteInteractive(
     if (isBwrbReservedFrontmatterField(fieldName)) continue;
     const field = fields[fieldName];
     if (!field) continue;
+    if (field.derived) continue;
 
     const currentValue = frontmatter[fieldName];
     const newValue = await promptFieldEdit(

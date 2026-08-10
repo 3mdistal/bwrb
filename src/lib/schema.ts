@@ -22,6 +22,7 @@ import {
 } from '../types/schema.js';
 import { validateTransitionGuards } from './transition-guards.js';
 import { validateTransitionEffects } from './transition-effects.js';
+import { validateDerivedFields } from './derived-fields.js';
 
 const META_TYPE = 'meta';
 
@@ -210,6 +211,7 @@ export function resolveSchema(schema: Schema): LoadedSchema {
     throw new Error(`Invalid transition effects: ${transitionEffectErrors.join(' ')}`);
   }
   validateRetention(loaded);
+  validateDerivedFields(loaded);
   return loaded;
 }
 

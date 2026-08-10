@@ -15,6 +15,8 @@ import {
   loadSchema,
   getType,
   getRootTypeNames,
+  getConcreteTypeNames,
+  getFieldsForType,
   getOptionsForField,
   resolveTypeFromFrontmatter,
   formatUnknownTypeError,
@@ -360,6 +362,21 @@ Hint: Bulk operations require explicit targeting to prevent accidents.
               isBwrbReservedFrontmatterField(operation.field) ? operation.field : operation.newField
             }' with bwrb bulk`
           );
+        }
+
+        const mutatedFields = [operation.field, operation.newField].filter(
+          (fieldName): fieldName is string => Boolean(fieldName)
+        );
+        const candidateTypes = typePath ? [typePath] : getConcreteTypeNames(schema);
+        for (const fieldName of mutatedFields) {
+          const derivedType = candidateTypes.find(
+            (candidateType) => getFieldsForType(schema, candidateType)[fieldName]?.derived
+          );
+          if (derivedType) {
+            validationErrors.push(
+              `Cannot mutate derived field '${fieldName}' for type '${derivedType}' with bwrb bulk`
+            );
+          }
         }
       }
 

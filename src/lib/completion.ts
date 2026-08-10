@@ -277,7 +277,7 @@ async function resolveVaultDirForCompletion(options: { vault?: string }): Promis
 const COMMAND_OPTIONS: Record<string, string[]> = {
   new: ['--type', '-t', '--vault', '-v', '--non-interactive', '--template', '--no-template', '--no-instances', '--owner', '--standalone', '--json', '--json-file', '--open', '-o', '--fork', '--label', '--name', '--output', '--help'],
   edit: ['--type', '-t', '--path', '-p', '--where', '-w', '--id', '--body', '-b', '--picker', '--json', '--json-file', '--output', '--open', '--app', '--vault', '-v', '--non-interactive', '--help'],
-  list: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--name', '--fuzzy', '--matches', '--threshold', '--context', '-C', '--no-context', '--case-sensitive', '-S', '--regex', '-E', '--id', '--lineage', '--fields', '--sort', '--desc', '--limit', '--count', '--output', '--open', '-o', '--app', '--picker', '--preview', '--vault', '-v', '--non-interactive', '--help'],
+  list: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--name', '--fuzzy', '--matches', '--threshold', '--context', '-C', '--no-context', '--case-sensitive', '-S', '--regex', '-E', '--id', '--lineage', '--fields', '--sort', '--desc', '--limit', '--count', '--as-of', '--output', '--open', '-o', '--app', '--picker', '--preview', '--vault', '-v', '--non-interactive', '--help'],
   recent: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--limit', '--output', '--open', '-o', '--app', '--save-as', '--force', '--vault', '-v', '--non-interactive', '--help'],
   audit: ['--type', '-t', '--path', '-p', '--where', '-w', '--body', '-b', '--all', '-a', '--strict', '--only', '--ignore', '--output', '--fix', '--auto', '--dry-run', '--execute', '--allow-field', '--vault', '-v', '--non-interactive', '--help'],
   bulk: [
@@ -323,7 +323,7 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
   template: ['--vault', '-v', '--non-interactive', '--help'],
   lineage: ['--from', '--dry-run', '--execute', '-x', '--output', '--vault', '-v', '--non-interactive', '--help'],
   identity: ['--to', '--dry-run', '--execute', '-x', '--output', '--vault', '-v', '--non-interactive', '--help'],
-  dashboard: ['--output', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
+  dashboard: ['--output', '--as-of', '-o', '--vault', '-v', '--non-interactive', '--json', '--help'],
   delete: [
     '--type', '-t',
     '--path', '-p',

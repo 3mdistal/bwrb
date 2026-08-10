@@ -56,6 +56,7 @@ rejected.
 | `--limit <n>` | Limit displayed results; never narrows name-mode selection |
 | `--count` | Print only the number of matching notes |
 | `--receipt` | With `--output json`, return query metadata, counts, truncation, and data rows |
+| `--as-of <date>` | Evaluate `today()` against one full `YYYY-MM-DD` date (defaults to local today captured once) |
 | `-L, --depth <n>` | Limit tree depth |
 
 ### Actions
@@ -94,6 +95,11 @@ array of note frontmatter objects used by existing scripts. Each row also has a
 Treat it only as an observation token—do not infer ordering or meaning from its
 format. Pass it unchanged to guarded JSON edits when a shared record must not
 silently overwrite a newer change.
+
+Schema-declared [derived fields](/reference/schema/#derived-fields) are projected
+before filtering, sorting, and rendering. They appear in JSON and `--fields`
+without being stored in Markdown. Use `--as-of` when a derived expression or
+filter uses `today()` and the result must be reproducible.
 
 With `--matches`, text output shows grep-style line details and JSON preserves
 structured match details. `paths` and `link` emit each matching note once, while

@@ -26,6 +26,7 @@ export type IssueCode =
   | 'empty-string-required'
   | 'invalid-option'
   | 'unknown-field'
+  | 'derived-field-persisted'
   | 'wrong-directory'
   | 'type-mismatch'
   | 'format-violation'

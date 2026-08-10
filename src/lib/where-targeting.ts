@@ -11,6 +11,7 @@ export interface WhereFilterOptions {
   vaultDir: string;
   schema: LoadedSchema;
   typePath?: string;
+  asOf?: string;
 }
 
 export type WhereFilterResult<T extends FileWithFrontmatter> =
@@ -21,7 +22,7 @@ export async function applyWhereExpressions<T extends FileWithFrontmatter>(
   files: T[],
   options: WhereFilterOptions
 ): Promise<WhereFilterResult<T>> {
-  const { whereExpressions, vaultDir, schema, typePath } = options;
+  const { whereExpressions, vaultDir, schema, typePath, asOf } = options;
 
   if (whereExpressions.length === 0) {
     return { ok: true, files };
@@ -44,6 +45,7 @@ export async function applyWhereExpressions<T extends FileWithFrontmatter>(
       whereExpressions,
       vaultDir,
       schema,
+      ...(asOf ? { asOf } : {}),
       ...(typePath ? { typePath } : {}),
       ...(knownKeys ? { knownKeys } : {}),
     });

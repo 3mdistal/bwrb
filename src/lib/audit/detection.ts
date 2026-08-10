@@ -664,6 +664,7 @@ export async function auditFile(
   );
   
   for (const [fieldName, field] of Object.entries(fields)) {
+    if (field.derived) continue;
     const value = frontmatter[fieldName];
     const hasKey = Object.prototype.hasOwnProperty.call(frontmatter, fieldName);
     const isEmptyValue = isEmptyRequiredValue(value);
@@ -712,6 +713,18 @@ export async function auditFile(
   for (const [fieldName, value] of Object.entries(frontmatter)) {
     const field = fields[fieldName];
     if (!field) continue;
+
+    if (field.derived) {
+      issues.push({
+        severity: 'error',
+        code: 'derived-field-persisted',
+        message: `Derived field '${fieldName}' is virtual and must not be stored in frontmatter`,
+        field: fieldName,
+        value,
+        autoFixable: false,
+      });
+      continue;
+    }
 
     if (field.prompt === 'relative-date') {
       const relativeDateError = validateRelativeDateValue(fieldName, value);
