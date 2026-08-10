@@ -476,6 +476,13 @@ export function applyDefaults(
   for (const [fieldName, field] of Object.entries(fields)) {
     if (keyScope !== undefined && !keyScope.has(fieldName)) continue;
 
+    // Derived fields are a virtual read projection. Never materialize a
+    // template/default collision into Markdown.
+    if (field.derived) {
+      delete result[fieldName];
+      continue;
+    }
+
     // Lineage is provenance, not a user/schema default. Valid schemas reject
     // this declaration at load/write time; this guard protects creation paths
     // that receive a hand-built or otherwise unparsed LoadedSchema. Existing

@@ -725,12 +725,51 @@ so declaring it on a base type (e.g. `entity`) applies to all descendants.
 
 ---
 
+## Derived Fields
+
+A derived field is a virtual scalar calculated from other fields on the same
+note. Declare its expression and result type instead of a prompt:
+
+```json
+{
+  "score": {
+    "derived": {
+      "expression": "importance * 4 + excitement",
+      "type": "number"
+    }
+  }
+}
+```
+
+Supported result types are `string`, `number`, `boolean`, and `date`. Date
+results must be valid full `YYYY-MM-DD` values. Derived fields participate in
+`list --output json`, `--fields`, `--where`, sorting, and dashboards, but are
+never prompted for or written to Markdown. `new`, `edit`, and `bulk` reject
+attempts to set them. If a note already stores a same-name value, query results
+use the calculated value and `bwrb audit` reports `derived-field-persisted`.
+
+Expressions use the ordinary Bowerbird expression language with a deliberately
+record-local subset. They may reference concrete or earlier derived fields on
+the effective inherited type and use pure scalar functions. Missing or `null`
+inputs produce `null` without evaluating the expression. Unknown fields,
+self-references, dependency cycles, `file.*`, hierarchy functions, `now()`, and
+relative-date dependencies are schema errors. Runtime evaluation or result-type
+errors fail the command and identify both the field and note path.
+
+`today()` uses one query snapshot date. Pass `--as-of YYYY-MM-DD` to `list` or
+`dashboard` for reproducible output; otherwise Bowerbird captures the local
+calendar date once when the command starts. Saved dashboards do not persist an
+as-of value.
+
+---
+
 ## Field Properties Reference
 
 Complete list of field properties:
 
 | Property | Type | Applies To | Description |
 |----------|------|------------|-------------|
+| `derived` | object | virtual | `{ expression, type }` query-time scalar derivation. Mutually exclusive with stored/prompted field behavior |
 | `value` | string | static | Fixed value (mutually exclusive with `prompt`) |
 | `prompt` | string | prompted | Prompt type: `text`, `number`, `boolean`, `date`, `relative-date`, `select`, `relation`, `list` |
 | `label` | string | prompted | Custom label shown during prompting (the imperative prompt text) |

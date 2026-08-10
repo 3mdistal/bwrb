@@ -75,6 +75,8 @@ import {
 } from '../lib/lineage.js';
 import { isValidNoteId, normalizeNoteId } from '../lib/note-id.js';
 import { renderFlatNotePaths } from '../lib/flat-note-presenter.js';
+import { resolveAsOf } from '../lib/as-of.js';
+import { getDerivedFieldPlan, projectDerivedFields } from '../lib/derived-fields.js';
 
 /**
  * Resolve the output format from --output flag.
@@ -143,6 +145,7 @@ interface ListCommandOptions {
   // Dashboard save options
   saveAs?: string;
   force?: boolean;
+  asOf?: string;
 }
 
 function validateLineageMode(
@@ -180,6 +183,7 @@ function validateLineageMode(
   if (options.preview === true) conflicts.push('--preview');
   if (options.saveAs !== undefined) conflicts.push('--save-as');
   if (options.force === true) conflicts.push('--force');
+  if (options.asOf !== undefined) conflicts.push('--as-of');
 
   if (conflicts.length > 0) {
     return `--lineage cannot be combined with ${conflicts.join(', ')}.`;
@@ -225,7 +229,7 @@ function validateCanonicalSearchMode(
   if (hasCanonicalSearchMode(options) && (positional !== undefined || mode !== undefined)) {
     return 'Search modes do not accept positional filters or app modes; use targeting flags and --app instead.';
   }
-  if (hasCanonicalSearchMode(options) && (options.fields || options.count || options.receipt || options.sort || options.desc || options.depth || options.saveAs || options.force)) {
+  if (hasCanonicalSearchMode(options) && (options.fields || options.count || options.receipt || options.sort || options.desc || options.depth || options.saveAs || options.force || options.asOf)) {
     return '--name, --fuzzy, and --matches cannot be combined with table, hierarchy, sort, count, receipt, or dashboard options.';
   }
   if (hasCanonicalSearchMode(options) && options.id) {
@@ -539,6 +543,7 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
   .option('--limit <n>', 'Limit displayed results (never narrows --name selection)')
   .option('--count', 'Print only the number of matching notes')
   .option('--receipt', 'Return a JSON receipt with applied query settings and result cardinality (requires --output json)')
+  .option('--as-of <date>', 'Evaluate temporal expressions against one YYYY-MM-DD date')
   .option('--output <format>', 'Output format: text (default), paths, tree, link, content, json')
   // Open options
   .option('-o, --open', 'Open the first result (or pick from results interactively)')
@@ -660,6 +665,8 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
       if (options.where) targeting.where = options.where;
       if (options.id) targeting.id = options.id;
       if (options.body) targeting.body = options.body;
+      const asOf = resolveAsOf(options.asOf);
+      targeting.asOf = asOf;
 
       // Handle smart positional detection
       if (positional) {
@@ -768,11 +775,13 @@ Note: In zsh, use single quotes for expressions with '!' to avoid history expans
                 desc: options.desc === true,
                 limit: limit ?? null,
                 fields: fields ?? null,
+                asOf,
               },
             }
           : undefined,
         sortField: options.sort,
         sortDesc: options.desc,
+        asOf,
         ...(limit !== undefined && { limit }),
       });
 
@@ -845,6 +854,7 @@ export interface ListOptions {
   receipt?: QueryReceiptContext | undefined;
   sortField?: string | undefined;
   sortDesc?: boolean | undefined;
+  asOf?: string | undefined;
   // Open options
   open?: boolean | undefined;
   app?: string | undefined;
@@ -864,6 +874,7 @@ export interface QueryReceiptContext {
     desc: boolean;
     limit: number | null;
     fields: string[] | null;
+    asOf: string;
   };
   dashboard?: {
     name: string;
@@ -882,11 +893,21 @@ export async function listObjects(
   files: Array<{ path: string; relativePath: string; frontmatter: Record<string, unknown> }>,
   options: ListOptions
 ): Promise<void> {
+  const asOf = resolveAsOf(options.asOf);
   // Convert to the format expected by the rest of the function
-  let filteredFiles = files.map(f => ({
-    path: f.path,
-    frontmatter: f.frontmatter,
-  }));
+  let filteredFiles = files.map(f => {
+    const typePath = _typePath ?? resolveTypeFromFrontmatter(schema, f.frontmatter);
+    return {
+      path: f.path,
+      frontmatter: typePath
+        ? projectDerivedFields(
+            getDerivedFieldPlan(schema, typePath),
+            f.frontmatter,
+            { asOf, notePath: f.relativePath }
+          )
+        : { ...f.frontmatter },
+    };
+  });
 
   const jsonMode = options.outputFormat === 'json';
 
@@ -1005,9 +1026,17 @@ export async function listObjects(
         // The row and revision must describe one observation, not adjacent
         // reads of a note that an editor could change between them.
         const snapshot = await parseNote(path);
-        const frontmatter = snapshot.frontmatter;
+        const rawFrontmatter = snapshot.frontmatter;
         const notePath = relative(vaultDir, path);
         const noteName = basename(path, '.md');
+        const typePath = _typePath ?? resolveTypeFromFrontmatter(schema, rawFrontmatter);
+        const frontmatter = typePath
+          ? projectDerivedFields(
+              getDerivedFieldPlan(schema, typePath),
+              rawFrontmatter,
+              { asOf, notePath }
+            )
+          : rawFrontmatter;
         const base = {
           _path: notePath,
           _name: noteName,

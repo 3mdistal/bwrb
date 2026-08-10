@@ -110,6 +110,8 @@ export interface HierarchyData {
  */
 export interface EvalContext {
   frontmatter: Record<string, unknown>;
+  /** One immutable local-calendar observation date for the enclosing command. */
+  asOf?: string;
   file?: {
     name: string;
     path: string;
@@ -185,7 +187,8 @@ export function matchesExpression(exprString: string, context: EvalContext): boo
 export async function buildEvalContext(
   filePath: string,
   vaultDir: string,
-  frontmatter: Record<string, unknown>
+  frontmatter: Record<string, unknown>,
+  asOf?: string
 ): Promise<EvalContext> {
   const { stat } = await import('fs/promises');
   const { basename, dirname, relative } = await import('path');
@@ -216,6 +219,7 @@ export async function buildEvalContext(
 
   return {
     frontmatter,
+    ...(asOf ? { asOf } : {}),
     file: fileInfo,
   };
 }
@@ -372,8 +376,8 @@ const FUNCTIONS: Record<string, FunctionImpl> = {
   },
 
   // Date functions
-  today: () => {
-    return formatLocalDate();
+  today: (_args, context) => {
+    return context.asOf ?? formatLocalDate();
   },
 
   now: () => new Date(),

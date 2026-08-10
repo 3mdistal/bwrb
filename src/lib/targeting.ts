@@ -47,6 +47,8 @@ export interface TargetingOptions {
   text?: string;
   /** Explicit flag to target all notes (required for destructive commands without other targeting) */
   all?: boolean;
+  /** Stable local-calendar date for query-time expression evaluation. */
+  asOf?: string;
 }
 
 /**
@@ -329,6 +331,7 @@ export async function resolveTargets(
       const filtered = await applyWhereExpressions(filteredFiles, {
         schema,
         ...(options.type ? { typePath: options.type } : {}),
+        ...(options.asOf ? { asOf: options.asOf } : {}),
         whereExpressions: options.where,
         vaultDir,
       });

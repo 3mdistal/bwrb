@@ -115,6 +115,7 @@ async function buildNoteContent(
     if (isBwrbReservedFrontmatterField(fieldName)) continue;
     const field = fields[fieldName];
     if (!field) continue;
+    if (field.derived) continue;
 
     const mergedDefault = mergedDefaults[fieldName];
     const hasDefault = mergedDefault !== undefined;

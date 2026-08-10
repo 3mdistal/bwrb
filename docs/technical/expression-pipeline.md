@@ -2,6 +2,13 @@
 
 > Developer reference for `--where` expressions and shared expression evaluation.
 
+Schema-declared derived fields reuse this parser and evaluator through
+`src/lib/derived-fields.ts`. Schema loading validates the resolved effective
+type, builds a dependency-first plan, and rejects impure or non-record-local
+access. Query surfaces project the virtual overlay before `--where`, sorting,
+and rendering. A command resolves `--as-of` once and threads that same day into
+both ordinary `today()` calls and derived projection.
+
 ---
 
 ## Purpose

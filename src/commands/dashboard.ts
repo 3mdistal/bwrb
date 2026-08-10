@@ -34,6 +34,7 @@ import { UserCancelledError } from '../lib/errors.js';
 import type { DashboardDefinition, LoadedSchema } from '../types/schema.js';
 import { getTtyContext } from '../lib/tty/context.js';
 import { renderTable } from '../lib/tty/table.js';
+import { resolveAsOf } from '../lib/as-of.js';
 
 /**
  * Resolve output format from string, with validation.
@@ -54,6 +55,7 @@ function resolveOutputFormat(format?: string): ListOutputFormat {
 interface DashboardRunOptions {
   output?: string;
   receipt?: boolean;
+  asOf?: string;
 }
 
 interface DashboardListOptions {
@@ -65,6 +67,7 @@ export const dashboardCommand = new Command('dashboard')
   .argument('[name]', 'Dashboard name to run')
   .option('--output <format>', 'Output format: text (default), paths, tree, link, json')
   .option('--receipt', 'Return a JSON receipt with the dashboard definition and result cardinality')
+  .option('--as-of <date>', 'Evaluate temporal expressions against one YYYY-MM-DD date')
   .enablePositionalOptions()
   .addHelpText('after', `
 A dashboard is a saved list query. Running a dashboard executes the saved
@@ -154,6 +157,7 @@ async function runDashboard(
 
     // 3. Load schema
     const schema = await loadSchema(vaultDir);
+    const asOf = resolveAsOf(options.asOf);
 
     // 4. Convert DashboardDefinition to TargetingOptions
     const targeting: TargetingOptions = {};
@@ -161,6 +165,7 @@ async function runDashboard(
     if (dashboard.path) targeting.path = dashboard.path;
     if (dashboard.where) targeting.where = dashboard.where;
     if (dashboard.body) targeting.body = dashboard.body;
+    targeting.asOf = asOf;
 
     // 5. Resolve targets using shared targeting module
     const targetResult = await resolveTargets(targeting, schema, vaultDir);
@@ -192,6 +197,7 @@ async function runDashboard(
               desc: dashboard.desc === true,
               limit: dashboard.limit ?? null,
               fields: dashboard.fields ?? null,
+              asOf,
             },
             dashboard: {
               name,
@@ -201,6 +207,7 @@ async function runDashboard(
         : undefined,
       sortField: dashboard.sort,
       sortDesc: dashboard.desc,
+      asOf,
     };
 
     await listObjects(schema, vaultDir, targeting.type, targetResult.files, listOpts);

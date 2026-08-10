@@ -27,6 +27,7 @@ bwrb dashboard inbox --output json   # Override output format
 |--------|-------------|
 | `--output <format>` | Override output format: `text`, `paths`, `tree`, `link`, `json` |
 | `--receipt` | With JSON output, return dashboard identity, its saved definition, the applied query, counts, truncation, and data rows |
+| `--as-of <date>` | Evaluate `today()` against one full `YYYY-MM-DD` date for this run |
 
 ## Subcommands
 
@@ -51,6 +52,8 @@ bwrb list task --count --save-as "task-count"
 
 Dashboards saved from `bwrb list` preserve filters, default output settings,
 selected fields, `--sort`, `--desc`, `--limit`, and `--count`.
+The query's `--as-of` value is intentionally not saved; provide it when running
+the dashboard when reproducible temporal evaluation matters.
 
 ### With `dashboard new`
 

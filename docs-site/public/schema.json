@@ -574,6 +574,31 @@
     "frontmatterField": {
       "type": "object",
       "properties": {
+        "derived": {
+          "type": "object",
+          "properties": {
+            "expression": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Expression evaluated for this record"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "string",
+                "number",
+                "boolean",
+                "date"
+              ],
+              "description": "Required result type for the derived expression"
+            }
+          },
+          "required": [
+            "expression",
+            "type"
+          ],
+          "additionalProperties": false
+        },
         "prompt": {
           "type": "string",
           "enum": [

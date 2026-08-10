@@ -22,6 +22,8 @@ import {
   type RelativeDateFieldMap,
 } from './relative-date.js';
 import { calendarDateValue, parseCalendarDate } from './calendar-date.js';
+import { getDerivedFieldPlan, projectDerivedFields } from './derived-fields.js';
+import { resolveAsOf } from './as-of.js';
 
 /**
  * Validate that a field name is valid for a type.
@@ -58,6 +60,8 @@ export interface FrontmatterFilterOptions {
   schema?: LoadedSchema;
   /** Optional type path for type-aware hierarchy resolution */
   typePath?: string;
+  /** Stable date used by time-sensitive expressions for this query. */
+  asOf?: string;
 }
 
 // ============================================================================
@@ -554,7 +558,8 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
   files: T[],
   options: FrontmatterFilterOptions
 ): Promise<T[]> {
-  const { whereExpressions, vaultDir, knownKeys, schema, typePath } = options;
+  const { whereExpressions, vaultDir, knownKeys, schema, typePath, asOf } = options;
+  const effectiveAsOf = resolveAsOf(asOf);
   const result: T[] = [];
   const effectiveKnownKeys =
     knownKeys ?? collectFrontmatterKeys(files.map(file => file.frontmatter));
@@ -602,16 +607,23 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
   for (const file of files) {
     // Apply expression filters (--where style)
     if (expressionPairs.length > 0) {
-      const evalFrontmatter = frontmatterWithCalendarDates(
+      const baseFrontmatter = frontmatterWithCalendarDates(
         schema,
         file,
         frontmatterWithResolvedRelativeDates(schema, file, relativeDateFields)
       );
-      const context = await buildEvalContext(file.path, vaultDir, evalFrontmatter);
       const relationType = resolveHierarchyType(file.frontmatter, {
         ...(schema ? { schema } : {}),
         ...(typePath ? { typePath } : {}),
       });
+      const evalFrontmatter = schema
+        ? projectDerivedFields(
+            relationType ? getDerivedFieldPlan(schema, relationType) : undefined,
+            baseFrontmatter,
+            { asOf: effectiveAsOf, notePath: relative(vaultDir, file.path) }
+          )
+        : baseFrontmatter;
+      const context = await buildEvalContext(file.path, vaultDir, evalFrontmatter, effectiveAsOf);
       const relationSources = getRelationSourcesForType(schema, relationType, relationSourceCache);
       if (relationSources) {
         context.relationSourcesByField = relationSources;

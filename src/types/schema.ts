@@ -85,10 +85,27 @@ export const FieldOptionSchema = z.union([
 ]);
 
 /**
+ * A virtual, record-local field calculated from other effective fields.
+ * Derived values are projected at query time and are never written to note
+ * frontmatter.
+ */
+export const DerivedFieldSchema = z.object({
+  expression: z.string().min(1).describe('Expression evaluated for this record'),
+  type: z
+    .enum(['string', 'number', 'boolean', 'date'])
+    .describe('Required result type for the derived expression'),
+});
+
+/**
  * Field definition for type frontmatter.
- * Fields can be static values, prompted inputs, or relation queries.
+ * Fields can be static values, prompted inputs, relation queries, or virtual
+ * record-local derivations.
  */
 export const FieldSchema = z.object({
+  // Virtual field calculated from the record's effective fields. The
+  // dependency graph and expression semantics are validated after inheritance
+  // and trait composition resolve the effective type.
+  derived: DerivedFieldSchema.optional(),
   // Prompt type (how the field is collected)
   prompt: z
     .enum(['text', 'select', 'list', 'date', 'relative-date', 'relation', 'boolean', 'number'])
@@ -694,6 +711,7 @@ export const BwrbSchema = z.object({
 // ============================================================================
 
 export type Field = z.infer<typeof FieldSchema>;
+export type DerivedField = z.infer<typeof DerivedFieldSchema>;
 export type FieldOption = z.infer<typeof FieldOptionSchema>;
 export type Calendar = z.infer<typeof CalendarSchema>;
 export type CalendarEra = z.infer<typeof CalendarEraSchema>;
