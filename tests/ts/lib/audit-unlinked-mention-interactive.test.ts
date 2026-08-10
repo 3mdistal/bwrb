@@ -75,7 +75,7 @@ describe('unlinked-mention: interactive ambiguous resolution (#622)', () => {
   it('rewrites the mention to [[Chosen]] when a candidate is picked', async () => {
     await writeDaily('Talking about Mercury.');
     const schema = await loadSchema(vaultDir);
-    const results = await runAudit(schema, vaultDir, { strict: false });
+    const results = await runAudit(schema, vaultDir, { strict: false, onlyIssue: 'unlinked-mention' });
 
     // Pick the planet "Mercury" (the surface equals the canonical name).
     promptSelectionMock.mockResolvedValueOnce('Mercury');
@@ -92,7 +92,7 @@ describe('unlinked-mention: interactive ambiguous resolution (#622)', () => {
   it('uses the display form [[Chosen|surface]] when surface differs from the note', async () => {
     await writeDaily('Talking about Mercury.');
     const schema = await loadSchema(vaultDir);
-    const results = await runAudit(schema, vaultDir, { strict: false });
+    const results = await runAudit(schema, vaultDir, { strict: false, onlyIssue: 'unlinked-mention' });
 
     // Pick "Freddie" — the surface "Mercury" differs from the note name.
     promptSelectionMock.mockResolvedValueOnce('Freddie');
@@ -106,7 +106,7 @@ describe('unlinked-mention: interactive ambiguous resolution (#622)', () => {
   it('leaves the mention untouched when the user skips', async () => {
     await writeDaily('Talking about Mercury.');
     const schema = await loadSchema(vaultDir);
-    const results = await runAudit(schema, vaultDir, { strict: false });
+    const results = await runAudit(schema, vaultDir, { strict: false, onlyIssue: 'unlinked-mention' });
 
     promptSelectionMock.mockResolvedValueOnce('[skip]');
 
@@ -120,7 +120,7 @@ describe('unlinked-mention: interactive ambiguous resolution (#622)', () => {
   it('--auto (runAutoFix) never resolves an ambiguous mention', async () => {
     await writeDaily('Talking about Mercury.');
     const schema = await loadSchema(vaultDir);
-    const results = await runAudit(schema, vaultDir, { strict: false });
+    const results = await runAudit(schema, vaultDir, { strict: false, onlyIssue: 'unlinked-mention' });
 
     await runAutoFix(results, schema, vaultDir, { dryRun: false });
 
@@ -134,7 +134,7 @@ describe('unlinked-mention: interactive ambiguous resolution (#622)', () => {
   it('offers the candidate entities (plus skip/quit) in the prompt', async () => {
     await writeDaily('Talking about Mercury.');
     const schema = await loadSchema(vaultDir);
-    const results = await runAudit(schema, vaultDir, { strict: false });
+    const results = await runAudit(schema, vaultDir, { strict: false, onlyIssue: 'unlinked-mention' });
 
     promptSelectionMock.mockResolvedValueOnce('[skip]');
     await runInteractiveFix(results, schema, vaultDir, { dryRun: false });

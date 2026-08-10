@@ -221,10 +221,12 @@ export async function runAuditDetailed(
 
   const wantUnlinkedMention =
     options.ignoreIssue !== 'unlinked-mention' &&
-    (options.onlyIssue === undefined || options.onlyIssue === 'unlinked-mention');
+    (options.onlyIssue === 'unlinked-mention' ||
+      (options.onlyIssue === undefined && options.includeMentions === true));
   const wantFrequentTerm =
     options.ignoreIssue !== 'frequent-unlinked-term' &&
-    (options.onlyIssue === undefined || options.onlyIssue === 'frequent-unlinked-term');
+    (options.onlyIssue === 'frequent-unlinked-term' ||
+      (options.onlyIssue === undefined && options.includeMentions === true));
   const wantsMentionSafetyNet = wantUnlinkedMention || wantFrequentTerm;
 
   // Build the entity-mention index once for the whole run (#600), but only when
@@ -1124,9 +1126,7 @@ export async function auditFile(
             ...(options.mentionFuzzyThreshold !== undefined
               ? { fuzzyThreshold: options.mentionFuzzyThreshold }
               : {}),
-            ...(options.mentionFuzzyEnabled !== undefined
-              ? { fuzzyEnabled: options.mentionFuzzyEnabled }
-              : {}),
+            fuzzyEnabled: options.mentionFuzzyEnabled === true,
           })
         );
       }

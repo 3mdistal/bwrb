@@ -4,6 +4,16 @@ All notable changes to Bowerbird are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Bounded default audit scope** — bare `bwrb audit` now runs core integrity
+  checks without the optional `unlinked-mention` or `frequent-unlinked-term`
+  prose heuristics. `--mentions` enables exact, alias, ambiguous, and frequent
+  term analysis; `--mention-fuzzy` (or a positive
+  `--mention-fuzzy-threshold`) additionally enables fuzzy suggestions. Exact
+  `--only unlinked-mention` and `--only frequent-unlinked-term` selectors remain
+  explicit opt-ins.
+
 ## [0.3.1] - 2026-08-05
 
 Patch release for distributed stable note identity, revision-safe file-backed
