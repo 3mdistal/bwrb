@@ -727,8 +727,10 @@ so declaring it on a base type (e.g. `entity`) applies to all descendants.
 
 ## Derived Fields
 
-A derived field is a virtual scalar calculated from other fields on the same
-note. Declare its expression and result type instead of a prompt:
+A derived field is a virtual scalar calculated at query time. Most expressions
+read fields on the same note; boolean fields may also inspect one hop across a
+declared relation with `all()` or `any()`. Declare its expression and result
+type instead of a prompt:
 
 ```json
 {
@@ -749,12 +751,34 @@ attempts to set them. If a note already stores a same-name value, query results
 use the calculated value and `bwrb audit` reports `derived-field-persisted`.
 
 Expressions use the ordinary Bowerbird expression language with a deliberately
-record-local subset. They may reference concrete or earlier derived fields on
-the effective inherited type and use pure scalar functions. Missing or `null`
-inputs produce `null` without evaluating the expression. Unknown fields,
+bounded subset. They may reference concrete or earlier derived fields on the
+effective inherited type and use pure scalar functions. A boolean derived field
+may use `all(relation, target.predicate)` or `any(...)` over directly related
+notes. Target predicates may read stored fields only; nested quantifiers and
+additional graph traversal are not supported. Missing or `null` local inputs
+produce `null` without evaluating the expression. Unknown fields,
 self-references, dependency cycles, `file.*`, hierarchy functions, `now()`, and
-relative-date dependencies are schema errors. Runtime evaluation or result-type
-errors fail the command and identify both the field and note path.
+relative-date dependencies are schema errors. Runtime evaluation, relation
+resolution, or result-type errors fail the command and identify both the field
+and note path.
+
+For example, a task schema can own readiness without teaching Bowerbird any
+workflow policy:
+
+```json
+{
+  "depends-on": { "prompt": "relation", "source": "task", "multiple": true },
+  "ready": {
+    "derived": {
+      "expression": "all(depends-on, target.status == 'done' || target.status == 'cancelled')",
+      "type": "boolean"
+    }
+  }
+}
+```
+
+The terminal statuses remain schema policy. Bowerbird supplies only typed,
+read-only, one-hop quantification.
 
 `today()` uses one query snapshot date. Pass `--as-of YYYY-MM-DD` to `list` or
 `dashboard` for reproducible output; otherwise Bowerbird captures the local

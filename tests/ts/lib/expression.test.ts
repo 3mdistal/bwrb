@@ -691,6 +691,33 @@ describe('expression', () => {
       });
     });
 
+    describe('relation quantifiers', () => {
+      const context: EvalContext = {
+        frontmatter: { milestone: ['[[One]]', '[[Two]]'] },
+        relationQuantifiers: {
+          targetsByField: new Map([['milestone', [
+            { path: 'Milestones/One.md', frontmatter: { status: 'done', 'due-date': '2026-08-01' } },
+            { path: 'Milestones/Two.md', frontmatter: { status: 'backlog', 'due-date': '2026-08-02' } },
+          ]]]),
+        },
+      };
+
+      it('evaluates target predicates with vacuous empty semantics', () => {
+        expect(matchesExpression("any(milestone, target.status == 'done')", context)).toBe(true);
+        expect(matchesExpression("all(milestone, target.status != 'done')", context)).toBe(false);
+        const empty: EvalContext = { frontmatter: { milestone: [] }, relationQuantifiers: { targetsByField: new Map([['milestone', []]]) } };
+        expect(matchesExpression("all(milestone, target.status == 'done')", empty)).toBe(true);
+        expect(matchesExpression("any(milestone, target.status == 'done')", empty)).toBe(false);
+      });
+
+      it('requires the target namespace and rejects nested or hierarchy predicates', () => {
+        expect(() => matchesExpression("any(milestone, status == 'done')", context)).toThrow('target.<field>');
+        expect(() => matchesExpression("any(milestone, all(milestone, target.status == 'done'))", context)).toThrow('nested all()/any()');
+        expect(() => matchesExpression("any(milestone, under(milestone, '[[X]]'))", context)).toThrow('does not permit under()');
+        expect(matchesExpression("any(milestone, target['due-date'] == '2026-08-01')", context)).toBe(true);
+      });
+    });
+
     describe('hierarchy functions composability', () => {
       it('should combine with other expressions using AND', () => {
         const ctx: EvalContext = {

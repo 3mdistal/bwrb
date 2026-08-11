@@ -119,6 +119,25 @@ describe('expression-validation', () => {
     });
   });
 
+  describe('relation quantifier validation', () => {
+    it('requires a direct relation and fields shared by its allowed target types', () => {
+      expect(validateWhereExpressions(
+        ["any(milestone, target.status == 'backlog')"], schema, 'task'
+      ).valid).toBe(true);
+      const invalid = validateWhereExpressions(
+        ["any(status, target.nope == 'x')"], schema, 'task'
+      );
+      expect(invalid.valid).toBe(false);
+      expect(invalid.errors.map(error => error.message).join('\n')).toContain('expects a relation field');
+
+      const invalidOption = validateWhereExpressions(
+        ["any(milestone, target.status == 'vanished')"], schema, 'task'
+      );
+      expect(invalidOption.valid).toBe(false);
+      expect(invalidOption.errors.map(error => error.message).join('\n')).toContain("target value 'vanished' is invalid");
+    });
+  });
+
   describe('validateWhereExpressions', () => {
     it('passes for valid select value', () => {
       // task.status has options: raw, backlog, in-flight, settled

@@ -1,5 +1,9 @@
 import type { LoadedSchema } from '../types/schema.js';
-import { applyFrontmatterFilters, type FileWithFrontmatter } from './query.js';
+import {
+  applyFrontmatterFilters,
+  type FileWithFrontmatter,
+  type QueryExecutionContext,
+} from './query.js';
 import { getAllFieldsForType } from './schema.js';
 import {
   formatWhereValidationErrors,
@@ -12,6 +16,7 @@ export interface WhereFilterOptions {
   schema: LoadedSchema;
   typePath?: string;
   asOf?: string;
+  queryContext?: QueryExecutionContext;
 }
 
 export type WhereFilterResult<T extends FileWithFrontmatter> =
@@ -22,7 +27,7 @@ export async function applyWhereExpressions<T extends FileWithFrontmatter>(
   files: T[],
   options: WhereFilterOptions
 ): Promise<WhereFilterResult<T>> {
-  const { whereExpressions, vaultDir, schema, typePath, asOf } = options;
+  const { whereExpressions, vaultDir, schema, typePath, asOf, queryContext } = options;
 
   if (whereExpressions.length === 0) {
     return { ok: true, files };
@@ -48,6 +53,7 @@ export async function applyWhereExpressions<T extends FileWithFrontmatter>(
       ...(asOf ? { asOf } : {}),
       ...(typePath ? { typePath } : {}),
       ...(knownKeys ? { knownKeys } : {}),
+      ...(queryContext ? { queryContext } : {}),
     });
 
     return { ok: true, files: filtered };

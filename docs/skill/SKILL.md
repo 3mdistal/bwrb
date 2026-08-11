@@ -281,6 +281,11 @@ bwrb list task --where "status == 'active'" --output json
 bwrb list task --limit 10 --receipt --output json  # selectors, counts, and rows
 bwrb list task --where "priority == 'high' && status != 'done'" --output json
 
+# Inspect directly related notes with typed, read-only one-hop quantifiers.
+# all([]) is true; any([]) is false. Resolution failures are hard errors.
+bwrb list task --where "all(depends-on, target.status == 'done' || target.status == 'cancelled')" --output json
+bwrb list book --where "any(editions, target.available == true)" --output json
+
 # Include specific fields in output
 bwrb list task --fields status,priority --output json
 

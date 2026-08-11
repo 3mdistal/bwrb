@@ -99,7 +99,10 @@ silently overwrite a newer change.
 Schema-declared [derived fields](/reference/schema/#derived-fields) are projected
 before filtering, sorting, and rendering. They appear in JSON and `--fields`
 without being stored in Markdown. Use `--as-of` when a derived expression or
-filter uses `today()` and the result must be reproducible.
+filter uses `today()` and the result must be reproducible. `--where` and boolean
+derived fields may use typed one-hop relation quantifiers such as
+`all(depends-on, target.status == 'done')`; see
+[Targeting](/reference/targeting/#query--w---where-expression).
 
 With `--matches`, text output shows grep-style line details and JSON preserves
 structured match details. `paths` and `link` emit each matching note once, while

@@ -8,14 +8,20 @@ import {
   resolveDateCalendar,
   resolveTypeFromFrontmatter,
 } from './schema.js';
-import { matchesExpression, buildEvalContext, type HierarchyData } from './expression.js';
+import {
+  matchesExpression, buildEvalContext, collectRelationQuantifierFields,
+  parseExpression, type HierarchyData, type RelationQuantifierContext,
+} from './expression.js';
+import type { Expression, CallExpression, Identifier, Literal, MemberExpression } from 'jsep';
 import { collectFrontmatterKeys, normalizeWhereExpressions } from './where-normalize.js';
 import { extractLinkTarget } from './links.js';
 import {
   buildVaultNoteSnapshot,
   buildVaultNoteIndex,
   deriveNoteTargetIndex,
+  resolveRelationTarget,
   type VaultNoteSnapshot,
+  type VaultNoteIndex,
 } from './discovery.js';
 import {
   buildRelativeDateFieldMap,
@@ -62,6 +68,12 @@ export interface FrontmatterFilterOptions {
   typePath?: string;
   /** Stable date used by time-sensitive expressions for this query. */
   asOf?: string;
+  /** Mutable command-scoped holder used only to share one immutable vault index. */
+  queryContext?: QueryExecutionContext;
+}
+
+export interface QueryExecutionContext {
+  vaultIndex?: VaultNoteIndex;
 }
 
 // ============================================================================
@@ -79,6 +91,118 @@ function expressionsUseHierarchyFunctions(expressions: string[]): boolean {
   return expressions.some(expr =>
     HIERARCHY_FUNCTIONS.some(fn => expr.includes(fn + '('))
   );
+}
+
+export interface RelationQuantifierIndexContext {
+  snapshot: VaultNoteSnapshot;
+  noteTargetIndex: VaultNoteIndex['noteTargetIndex'];
+  notesByPath: Map<string, VaultNoteSnapshot['notes'][number]>;
+}
+
+/** Derive immutable per-command lookup data from the canonical vault index. */
+export function createRelationQuantifierIndexContext(index: VaultNoteIndex): RelationQuantifierIndexContext {
+  return {
+    snapshot: index.snapshot,
+    noteTargetIndex: index.noteTargetIndex,
+    notesByPath: new Map(index.snapshot.notes.map(note => [note.relativePath, note])),
+  };
+}
+
+/**
+ * Build the read-only, one-snapshot context consumed by expression all()/any().
+ * Exported for list projections that evaluate derived fields after filtering.
+ */
+export function buildRelationQuantifierContext(
+  frontmatter: Record<string, unknown>,
+  sourcePath: string,
+  expressions: Expression[],
+  schema: LoadedSchema,
+  indexContext: RelationQuantifierIndexContext,
+  relationSourcesByField: Map<string, string | string[] | undefined>
+): RelationQuantifierContext {
+  const fields = new Set<string>();
+  for (const expression of expressions) for (const field of collectRelationQuantifierFields(expression)) fields.add(field);
+  const targetsByField = new Map<string, { path: string; frontmatter: Record<string, unknown> }[]>();
+  for (const field of fields) {
+    const targets = [] as { path: string; frontmatter: Record<string, unknown> }[];
+    for (const rawTarget of normalizedRelationTargets(frontmatter[field], sourcePath, field)) {
+      const resolved = resolveRelationTarget(indexContext.noteTargetIndex, rawTarget, { schema, source: relationSourcesByField.get(field) });
+      const note = resolved.resolvedPath ? indexContext.notesByPath.get(resolved.resolvedPath) : undefined;
+      if (!note?.frontmatter) {
+        const unreadable = resolved.resolvedPath && note ? '; target frontmatter is unreadable or malformed' : '';
+        throw new Error(
+          `Relation quantifier resolution failed at ${sourcePath}, field "${field}", target "${rawTarget}": ` +
+          `${resolved.resolution}; candidates: ${resolved.candidates.join(', ') || '(none)'}; ` +
+          `source candidates: ${resolved.sourceCandidates.join(', ') || '(none)'}${unreadable}`
+        );
+      }
+      if (resolved.resolution !== 'unique') {
+        throw new Error(`Relation quantifier resolution failed at ${sourcePath}, field "${field}", target "${rawTarget}": ${resolved.resolution}; candidates: ${resolved.candidates.join(', ') || '(none)'}; source candidates: ${resolved.sourceCandidates.join(', ') || '(none)'}`);
+      }
+      validateResolvedTargetFields(expressions, schema, note.resolvedType, sourcePath, field, rawTarget);
+      targets.push({ path: resolved.resolvedPath!, frontmatter: note.frontmatter });
+    }
+    targetsByField.set(field, targets);
+  }
+  return { targetsByField };
+}
+
+function normalizedRelationTargets(value: unknown, sourcePath: string, field: string): string[] {
+  if (value === undefined || value === null || value === '') return [];
+  const values = Array.isArray(value) ? value : [value];
+  if (values.some(value => typeof value !== 'string')) {
+    throw new Error(`Relation quantifier resolution failed at ${sourcePath}, field "${field}": malformed relation value (expected string or array of strings)`);
+  }
+  const targets: string[] = [];
+  for (const relationValue of values) {
+    const trimmed = relationValue.trim();
+    if (trimmed === '') continue;
+    const target = extractLinkTarget(trimmed);
+    if (!target) {
+      throw new Error(
+        `Relation quantifier resolution failed at ${sourcePath}, field "${field}", ` +
+        `target "${relationValue}": malformed relation value (expected one wikilink or Markdown link)`
+      );
+    }
+    targets.push(target);
+  }
+  return targets;
+}
+
+function validateResolvedTargetFields(expressions: Expression[], schema: LoadedSchema, targetType: string | undefined, sourcePath: string, relationField: string, rawTarget: string): void {
+  if (!targetType) throw new Error(`Relation quantifier resolution failed at ${sourcePath}, field "${relationField}", target "${rawTarget}": target has no resolved schema type`);
+  const fields = getFieldsForType(schema, targetType);
+  for (const expression of expressions) {
+    for (const [quantifierField, targetField] of collectQuantifierTargetFields(expression)) {
+      if (quantifierField !== relationField) continue;
+      const definition = fields[targetField];
+      if (!definition) throw new Error(`Relation quantifier resolution failed at ${sourcePath}, field "${relationField}", target "${rawTarget}": target field "${targetField}" is not defined on type "${targetType}"`);
+      if (definition.derived) throw new Error(`Relation quantifier resolution failed at ${sourcePath}, field "${relationField}", target "${rawTarget}": target derived field "${targetField}" is not supported`);
+    }
+  }
+}
+
+function collectQuantifierTargetFields(expression: Expression): Array<[string, string]> {
+  const result: Array<[string, string]> = [];
+  const visit = (node: Expression, activeField?: string): void => {
+    if (node.type === 'CallExpression') {
+      const call = node as CallExpression;
+      const name = call.callee.type === 'Identifier' ? (call.callee as Identifier).name : '';
+      if (name === 'all' || name === 'any') {
+        const field = collectRelationQuantifierFields(call)[0];
+        visit(call.arguments[1]!, field);
+      } else for (const arg of call.arguments) visit(arg, activeField);
+    } else if (node.type === 'MemberExpression' && activeField) {
+      const member = node as MemberExpression;
+      if (member.object.type === 'Identifier' && (member.object as Identifier).name === 'target') {
+        const property = member.computed ? (member.property as Literal).value : (member.property as Identifier).name;
+        if (typeof property === 'string') result.push([activeField, property]);
+      }
+    } else if (node.type === 'BinaryExpression' || node.type === 'LogicalExpression') {
+      const binary = node as Expression & { left: Expression; right: Expression }; visit(binary.left, activeField); visit(binary.right, activeField);
+    } else if (node.type === 'UnaryExpression') visit((node as Expression & { argument: Expression }).argument, activeField);
+  };
+  visit(expression); return result;
 }
 
 /**
@@ -567,10 +691,39 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
     whereExpressions,
     effectiveKnownKeys
   );
-  const expressionPairs = normalizedExpressions.map((normalized, index) => ({
-    normalized,
-    original: whereExpressions[index] ?? normalized,
-  }));
+  const expressionPairs = normalizedExpressions.map((normalized, index) => {
+    const original = whereExpressions[index] ?? normalized;
+    try {
+      return { normalized, original, ast: parseExpression(normalized) };
+    } catch (error) {
+      throw new Error(`Expression error in "${original}": ${(error as Error).message}`);
+    }
+  });
+  const directExpressionAsts = expressionPairs.map(pair => pair.ast);
+  const candidateTypes = schema
+    ? new Set(files.map(file => resolveHierarchyType(file.frontmatter, {
+        schema,
+        ...(typePath ? { typePath } : {}),
+      })).filter((name): name is string => Boolean(name)))
+    : new Set<string>();
+  const schemaDerivedQuantifierAsts = schema
+    ? [...candidateTypes].flatMap(typeName => {
+        const plan = getDerivedFieldPlan(schema, typeName);
+        return plan ? plan.order.map(field => plan.fields.get(field)!.expressionAst) : [];
+      })
+    : [];
+  const usesRelationQuantifiers = schema &&
+    [...directExpressionAsts, ...schemaDerivedQuantifierAsts].some(ast => collectRelationQuantifierFields(ast).length > 0);
+  // A quantifier needs every target frontmatter record, and hierarchy augmentation
+  // may need the same snapshot. Build it once for this command.
+  const vaultIndex = (schema && usesRelationQuantifiers)
+    ? (options.queryContext?.vaultIndex ?? await buildVaultNoteIndex(schema, vaultDir))
+    : undefined;
+  if (vaultIndex && options.queryContext) options.queryContext.vaultIndex = vaultIndex;
+  const vaultSnapshot = (schema && !usesRelationQuantifiers && expressionsNeedVaultAugmentation(normalizedExpressions))
+    ? await buildVaultNoteSnapshot(schema, vaultDir)
+    : vaultIndex?.snapshot;
+  const relationQuantifierIndex = vaultIndex ? createRelationQuantifierIndexContext(vaultIndex) : undefined;
 
   // Build hierarchy data if any expression uses hierarchy functions
   // This is done once before the loop for efficiency
@@ -595,6 +748,7 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
       await augmentHierarchyDataFromVault(hierarchyData, {
         schema,
         vaultDir,
+        ...(vaultSnapshot ? { snapshot: vaultSnapshot } : {}),
       });
     }
   }
@@ -602,7 +756,7 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
   const relationSourceCache = new Map<string, Map<string, string | string[] | undefined>>();
   const relativeDateFields =
     schema && expressionPairs.length > 0
-      ? await resolveRelativeDateFieldsForQuery(schema, vaultDir)
+      ? await resolveRelativeDateFieldsForQuery(schema, vaultDir, vaultIndex)
       : undefined;
   for (const file of files) {
     // Apply expression filters (--where style)
@@ -616,18 +770,45 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
         ...(schema ? { schema } : {}),
         ...(typePath ? { typePath } : {}),
       });
+      const relationSources = getRelationSourcesForType(schema, relationType, relationSourceCache);
+      const derivedExpressionAsts = schema && relationType
+        ? (getDerivedFieldPlan(schema, relationType)?.order.map(field => getDerivedFieldPlan(schema, relationType)!.fields.get(field)!.expressionAst) ?? [])
+        : [];
+      const quantifierExpressions = [...directExpressionAsts, ...derivedExpressionAsts];
+      if (quantifierExpressions.some(expression => collectRelationQuantifierFields(expression).length > 0)) {
+        assertRelationQuantifierFields(
+          quantifierExpressions,
+          relationSources,
+          relationType,
+          relative(vaultDir, file.path)
+        );
+      }
+      const relationQuantifiers = usesRelationQuantifiers && schema && relationQuantifierIndex
+        ? buildRelationQuantifierContext(
+            baseFrontmatter,
+            relative(vaultDir, file.path),
+            quantifierExpressions,
+            schema,
+            relationQuantifierIndex,
+            relationSources ?? new Map()
+          )
+        : undefined;
       const evalFrontmatter = schema
         ? projectDerivedFields(
             relationType ? getDerivedFieldPlan(schema, relationType) : undefined,
             baseFrontmatter,
-            { asOf: effectiveAsOf, notePath: relative(vaultDir, file.path) }
+            {
+              asOf: effectiveAsOf,
+              notePath: relative(vaultDir, file.path),
+              ...(relationQuantifiers ? { relationQuantifiers } : {}),
+            }
           )
         : baseFrontmatter;
       const context = await buildEvalContext(file.path, vaultDir, evalFrontmatter, effectiveAsOf);
-      const relationSources = getRelationSourcesForType(schema, relationType, relationSourceCache);
       if (relationSources) {
         context.relationSourcesByField = relationSources;
       }
+      if (relationQuantifiers) context.relationQuantifiers = relationQuantifiers;
       // Add hierarchy data to context if available
       if (hierarchyData) {
         context.hierarchyData = hierarchyData;
@@ -656,11 +837,33 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
   return result;
 }
 
+function assertRelationQuantifierFields(
+  expressions: Expression[],
+  relationSources: Map<string, string | string[] | undefined> | undefined,
+  relationType: string | undefined,
+  sourcePath: string
+): void {
+  if (!relationType || !relationSources) {
+    throw new Error(`Relation quantifier source at ${sourcePath} has no resolved schema type`);
+  }
+  for (const expression of expressions) {
+    for (const field of collectRelationQuantifierFields(expression)) {
+      if (!relationSources.has(field)) {
+        throw new Error(
+          `Relation quantifier at ${sourcePath} expects a relation field, but "${field}" ` +
+          `is not a relation field on type "${relationType}"`
+        );
+      }
+    }
+  }
+}
+
 async function resolveRelativeDateFieldsForQuery(
   schema: LoadedSchema,
-  vaultDir: string
+  vaultDir: string,
+  existingIndex?: VaultNoteIndex
 ): Promise<RelativeDateFieldMap> {
-  const index = await buildVaultNoteIndex(schema, vaultDir);
+  const index = existingIndex ?? await buildVaultNoteIndex(schema, vaultDir);
   const result = buildRelativeDateFieldMap(
     schema,
     vaultDir,

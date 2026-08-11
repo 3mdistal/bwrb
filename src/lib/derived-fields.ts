@@ -1,7 +1,13 @@
 import type { Expression, CallExpression, Identifier, MemberExpression } from 'jsep';
-import { evaluateExpression, parseExpression } from './expression.js';
+import {
+  evaluateExpression, parseExpression, getRelationQuantifierField,
+  collectRelationQuantifierFields,
+  type RelationQuantifierContext,
+} from './expression.js';
 import { parsePartialIsoDate } from './local-date.js';
 import type { Field, LoadedSchema } from '../types/schema.js';
+import { validateRelationQuantifierTyping } from './expression-validation.js';
+import { normalizeWhereExpression } from './where-normalize.js';
 
 export type DerivedValueType = 'string' | 'number' | 'boolean' | 'date';
 
@@ -31,6 +37,8 @@ export interface DerivedFieldProjectionOptions {
   asOf: string;
   /** Optional note path included in runtime errors from a query projection. */
   notePath?: string;
+  /** Pre-resolved target context supplied by the query/list snapshot owner. */
+  relationQuantifiers?: RelationQuantifierContext;
 }
 
 const plansBySchema = new WeakMap<LoadedSchema, DerivedFieldPlans>();
@@ -56,6 +64,12 @@ export function validateDerivedFields(schema: LoadedSchema): DerivedFieldPlans {
   const byType = new Map<string, DerivedFieldPlan>();
   for (const type of schema.types.values()) {
     const plan = buildDerivedFieldPlan(type.fields, `types.${type.name}.fields`);
+    for (const entry of plan.fields.values()) {
+      const errors = validateRelationQuantifierTyping(entry.expressionAst, schema, type.name);
+      if (errors.length > 0) {
+        throw new Error(`types.${type.name}.fields.${entry.field}.derived.expression: ${errors[0]}`);
+      }
+    }
     if (plan.order.length > 0) byType.set(type.name, plan);
   }
   const plans = { byType };
@@ -91,11 +105,18 @@ export function buildDerivedFieldPlan(
     const derived = declaration.derived;
     let expressionAst: Expression;
     try {
-      expressionAst = parseExpression(derived.expression);
+      expressionAst = parseExpression(
+        normalizeWhereExpression(derived.expression, new Set(Object.keys(fields)))
+      );
     } catch (error) {
       throw new Error(`${path}.${field}.derived.expression: ${(error as Error).message}`);
     }
     const dependencies = [...collectDependencies(expressionAst, field, path)];
+    if (collectRelationQuantifierFields(expressionAst).length > 0 && derived.type !== 'boolean') {
+      throw new Error(
+        `${path}.${field}.derived: all()/any() expressions must declare type "boolean"`
+      );
+    }
     for (const dependency of dependencies) {
       if (!Object.hasOwn(fields, dependency)) {
         throw new Error(
@@ -141,6 +162,16 @@ export function buildDerivedFieldPlan(
   return { fields: entries, order };
 }
 
+/** Quantifier expressions needed to pre-resolve one-hop targets for a plan. */
+export function getDerivedRelationQuantifierExpressions(
+  plan: DerivedFieldPlan | undefined
+): Expression[] {
+  if (!plan) return [];
+  return [...plan.fields.values()]
+    .map((entry) => entry.expressionAst)
+    .filter((expression) => collectRelationQuantifierFields(expression).length > 0);
+}
+
 /**
  * Return a copy of record frontmatter with virtual values overlaid. Stored
  * same-name values are intentionally overwritten, never consulted.
@@ -158,13 +189,19 @@ export function projectDerivedFields(
   for (const field of plan.order) {
     const entry = plan.fields.get(field);
     if (!entry) continue;
-    if (entry.dependencies.some((dependency) => projected[dependency] == null)) {
+    const relationDependencies = new Set(collectRelationQuantifierFields(entry.expressionAst));
+    if (entry.dependencies.some((dependency) =>
+      projected[dependency] == null && !relationDependencies.has(dependency)
+    )) {
       projected[field] = null;
       continue;
     }
     let value: unknown;
     try {
-      value = evaluateExpression(bindToday(entry.expressionAst, options.asOf), { frontmatter: projected });
+      value = evaluateExpression(bindToday(entry.expressionAst, options.asOf), {
+        frontmatter: projected,
+        ...(options.relationQuantifiers ? { relationQuantifiers: options.relationQuantifiers } : {}),
+      });
     } catch (error) {
       throw new Error(`${runtimeLabel(field, options.notePath)} evaluation failed: ${(error as Error).message}`);
     }
@@ -192,6 +229,11 @@ function collectDependencies(expression: Expression, field: string, path: string
           throw new Error(`${path}.${field}.derived.expression: only named pure functions are supported`);
         }
         const name = (call.callee as Identifier).name;
+        if (name === 'all' || name === 'any') {
+          const relationField = getRelationQuantifierField(call);
+          dependencies.add(relationField);
+          return;
+        }
         if (REJECTED_FUNCTIONS.has(name)) {
           throw new Error(`${path}.${field}.derived.expression: ${name}() is not supported for derived fields`);
         }

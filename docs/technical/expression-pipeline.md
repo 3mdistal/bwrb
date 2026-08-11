@@ -4,10 +4,12 @@
 
 Schema-declared derived fields reuse this parser and evaluator through
 `src/lib/derived-fields.ts`. Schema loading validates the resolved effective
-type, builds a dependency-first plan, and rejects impure or non-record-local
-access. Query surfaces project the virtual overlay before `--where`, sorting,
-and rendering. A command resolves `--as-of` once and threads that same day into
-both ordinary `today()` calls and derived projection.
+type, builds a dependency-first plan, and rejects impure access. Query surfaces
+project the virtual overlay before `--where`, sorting, and rendering. A command
+resolves `--as-of` once and threads that same day into both ordinary `today()`
+calls and derived projection. Boolean expressions may use one-hop relation
+quantifiers; the command shell owns the single immutable vault index used to
+resolve their targets.
 
 ---
 
@@ -83,6 +85,9 @@ This reuses the same parser/evaluator, but not targeting policy.
 5. Runtime context construction
    - `buildEvalContext()` in `src/lib/expression.ts` builds `frontmatter` + `file.*` values.
    - `query.ts` computes hierarchy maps once per filter pass when expressions use hierarchy functions.
+   - When `all()` or `any()` is present directly or in a derived-field plan,
+     `query.ts` builds one vault note index and pre-resolves every referenced
+     target before predicate evaluation.
 
 6. Runtime evaluation
    - `matchesExpression()` parses + evaluates and coerces to boolean.
@@ -118,11 +123,11 @@ Rule: keep policy decisions at command/targeting boundaries. Keep lower-level he
 
 | Layer | Owns | Does Not Own |
 |-------|------|--------------|
-| `src/lib/expression.ts` | Parse/eval semantics, built-ins, operator behavior, context property lookup | CLI mode policy, warning formatting, command exits |
+| `src/lib/expression.ts` | Parse/eval semantics, built-ins, quantifier predicate grammar and empty-set behavior, context property lookup | Vault reads, relation resolution, CLI mode policy, command exits |
 | `src/lib/where-normalize.ts` | String rewrite for hyphenated keys in expressions | Schema/type validation, output rendering |
 | `src/lib/expression-validation.ts` | Static analysis for known type context; unknown-field/select-option findings | Runtime file filtering, printing, process exit |
 | `src/lib/where-targeting.ts` | Apply strict-vs-permissive `--where` policy (typed early validation when available), then delegate runtime filtering | Expression language semantics; command output rendering |
-| `src/lib/query.ts` | Apply expressions to file sets; hierarchy precomputation for hierarchy functions | Strict/permissive policy decisions; JSON envelope rendering |
+| `src/lib/query.ts` | Apply expressions to file sets; hierarchy precomputation; one-snapshot, source-aware relation-target resolution | Graph algorithms beyond one hop; scheduling policy; JSON envelope rendering |
 | `src/lib/targeting.ts` + commands | Orchestrate selector order and route failures to text/JSON output flows | Low-level parse/eval semantics |
 | `src/lib/output.ts` | JSON envelope helpers and exit-code constants | Expression semantics |
 
@@ -141,6 +146,13 @@ Rule: keep policy decisions at command/targeting boundaries. Keep lower-level he
   - Command behavior stays permissive to support migration workflows described in product docs.
 
 This mirrors current product policy; do not tighten permissive mode in docs-only changes.
+
+Relation quantifiers are deliberately stricter at runtime in both modes because
+silently dropping a corrupt edge changes the truth of `all()` and `any()`.
+Constrained relations are target-field checked against every allowed schema
+type up front. Unconstrained relations validate stored target fields against
+each resolved target's concrete type. Resolution and predicate failures are
+hard errors.
 
 ---
 
