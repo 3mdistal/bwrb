@@ -94,14 +94,17 @@ jobs:
         if: steps.decision.outputs.run_docs_build == 'true'
         run: pnpm -C docs-site build
 
-  test:
-    name: Test
+  quality:
+    name: Quality, package, and static checks
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -109,21 +112,8 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Cache ripgrep
-        id: cache-ripgrep
-        uses: actions/cache@v4
-        with:
-          path: /usr/bin/rg
-          key: ripgrep-${{ runner.os }}-14.1
-
-      - name: Install ripgrep
-        if: steps.cache-ripgrep.outputs.cache-hit != 'true'
-        run: |
-          curl -LO https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb
-          sudo dpkg -i ripgrep_14.1.1-1_amd64.deb
-
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build
         run: pnpm build
@@ -140,21 +130,10 @@ jobs:
       - name: Check for dead code (Knip)
         run: pnpm knip
 
-      - name: Run retrying feedback tests (excluding PTY)
-        run: pnpm test -- --exclude='**/*.pty.test.ts'
-
-      - name: Run retrying feedback tests (excluding PTY) with dist
-        run: pnpm test -- --exclude='**/*.pty.test.ts'
-        env:
-          BWRB_TEST_DIST: 1
-
-      - name: Verify deterministic benchmark fixtures
-        run: pnpm test:bench
-
-  test-retry-zero:
-    name: Retry-zero reliability (non-PTY)
+  test_source:
+    name: Source tests (non-PTY)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -180,48 +159,211 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Run retry-zero reliability tests (excluding PTY)
-        id: retry_zero
-        run: pnpm test:reliability
+      - name: Run retrying feedback tests (excluding PTY)
+        run: pnpm test -- --exclude='**/*.pty.test.ts'
 
-      - name: Summarize retry-zero JSON results
-        if: always()
+  test_dist:
+    name: Dist tests (non-PTY)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install ripgrep
         run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const input = 'artifacts/health/retry-zero-results.json';
-          const output = 'artifacts/health/retry-zero-summary.json';
-          if (!fs.existsSync(input)) {
-            console.log('Retry-zero summary: results file not found; the run is unmeasured.');
-            process.exit(0);
-          }
-          const data = JSON.parse(fs.readFileSync(input, 'utf8'));
-          const assertions = (data.testResults || []).flatMap((suite) => suite.assertionResults || []);
-          const count = (statuses) => assertions.filter((test) => statuses.includes(test.status)).length;
-          const summary = {
-            passed: count(['passed']),
-            failed: count(['failed']),
-            skipped: count(['skipped']),
-            pending: count(['pending', 'todo']),
-            retried: 0,
-            ptySupported: 0,
-            ptySkipped: 0,
-            retryMode: 'retry-zero',
-            pty: 'skipped',
-          };
-          fs.writeFileSync(output, `${JSON.stringify(summary, null, 2)}\n`);
-          console.log('Retry-zero summary:', summary);
-          NODE
+          curl -LO https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb
+          sudo dpkg -i ripgrep_14.1.1-1_amd64.deb
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Run retrying feedback tests (excluding PTY) with dist
+        run: pnpm test -- --exclude='**/*.pty.test.ts'
+        env:
+          BWRB_TEST_DIST: 1
+
+  benchmarks:
+    name: Deterministic benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify deterministic benchmark fixtures
+        run: pnpm test:bench
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: [quality, test_source, test_dist, benchmarks]
+    steps:
+      - name: Require every Test component
+        env:
+          BENCHMARKS_RESULT: ${{ needs.benchmarks.result }}
+          DIST_RESULT: ${{ needs.test_dist.result }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          SOURCE_RESULT: ${{ needs.test_source.result }}
+        run: |
+          for result in "$QUALITY_RESULT" "$SOURCE_RESULT" "$DIST_RESULT" "$BENCHMARKS_RESULT"; do
+            if [ "$result" != "success" ]; then
+              echo "A required Test component did not succeed."
+              exit 1
+            fi
+          done
+
+  test_retry_zero_shard:
+    name: Retry-zero shard ${{ matrix.shard }}/2
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install ripgrep
+        run: |
+          curl -LO https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb
+          sudo dpkg -i ripgrep_14.1.1-1_amd64.deb
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Run retry-zero reliability shard (excluding PTY)
+        id: retry_zero
+        run: >-
+          pnpm test:reliability --
+          --shard=${{ matrix.shard }}/2
+          --reporter=default
+          --reporter=blob
+          --outputFile=artifacts/health/retry-zero-shard-${{ matrix.shard }}.blob
+
+      - name: Upload retry-zero shard report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retry-zero-shard-${{ matrix.shard }}
+          path: artifacts/health/retry-zero-shard-${{ matrix.shard }}.blob
+          if-no-files-found: error
+          retention-days: 30
+
+  test-retry-zero:
+    name: Retry-zero reliability (non-PTY)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ always() }}
+    needs: [test_retry_zero_shard]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download retry-zero shard reports
+        id: download_shards
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: retry-zero-shard-*
+          path: artifacts/health/retry-zero-shards
+          merge-multiple: true
+
+      - name: Merge retry-zero shard results
+        id: merge_results
+        if: always()
+        continue-on-error: true
+        run: >-
+          pnpm exec vitest run
+          --merge-reports=artifacts/health/retry-zero-shards
+          --reporter=default
+          --reporter=json
+          --outputFile=artifacts/health/retry-zero-results.json
+
+      - name: Verify retry-zero coverage and summarize results
+        id: aggregate_results
+        if: always()
+        continue-on-error: true
+        run: >-
+          pnpm health:retry-zero-aggregate --
+          --results artifacts/health/retry-zero-results.json
+          --expected-root tests/ts
+          --shard-dir artifacts/health/retry-zero-shards
+          --expected-shards 2
+          --summary artifacts/health/retry-zero-summary.json
+          --manifest artifacts/health/retry-zero-manifest.json
 
       - name: Write retry-zero health report
         if: always()
         env:
-          RETRY_ZERO_OUTCOME: ${{ steps.retry_zero.outcome }}
+          AGGREGATE_OUTCOME: ${{ steps.aggregate_results.outcome }}
+          DOWNLOAD_OUTCOME: ${{ steps.download_shards.outcome }}
+          MERGE_OUTCOME: ${{ steps.merge_results.outcome }}
+          SHARD_JOB_RESULT: ${{ needs.test_retry_zero_shard.result }}
         run: |
           if [ -f artifacts/health/retry-zero-results.json ]; then
             STATUS=failed
-            if [ "$RETRY_ZERO_OUTCOME" = "success" ]; then STATUS=passed; fi
             CLASSIFICATION=measured
+            if [ "$SHARD_JOB_RESULT" = "success" ] && \
+               [ "$DOWNLOAD_OUTCOME" = "success" ] && \
+               [ "$MERGE_OUTCOME" = "success" ] && \
+               [ "$AGGREGATE_OUTCOME" = "success" ]; then
+              STATUS=passed
+            fi
           else
             STATUS=not-run
             CLASSIFICATION=unmeasured
@@ -236,6 +378,7 @@ jobs:
             --pty skipped \
             --raw-artifact artifacts/health/retry-zero-results.json \
             --raw-artifact artifacts/health/retry-zero-summary.json \
+            --raw-artifact artifacts/health/retry-zero-manifest.json \
             --out artifacts/health/retry-zero-report.json
 
       - name: Upload health report artifacts
@@ -246,6 +389,22 @@ jobs:
           path: artifacts/health/
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Enforce retry-zero outcome
+        if: always()
+        env:
+          AGGREGATE_OUTCOME: ${{ steps.aggregate_results.outcome }}
+          DOWNLOAD_OUTCOME: ${{ steps.download_shards.outcome }}
+          MERGE_OUTCOME: ${{ steps.merge_results.outcome }}
+          SHARD_JOB_RESULT: ${{ needs.test_retry_zero_shard.result }}
+        run: |
+          if [ "$SHARD_JOB_RESULT" != "success" ] || \
+             [ "$DOWNLOAD_OUTCOME" != "success" ] || \
+             [ "$MERGE_OUTCOME" != "success" ] || \
+             [ "$AGGREGATE_OUTCOME" != "success" ]; then
+            echo "Retry-zero reliability did not produce a complete successful aggregate."
+            exit 1
+          fi
 
   windows_lock_tests:
     name: Windows Lock Tests

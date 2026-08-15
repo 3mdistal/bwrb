@@ -46,6 +46,7 @@
     "knip": "knip",
     "knip:prod": "knip --production",
     "health:report": "tsx src/tools/health/report.ts",
+    "health:retry-zero-aggregate": "tsx src/tools/health/retry-zero-aggregate.ts",
     "postinstall": "chmod +x node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true"
   },
   "keywords": [
