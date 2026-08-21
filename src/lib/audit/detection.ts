@@ -1298,7 +1298,7 @@ function checkRelationFieldIssues(
         rawString,
         rawTarget,
         field.source,
-        resolvedTarget.candidates[0],
+        resolvedTarget.candidates,
         noteTargetIndex
       );
       if (wrongTypeIssue) {
@@ -1335,7 +1335,7 @@ function checkRelationFieldIssues(
       issues.push({
         severity: 'warning',
         code: 'ambiguous-link-target',
-        message: `Ambiguous link target for ${fieldName}: '${rawTarget}' matches multiple files`,
+        message: `Ambiguous link target for ${fieldName}: '${rawTarget}' matches multiple files; path-qualify one of ${filteredCandidates.join(', ')}`,
         field: fieldName,
         value: rawString,
         candidates: filteredCandidates,
@@ -1360,7 +1360,7 @@ function checkRelationFieldIssues(
         rawString,
         rawTarget,
         field.source,
-        resolvedPath,
+        [resolvedPath],
         noteTargetIndex
       );
       if (sourceIssue) {
@@ -1842,10 +1842,10 @@ function checkResolvedContextSource(
   value: string,
   target: string,
   source: string | string[],
-  resolvedPath: string | undefined,
+  resolvedPaths: string[],
   noteTargetIndex: NoteTargetIndex | undefined
 ): AuditIssue | null {
-  if (!resolvedPath || !noteTargetIndex) return null;
+  if (resolvedPaths.length === 0 || !noteTargetIndex) return null;
 
   // Normalize source to array
   const sources = Array.isArray(source) ? source : [source];
@@ -1860,14 +1860,38 @@ function checkResolvedContextSource(
     return null;
   }
 
-  const pathKey = resolvedPath.replace(/\.md$/, '');
-  const actualType =
-    noteTargetIndex.pathNoExtToType.get(pathKey) ??
-    noteTargetIndex.pathToType.get(resolvedPath);
-  if (!actualType) {
-    // Note doesn't exist or has no type - stale reference check handles this
-    return null;
+  const candidates = resolvedPaths.map((path) => ({
+    path,
+    type: noteTargetIndex.pathNoExtToType.get(path.replace(/\.md$/, '')) ??
+      noteTargetIndex.pathToType.get(path),
+  }));
+  const typedCandidates = candidates.filter(
+    (candidate): candidate is { path: string; type: string } => Boolean(candidate.type)
+  );
+
+  if (candidates.length > 1) {
+    const candidateSummary = candidates
+      .map((candidate) => `${candidate.path} (${candidate.type ?? 'no type'})`).join(', ');
+    return {
+      severity: 'error', code: 'invalid-source-type',
+      message: `Type mismatch: '${fieldName}' expects ${sources.join(' or ')}, but '${target}' matches only disallowed candidates: ${candidateSummary}; path-qualify the intended note`,
+      field: fieldName, value, expectedType: sources[0],
+      expected: validTypes.size > 1 ? Array.from(validTypes) : sources[0],
+      candidates: candidates.map((candidate) => candidate.path), autoFixable: false,
+    };
   }
+
+  if (typedCandidates.length === 0) {
+    return {
+      severity: 'error', code: 'invalid-source-type',
+      message: `Type mismatch: '${fieldName}' expects ${sources.join(' or ')}, but '${target}' exists without a type`,
+      field: fieldName, value, expectedType: sources[0],
+      expected: validTypes.size > 1 ? Array.from(validTypes) : sources[0],
+      candidates: resolvedPaths, autoFixable: false,
+    };
+  }
+
+  const actualType = typedCandidates[0]!.type;
   
   // Check if actual type is in the set of valid types
   if (validTypes.has(actualType)) {

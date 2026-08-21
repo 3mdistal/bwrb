@@ -920,6 +920,8 @@ export interface ContextValidationError extends ValidationError {
   actualType?: string;
   /** The expected types based on the source constraint */
   expectedTypes?: string[];
+  /** Candidate paths when a target is ambiguous or has no allowed match */
+  candidates?: string[];
 }
 
 /**
@@ -1143,30 +1145,53 @@ async function validateSingleContextValue(
       targetName,
       expectedTypes: Array.from(validTypes),
       expected: Array.from(validTypes),
+      candidates: resolved.sourceCandidates,
     };
   }
 
-  const candidateTypes = resolved.candidates
-    .map((candidatePath) => {
+  const candidateDetails = resolved.candidates.map((candidatePath) => {
       const pathKey = candidatePath.replace(/\.md$/, '');
       return {
         path: candidatePath,
         type: noteTargetIndex.pathNoExtToType.get(pathKey),
       };
-    })
+    });
+  const candidateTypes = candidateDetails
     .filter((candidate): candidate is { path: string; type: string } => Boolean(candidate.type));
 
-  const wrongTypeCandidate = candidateTypes[0];
-  if (wrongTypeCandidate) {
+  if (candidateDetails.length > 1) {
+    const candidateSummary = candidateDetails
+      .map((candidate) => `${candidate.path} (${candidate.type ? `type "${candidate.type}"` : 'no type'})`)
+      .join(', ');
+    return {
+      type: 'invalid_context_source', field: fieldName, value,
+      message: `"${targetName}" matches only disallowed candidates: ${candidateSummary}; expected ${formatExpectedTypes(validTypes)}; path-qualify the intended note`,
+      targetName, expectedTypes: Array.from(validTypes), expected: Array.from(validTypes),
+      candidates: candidateDetails.map((candidate) => candidate.path),
+    };
+  }
+
+  if (candidateTypes.length === 1) {
+    const firstCandidate = candidateTypes[0]!;
     return {
       type: 'invalid_context_source',
       field: fieldName,
       value,
-      message: `"${targetName}" is type "${wrongTypeCandidate.type}", expected ${formatExpectedTypes(validTypes)}`,
+      message: `"${targetName}" is type "${firstCandidate.type}", expected ${formatExpectedTypes(validTypes)}`,
       targetName,
-      actualType: wrongTypeCandidate.type,
+      actualType: firstCandidate.type,
       expectedTypes: Array.from(validTypes),
       expected: Array.from(validTypes),
+      candidates: [firstCandidate.path],
+    };
+  }
+
+  if (resolved.candidates.length > 0) {
+    return {
+      type: 'invalid_context_source', field: fieldName, value,
+      message: `"${targetName}" exists but has no type; expected ${formatExpectedTypes(validTypes)}`,
+      targetName, expectedTypes: Array.from(validTypes), expected: Array.from(validTypes),
+      candidates: resolved.candidates,
     };
   }
 

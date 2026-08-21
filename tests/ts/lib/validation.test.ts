@@ -1187,6 +1187,7 @@ type: milestone
         ]);
         expect(result.errors[0].message).toContain('Ambiguous relation target');
         expect(result.errors[0].message).toContain('path-qualify');
+        expect(result.errors[0].candidates).toHaveLength(2);
       } finally {
         await rm(tempVaultDir, { recursive: true, force: true });
       }
@@ -1232,6 +1233,27 @@ type: milestone
       }
     });
 
+    it('lists every wrong-type candidate for a bare relation target', async () => {
+      const { relationSchema, tempVaultDir } = await buildRelationContractVault();
+      try {
+        await writeFile(join(tempVaultDir, 'Tasks', 'Only Wrong.md'), '---\ntype: task\n---\n');
+        const result = await validateContextFields(relationSchema, tempVaultDir, 'task', {
+          type: 'task', milestone: '[[Only Wrong]]',
+        });
+
+        expect(result.valid).toBe(false);
+        expect(result.errors[0].candidates).toEqual(expect.arrayContaining([
+          'Ideas/Only Wrong.md', 'Tasks/Only Wrong.md',
+        ]));
+        expect(result.errors[0].message).toContain('Ideas/Only Wrong.md (type "idea")');
+        expect(result.errors[0].message).toContain('Tasks/Only Wrong.md (type "task")');
+        expect(result.errors[0].message).toContain('path-qualify');
+        expect(result.errors[0]).not.toHaveProperty('actualType');
+      } finally {
+        await rm(tempVaultDir, { recursive: true, force: true });
+      }
+    });
+
     it('does not accept a typeless note as a typed relation target based on directory', async () => {
       const { relationSchema, tempVaultDir } = await buildRelationContractVault();
       try {
@@ -1252,7 +1274,8 @@ type: milestone
           }),
         ]);
         expect(result.errors[0]).not.toHaveProperty('actualType');
-        expect(result.errors[0].message).toContain('Referenced note not found');
+        expect(result.errors[0].message).toContain('exists but has no type');
+        expect(result.errors[0].candidates).toEqual(['Ideas/Untyped.md']);
       } finally {
         await rm(tempVaultDir, { recursive: true, force: true });
       }

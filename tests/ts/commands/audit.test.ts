@@ -2088,6 +2088,10 @@ unknownField: should warn
               prompt: 'relation',
               source: 'any',
             },
+            idea_ref: {
+              prompt: 'relation',
+              source: 'idea',
+            },
           },
         },
         idea: {
@@ -2333,6 +2337,46 @@ milestone: "[[Only Wrong]]"
         actualType: 'idea',
         expected: 'milestone',
       });
+    });
+
+    it('reports an existing typeless note as an invalid typed relation target', async () => {
+      await writeFile(join(tempVaultDir, 'ideas', 'Untyped.md'), '---\ntitle: Untyped\n---\n');
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Typeless Ref.md'),
+        '---\ntype: task\nstatus: backlog\nidea_ref: "[[Untyped]]"\n---\n'
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const taskFile = output.files.find((f: { path: string }) => f.path.includes('Typeless Ref.md'));
+      const issue = taskFile.issues.find((i: { code: string }) => i.code === 'invalid-source-type');
+      expect(issue).toMatchObject({ field: 'idea_ref', expectedType: 'idea', autoFixable: false });
+      expect(issue).not.toHaveProperty('actualType');
+      expect(issue.message).toContain('exists without a type');
+      expect(issue.candidates).toEqual(['ideas/Untyped.md']);
+    });
+
+    it('lists every wrong-type candidate and tells the user to path-qualify', async () => {
+      await writeFile(join(tempVaultDir, 'ideas', 'Shared Wrong.md'), '---\ntype: idea\nstatus: raw\n---\n');
+      await writeFile(join(tempVaultDir, 'objectives/tasks', 'Shared Wrong.md'), '---\ntype: task\nstatus: backlog\n---\n');
+      await writeFile(
+        join(tempVaultDir, 'objectives/tasks', 'Multiple Wrong Ref.md'),
+        '---\ntype: task\nstatus: backlog\nmilestone: "[[Shared Wrong]]"\n---\n'
+      );
+
+      const result = await runCLI(['audit', 'task', '--output', 'json'], tempVaultDir);
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      const taskFile = output.files.find((f: { path: string }) => f.path.includes('Multiple Wrong Ref.md'));
+      const issue = taskFile.issues.find((i: { code: string }) => i.code === 'invalid-source-type');
+      expect(issue.candidates).toEqual(expect.arrayContaining([
+        'ideas/Shared Wrong.md',
+        'objectives/tasks/Shared Wrong.md',
+      ]));
+      expect(issue.message).toContain('path-qualify');
+      expect(issue.message).toContain('ideas/Shared Wrong.md (idea)');
+      expect(issue.message).toContain('objectives/tasks/Shared Wrong.md (task)');
     });
 
     it('should detect type mismatch when context field references wrong type', async () => {
