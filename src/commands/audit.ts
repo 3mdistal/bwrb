@@ -133,6 +133,7 @@ Issue Types:
   duplicate-note-id     Stable note id is used by multiple notes
   self-reference        Relation field references the same note
   ambiguous-link-target Relation target matches multiple files
+  invalid-source-type   Typed relation target has a wrong or missing note type
   invalid-list-element  List field contains non-string values
   wrong-scalar-type     Scalar value has wrong type for schema
   invalid-date-format   Date value too imprecise or malformed for field granularity

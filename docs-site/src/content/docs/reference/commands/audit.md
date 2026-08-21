@@ -123,6 +123,8 @@ Delete semantics in repair mode:
 | `fork-cycle` | Following immediate `forked-from` references forms a cycle (error; flag-only). Traversal is cycle-safe and always terminates |
 | `format-violation` | Field value doesn't match expected format (wikilink, etc.) |
 | `stale-reference` | Wikilink points to non-existent file |
+| `invalid-source-type` | Typed relation points to an existing note with the wrong type or no `type`. When a bare name matches multiple wrong-type notes, the issue lists every candidate so the reference can be path-qualified |
+| `ambiguous-link-target` | Relation target matches multiple allowed files; path-qualify the wikilink using one of the reported candidate paths |
 | `trailing-whitespace` | Trailing spaces/tabs on raw frontmatter `key: value` lines (warning; auto-fixable) |
 | `wrong-scalar-type` | Scalar value has wrong type for schema |
 | `illegal-aliases` | An [`alias`-role field](/reference/schema/#alias) violates the Obsidian aliases format (array of **non-empty, unique** strings): an empty/whitespace entry, a **duplicate** entry, or a non-string entry (**error** — matching what `bwrb new`/`bwrb edit` reject on write; empty/whitespace + duplicate cases are **auto-fixable**, a non-string entry is **flag-only** — see below) |

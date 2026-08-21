@@ -348,6 +348,12 @@ describe('#636 under() canonicalizes aliases', () => {
       'aliases:',
       '  - Dup',
     ]);
+    await writeNote('Contexts/Alias Carrier.md', [
+      'type: context',
+      'aliases:',
+      '  - Verse',
+    ]);
+    await writeNote('Contexts/Verse.md', ['type: context', 'parent: "[[Beta]]"']);
 
     // Task uses the ALIAS as its context value.
     await writeNote('Tasks/Aliased context task.md', [
@@ -366,6 +372,11 @@ describe('#636 under() canonicalizes aliases', () => {
       'type: task',
       'status: active',
       'context: "[[Dup]]"',
+    ]);
+    await writeNote('Tasks/Real name wins task.md', [
+      'type: task',
+      'status: active',
+      'context: "[[Verse]]"',
     ]);
   });
 
@@ -426,6 +437,22 @@ describe('#636 under() canonicalizes aliases', () => {
     );
     expect(viaBeta.exitCode).toBe(0);
     expect(viaBeta.stdout).not.toContain('Ambiguous alias task.md');
+  });
+
+  it('prefers a real note name over a colliding alias in under()', async () => {
+    const viaRealParent = await runCLI(
+      ['list', 'task', '--where', "under(context, '[[Beta]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(viaRealParent.exitCode).toBe(0);
+    expect(viaRealParent.stdout).toContain('Real name wins task.md');
+
+    const viaAliasCarrier = await runCLI(
+      ['list', 'task', '--where', "under(context, '[[Alias Carrier]]')", '--output', 'paths'],
+      vaultDir
+    );
+    expect(viaAliasCarrier.exitCode).toBe(0);
+    expect(viaAliasCarrier.stdout).not.toContain('Real name wins task.md');
   });
 
   it('does not crash on a dangling alias', async () => {
