@@ -58,6 +58,7 @@ import {
 } from '../lib/audit/schema-docs.js';
 import { parseFuzzyThreshold } from '../lib/audit/unlinked-mention.js';
 import { runRetentionRemediation } from '../lib/audit/retention.js';
+import { normalizeExactAuditPaths } from '../lib/audit/exact-path.js';
 import chalk from 'chalk';
 
 const FIX_TARGETING_ERROR_SUMMARY =
@@ -170,6 +171,7 @@ Targeting Options:
   --path <glob>     Filter by file path pattern
   --where <expr>    Filter by frontmatter expression
   --body <query>    Filter by body content
+  --exact-path <path> Audit one literal vault-relative managed Markdown path (repeatable)
   --all             Target all files (explicit vault-wide selector)
 
 Safety:
@@ -187,6 +189,7 @@ Examples:
   bwrb audit --path "Ideas/**"    # Check specific directory
   bwrb audit --where "status=active"  # Check files with specific status
   bwrb audit --body "TODO"        # Check files containing TODO
+  bwrb audit --exact-path="Ideas/One Note.md" --exact-path="Ideas/Two Note.md"
   bwrb audit --only missing-required
   bwrb audit --ignore unknown-field
   bwrb audit --output json        # JSON output for CI
@@ -206,6 +209,11 @@ Examples:
   .option('-p, --path <glob>', 'Filter by file path pattern')
   .option('-w, --where <expr...>', 'Filter by frontmatter expression')
   .option('-b, --body <query>', 'Filter by body content')
+  .option(
+    '--exact-path <path>',
+    'Audit a literal vault-relative managed Markdown path (repeatable; report-only)',
+    (value: string, previous: string[] = []) => [...previous, value]
+  )
   .option('-a, --all', 'Target all files (explicit vault-wide selector)')
   .option('--strict', 'Treat unknown fields as errors instead of warnings')
   .option('--only <issue-type>', 'Only report specific issue type')
@@ -245,6 +253,7 @@ Examples:
     const dryRunMode = options.dryRun ?? false;
     const executeMode = options.execute ?? false;
     const retentionAction = options.retentionAction as 'archive' | 'tombstone' | 'delete' | undefined;
+    const exactPaths = options.exactPath;
     const mentionFuzzyRequested = commandHasRawFlag('--mention-fuzzy');
     const mentionFuzzyDisabled = commandHasRawFlag('--no-mention-fuzzy');
     const exitWithValidationError = (
@@ -287,6 +296,10 @@ Examples:
     // --fix is not compatible with JSON output
     if (fixMode && jsonMode) {
       exitWithValidationError('--fix is not compatible with --output json');
+    }
+
+    if (exactPaths && exactPaths.length > 0 && fixMode) {
+      exitWithValidationError('--exact-path is report-only and cannot be combined with --fix');
     }
 
     if (executeMode && dryRunMode) {
@@ -366,6 +379,20 @@ Examples:
       let whereExprs = options.where;
       const bodyQuery = options.body;
 
+      let normalizedExactPaths: string[] | undefined;
+      if (exactPaths && exactPaths.length > 0) {
+        try {
+          normalizedExactPaths = normalizeExactAuditPaths(exactPaths);
+        } catch (err) {
+          exitWithValidationError(err instanceof Error ? err.message : String(err));
+        }
+        if (target || typePath || pathGlob || whereExprs?.length || bodyQuery || options.all) {
+          exitWithValidationError(
+            '--exact-path cannot be combined with a positional target, --path, --type, --where, --body, or --all'
+          );
+        }
+      }
+
       // Handle positional argument with smart detection
       if (target) {
         const existingOpts: Record<string, string | string[] | undefined> = {};
@@ -435,6 +462,7 @@ Examples:
         typePath,
         strict: options.strict ?? false,
         pathFilter: pathGlob,
+        exactPaths: normalizedExactPaths,
         whereExpressions: whereExprs,
         textQuery: bodyQuery,
         onlyIssue: options.only as IssueCode | undefined,
@@ -507,9 +535,10 @@ Examples:
         outputJsonResults(
           results,
           summary,
-          undocumented
-            ? { schemaDocs: { types: undocumented.types, fields: undocumented.fields } }
-            : undefined
+          {
+            ...(normalizedExactPaths ? { selectedPaths: normalizedExactPaths } : {}),
+            ...(undocumented ? { schemaDocs: { types: undocumented.types, fields: undocumented.fields } } : {}),
+          }
         );
       } else {
         outputTextResults(results, summary, vaultDir);

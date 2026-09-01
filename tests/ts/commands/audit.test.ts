@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, mkdir, writeFile, readFile } from 'fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, readFile, chmod } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { createTestVault, cleanupTestVault, runCLI, TEST_SCHEMA } from '../fixtures/setup.js';
 import { parseFrontmatter } from '../../../src/lib/frontmatter.js';
+import { assertCanonicalExactAuditPaths } from '../../../src/lib/audit/exact-path.js';
 
 describe('audit command', () => {
   let vaultDir: string;
@@ -894,6 +895,184 @@ customField: value
       expect(unknownFields).toContain('customField');
       expect(unknownFields).not.toContain('id');
       expect(unknownFields).not.toContain('name');
+    });
+  });
+
+  describe('--exact-path', () => {
+    let tempVaultDir: string;
+
+    beforeEach(async () => {
+      tempVaultDir = await mkdtemp(join(tmpdir(), 'bwrb-audit-exact-path-'));
+      await mkdir(join(tempVaultDir, '.bwrb'), { recursive: true });
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(TEST_SCHEMA, null, 2)
+      );
+      await mkdir(join(tempVaultDir, 'Ideas'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await rm(tempVaultDir, { recursive: true, force: true });
+    });
+
+    it('audits the sorted unique literal union and reports the selected set in JSON', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Alpha.md'),
+        `---\ntype: idea\nstatus: raw\npriority: medium\n---\n`
+      );
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Zulu.md'),
+        `---\ntype: idea\nstatus: raw\npriority: medium\n---\n`
+      );
+      // An invalid managed neighbor must not leak into the exact selection.
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Undeclared Neighbor.md'),
+        `---\ntype: idea\nstatus: invalid\npriority: medium\n---\n`
+      );
+
+      const result = await runCLI([
+        'audit',
+        '--exact-path', 'Ideas/Zulu.md',
+        '--exact-path', 'Ideas/Alpha.md',
+        '--output', 'json',
+      ], tempVaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.selectedPaths).toEqual(['Ideas/Alpha.md', 'Ideas/Zulu.md']);
+      expect(output.summary.filesChecked).toBe(2);
+      expect(output.files).toEqual([]);
+    });
+
+    it('reports an invalid exact target while excluding an invalid undeclared neighbor', async () => {
+      await writeFile(join(tempVaultDir, 'Selected Orphan.md'), '# no frontmatter\n');
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Undeclared Invalid.md'),
+        `---\ntype: idea\nstatus: also-invalid\npriority: medium\n---\n`
+      );
+
+      const result = await runCLI([
+        'audit',
+        '--exact-path', 'Selected Orphan.md',
+        '--output', 'json',
+      ], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      expect(output.selectedPaths).toEqual(['Selected Orphan.md']);
+      expect(output.summary.filesChecked).toBe(1);
+      expect(output.files).toHaveLength(1);
+      expect(output.files[0].path).toBe('Selected Orphan.md');
+      expect(output.files[0].issues.map((issue: { code: string }) => issue.code)).toContain('missing-frontmatter');
+    });
+
+    it('treats special characters literally, including an option-like filename via equals syntax', async () => {
+      const rootSchema = {
+        ...TEST_SCHEMA,
+        types: {
+          ...TEST_SCHEMA.types,
+          idea: { ...TEST_SCHEMA.types.idea, output_dir: '-Ideas' },
+        },
+      };
+      await writeFile(
+        join(tempVaultDir, '.bwrb', 'schema.json'),
+        JSON.stringify(rootSchema, null, 2)
+      );
+      const paths = [
+        '-Ideas/-leading.md',
+        '-Ideas/literal * ? [x] {x} :(glob) "quote" Unicode café.md',
+      ];
+      await mkdir(join(tempVaultDir, '-Ideas'), { recursive: true });
+      for (const path of paths) {
+        await writeFile(
+          join(tempVaultDir, path),
+          `---\ntype: idea\nstatus: raw\npriority: medium\n---\n`
+        );
+      }
+
+      const result = await runCLI([
+        'audit',
+        '--exact-path=-Ideas/-leading.md',
+        '--exact-path', paths[1]!,
+        '--output', 'json',
+      ], tempVaultDir);
+
+      // `?` is an intentionally literal filename character here. Audit still
+      // reports its independent unsafe-filename finding rather than treating
+      // it as a glob selector.
+      expect(result.exitCode).toBe(1);
+      const output = JSON.parse(result.stdout);
+      expect(output.selectedPaths).toEqual([...paths].sort((a, b) => a.localeCompare(b, 'en')));
+      expect(output.summary.filesChecked).toBe(2);
+    });
+
+    it('fails closed for invalid or duplicate requested paths', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Good.md'),
+        `---\ntype: idea\nstatus: raw\npriority: medium\n---\n`
+      );
+      await writeFile(join(tempVaultDir, 'Not Markdown.txt'), 'not Markdown\n');
+      await mkdir(join(tempVaultDir, 'Ideas', 'Directory.md'));
+
+      for (const args of [
+        ['--exact-path', ''],
+        ['--exact-path', '/tmp/absolute.md'],
+        ['--exact-path', '../escape.md'],
+        ['--exact-path', 'Ideas/./Good.md'],
+        ['--exact-path', 'Ideas/Missing.md'],
+        ['--exact-path', 'Not Markdown.txt'],
+        ['--exact-path', 'Ideas/Directory.md'],
+        ['--exact-path', 'Ideas/Good.md', '--exact-path', 'Ideas/Good.md'],
+      ]) {
+        const result = await runCLI(['audit', ...args], tempVaultDir);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('--exact-path');
+      }
+    });
+
+    it('fails closed when an exact target is unreadable', async () => {
+      const unreadablePath = join(tempVaultDir, 'Ideas', 'Unreadable.md');
+      await writeFile(
+        unreadablePath,
+        `---\ntype: idea\nstatus: raw\npriority: medium\n---\n`
+      );
+      await chmod(unreadablePath, 0o000);
+
+      const result = await runCLI([
+        'audit',
+        '--exact-path', 'Ideas/Unreadable.md',
+      ], tempVaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('--exact-path');
+      expect(result.stderr).toContain('readable');
+    });
+
+    it('fails closed when two requested spellings resolve to one physical note', async () => {
+      await expect(assertCanonicalExactAuditPaths([
+        { path: '/vault/Tasks/X.md', relativePath: 'Tasks/X.md' },
+        { path: '/vault/tasks/X.md', relativePath: 'tasks/X.md' },
+      ], async () => '/vault/tasks/X.md')).rejects.toThrow(/ambiguous/);
+    });
+
+    it('is mutually exclusive with every existing target selector and with repair mode', async () => {
+      await writeFile(
+        join(tempVaultDir, 'Ideas', 'Good.md'),
+        `---\ntype: idea\nstatus: raw\npriority: medium\n---\n`
+      );
+      for (const args of [
+        ['idea', '--exact-path', 'Ideas/Good.md'],
+        ['--exact-path', 'Ideas/Good.md', '--type', 'idea'],
+        ['--exact-path', 'Ideas/Good.md', '--path', 'Ideas/**'],
+        ['--exact-path', 'Ideas/Good.md', '--where', "status == 'raw'"],
+        ['--exact-path', 'Ideas/Good.md', '--body', 'anything'],
+        ['--exact-path', 'Ideas/Good.md', '--all'],
+        ['--exact-path', 'Ideas/Good.md', '--fix'],
+      ]) {
+        const result = await runCLI(['audit', ...args], tempVaultDir);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('--exact-path');
+      }
     });
   });
 
