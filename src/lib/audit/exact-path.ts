@@ -8,7 +8,7 @@ import { realpath } from 'fs/promises';
  * vault-relative paths that way on every platform. Rejecting aliases instead
  * of normalizing them keeps callers' requested set machine-verifiable.
  */
-export function normalizeExactAuditPath(value: string): string {
+function normalizeExactAuditPath(value: string): string {
   if (value.length === 0) {
     throw new Error('--exact-path must not be empty');
   }
