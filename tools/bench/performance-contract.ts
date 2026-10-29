@@ -6,7 +6,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path';
 import { generateFixture, type FixtureProfile } from './generate-fixtures.js';
 
 type ContractProfile = Extract<FixtureProfile, 'teenylilthoughts-analogue-5k' | 'teenylilthoughts-analogue'>;
-type ScenarioName = 'absolute-path-edit' | 'exact-basename-edit' | 'list-count';
+type ScenarioName = 'absolute-path-edit' | 'exact-basename-edit' | 'list-count' | 'patch-batch-123';
 
 export interface ContractObservation {
   scenario: ScenarioName;
@@ -73,13 +73,22 @@ const scenarios: Array<{ name: ScenarioName; targetIndex: number; mutation: bool
   { name: 'absolute-path-edit', targetIndex: 2, mutation: true },
   { name: 'exact-basename-edit', targetIndex: 9, mutation: true },
   { name: 'list-count', targetIndex: 0, mutation: false },
+  { name: 'patch-batch-123', targetIndex: 2, mutation: true },
 ];
+
+/** Notes in the patch batch: the fixture's first 123 tasks (every seventh note from index 2). */
+const PATCH_BATCH_SIZE = 123;
 
 function sha256(value: Buffer): string { return createHash('sha256').update(value).digest('hex'); }
 function stdoutValidity(scenario: ScenarioName, profile: ContractProfile, value: Buffer, expectedTarget?: string): { jsonValid: boolean; valid: boolean; semanticValid: boolean; expected: 'json' | 'count' } {
-  let json: { success?: unknown; updated?: unknown; path?: unknown } | undefined;
+  let json: { success?: unknown; updated?: unknown; path?: unknown; data?: { counts?: { applied?: unknown }; notes?: Array<{ path?: unknown }> } } | undefined;
   try { json = JSON.parse(value.toString('utf8')) as typeof json; } catch { /* reflected by jsonValid */ }
   const parsed = json !== undefined;
+  if (scenario === 'patch-batch-123') {
+    const semanticValid = json?.success === true && json.data?.counts?.applied === PATCH_BATCH_SIZE
+      && json.data.notes?.[0]?.path === expectedTarget?.replace(/\\/g, '/');
+    return { jsonValid: parsed, valid: parsed, semanticValid, expected: 'json' };
+  }
   return scenario === 'list-count'
     ? { jsonValid: parsed, valid: /^\d+\n$/.test(value.toString('utf8')), semanticValid: value.toString('utf8') === `${profile === 'teenylilthoughts-analogue' ? 10_000 : 5_000}\n`, expected: 'count' }
     : { jsonValid: parsed, valid: parsed, semanticValid: json?.success === true && Array.isArray(json.updated) && json.updated.includes('status') && json.path === expectedTarget, expected: 'json' };
@@ -186,10 +195,21 @@ function targetPath(fixture: string, index: number): string {
   const shard = String(index % 12).padStart(2, '0');
   return join(fixture, 'Objectives', 'Tasks', `Area-${shard}`, `Sprint-${Math.floor(index / 120)}`, `task-${String(index).padStart(5, '0')}.md`);
 }
+/** Kept beside the fixture so it does not enter the fixture checksum. */
+function patchManifestPath(fixture: string): string { return `${fixture}.patches.json`; }
+async function writePatchManifest(fixture: string): Promise<void> {
+  const notes = Array.from({ length: PATCH_BATCH_SIZE }, (_, offset) => ({
+    path: relative(fixture, targetPath(fixture, 2 + offset * 7)).replace(/\\/g, '/'),
+    // A shared status plus a per-note month, so every patch is distinct.
+    patch: { status: 'done', deadline: `2027-${String((offset % 12) + 1).padStart(2, '0')}` },
+  }));
+  await writeFile(patchManifestPath(fixture), `${JSON.stringify({ notes })}\n`);
+}
 function command(options: PerformanceContractOptions, fixture: string, scenario: typeof scenarios[number]): string[] {
   const node = options.nodePath ?? process.execPath;
   const cli = resolve(options.cwd, 'dist/index.js');
   if (scenario.name === 'list-count') return [node, cli, '--vault', fixture, 'list', '--count'];
+  if (scenario.name === 'patch-batch-123') return [node, cli, '--vault', fixture, 'edit', '--patches', patchManifestPath(fixture), '--execute'];
   const target = targetPath(fixture, scenario.targetIndex);
   // Exact edit identity is a filename basename (or an alias/path), never an
   // arbitrary frontmatter `name`. This query must not rely on fuzzy fallback.
@@ -198,6 +218,7 @@ function command(options: PerformanceContractOptions, fixture: string, scenario:
 }
 
 async function invoke(options: PerformanceContractOptions, fixture: string, profile: ContractProfile, scenario: typeof scenarios[number], sample: number): Promise<ContractObservation> {
+  if (scenario.name === 'patch-batch-123') await writePatchManifest(fixture);
   const commandLine = command(options, fixture, scenario);
   const target = scenario.mutation ? targetPath(fixture, scenario.targetIndex) : undefined;
   const beforeTarget = target ? await readFile(target) : undefined;
@@ -247,7 +268,7 @@ function summary(scenario: ScenarioName, observations: ContractObservation[]): S
   const mutationToFirst = null;
   const firstOutputToClose = summarizeTimings(success.map(item => item.firstOutputMs !== null ? item.closeMs - item.firstOutputMs : null));
   const rss = summarizeTimings(success.map(item => item.peakRss.valueBytes));
-  const limit = scenario === 'absolute-path-edit' ? 1000 : scenario === 'exact-basename-edit' ? 2000 : 3000;
+  const limit = scenario === 'absolute-path-edit' ? 1000 : scenario === 'exact-basename-edit' ? 2000 : scenario === 'patch-batch-123' ? 15_000 : 3000;
   return {
     scenario, samples: observations.length, successfulSamples: success.length, totalMs: total, mutationToFirstOutputMs: mutationToFirst, firstOutputToCloseMs: firstOutputToClose, peakRssBytes: rss,
     budget: success.length === observations.length && total ? { target: `p95 under ${limit} ms`, met: total.p95 < limit, observed: total.p95, ...(observations.length < 5 ? { reason: 'Three-sample p95 is the maximum/context figure, not a stable acceptance estimate.' } : {}) } : { target: `p95 under ${limit} ms`, met: null, observed: null, reason: 'All samples must pass output and integrity validation.' },
@@ -390,7 +411,7 @@ function parseArgs(argv: string[], cwd: string): PerformanceContractOptions {
   const selectedProfiles = value('--profiles')?.split(',').map(item => item === '10k' ? 'teenylilthoughts-analogue' : item === '5k' ? 'teenylilthoughts-analogue-5k' : item).filter((item): item is ContractProfile => profiles.includes(item as ContractProfile));
   const selectedScenarios = value('--scenarios')?.split(',').filter((item): item is ScenarioName => scenarios.some(scenario => scenario.name === item));
   if (!temp || !out || !Number.isInteger(samples)) throw new Error('Usage: pnpm bench:contract -- --temp <absolute-directory> --out <absolute-directory> [--samples 3] [--contention isolated|shared] [--node <absolute-node22-path>]');
-  if (selectedProfiles?.length === 0 || selectedScenarios?.length === 0) throw new Error('Use --profiles 5k,10k and --scenarios absolute-path-edit,exact-basename-edit,list-count.');
+  if (selectedProfiles?.length === 0 || selectedScenarios?.length === 0) throw new Error('Use --profiles 5k,10k and --scenarios absolute-path-edit,exact-basename-edit,list-count,patch-batch-123.');
   return { tempDir: isAbsolute(temp) ? temp : resolve(cwd, temp), outDir: isAbsolute(out) ? out : resolve(cwd, out), cwd, samples, contention, ...(nodePath ? { nodePath: isAbsolute(nodePath) ? nodePath : resolve(cwd, nodePath) } : {}), ...(selectedProfiles ? { selectedProfiles } : {}), ...(selectedScenarios ? { selectedScenarios } : {}), ...(argv.includes('--parallel-list') ? { parallelList: true } : {}) };
 }
 

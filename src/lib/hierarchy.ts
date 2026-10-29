@@ -56,25 +56,35 @@ export async function buildParentMapFromSchema(
         if (!typeDef?.recursive) continue;
       }
       
-      const typeDef = getType(schema, typePath);
-      if (!typeDef?.recursive) continue;
-      
-      // Get the parent field value
-      const parentValue = frontmatter['parent'];
-      if (!parentValue) continue;
-      
-      // Extract the parent note name from the wikilink
-      const parentTarget = extractWikilinkTarget(String(parentValue));
-      if (parentTarget) {
-        const noteName = basename(file.path, '.md');
-        parentMap.set(noteName, parentTarget);
-      }
+      const edge = parentEdge(schema, file.path, frontmatter);
+      if (edge) parentMap.set(edge.noteName, edge.parentTarget);
     } catch {
       // Skip files that can't be parsed
     }
   }
-  
+
   return parentMap;
+}
+
+/**
+ * The parent edge one note contributes to a parent map: notes of recursive
+ * types whose `parent` is a wikilink. Keyed by basename, like the map.
+ */
+export function parentEdge(
+  schema: LoadedSchema,
+  filePath: string,
+  frontmatter: Record<string, unknown>
+): { noteName: string; parentTarget: string } | undefined {
+  const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
+  if (!typePath || !getType(schema, typePath)?.recursive) return undefined;
+
+  // Get the parent field value
+  const parentValue = frontmatter['parent'];
+  if (!parentValue) return undefined;
+
+  // Extract the parent note name from the wikilink
+  const parentTarget = extractWikilinkTarget(String(parentValue));
+  return parentTarget ? { noteName: basename(filePath, '.md'), parentTarget } : undefined;
 }
 
 /**
@@ -218,13 +228,15 @@ export interface CycleValidationError {
  * @param vaultDir - The vault directory
  * @param noteName - The note being edited/created (basename without .md)
  * @param parentWikilink - The parent value from frontmatter (e.g., "[[Parent Note]]")
+ * @param loadParentMap - Supplies a prebuilt parent map instead of reading the vault
  * @returns null if valid, CycleValidationError if cycle detected
  */
 export async function validateParentNoCycle(
   schema: LoadedSchema,
   vaultDir: string,
   noteName: string,
-  parentWikilink: string
+  parentWikilink: string,
+  loadParentMap: () => Promise<Map<string, string>> = () => buildParentMapFromSchema(schema, vaultDir)
 ): Promise<CycleValidationError | null> {
   // Extract the parent target from the wikilink
   const parentTarget = extractWikilinkTarget(parentWikilink);
@@ -232,9 +244,9 @@ export async function validateParentNoCycle(
     // Not a valid wikilink, let other validation handle it
     return null;
   }
-  
+
   // Build the parent map for cycle detection
-  const parentMap = await buildParentMapFromSchema(schema, vaultDir);
+  const parentMap = await loadParentMap();
   
   // Check for cycle
   const result = detectCycle(noteName, parentTarget, parentMap);

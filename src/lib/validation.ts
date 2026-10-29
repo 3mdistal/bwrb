@@ -13,6 +13,8 @@ import {
   resolveRelationTarget,
   type ManagedFile,
   type NoteTargetIndex,
+  type VaultNoteSnapshot,
+  type VaultNoteSnapshotEntry,
 } from './discovery.js';
 import { basename } from 'path';
 import {
@@ -948,13 +950,16 @@ export interface ContextValidationResult {
  * @param vaultDir - The vault root directory
  * @param typeName - The type of the note being validated
  * @param frontmatter - The frontmatter values to validate
+ * @param options.noteTargetIndex - Resolves targets from a shared discovery
+ *   instead of walking the vault for this call (see {@link createNoteTargetIndexSource})
  * @returns Validation result with any context field errors
  */
 export async function validateContextFields(
   schema: LoadedSchema,
   vaultDir: string,
   typeName: string,
-  frontmatter: Record<string, unknown>
+  frontmatter: Record<string, unknown>,
+  options: { noteTargetIndex?: NoteTargetIndexSource } = {}
 ): Promise<ContextValidationResult> {
   const errors: ContextValidationError[] = [];
   const fields = getFieldsForType(schema, typeName);
@@ -993,11 +998,9 @@ export async function validateContextFields(
     return { valid: true, errors };
   }
 
-  const noteTargetIndex = await buildContextNoteTargetIndex(
-    schema,
-    vaultDir,
-    wikilinkTargets
-  );
+  const noteTargetIndex = options.noteTargetIndex
+    ? await options.noteTargetIndex(wikilinkTargets)
+    : await buildContextNoteTargetIndex(schema, vaultDir, wikilinkTargets);
   for (const { fieldName, field, value } of valuesToValidate) {
       const error = await validateSingleContextValue(
         schema,
@@ -1030,24 +1033,69 @@ async function buildContextNoteTargetIndex(
   targets: string[]
 ): Promise<NoteTargetIndex> {
   const files = await discoverManagedFiles(schema, vaultDir);
-  const realCandidates = buildUnparsedRealCandidateIndex(files);
-  const candidateFiles = new Set<ManagedFile>();
+  const selectedFiles = selectTargetCandidates(files, buildUnparsedRealCandidateIndex(files), targets);
+  return deriveNoteTargetIndex(
+    await buildVaultNoteSnapshotFromFiles(schema, selectedFiles ?? files),
+    schema
+  );
+}
 
+/**
+ * The real notes whose parse is enough to resolve every target, or null when
+ * some target misses or collides and only a full parse resolves it.
+ */
+function selectTargetCandidates(
+  files: ManagedFile[],
+  realCandidates: Map<string, ManagedFile[]>,
+  targets: string[]
+): ManagedFile[] | null {
+  const candidateFiles = new Set<ManagedFile>();
   for (const target of targets) {
     const candidates = realCandidates.get(target.toLowerCase()) ?? [];
-    if (candidates.length !== 1) {
-      return deriveNoteTargetIndex(await buildVaultNoteSnapshotFromFiles(schema, files), schema);
-    }
+    if (candidates.length !== 1) return null;
     candidateFiles.add(candidates[0]!);
   }
 
-  // Filter the freshly discovered array rather than iterating the Set. Snapshot
-  // and error ordering therefore retain canonical discovery order.
-  const selectedFiles = files.filter((file) => candidateFiles.has(file));
-  return deriveNoteTargetIndex(
-    await buildVaultNoteSnapshotFromFiles(schema, selectedFiles),
-    schema
-  );
+  // Filter the discovered array rather than iterating the Set. Snapshot and
+  // error ordering therefore retain canonical discovery order.
+  return files.filter((file) => candidateFiles.has(file));
+}
+
+/** Resolves the relation index for one validation's targets. */
+export type NoteTargetIndexSource = (targets: string[]) => Promise<NoteTargetIndex>;
+
+/**
+ * Serve many relation validations from one discovery pass.
+ *
+ * Each call resolves exactly as {@link validateContextFields} would on its own:
+ * candidate notes for exact targets, the full vault for misses and collisions.
+ * Parsed candidates and the full index are reused across calls, so a batch
+ * reads each note at most once.
+ */
+export function createNoteTargetIndexSource(
+  schema: LoadedSchema,
+  files: ManagedFile[],
+  fullSnapshot: () => Promise<VaultNoteSnapshot>
+): NoteTargetIndexSource {
+  const realCandidates = buildUnparsedRealCandidateIndex(files);
+  const entries = new Map<ManagedFile, Promise<VaultNoteSnapshotEntry>>();
+  let fullIndex: Promise<NoteTargetIndex> | undefined;
+  return async (targets) => {
+    const selected = selectTargetCandidates(files, realCandidates, targets);
+    if (!selected) {
+      fullIndex ??= fullSnapshot().then((snapshot) => deriveNoteTargetIndex(snapshot, schema));
+      return fullIndex;
+    }
+    const notes = await Promise.all(selected.map((file) => {
+      let entry = entries.get(file);
+      if (!entry) {
+        entry = buildVaultNoteSnapshotFromFiles(schema, [file]).then((snapshot) => snapshot.notes[0]!);
+        entries.set(file, entry);
+      }
+      return entry;
+    }));
+    return deriveNoteTargetIndex({ notes }, schema);
+  };
 }
 
 /**
