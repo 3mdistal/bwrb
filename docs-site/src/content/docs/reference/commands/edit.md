@@ -29,6 +29,8 @@ third excess positional is rejected.
 | `-b, --body <pattern>` | Filter by Markdown body content; YAML frontmatter is excluded |
 | `--json <patch>` | Non-interactive patch/merge mode |
 | `--expected-revision <revision>` | Require an opaque revision from `list --output json`; requires `--json` |
+| `--patches <file>` | Preview a manifest that gives each named note its own patch (see [Patch batches](#patch-batches)) |
+| `--execute` | Apply the `--patches` manifest: every patch, or none |
 | `-o, --open` | Open the note after editing |
 | `--app <mode>` | App mode for `--open`: `system`, `editor`, `visual`, `obsidian`, `print` |
 | `--picker <mode>` | Picker mode: `fzf`, `numbered`, `none` |
@@ -99,6 +101,78 @@ When an entered trait transition has `transition_effects`, `edit` applies its
 validated flat patch to the configured scalar relation target in the same
 guarded commit. Empty relations are no-ops. Effects do not cascade from the
 target into more effects or recurrence; cross-type creation remains recurrence.
+
+### Patch batches
+
+To give many notes each their own patch in one run, write a manifest and pass
+it with `--patches`. Each entry names one note exactly: by vault-relative
+`path`, by stable `id`, or by both, which must agree. An entry can carry the
+`expectedRevision` from `list --output json`.
+
+```json
+{
+  "notes": [
+    { "path": "Tasks/Ship it.md", "patch": { "status": "done" } },
+    { "id": "<uuid>", "expectedRevision": "<revision>", "patch": { "priority": "high" } }
+  ]
+}
+```
+
+```bash
+# Preview: check every patch and report what would change; writes nothing
+bwrb edit --patches plan.json
+
+# Apply every patch, or none
+bwrb edit --patches plan.json --execute
+```
+
+Each patch gets the same checks as `--json`: known fields, options, defaults,
+relations, relative dates, parent cycles, transition guards and the expected
+revision. The batch reads the vault once rather than once per note, so a
+manifest of a hundred notes takes seconds instead of minutes.
+
+- **All or nothing.** If any entry is blocked (a missing, ambiguous or repeated
+  target, a validation error, a stale revision), nothing is written and every
+  blocker is reported together. `--execute` rechecks each note under its
+  mutation lock before the first write. If a write fails partway, the notes
+  this run already wrote are restored, unless something else has changed them
+  since.
+- **Safe to rerun.** A note that already holds its patched values is reported
+  `unchanged` and left alone, even when its revision has moved on. After an
+  interruption, rerun the same manifest to finish the rest.
+- **Frontmatter only.** `_body` is rejected; use `--json` to replace a body. A
+  patch that would enter a transition with related-note effects, or create the
+  next note of a recurrence, is blocked as well; edit that note on its own.
+
+The output is one JSON value; `--output text` prints one line per note instead.
+
+```json
+{
+  "success": true,
+  "data": {
+    "mode": "execute",
+    "counts": { "notes": 1, "planned": 0, "unchanged": 0, "blocked": 0, "applied": 1, "restored": 0, "failed": 0, "not-attempted": 0 },
+    "notes": [{
+      "index": 0,
+      "id": "<uuid>",
+      "path": "Tasks/Ship it.md",
+      "status": "applied",
+      "updated": ["status"],
+      "beforeRevision": "<revision read>",
+      "revision": "<revision written>",
+      "changes": { "status": { "from": "active", "to": "done" } }
+    }]
+  }
+}
+```
+
+A blocked or failed batch returns `success: false` with an `error` and the
+same `data`. Each affected note lists `errors`, each with a `code` such as
+`TARGET_NOT_FOUND`, `DUPLICATE_TARGET`, `VALIDATION_FAILED`,
+`TRANSITION_GUARD_FAILED` or `REVISION_MISMATCH`. The command exits `1` for
+validation blockers, and `2` when the only blockers are changed notes or a
+write failed. `--patches` cannot be combined with a query, targeting options,
+`--json`, `--expected-revision` or `--open`.
 
 ## Concurrent lineage changes
 

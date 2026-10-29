@@ -86,6 +86,16 @@ export function validateTransitionEffects(schema: LoadedSchema, typeName: string
   return errors;
 }
 
+/** Whether this change enters a transition that writes related notes. */
+export function entersTransitionEffects(
+  schema: LoadedSchema,
+  typeName: string,
+  before: Record<string, unknown>,
+  after: Record<string, unknown>
+): boolean {
+  return getTransitionEffectsForType(schema, typeName).some((effect) => entered(effect, before, after));
+}
+
 function entered(effect: TransitionEffect, before: Record<string, unknown>, after: Record<string, unknown>): boolean {
   const trigger = parseTransitionTrigger(effect.on);
   return Boolean(trigger

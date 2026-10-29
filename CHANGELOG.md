@@ -6,6 +6,12 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Added
 
+- **Per-note patch batches** — `bwrb edit --patches <file>` previews a manifest
+  that gives each exactly named note (by path or stable id) its own JSON patch;
+  `--execute` applies every patch or none. Patches get the same validation as
+  `edit --json` against one shared read of the vault, notes that already hold
+  their values report `unchanged` so a manifest can be rerun, and a write that
+  fails partway restores the notes the batch already wrote.
 - **Typed one-hop relation quantifiers** — `--where` and schema-derived boolean
   fields can use `all(relation, target.predicate)` and `any(...)`. Target
   resolution is source-aware, alias/path-aware, snapshot-based, and read-only;
