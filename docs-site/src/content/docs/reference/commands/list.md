@@ -394,6 +394,7 @@ bwrb list --type task --where '!isEmpty(deadline)'
 
 ## See Also
 
+- [Note parsing cache](/reference/parse-cache/) — Content-verified metadata reuse; note bytes and discovery stay fresh
 - [CLI Safety and Flags](/concepts/cli-safety-and-flags/) — When to use `--force`
 - [Targeting Model](/reference/targeting/) — Full selector reference
 - [bwrb lineage](/reference/commands/lineage/) — Adopt known existing revisions into lineage
