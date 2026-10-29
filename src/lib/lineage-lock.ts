@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'crypto';
-import { mkdir, open, readFile, readdir, rename, stat, unlink } from 'fs/promises';
+import { lstat, mkdir, open, readFile, readdir, rename, stat, unlink } from 'fs/promises';
 import { basename, dirname, relative, resolve } from 'path';
+import { excludeRuntimeLocksFromGit } from './lock-git-exclude.js';
 
 const LOCK_RETRY_MS = 20;
 const LOCK_ATTEMPTS = 1_500;
@@ -121,7 +122,7 @@ export async function ownershipFileLockIsLive(
   if (!await isRecoverable(snapshotRead.snapshot, options.staleMs)) return true;
 
   await recoverStaleLock(resolvedLockPath, recoveryPath, options);
-  return pathExists(resolvedLockPath) || pathExists(recoveryPath);
+  return await pathExists(resolvedLockPath) || await pathExists(recoveryPath);
 }
 
 export function getLineageMutationLockPath(vaultDir: string, sourcePath: string): string {
@@ -149,6 +150,7 @@ async function acquireLock(
   timeoutMessage: string
 ): Promise<() => Promise<void>> {
   await mkdir(dirname(lockPath), { recursive: true });
+  await prepareRuntimeLockDirectory(lockPath);
   const recoveryPath = `${lockPath}.recovery`;
 
   for (let attempt = 0; attempt < options.attempts; attempt++) {
@@ -215,12 +217,12 @@ function createRelease(
   options: OwnershipFileLockOptions
 ): () => Promise<void> {
   let released = false;
-  let heartbeatRunning = false;
+  let heartbeat: Promise<void> | undefined;
   const timer = setInterval(() => {
-    if (released || heartbeatRunning) return;
-    heartbeatRunning = true;
-    void heartbeatOwnedLock(lockPath, handle, metadata.token)
-      .finally(() => { heartbeatRunning = false; });
+    if (released || heartbeat) return;
+    heartbeat = heartbeatOwnedLock(lockPath, handle, metadata.token)
+      .catch(() => undefined)
+      .finally(() => { heartbeat = undefined; });
   }, Math.max(1, Math.min(options.heartbeatMs, Math.max(1, options.staleMs / 3))));
   timer.unref();
 
@@ -228,9 +230,27 @@ function createRelease(
     if (released) return;
     released = true;
     clearInterval(timer);
+    await heartbeat;
     await handle.close().catch(() => undefined);
-    await unlinkIfOwned(lockPath, metadata.token);
+    try {
+      if (!await unlinkIfOwned(lockPath, metadata.token)) {
+        const current = await readLockSnapshot(lockPath);
+        if (current.kind === 'busy' || (current.kind === 'present' && current.snapshot.metadata?.token === metadata.token)) {
+          warnReleaseFailure(lockPath);
+        }
+      }
+    } catch {
+      // Cleanup cannot change an already-applied mutation into an apparent
+      // failure (or replace the task's own error and encourage duplicate work).
+      warnReleaseFailure(lockPath);
+    }
   };
+}
+
+function warnReleaseFailure(lockPath: string): void {
+  process.emitWarning(`Could not verify release of Bowerbird lock: ${lockPath}`, {
+    code: 'BWRB_LOCK_RELEASE_FAILED',
+  });
 }
 
 async function heartbeatOwnedLock(
@@ -339,13 +359,46 @@ async function recoveryIsInProgress(
 }
 
 async function isRecoverable(snapshot: LockSnapshot, staleMs: number): Promise<boolean> {
-  if (Date.now() - snapshot.modifiedAt <= staleMs) return false;
+  // A proven-dead owner needs no grace period. Unknown metadata still needs
+  // the TTL: a creator may be paused between exclusive create and JSON write.
+  // A live/inaccessible/reused PID always wins over age.
+  if (snapshot.metadata) return !isProcessAlive(snapshot.metadata.pid);
+  return Date.now() - snapshot.modifiedAt > staleMs;
+}
 
-  // Corrupt/missing owner data is recoverable only once the TTL expires. For
-  // valid metadata, a live PID wins over timestamps: an active process must not
-  // lose a long critical section because its event loop paused or mtime changed.
-  if (!snapshot.metadata) return true;
-  return !isProcessAlive(snapshot.metadata.pid);
+/** Prepare Bowerbird's runtime namespace, never arbitrary callers' lock folders. */
+async function prepareRuntimeLockDirectory(lockPath: string): Promise<void> {
+  let directory = dirname(lockPath);
+  while (directory !== dirname(directory)) {
+    if (basename(directory) === 'locks' && basename(dirname(directory)) === '.bwrb') {
+      // Do not turn a runtime sweep into traversal through a user symlink.
+      if ((await lstat(directory)).isSymbolicLink() ||
+          (await lstat(dirname(directory))).isSymbolicLink()) return;
+      await excludeRuntimeLocksFromGit(directory);
+      await recoverOrphanedRuntimeLocks(directory);
+      return;
+    }
+    directory = dirname(directory);
+  }
+}
+
+async function recoverOrphanedRuntimeLocks(directory: string): Promise<void> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const paths = new Set<string>();
+  for (const entry of entries) {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory() && entry.name === 'identity-transactions') {
+      await recoverOrphanedRuntimeLocks(path);
+    } else if (entry.isFile()) {
+      const base = entry.name.replace(/\.recovery$/, '').split('.quarantine-')[0]!;
+      if (base.endsWith('.lock') || base.endsWith('.lease')) paths.add(resolve(directory, base));
+    }
+  }
+  for (const path of paths) {
+    // Reuse the acquisition reaper: recovery markers serialize competing
+    // collectors, and live/PID-reused or unreadable owners remain untouched.
+    if (!await ownershipFileLockIsLive(path)) await cleanupQuarantines(path);
+  }
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -365,10 +418,9 @@ function isProcessAlive(pid: number): boolean {
 
 async function readLockSnapshot(lockPath: string): Promise<LockSnapshotRead> {
   try {
-    const [raw, info] = await Promise.all([
-      readFile(lockPath, 'utf-8'),
-      stat(lockPath),
-    ]);
+    const info = await lstat(lockPath);
+    if (!info.isFile()) return { kind: 'busy' };
+    const raw = await readFile(lockPath, 'utf-8');
     return {
       kind: 'present',
       snapshot: {
@@ -442,10 +494,15 @@ function snapshotsMatch(left: LockSnapshot, right: LockSnapshot): boolean {
 async function cleanupQuarantines(lockPath: string): Promise<void> {
   const directory = dirname(lockPath);
   const prefix = `${basename(lockPath)}.quarantine-`;
-  const entries = await readdir(directory).catch(() => []);
+  const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
   await Promise.all(entries
-    .filter(entry => entry.startsWith(prefix))
-    .map(entry => unlink(resolve(directory, entry)).catch(() => undefined)));
+    .filter(entry => entry.isFile() && entry.name.startsWith(prefix))
+    .map(async entry => {
+      const path = resolve(directory, entry.name);
+      try {
+        if ((await lstat(path)).isFile()) await unlink(path);
+      } catch { /* Another collector or a Windows sharing lock may win. */ }
+    }));
 }
 
 async function pathExists(path: string): Promise<boolean> {
