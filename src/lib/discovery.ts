@@ -23,6 +23,7 @@ import {
   getEntityAliases,
 } from './schema.js';
 import { parseNoteContent } from './frontmatter.js';
+import { openSnapshotParseCache, type SnapshotParseCache } from './snapshot-parse-cache.js';
 import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
 import { levenshteinDistance } from './levenshtein.js';
 import type { LoadedSchema, OwnedFieldInfo } from '../types/schema.js';
@@ -566,7 +567,10 @@ export async function buildVaultNoteSnapshot(
   vaultDir: string
 ): Promise<VaultNoteSnapshot> {
   const allFiles = await discoverFilesForQueryResolution(schema, vaultDir);
-  return buildVaultNoteSnapshotFromFiles(schema, allFiles);
+  const cache = await openSnapshotParseCache(vaultDir);
+  const snapshot = await buildVaultNoteSnapshotFromFiles(schema, allFiles, cache);
+  await cache.flush();
+  return snapshot;
 }
 
 /**
@@ -580,7 +584,8 @@ export async function buildVaultNoteSnapshot(
  */
 export async function buildVaultNoteSnapshotFromFiles(
   schema: LoadedSchema,
-  files: ManagedFile[]
+  files: ManagedFile[],
+  cache?: SnapshotParseCache
 ): Promise<VaultNoteSnapshot> {
 
   const notes = new Array<VaultNoteSnapshotEntry>(files.length);
@@ -604,10 +609,11 @@ export async function buildVaultNoteSnapshotFromFiles(
         // gray-matter parse below: they deliberately have different contracts.
         // Read once so a snapshot cannot preflight one revision then parse another.
         const raw = await readFile(file.path, 'utf-8');
-        if (hasMalformedTopFrontmatter(raw)) {
-          throw new Error('Malformed frontmatter');
-        }
-        const { frontmatter } = parseNoteContent(raw);
+        const parse = () => {
+          if (hasMalformedTopFrontmatter(raw)) throw new Error('Malformed frontmatter');
+          return parseNoteContent(raw).frontmatter;
+        };
+        const frontmatter = cache ? cache.parse(raw, parse) : parse();
         entry.frontmatter = frontmatter;
         const resolvedType = resolveTypeFromFrontmatter(schema, frontmatter);
         if (resolvedType) {
