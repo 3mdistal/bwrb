@@ -583,35 +583,43 @@ export async function buildVaultNoteSnapshotFromFiles(
   files: ManagedFile[]
 ): Promise<VaultNoteSnapshot> {
 
-  const notes: VaultNoteSnapshotEntry[] = [];
+  const notes = new Array<VaultNoteSnapshotEntry>(files.length);
+  let nextIndex = 0;
 
-  for (const file of files) {
-    const entry: VaultNoteSnapshotEntry = {
-      path: file.path,
-      relativePath: file.relativePath,
-      ...(file.expectedType ? { directoryType: file.expectedType } : {}),
-    };
+  // Overlap filesystem reads without opening the whole vault at once. Assign
+  // entries by discovery position so completion order cannot change which
+  // alias or basename wins when callers derive indexes from the snapshot.
+  await Promise.all(Array.from({ length: Math.min(16, files.length) }, async () => {
+    while (nextIndex < files.length) {
+      const index = nextIndex++;
+      const file = files[index]!;
+      const entry: VaultNoteSnapshotEntry = {
+        path: file.path,
+        relativePath: file.relativePath,
+        ...(file.expectedType ? { directoryType: file.expectedType } : {}),
+      };
 
-    try {
-      // Keep the yaml@2 malformed-frontmatter preflight separate from the
-      // gray-matter parse below: they deliberately have different contracts.
-      // Read once so a snapshot cannot preflight one revision then parse another.
-      const raw = await readFile(file.path, 'utf-8');
-      if (hasMalformedTopFrontmatter(raw)) {
-        throw new Error('Malformed frontmatter');
+      try {
+        // Keep the yaml@2 malformed-frontmatter preflight separate from the
+        // gray-matter parse below: they deliberately have different contracts.
+        // Read once so a snapshot cannot preflight one revision then parse another.
+        const raw = await readFile(file.path, 'utf-8');
+        if (hasMalformedTopFrontmatter(raw)) {
+          throw new Error('Malformed frontmatter');
+        }
+        const { frontmatter } = parseNoteContent(raw);
+        entry.frontmatter = frontmatter;
+        const resolvedType = resolveTypeFromFrontmatter(schema, frontmatter);
+        if (resolvedType) {
+          entry.resolvedType = resolvedType;
+        }
+      } catch {
+        // Skip parse metadata for files that can't be parsed.
       }
-      const { frontmatter } = parseNoteContent(raw);
-      entry.frontmatter = frontmatter;
-      const resolvedType = resolveTypeFromFrontmatter(schema, frontmatter);
-      if (resolvedType) {
-        entry.resolvedType = resolvedType;
-      }
-    } catch {
-      // Skip parse metadata for files that can't be parsed.
+
+      notes[index] = entry;
     }
-
-    notes.push(entry);
-  }
+  }));
 
   return { notes };
 }
