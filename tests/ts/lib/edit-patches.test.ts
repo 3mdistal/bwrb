@@ -1,18 +1,45 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'fs/promises';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { existsSync } from 'fs';
+import { mkdtemp, mkdir, readFile, rm, unlink, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { loadSchema } from '../../../src/lib/schema.js';
-import { parseNote } from '../../../src/lib/frontmatter.js';
+import { buildNoteContent, parseNote } from '../../../src/lib/frontmatter.js';
+import { getLineageMutationLockPath } from '../../../src/lib/lineage-lock.js';
 import { noteRevision } from '../../../src/lib/note-revision.js';
 import { PatchManifestError, runPatchBatch } from '../../../src/lib/edit-patches.js';
+
+// Pass-through mocks, so a test can inject a read or serialization fault.
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>();
+  return { ...actual, readFile: vi.fn(actual.readFile) };
+});
+vi.mock('../../../src/lib/frontmatter.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/lib/frontmatter.js')>();
+  return { ...actual, buildNoteContent: vi.fn(actual.buildNoteContent) };
+});
+
+const actualFs = await vi.importActual<typeof import('fs/promises')>('fs/promises');
+const actualFrontmatter = await vi.importActual<typeof import('../../../src/lib/frontmatter.js')>(
+  '../../../src/lib/frontmatter.js'
+);
+const read = vi.mocked(readFile);
+const build = vi.mocked(buildNoteContent);
+
+function ioError(code: string): NodeJS.ErrnoException {
+  return Object.assign(new Error(`simulated ${code}`), { code });
+}
 
 const ID_A = '11111111-1111-4111-8111-111111111111';
 const ID_B = '22222222-2222-4222-8222-222222222222';
 const ID_SHARED = '33333333-3333-4333-8333-333333333333';
 
 const dirs: string[] = [];
-afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))); });
+afterEach(async () => {
+  read.mockReset().mockImplementation(actualFs.readFile);
+  build.mockReset().mockImplementation(actualFrontmatter.buildNoteContent);
+  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
 
 const SCHEMA = {
   version: 2,
@@ -117,7 +144,7 @@ describe('edit patch batches', () => {
     const batch = await run([
       { path: 'Tasks/A.md', patch: { status: 'active' } },
       { id: ID_B, patch: { owner: 'Bo', rank: 2 } },
-      { path: './Tasks/C.md', patch: { owner: null } },
+      { path: './Tasks/./C.md', patch: { owner: null } },
     ], { execute: true });
 
     expect(batch).toMatchObject({ success: true, exitCode: 0 });
@@ -313,6 +340,140 @@ describe('edit patch batches', () => {
     expect(batch.result.notes[0]!.errors![0]!.code).toBe('RESTORE_SKIPPED');
     expect(await read('Tasks/A.md')).toBe(newer);
     expect(await read('Tasks/B.md')).toBe(NOTES['Tasks/B.md']);
+  });
+
+  it('blocks a note that cannot be serialized before writing anything', async () => {
+    const { read: readNote, run } = await fixture();
+    const before = await snapshot(readNote);
+    build.mockImplementation((frontmatter, ...rest) => {
+      if (frontmatter['owner'] === 'Too deep') throw new RangeError('Maximum call stack size exceeded');
+      return actualFrontmatter.buildNoteContent(frontmatter, ...rest);
+    });
+
+    const batch = await run([
+      { path: 'Tasks/A.md', patch: { status: 'active' } },
+      { path: 'Tasks/B.md', patch: { owner: 'Too deep' } },
+    ], { execute: true });
+
+    expect(batch).toMatchObject({ success: false, exitCode: 1 });
+    expect(batch.result.notes.map((note) => note.status)).toEqual(['not-attempted', 'blocked']);
+    expect(batch.result.notes[1]!.errors![0]).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      message: 'Could not serialize the patched note: Maximum call stack size exceeded',
+    });
+    expect(await snapshot(readNote)).toEqual(before);
+  });
+
+  it('restores a note whose failed write stopped inside a multibyte character', async () => {
+    const { read: readNote, run, vault } = await fixture();
+    const original = '---\ntype: task\nstatus: open\n---\nCaf\u00e9 au lait.\n';
+    await writeFile(join(vault, 'Tasks/A.md'), original);
+    const manifest = [{ path: 'Tasks/A.md', patch: { status: 'active' } }];
+    await run(manifest, { execute: true });
+    const intended = Buffer.from(await readNote('Tasks/A.md'));
+    await writeFile(join(vault, 'Tasks/A.md'), original);
+
+    const batch = await run(manifest, {
+      execute: true,
+      beforeWrite: async (path) => {
+        // Keep only the first byte of the two-byte \u00e9.
+        await writeFile(join(vault, path), intended.subarray(0, intended.indexOf(Buffer.from('\u00e9')) + 1));
+        throw new Error('write interrupted');
+      },
+    });
+
+    expect(batch.result.notes[0]).toMatchObject({ status: 'failed', revision: noteRevision(original) });
+    expect(await readNote('Tasks/A.md')).toBe(original);
+  });
+
+  it('rolls back instead of recreating a note that was removed before its write', async () => {
+    const { read: readNote, run, vault } = await fixture();
+
+    const batch = await run([
+      { path: 'Tasks/A.md', patch: { status: 'active' } },
+      { path: 'Tasks/B.md', patch: { status: 'active' } },
+    ], {
+      execute: true,
+      beforeWrite: async (path) => {
+        if (path === 'Tasks/B.md') await unlink(join(vault, path));
+      },
+    });
+
+    expect(batch).toMatchObject({ success: false, exitCode: 2 });
+    expect(batch.result.notes.map((note) => note.status)).toEqual(['restored', 'failed']);
+    expect(batch.result.notes[1]!.errors!.map((error) => error.code)).toEqual(['WRITE_FAILED']);
+    expect(await readNote('Tasks/A.md')).toBe(NOTES['Tasks/A.md']);
+    expect(existsSync(join(vault, 'Tasks/B.md'))).toBe(false);
+  });
+
+  it('keeps the written statuses when releasing a lock fails, and releases the other locks', async () => {
+    const { read: readNote, run, vault } = await fixture();
+    const locks = ['Tasks/A.md', 'Tasks/B.md']
+      .map((path) => getLineageMutationLockPath(vault, join(vault, path)))
+      .sort((a, b) => a.localeCompare(b, 'en'));
+    // Locks are released in reverse order, so fail the first one released.
+    const [kept, failing] = locks as [string, string];
+
+    const batch = await run([
+      { path: 'Tasks/A.md', patch: { status: 'active' } },
+      { path: 'Tasks/B.md', patch: { status: 'active' } },
+    ], {
+      execute: true,
+      beforeWrite: (path) => {
+        if (path !== 'Tasks/B.md') return;
+        read.mockImplementation(async (file, options) => {
+          if (String(file) === failing) throw ioError('EIO');
+          return actualFs.readFile(file, options);
+        });
+      },
+    });
+
+    expect(batch).toMatchObject({
+      success: false,
+      exitCode: 2,
+      error: 'Every note was written, but releasing a lock failed: simulated EIO',
+    });
+    expect(batch.result.notes.map((note) => note.status)).toEqual(['applied', 'applied']);
+    expect((await parseNote(join(vault, 'Tasks/B.md'))).frontmatter['status']).toBe('active');
+    expect(existsSync(kept)).toBe(false);
+    expect(existsSync(failing)).toBe(true);
+    expect(await readNote('Tasks/A.md')).not.toBe(NOTES['Tasks/A.md']);
+  });
+
+  it('checks an id-only target against the note it reads', async () => {
+    const { read: readNote, run, vault } = await fixture();
+    const other = '55555555-5555-4555-8555-555555555555';
+    let reads = 0;
+    read.mockImplementation(async (file, options) => {
+      const content = await actualFs.readFile(file, options);
+      // After the vault snapshot finds B by its id, B gets a different id.
+      if (String(file) === join(vault, 'Tasks/B.md') && reads++ === 0) {
+        await actualFs.writeFile(file, NOTES['Tasks/B.md']!.replace(ID_B, other));
+      }
+      return content;
+    });
+
+    const batch = await run([{ id: ID_B, patch: { status: 'active' } }], { execute: true });
+
+    expect(batch).toMatchObject({ success: false, exitCode: 1 });
+    expect(batch.result.notes[0]!.errors![0]).toMatchObject({
+      code: 'TARGET_MISMATCH',
+      message: `Tasks/B.md has id ${other}, not ${ID_B}.`,
+    });
+    expect(await readNote('Tasks/B.md')).toBe(NOTES['Tasks/B.md']!.replace(ID_B, other));
+  });
+
+  it('reports an unreadable note with the I/O exit code', async () => {
+    const { run, vault } = await fixture();
+    read.mockImplementation(async (file, options) => {
+      if (String(file) === join(vault, 'Tasks/A.md')) throw ioError('EIO');
+      return actualFs.readFile(file, options);
+    });
+
+    const batch = await run([{ path: 'Tasks/A.md', patch: { status: 'active' } }]);
+
+    expect(batch).toMatchObject({ success: false, exitCode: 2 });
+    expect(batch.result.notes[0]!.errors![0]!.code).toBe('READ_FAILED');
   });
 
   it('rejects unusable manifests and records malformed entries', async () => {

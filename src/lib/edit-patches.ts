@@ -4,13 +4,13 @@
  *
  * Every patch goes through the same steps as `edit --json`, against one shared
  * read of the vault instead of a fresh one per note. Previewing writes
- * nothing. Executing is all or nothing: every note is rechecked under its
- * mutation lock before the first write, and a write that fails midway restores
- * the notes this run already wrote.
+ * nothing. Executing is all or nothing: every note's new bytes are built
+ * before the first write, every note is rechecked under its mutation lock, and
+ * a write that fails midway restores the notes this run already wrote.
  */
 
-import { readFile } from 'fs/promises';
-import { isAbsolute } from 'path';
+import { open, readFile } from 'fs/promises';
+import { isAbsolute, posix } from 'path';
 import { isDeepStrictEqual } from 'util';
 import type { LoadedSchema } from '../types/schema.js';
 import {
@@ -21,7 +21,7 @@ import {
   type NoteTargetIndex,
   type VaultNoteSnapshot,
 } from './discovery.js';
-import { buildNoteContent, parseNote, writeFileAtomic, writeNote } from './frontmatter.js';
+import { buildNoteContent, parseNote, writeFileAtomic } from './frontmatter.js';
 import {
   rejectReservedPatchFields,
   resolveJsonEdit,
@@ -146,6 +146,8 @@ interface PlannedNote {
   file?: ManagedFile;
   edit?: ResolvedJsonEdit;
   unchanged?: boolean;
+  /** The bytes to write, built while planning. */
+  content?: string;
   /** Notes the entered transition guards read, locked during the write. */
   guardPaths?: string[];
 }
@@ -209,13 +211,13 @@ function parseManifestEntry(raw: unknown, index: number): ManifestEntry {
     else entry.problems.push('id must be a note UUID.');
   }
   if (path !== undefined) {
-    const normalized = typeof path === 'string' ? toSlashes(path).replace(/^(\.\/)+/, '') : '';
-    if (!normalized) {
+    const slashed = typeof path === 'string' ? toSlashes(path) : '';
+    if (!slashed) {
       entry.problems.push('path must be a non-empty string.');
-    } else if (isAbsolute(normalized) || /^[A-Za-z]:/.test(normalized) || normalized.split('/').includes('..')) {
+    } else if (isAbsolute(slashed) || /^[A-Za-z]:/.test(slashed) || slashed.split('/').includes('..')) {
       entry.problems.push('path must be relative to the vault root.');
     } else {
-      entry.path = normalized;
+      entry.path = posix.normalize(slashed);
     }
   }
   if (id === undefined && path === undefined) {
@@ -351,11 +353,11 @@ async function resolvePatches(schema: LoadedSchema, notes: PlannedNote[]): Promi
     note.result.beforeRevision = noteRevision(parsed.raw);
     const noteId = parsed.frontmatter['id'];
     if (isValidNoteId(noteId)) note.result.id = noteId;
-    if (entry.id !== undefined && entry.path !== undefined
-      && !(isValidNoteId(noteId) && normalizeNoteId(noteId) === normalizeNoteId(entry.id))) {
+    // An id-only target was found in the vault snapshot; check the note still says so.
+    if (entry.id !== undefined && !(isValidNoteId(noteId) && normalizeNoteId(noteId) === normalizeNoteId(entry.id))) {
       block(note, {
         code: 'TARGET_MISMATCH',
-        message: `${entry.path} has id ${isValidNoteId(noteId) ? noteId : '(none)'}, not ${entry.id}.`,
+        message: `${note.result.path} has id ${isValidNoteId(noteId) ? noteId : '(none)'}, not ${entry.id}.`,
       });
       continue;
     }
@@ -439,6 +441,13 @@ async function checkAgainstVault(
     if (note.unchanged) continue;
 
     note.result.changes = changedFields(frontmatter, resolvedFrontmatter);
+    // Build the bytes now, so a note that can't be serialized blocks the batch
+    // here instead of failing it midway through the writes.
+    try {
+      note.content = buildNoteContent(resolvedFrontmatter, edit.resolvedBody, edit.orderedFields);
+    } catch (error) {
+      block(note, { code: 'VALIDATION_FAILED', message: `Could not serialize the patched note: ${(error as Error).message}` });
+    }
     if (entry.expectedRevision !== undefined && entry.expectedRevision !== note.result.beforeRevision) {
       block(note, {
         code: 'REVISION_MISMATCH',
@@ -526,11 +535,25 @@ async function recheckUnderLock(
   }
 }
 
+/**
+ * Replace a note's bytes in place. Opening with r+ never creates a file, so a
+ * note moved or deleted since the recheck fails its write, and the batch rolls
+ * back, instead of reappearing at its old path.
+ */
+async function overwriteNote(path: string, content: string): Promise<void> {
+  const handle = await open(path, 'r+');
+  try {
+    await handle.truncate(0);
+    await handle.writeFile(content, 'utf-8');
+  } finally {
+    await handle.close();
+  }
+}
+
 /** Write each planned note in manifest order; on failure, undo this run's writes. */
 async function writeNotes(notes: PlannedNote[], options: PatchBatchOptions): Promise<string | undefined> {
-  const written: Array<{ note: PlannedNote; bytes: string }> = [];
+  const written: PlannedNote[] = [];
   for (const [position, note] of notes.entries()) {
-    const { file, edit } = note;
     if (note.unchanged) {
       note.result.status = 'unchanged';
       note.result.revision = note.result.beforeRevision;
@@ -538,17 +561,17 @@ async function writeNotes(notes: PlannedNote[], options: PatchBatchOptions): Pro
     }
     try {
       await options.beforeWrite?.(note.result.path!);
-      await writeNote(file!.path, edit!.resolvedFrontmatter, edit!.resolvedBody, edit!.orderedFields);
-      const bytes = await readFile(file!.path, 'utf-8');
-      written.push({ note, bytes });
+      await overwriteNote(note.file!.path, note.content!);
+      written.push(note);
       note.result.status = 'applied';
-      note.result.revision = noteRevision(bytes);
+      note.result.revision = noteRevision(note.content!);
     } catch (error) {
       const message = `Could not write ${note.result.path}: ${(error as Error).message}`;
       note.result.status = 'failed';
       block(note, { code: 'WRITE_FAILED', message });
       await restoreFailedWrite(note);
-      for (const { note: earlier, bytes } of written.reverse()) await restoreWrite(earlier, bytes);
+      // Each restore reports its own failure, so one never stops the others.
+      for (const earlier of written.reverse()) await restoreWrite(earlier);
       for (const later of notes.slice(position + 1)) later.result.status = 'not-attempted';
       return message;
     }
@@ -559,11 +582,25 @@ async function writeNotes(notes: PlannedNote[], options: PatchBatchOptions): Pro
 /** Undo a failed write's own partial effect, if the note holds nothing newer. */
 async function restoreFailedWrite(note: PlannedNote): Promise<void> {
   const { file, edit } = note;
-  const intended = buildNoteContent(edit!.resolvedFrontmatter, edit!.resolvedBody, edit!.orderedFields);
-  const current = await readFile(file!.path, 'utf-8').catch(() => '');
-  note.result.revision = current === '' ? null : noteRevision(current);
-  // A non-atomic write that stopped partway leaves a prefix of the new bytes.
-  if (current !== '' && !intended.startsWith(current)) return;
+  let current: Buffer;
+  try {
+    current = await readFile(file!.path);
+  } catch (error) {
+    note.result.revision = null;
+    // The r+ write never creates or removes a note, so a missing one was moved
+    // or deleted by someone else and there is nothing of this batch to undo.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    block(note, {
+      code: 'RESTORE_FAILED',
+      message: `Could not read ${note.result.path} to check whether to restore it: ${(error as Error).message}`,
+    });
+    return;
+  }
+  note.result.revision = current.length === 0 ? null : noteRevision(current.toString('utf-8'));
+  // A write that stopped partway leaves the start of the new bytes, or none.
+  // Compare bytes: a cut inside a multibyte character doesn't decode to a prefix.
+  const intended = Buffer.from(note.content!, 'utf-8');
+  if (current.length > intended.length || !current.equals(intended.subarray(0, current.length))) return;
   try {
     await writeFileAtomic(file!.path, edit!.raw);
     note.result.revision = note.result.beforeRevision;
@@ -572,13 +609,14 @@ async function restoreFailedWrite(note: PlannedNote): Promise<void> {
   }
 }
 
-async function restoreWrite(note: PlannedNote, bytes: string): Promise<void> {
+async function restoreWrite(note: PlannedNote): Promise<void> {
   try {
-    if (await rollbackNoteIfUnchanged(note.file!.path, bytes, note.edit!.raw)) {
+    if (await rollbackNoteIfUnchanged(note.file!.path, note.content!, note.edit!.raw)) {
       note.result.status = 'restored';
       note.result.revision = note.result.beforeRevision;
     } else {
-      note.result.revision = noteRevision(await readFile(note.file!.path, 'utf-8'));
+      const current = await readFile(note.file!.path, 'utf-8').catch(() => undefined);
+      note.result.revision = current === undefined ? null : noteRevision(current);
       block(note, {
         code: 'RESTORE_SKIPPED',
         message: `${note.result.path} changed again after this batch wrote it, so it was left as it is.`,
@@ -619,10 +657,12 @@ function outcome(
   };
 }
 
-/** Stale or concurrently changed notes are I/O conflicts, as in `edit --json`. */
+const IO_BLOCKERS = new Set<PatchErrorCode>(['REVISION_MISMATCH', 'NOTE_CHANGED', 'READ_FAILED']);
+
+/** Stale, changed or unreadable notes are I/O problems, as in `edit --json`. */
 function blockedExitCode(notes: PlannedNote[]): ExitCode {
   const codes = notes.flatMap((note) => note.result.errors ?? []).map((error) => error.code);
-  return codes.every((code) => code === 'REVISION_MISMATCH' || code === 'NOTE_CHANGED')
+  return codes.every((code) => IO_BLOCKERS.has(code))
     ? ExitCodes.IO_ERROR
     : ExitCodes.VALIDATION_ERROR;
 }
@@ -679,22 +719,33 @@ export async function runPatchBatch(
   if (mode === 'preview') return outcome(mode, notes, true, ExitCodes.SUCCESS);
 
   const lockPaths = notes.flatMap((note) => [note.file!.path, ...(note.guardPaths ?? [])]);
-  let failure: string | undefined;
+  // Set once the locked work has finished, so a failure releasing the locks
+  // afterwards is not mistaken for a batch that never ran.
+  const locked: { settled?: { failure?: string } } = {};
   try {
-    failure = await withLineageMutationLocks(vaultDir, lockPaths, async () => {
+    await withLineageMutationLocks(vaultDir, lockPaths, async () => {
       await recheckUnderLock(schema, vaultDir, notes, loadGuardIndex);
       const stale = notes.filter((note) => note.result.errors?.length);
       if (stale.length > 0) {
         for (const note of notes) note.result.status = note.result.errors?.length ? 'blocked' : 'not-attempted';
-        return blockedMessage(stale.length);
+        locked.settled = { failure: blockedMessage(stale.length) };
+        return;
       }
-      return writeNotes(notes, options);
+      const failure = await writeNotes(notes, options);
+      locked.settled = failure === undefined ? {} : { failure };
     });
   } catch (error) {
-    // The locks could not be taken; nothing was written.
-    for (const note of notes) note.result.status = 'not-attempted';
-    return outcome(mode, notes, false, ExitCodes.IO_ERROR, (error as Error).message);
+    const message = (error as Error).message;
+    if (!locked.settled) {
+      // The locks could not be taken, or the recheck failed; nothing was written.
+      for (const note of notes) note.result.status = 'not-attempted';
+      return outcome(mode, notes, false, ExitCodes.IO_ERROR, message);
+    }
+    // The notes are as reported; only releasing a lock went wrong.
+    const settled = (locked.settled.failure ?? 'Every note was written').replace(/\.$/, '');
+    return outcome(mode, notes, false, ExitCodes.IO_ERROR, `${settled}, but releasing a lock failed: ${message}`);
   }
+  const failure = locked.settled?.failure;
   if (failure !== undefined) {
     const anyBlocked = notes.some((note) => note.result.status === 'blocked');
     return outcome(mode, notes, false, anyBlocked ? blockedExitCode(notes) : ExitCodes.IO_ERROR, failure);

@@ -133,10 +133,13 @@ manifest of a hundred notes takes seconds instead of minutes.
 
 - **All or nothing.** If any entry is blocked (a missing, ambiguous or repeated
   target, a validation error, a stale revision), nothing is written and every
-  blocker is reported together. `--execute` rechecks each note under its
-  mutation lock before the first write. If a write fails partway, the notes
-  this run already wrote are restored, unless something else has changed them
-  since.
+  blocker is reported together. `--execute` builds every note's new contents
+  and rechecks each note under its mutation lock before the first write. If a
+  write fails partway, the notes this run already wrote are restored, unless
+  something else has changed them since (`RESTORE_SKIPPED`). A restore that
+  itself fails is reported as `RESTORE_FAILED`. The locks hold off other
+  `bwrb` edits of the same notes, but not other programs, and not yet
+  `bwrb bulk --move`.
 - **Safe to rerun.** A note that already holds its patched values is reported
   `unchanged` and left alone, even when its revision has moved on. After an
   interruption, rerun the same manifest to finish the rest.
@@ -170,8 +173,9 @@ A blocked or failed batch returns `success: false` with an `error` and the
 same `data`. Each affected note lists `errors`, each with a `code` such as
 `TARGET_NOT_FOUND`, `DUPLICATE_TARGET`, `VALIDATION_FAILED`,
 `TRANSITION_GUARD_FAILED` or `REVISION_MISMATCH`. The command exits `1` for
-validation blockers, and `2` when the only blockers are changed notes or a
-write failed. `--patches` cannot be combined with a query, targeting options,
+validation blockers, and `2` when the only blockers are changed or unreadable
+notes, or when a write or a lock release failed. `--patches` cannot be
+combined with a query, targeting options,
 `--json`, `--expected-revision` or `--open`.
 
 ## Concurrent lineage changes
