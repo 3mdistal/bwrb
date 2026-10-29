@@ -6,6 +6,7 @@
  */
 
 import { dirname, basename } from 'path';
+import { access, constants } from 'fs/promises';
 import { minimatch } from 'minimatch';
 import {
   getType,
@@ -88,6 +89,7 @@ import { formatLocalDate } from '../local-date.js';
 import { collectLineageIssues } from './lineage.js';
 import { collectRequiredNoteIdentityIssues } from './identity.js';
 import { isValidNoteId } from '../note-id.js';
+import { assertCanonicalExactAuditPaths, normalizeExactAuditPaths } from './exact-path.js';
 import { sanitizeFilenameBase } from '../filename.js';
 
 // Import ownership tracking
@@ -139,9 +141,36 @@ export async function runAuditDetailed(
   const retentionToday = options.retentionToday ?? formatLocalDate();
   // Discover all managed files
   const files = await discoverManagedFiles(schema, vaultDir, options.typePath);
+  let filteredFiles = files;
+
+  // Exact selection intentionally happens against Bowerbird's managed-file
+  // discovery result rather than against the filesystem directly. That keeps
+  // ignored Markdown out of the selector and fails closed for every requested
+  // path before any audit findings are returned. Discovery intentionally
+  // includes unmanaged Markdown so audit can report its orphan findings.
+  if (options.exactPaths && options.exactPaths.length > 0) {
+    const requestedPaths = normalizeExactAuditPaths(options.exactPaths);
+    const managedByPath = new Map(
+      files.map((file) => [file.relativePath, file] as const)
+    );
+    const selected: ManagedFile[] = [];
+    for (const relativePath of requestedPaths) {
+      const file = managedByPath.get(relativePath);
+      if (!file) {
+        throw new Error(`--exact-path must name an extant Markdown file discovered by Bowerbird: ${JSON.stringify(relativePath)}`);
+      }
+      try {
+        await access(file.path, constants.R_OK);
+      } catch {
+        throw new Error(`--exact-path must name a readable Markdown file discovered by Bowerbird: ${JSON.stringify(relativePath)}`);
+      }
+      selected.push(file);
+    }
+    await assertCanonicalExactAuditPaths(selected);
+    filteredFiles = selected;
+  }
 
   // Apply path filter (glob pattern or substring match)
-  let filteredFiles = files;
   if (options.pathFilter) {
     const pattern = options.pathFilter;
     // If pattern contains glob characters, use minimatch; otherwise do substring match
