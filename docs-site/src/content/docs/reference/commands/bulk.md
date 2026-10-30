@@ -135,10 +135,11 @@ bwrb bulk --type idea --where "status == 'settled'" --move Archive/Ideas --execu
 
 An executed move takes the same per-note locks as `edit` on the notes it
 writes: each moved note at its old path and at its new path inside the vault,
-and every note whose links it rewrites. An `edit` of one of those notes waits until the move is done. Under
-the locks, the move scans the vault for links again. If a note gained a link to
-a moved note while the move waited, the move locks that note too and tries
-again. After three tries it stops with an error, having moved nothing.
+and every note whose links it rewrites. An `edit` of one of those notes waits
+until the move is done. Under the locks, the move scans the vault for links
+again. If a note gained a link to a moved note while the move waited, the move
+locks that note too and tries again. After three tries it stops with an error,
+having moved nothing.
 
 ### Targeting
 
