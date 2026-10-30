@@ -133,6 +133,13 @@ bwrb bulk --type task --remove tags=deprecated --execute
 bwrb bulk --type idea --where "status == 'settled'" --move Archive/Ideas --execute
 ```
 
+An executed move takes the same per-note locks as `edit` on every note it
+writes: each moved note at its old and new path, and every note whose links it
+rewrites. An `edit` of one of those notes waits until the move is done. Under
+the locks, the move scans the vault for links again. If a note gained a link to
+a moved note while the move waited, the move locks that note too and tries
+again. After three tries it stops with an error, having moved nothing.
+
 ### Targeting
 
 ```bash

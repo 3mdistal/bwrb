@@ -1,7 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, mkdir, writeFile, readFile, access } from 'fs/promises';
-import { join } from 'path';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtemp, rm, mkdir, writeFile, readFile, readdir, access } from 'fs/promises';
+import { join, relative, sep } from 'path';
 import { tmpdir } from 'os';
+import { withLineageMutationLocks } from '../../../src/lib/lineage-lock.js';
+import { editNoteFromJson } from '../../../src/lib/edit.js';
+import { resolveSchema } from '../../../src/lib/schema.js';
 import {
   findAllMarkdownFiles,
   wikilinkMatchesFile,
@@ -10,6 +13,17 @@ import {
   updateWikilinksInContent,
   executeBulkMove,
 } from '../../../src/lib/bulk/move.js';
+
+// Pass-through mock, so a test can see which notes a move locks.
+vi.mock('../../../src/lib/lineage-lock.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/lib/lineage-lock.js')>();
+  return { ...actual, withLineageMutationLocks: vi.fn(actual.withLineageMutationLocks) };
+});
+
+const actualLocks = await vi.importActual<typeof import('../../../src/lib/lineage-lock.js')>(
+  '../../../src/lib/lineage-lock.js'
+);
+const locks = vi.mocked(withLineageMutationLocks);
 
 describe('move utilities', () => {
   describe('findAllMarkdownFiles', () => {
@@ -553,6 +567,181 @@ Related to [[MyIdea]].
       expect(result.moveResults[0]!.applied).toBe(true);
       expect(result.errors).toHaveLength(0);
       expect(await readFile(file, 'utf-8')).toBe('CONTENT');
+    });
+
+    describe('locks', () => {
+      afterEach(() => {
+        locks.mockReset().mockImplementation(actualLocks.withLineageMutationLocks);
+      });
+
+      /** The vault-relative paths a move's nth lock acquisition covered. */
+      function lockedPaths(call: number): string[] {
+        return locks.mock.calls[call]![1]
+          .map(path => relative(tempDir, path).split(sep).join('/'))
+          .sort();
+      }
+
+      /** Runs the next lock acquisition after `before`, as if another writer acted first. */
+      function beforeNextLock(before: () => Promise<void>): void {
+        locks.mockImplementationOnce(async (...args) => {
+          await before();
+          return actualLocks.withLineageMutationLocks(...args);
+        });
+      }
+
+      it('locks the moved notes under both paths and the notes whose links it rewrites', async () => {
+        await writeFile(join(tempDir, 'Ideas', 'A.md'), '# A');
+        await writeFile(join(tempDir, 'Ideas', 'B.md'), 'See [[A]].');
+        await writeFile(join(tempDir, 'Linker.md'), 'See [[A]] and [[B]].');
+        await writeFile(join(tempDir, 'Unrelated.md'), 'No links here.');
+
+        const result = await executeBulkMove({
+          vaultDir: tempDir,
+          targetDir: join(tempDir, 'Archive'),
+          filesToMove: [join(tempDir, 'Ideas', 'A.md'), join(tempDir, 'Ideas', 'B.md')],
+          execute: true,
+        });
+
+        expect(result.errors).toEqual([]);
+        expect(locks).toHaveBeenCalledTimes(1);
+        expect(lockedPaths(0)).toEqual(['Archive/A.md', 'Archive/B.md', 'Ideas/A.md', 'Ideas/B.md', 'Linker.md']);
+        const lockFiles = (await readdir(join(tempDir, '.bwrb', 'locks'))).filter(name => name.endsWith('.lock'));
+        expect(lockFiles).toEqual([]);
+      });
+
+      it('rewrites links in a moved note that links to another moved note', async () => {
+        await writeFile(join(tempDir, 'Ideas', 'A.md'), '# A');
+        await writeFile(join(tempDir, 'Ideas', 'B.md'), 'See [[A]].');
+        // A second A makes the moved link need a path.
+        await mkdir(join(tempDir, 'Other'));
+        await writeFile(join(tempDir, 'Other', 'A.md'), '# Other A');
+
+        const result = await executeBulkMove({
+          vaultDir: tempDir,
+          targetDir: join(tempDir, 'Archive'),
+          filesToMove: [join(tempDir, 'Ideas', 'A.md'), join(tempDir, 'Ideas', 'B.md')],
+          execute: true,
+        });
+
+        expect(result.errors).toEqual([]);
+        expect(result.wikilinkUpdates).toMatchObject([
+          { filePath: join(tempDir, 'Archive', 'B.md'), linksUpdated: 1, applied: true },
+        ]);
+        expect(await readFile(join(tempDir, 'Archive', 'B.md'), 'utf-8')).toMatch(/^See \[\[Archive[\\/]A\]\]\.$/);
+      });
+
+      it('locks a note that gains a link while the move waits for its locks', async () => {
+        await writeFile(join(tempDir, 'Ideas', 'A.md'), '# A');
+        await mkdir(join(tempDir, 'Other'));
+        await writeFile(join(tempDir, 'Other', 'A.md'), '# Other A');
+        await writeFile(join(tempDir, 'Linker.md'), 'See [[A]].');
+        beforeNextLock(() => writeFile(join(tempDir, 'Late.md'), 'Also [[A]].'));
+
+        const result = await executeBulkMove({
+          vaultDir: tempDir,
+          targetDir: join(tempDir, 'Archive'),
+          filesToMove: [join(tempDir, 'Ideas', 'A.md')],
+          execute: true,
+        });
+
+        expect(result.errors).toEqual([]);
+        expect(locks).toHaveBeenCalledTimes(2);
+        expect(lockedPaths(0)).toEqual(['Archive/A.md', 'Ideas/A.md', 'Linker.md']);
+        expect(lockedPaths(1)).toEqual(['Archive/A.md', 'Ideas/A.md', 'Late.md', 'Linker.md']);
+        expect(await readFile(join(tempDir, 'Late.md'), 'utf-8')).toMatch(/^Also \[\[Archive[\\/]A\]\]\.$/);
+      });
+
+      it('moves nothing when notes keep gaining links while it waits', async () => {
+        await writeFile(join(tempDir, 'Ideas', 'A.md'), '# A');
+        await writeFile(join(tempDir, 'Linker.md'), 'See [[A]].');
+        for (const name of ['Late1.md', 'Late2.md', 'Late3.md']) {
+          beforeNextLock(() => writeFile(join(tempDir, name), 'Also [[A]].'));
+        }
+
+        await expect(executeBulkMove({
+          vaultDir: tempDir,
+          targetDir: join(tempDir, 'Archive'),
+          filesToMove: [join(tempDir, 'Ideas', 'A.md')],
+          execute: true,
+        })).rejects.toThrow('Notes kept gaining links to the moved notes while the move waited for locks; retry the move.');
+
+        expect(locks).toHaveBeenCalledTimes(3);
+        await expect(access(join(tempDir, 'Ideas', 'A.md'))).resolves.toBeUndefined();
+        await expect(access(join(tempDir, 'Archive', 'A.md'))).rejects.toThrow();
+        expect(await readFile(join(tempDir, 'Linker.md'), 'utf-8')).toBe('See [[A]].');
+      });
+
+      it('waits while another writer holds the lock on a note whose links it rewrites', async () => {
+        await writeFile(join(tempDir, 'Ideas', 'A.md'), '# A');
+        await mkdir(join(tempDir, 'Other'));
+        await writeFile(join(tempDir, 'Other', 'A.md'), '# Other A');
+        await writeFile(join(tempDir, 'Linker.md'), 'See [[A]].');
+
+        let release!: () => void;
+        let held!: () => void;
+        const isHeld = new Promise<void>(resolve => { held = resolve; });
+        const writer = actualLocks.withLineageMutationLocks(tempDir, [join(tempDir, 'Linker.md')], async () => {
+          held();
+          await new Promise<void>(resolve => { release = resolve; });
+          await writeFile(join(tempDir, 'Linker.md'), 'See [[A]] twice: [[A]].');
+        });
+        await isHeld;
+
+        const move = executeBulkMove({
+          vaultDir: tempDir,
+          targetDir: join(tempDir, 'Archive'),
+          filesToMove: [join(tempDir, 'Ideas', 'A.md')],
+          execute: true,
+        });
+        await new Promise(resolve => setTimeout(resolve, 200));
+        await expect(access(join(tempDir, 'Ideas', 'A.md'))).resolves.toBeUndefined();
+
+        release();
+        await writer;
+        const result = await move;
+
+        expect(result.errors).toEqual([]);
+        expect(result.totalLinksUpdated).toBe(2);
+        expect(await readFile(join(tempDir, 'Linker.md'), 'utf-8'))
+          .toMatch(/^See \[\[Archive[\\/]A\]\] twice: \[\[Archive[\\/]A\]\]\.$/);
+      });
+
+      it('keeps an edit and a move of the same note from leaving two copies', async () => {
+        const schema = resolveSchema({ version: 2, types: {
+          idea: { fields: { status: { prompt: 'select', options: ['raw', 'settled'] } }, output_dir: 'Ideas' },
+        } });
+        const idea = join(tempDir, 'Ideas', 'A.md');
+        await writeFile(idea, '---\ntype: idea\nstatus: raw\n---\nBody\n');
+
+        let move: ReturnType<typeof executeBulkMove> | undefined;
+        await editNoteFromJson(schema, tempDir, idea, '{"status":"settled"}', {
+          mutationFaultInjector: {
+            before: async (point) => {
+              if (point !== 'source-write') return;
+              // The edit has checked the note's bytes but not written them yet.
+              move = executeBulkMove({ vaultDir: tempDir, targetDir: join(tempDir, 'Archive'), filesToMove: [idea], execute: true });
+              await new Promise(resolve => setTimeout(resolve, 200));
+            },
+          },
+        });
+        const result = await move!;
+
+        expect(result.errors).toEqual([]);
+        await expect(access(idea)).rejects.toThrow();
+        expect(await readFile(join(tempDir, 'Archive', 'A.md'), 'utf-8')).toContain('status: settled');
+      });
+
+      it('takes no locks for a dry run, or when the caller holds them', async () => {
+        await writeFile(join(tempDir, 'Ideas', 'A.md'), '# A');
+        await writeFile(join(tempDir, 'Linker.md'), 'See [[A]].');
+        const move = { vaultDir: tempDir, targetDir: join(tempDir, 'Archive'), filesToMove: [join(tempDir, 'Ideas', 'A.md')] };
+
+        await executeBulkMove({ ...move, execute: false });
+        const held = await executeBulkMove({ ...move, execute: true, locksHeld: true });
+
+        expect(locks).not.toHaveBeenCalled();
+        expect(held.moveResults[0]!.applied).toBe(true);
+      });
     });
   });
 });
