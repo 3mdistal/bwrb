@@ -570,6 +570,10 @@ Related to [[MyIdea]].
     });
 
     describe('locks', () => {
+      // Earlier tests' moves also go through the spy.
+      beforeEach(() => {
+        locks.mockReset().mockImplementation(actualLocks.withLineageMutationLocks);
+      });
       afterEach(() => {
         locks.mockReset().mockImplementation(actualLocks.withLineageMutationLocks);
       });
@@ -586,6 +590,16 @@ Related to [[MyIdea]].
         locks.mockImplementationOnce(async (...args) => {
           await before();
           return actualLocks.withLineageMutationLocks(...args);
+        });
+      }
+
+      /** Resolves once the next lock acquisition has started trying for its locks. */
+      function nextLockRequested(): Promise<void> {
+        return new Promise(requested => {
+          beforeNextLock(async () => {
+            // Acquisition retries every 20 ms; let it try a few times first.
+            setTimeout(requested, 100);
+          });
         });
       }
 
@@ -687,17 +701,20 @@ Related to [[MyIdea]].
         });
         await isHeld;
 
+        const requested = nextLockRequested();
         const move = executeBulkMove({
           vaultDir: tempDir,
           targetDir: join(tempDir, 'Archive'),
           filesToMove: [join(tempDir, 'Ideas', 'A.md')],
           execute: true,
         });
-        await new Promise(resolve => setTimeout(resolve, 200));
-        await expect(access(join(tempDir, 'Ideas', 'A.md'))).resolves.toBeUndefined();
-
-        release();
-        await writer;
+        try {
+          await Promise.race([requested, move]);
+          await expect(access(join(tempDir, 'Ideas', 'A.md'))).resolves.toBeUndefined();
+        } finally {
+          release();
+          await writer;
+        }
         const result = await move;
 
         expect(result.errors).toEqual([]);
@@ -718,9 +735,12 @@ Related to [[MyIdea]].
           mutationFaultInjector: {
             before: async (point) => {
               if (point !== 'source-write') return;
-              // The edit has checked the note's bytes but not written them yet.
+              // The edit has checked the note's bytes but not written them
+              // yet. Continue once the move is waiting for its locks, or has
+              // finished without taking any.
+              const requested = nextLockRequested();
               move = executeBulkMove({ vaultDir: tempDir, targetDir: join(tempDir, 'Archive'), filesToMove: [idea], execute: true });
-              await new Promise(resolve => setTimeout(resolve, 200));
+              await Promise.race([requested, move]);
             },
           },
         });
@@ -729,6 +749,29 @@ Related to [[MyIdea]].
         expect(result.errors).toEqual([]);
         await expect(access(idea)).rejects.toThrow();
         expect(await readFile(join(tempDir, 'Archive', 'A.md'), 'utf-8')).toContain('status: settled');
+      });
+
+      it('rewrites a moved note listed under another letter case', async (context) => {
+        // Only a case-insensitive filesystem lets two spellings name one note.
+        await writeFile(join(tempDir, 'Ideas', 'Probe.md'), '');
+        if (await access(join(tempDir, 'ideas', 'probe.md')).then(() => false, () => true)) context.skip();
+        await rm(join(tempDir, 'Ideas', 'Probe.md'));
+
+        await writeFile(join(tempDir, 'Ideas', 'A.md'), '# A');
+        await writeFile(join(tempDir, 'Ideas', 'B.md'), 'See [[A]].');
+        await mkdir(join(tempDir, 'Other'));
+        await writeFile(join(tempDir, 'Other', 'A.md'), '# Other A');
+
+        const result = await executeBulkMove({
+          vaultDir: tempDir,
+          targetDir: join(tempDir, 'Archive'),
+          filesToMove: [join(tempDir, 'Ideas', 'A.md'), join(tempDir, 'ideas', 'B.md')],
+          execute: true,
+        });
+
+        expect(result.errors).toEqual([]);
+        expect(result.totalLinksUpdated).toBe(1);
+        expect(await readFile(join(tempDir, 'Archive', 'B.md'), 'utf-8')).toMatch(/^See \[\[Archive[\\/]A\]\]\.$/);
       });
 
       it('takes no locks for a dry run, or when the caller holds them', async () => {

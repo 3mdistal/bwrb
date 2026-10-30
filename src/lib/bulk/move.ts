@@ -7,7 +7,7 @@
  * - Updating wikilinks to point to new locations
  */
 
-import { readFile, writeFile, link, unlink, mkdir, readdir, stat } from 'fs/promises';
+import { readFile, writeFile, link, unlink, mkdir, readdir, realpath, stat } from 'fs/promises';
 import { join, relative, basename, extname, isAbsolute, resolve, sep } from 'path';
 import { getLineageMutationLockPath, withLineageMutationLocks } from '../lineage-lock.js';
 
@@ -515,6 +515,10 @@ function destinationPath(plan: MovePlan, filePath: string): string {
   return join(plan.absoluteTargetDir, plan.targetBasenames?.get(filePath) ?? basename(filePath));
 }
 
+async function onDiskPath(filePath: string): Promise<string> {
+  return realpath(filePath).catch(() => resolve(filePath));
+}
+
 function isInsideVault(vaultDir: string, filePath: string): boolean {
   const relativePath = relative(resolve(vaultDir), resolve(filePath));
   return relativePath !== ''
@@ -619,6 +623,18 @@ async function applyBulkMove(
     errors: [],
   };
 
+  // A linking note can be listed under a different spelling than the same
+  // note in the move list (letter case, on a case-insensitive filesystem).
+  // Match them by resolved on-disk path, read before anything moves; like
+  // discovery's dedupe, this keeps distinct hardlinked paths apart.
+  const movedByOnDiskPath = new Map<string, string>();
+  for (const filePath of filesToMove) movedByOnDiskPath.set(await onDiskPath(filePath), filePath);
+  const movedLinkingNotes = new Map<string, string>();
+  for (const sourceFile of linkingNotes.keys()) {
+    const movedFile = movedByOnDiskPath.get(await onDiskPath(sourceFile));
+    if (movedFile) movedLinkingNotes.set(sourceFile, movedFile);
+  }
+
   // Move the files first so wikilink rewriting only happens for files that
   // were ACTUALLY relocated. A move skipped due to a destination collision (or
   // any other error) must NOT rewrite the vault's links to a phantom new path —
@@ -658,7 +674,10 @@ async function applyBulkMove(
 
     // A note that links to another moved note may have moved too; its links
     // are rewritten where it now lives.
-    const filePath = execute && movedFiles.has(sourceFile) ? destinationPath(plan, sourceFile) : sourceFile;
+    const movedSource = movedLinkingNotes.get(sourceFile);
+    const filePath = execute && movedSource && movedFiles.has(movedSource)
+      ? destinationPath(plan, movedSource)
+      : sourceFile;
     const relativePath = relative(vaultDir, filePath);
 
     const updateResult: WikilinkUpdateResult = {
