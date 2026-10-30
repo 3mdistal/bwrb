@@ -21,6 +21,15 @@ All notable changes to Bowerbird are documented in this file.
   `--only unlinked-mention` and `--only frequent-unlinked-term` selectors remain
   explicit opt-ins.
 
+### Fixed
+
+- **Locked note moves** — `bulk --move --execute` and `audit --fix` directory
+  moves lock every note they write (each moved note at its old and new path,
+  and each note whose links they rewrite) in the same sorted order as other
+  locked writes, and scan for links again under those locks. A moved note's
+  links to another moved note are now rewritten at its new path instead of
+  failing.
+
 ## [0.3.1] - 2026-08-05
 
 Patch release for distributed stable note identity, revision-safe file-backed

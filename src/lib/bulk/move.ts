@@ -7,8 +7,9 @@
  * - Updating wikilinks to point to new locations
  */
 
-import { readFile, writeFile, link, unlink, mkdir, readdir, stat } from 'fs/promises';
-import { join, relative, basename, extname, resolve } from 'path';
+import { readFile, writeFile, link, unlink, mkdir, readdir, realpath, stat } from 'fs/promises';
+import { join, relative, basename, extname, isAbsolute, resolve, sep } from 'path';
+import { getLineageMutationLockPath, withLineageMutationLocks } from '../lineage-lock.js';
 
 // ============================================================================
 // Types
@@ -450,7 +451,89 @@ async function moveFile(
 }
 
 /**
+ * How many times a locked move scans the vault again when notes gain links to
+ * the moved notes while it waits for its locks.
+ */
+const MOVE_LOCK_ATTEMPTS = 3;
+
+/**
+ * Find the notes that link to the moved notes, reading each vault file once.
+ *
+ * Maps each linking note to the moved notes it links to. The notes come in the
+ * order {@link findWikilinksToFile} finds them when called once per moved
+ * note: by the first moved note they link to, then in vault-file order.
+ */
+async function findLinkingNotes(
+  vaultDir: string,
+  filesToMove: string[],
+  allVaultFiles: string[]
+): Promise<Map<string, string[]>> {
+  // Many notes share link targets, so match each distinct target once.
+  const movedIndexesByTarget = new Map<string, number[]>();
+  const movedIndexesFor = (linkTarget: string): number[] => {
+    let indexes = movedIndexesByTarget.get(linkTarget);
+    if (!indexes) {
+      indexes = filesToMove.flatMap((movedFile, index) =>
+        wikilinkMatchesFile(linkTarget, movedFile, vaultDir) ? [index] : []
+      );
+      movedIndexesByTarget.set(linkTarget, indexes);
+    }
+    return indexes;
+  };
+
+  const found: { sourceFile: string; movedIndexes: number[] }[] = [];
+  for (const sourceFile of allVaultFiles) {
+    // A note's links to itself are never rewritten, so a single moved note
+    // need not be read.
+    if (filesToMove.length === 1 && filesToMove[0] === sourceFile) continue;
+
+    const content = await readFile(sourceFile, 'utf-8');
+    const movedIndexes = new Set<number>();
+    for (const match of content.matchAll(new RegExp(WIKILINK_REGEX.source, 'g'))) {
+      for (const index of movedIndexesFor(match[1]!)) {
+        if (filesToMove[index] !== sourceFile) movedIndexes.add(index);
+      }
+    }
+    if (movedIndexes.size > 0) {
+      found.push({ sourceFile, movedIndexes: [...movedIndexes].sort((a, b) => a - b) });
+    }
+  }
+
+  found.sort((a, b) => a.movedIndexes[0]! - b.movedIndexes[0]!);
+  return new Map(found.map(entry => [entry.sourceFile, entry.movedIndexes.map(index => filesToMove[index]!)]));
+}
+
+interface MovePlan {
+  vaultDir: string;
+  absoluteTargetDir: string;
+  filesToMove: string[];
+  execute: boolean;
+  targetBasenames?: ReadonlyMap<string, string>;
+}
+
+function destinationPath(plan: MovePlan, filePath: string): string {
+  return join(plan.absoluteTargetDir, plan.targetBasenames?.get(filePath) ?? basename(filePath));
+}
+
+async function onDiskPath(filePath: string): Promise<string> {
+  return realpath(filePath).catch(() => resolve(filePath));
+}
+
+function isInsideVault(vaultDir: string, filePath: string): boolean {
+  const relativePath = relative(resolve(vaultDir), resolve(filePath));
+  return relativePath !== ''
+    && relativePath !== '..'
+    && !relativePath.startsWith(`..${sep}`)
+    && !isAbsolute(relativePath);
+}
+
+/**
  * Execute a bulk move operation with wikilink updates.
+ *
+ * When executing, the move holds a lineage mutation lock on every note it
+ * writes: each moved note under its old and new path, and every note whose
+ * links it rewrites. It takes them in one sorted acquisition, like other
+ * locked writes, so it cannot deadlock with them.
  */
 export async function executeBulkMove(options: {
   vaultDir: string;
@@ -460,9 +543,78 @@ export async function executeBulkMove(options: {
   allVaultFiles?: string[];
   /** Optional exact destination basenames, keyed by source path, for safe renames. */
   targetBasenames?: ReadonlyMap<string, string>;
+  /**
+   * The caller already holds the lineage locks for this move. The locks are
+   * not reentrant, so the move then takes none of its own.
+   */
+  locksHeld?: boolean;
 }): Promise<BulkMoveResult> {
   const { vaultDir, targetDir, filesToMove, execute } = options;
-  
+
+  if (filesToMove.length === 0) {
+    return { dryRun: !execute, moveResults: [], wikilinkUpdates: [], totalLinksUpdated: 0, errors: [] };
+  }
+
+  // Resolve target directory (relative to vault)
+  const absoluteTargetDir = targetDir.startsWith('/')
+    ? targetDir
+    : join(vaultDir, targetDir);
+  const plan: MovePlan = {
+    vaultDir,
+    absoluteTargetDir,
+    filesToMove,
+    execute,
+    ...(options.targetBasenames && { targetBasenames: options.targetBasenames }),
+  };
+
+  // Get all markdown files in the vault for wikilink scanning
+  const allVaultFiles = options.allVaultFiles ?? await findAllMarkdownFiles(vaultDir);
+  const linkingNotes = await findLinkingNotes(vaultDir, filesToMove, allVaultFiles);
+
+  if (!execute || options.locksHeld) {
+    return applyBulkMove(plan, linkingNotes, allVaultFiles);
+  }
+
+  // Lock paths, keyed by lock file so two spellings of one path count once.
+  const lockPaths = new Map<string, string>();
+  const addLockPath = (path: string) => lockPaths.set(getLineageMutationLockPath(vaultDir, path), path);
+  for (const filePath of filesToMove) {
+    addLockPath(filePath);
+    const destination = destinationPath(plan, filePath);
+    if (isInsideVault(vaultDir, destination)) addLockPath(destination);
+  }
+  for (const sourceFile of linkingNotes.keys()) addLockPath(sourceFile);
+
+  // A note can gain a link to a moved note between the scan above and the
+  // locks, so scan again under the locks. If a note outside the locks now
+  // links to a moved note, release and lock again with it included.
+  for (let attempt = 1; ; attempt++) {
+    const outcome = await withLineageMutationLocks(vaultDir, [...lockPaths.values()], async () => {
+      const lockedVaultFiles = await findAllMarkdownFiles(vaultDir);
+      const lockedLinkingNotes = await findLinkingNotes(vaultDir, filesToMove, lockedVaultFiles);
+      const unlocked = [...lockedLinkingNotes.keys()]
+        .filter(sourceFile => !lockPaths.has(getLineageMutationLockPath(vaultDir, sourceFile)));
+      if (unlocked.length > 0) return { unlocked };
+      return { result: await applyBulkMove(plan, lockedLinkingNotes, lockedVaultFiles) };
+    });
+    if ('result' in outcome) return outcome.result;
+    if (attempt === MOVE_LOCK_ATTEMPTS) {
+      throw new Error('Notes kept gaining links to the moved notes while the move waited for locks; retry the move.');
+    }
+    for (const sourceFile of outcome.unlocked) addLockPath(sourceFile);
+  }
+}
+
+/**
+ * Move the files, then rewrite the links to them.
+ */
+async function applyBulkMove(
+  plan: MovePlan,
+  linkingNotes: Map<string, string[]>,
+  allVaultFiles: string[]
+): Promise<BulkMoveResult> {
+  const { vaultDir, absoluteTargetDir, filesToMove, execute } = plan;
+
   const result: BulkMoveResult = {
     dryRun: !execute,
     moveResults: [],
@@ -470,46 +622,19 @@ export async function executeBulkMove(options: {
     totalLinksUpdated: 0,
     errors: [],
   };
-  
-  if (filesToMove.length === 0) {
-    return result;
+
+  // A linking note can be listed under a different spelling than the same
+  // note in the move list (letter case, on a case-insensitive filesystem).
+  // Match them by resolved on-disk path, read before anything moves; like
+  // discovery's dedupe, this keeps distinct hardlinked paths apart.
+  const movedByOnDiskPath = new Map<string, string>();
+  for (const filePath of filesToMove) movedByOnDiskPath.set(await onDiskPath(filePath), filePath);
+  const movedLinkingNotes = new Map<string, string>();
+  for (const sourceFile of linkingNotes.keys()) {
+    const movedFile = movedByOnDiskPath.get(await onDiskPath(sourceFile));
+    if (movedFile) movedLinkingNotes.set(sourceFile, movedFile);
   }
-  
-  // Get all markdown files in the vault for wikilink scanning
-  const allVaultFiles = options.allVaultFiles ?? await findAllMarkdownFiles(vaultDir);
-  
-  // Resolve target directory (relative to vault)
-  const absoluteTargetDir = targetDir.startsWith('/') 
-    ? targetDir 
-    : join(vaultDir, targetDir);
-  
-  // First, collect all wikilink references for all files to move
-  const allReferences: Map<string, WikilinkReference[]> = new Map();
-  const referencesBySourceFile: Map<string, { refs: WikilinkReference[]; movedFile: string; newPath: string }[]> = new Map();
-  
-  for (const filePath of filesToMove) {
-    const refs = await findWikilinksToFile(vaultDir, filePath, allVaultFiles);
-    allReferences.set(filePath, refs);
-    
-    // Calculate new path
-    const newPath = join(
-      absoluteTargetDir,
-      options.targetBasenames?.get(filePath) ?? basename(filePath)
-    );
-    
-    // Group by source file
-    for (const ref of refs) {
-      if (!referencesBySourceFile.has(ref.sourceFile)) {
-        referencesBySourceFile.set(ref.sourceFile, []);
-      }
-      referencesBySourceFile.get(ref.sourceFile)!.push({
-        refs: [ref],
-        movedFile: filePath,
-        newPath,
-      });
-    }
-  }
-  
+
   // Move the files first so wikilink rewriting only happens for files that
   // were ACTUALLY relocated. A move skipped due to a destination collision (or
   // any other error) must NOT rewrite the vault's links to a phantom new path —
@@ -524,7 +649,7 @@ export async function executeBulkMove(options: {
       absoluteTargetDir,
       vaultDir,
       execute,
-      options.targetBasenames?.get(filePath)
+      plan.targetBasenames?.get(filePath)
     );
     result.moveResults.push(moveResult);
 
@@ -538,52 +663,46 @@ export async function executeBulkMove(options: {
   // Calculate what the new file paths will be (for generating correct links).
   // Only files that actually moved get a relocated path; a skipped file keeps
   // its original path so links to it stay valid.
-  const newFilePaths = allVaultFiles.map(f => {
-    if (movedFiles.has(f)) {
-      return join(absoluteTargetDir, options.targetBasenames?.get(f) ?? basename(f));
-    }
-    return f;
-  });
+  const newFilePaths = allVaultFiles.map(f => movedFiles.has(f) ? destinationPath(plan, f) : f);
 
   // Update wikilinks in other files
-  for (const [sourceFile, refGroups] of referencesBySourceFile) {
-    const sourceRelativePath = relative(vaultDir, sourceFile);
+  for (const [sourceFile, linkedFiles] of linkingNotes) {
+    // Skip references to files that were not actually moved (e.g. a
+    // collision-skipped move) — rewriting them would corrupt links.
+    const linkedMovedFiles = linkedFiles.filter(file => movedFiles.has(file));
+    if (linkedMovedFiles.length === 0) continue;
 
-    // Combine all references for this source file
-    const allRefs: WikilinkReference[] = [];
-    const refToNewPath: Map<WikilinkReference, string> = new Map();
+    // A note that links to another moved note may have moved too; its links
+    // are rewritten where it now lives.
+    const movedSource = movedLinkingNotes.get(sourceFile);
+    const filePath = execute && movedSource && movedFiles.has(movedSource)
+      ? destinationPath(plan, movedSource)
+      : sourceFile;
+    const relativePath = relative(vaultDir, filePath);
 
-    for (const group of refGroups) {
-      // Skip references to files that were not actually moved (e.g. a
-      // collision-skipped move) — rewriting them would corrupt links.
-      if (!movedFiles.has(group.movedFile)) continue;
-      for (const ref of group.refs) {
-        allRefs.push(ref);
-        refToNewPath.set(ref, group.newPath);
-      }
-    }
-
-    if (allRefs.length === 0) continue;
-    
     const updateResult: WikilinkUpdateResult = {
-      filePath: sourceFile,
-      relativePath: sourceRelativePath,
+      filePath,
+      relativePath,
       linksUpdated: 0,
       applied: false,
     };
-    
+
     try {
-      const content = await readFile(sourceFile, 'utf-8');
-      
-      // Update each reference
+      const content = await readFile(filePath, 'utf-8');
+
+      // Find the links again in the text about to be rewritten, so a change
+      // since the scan cannot shift a replacement onto the wrong text.
+      const replacements = linkedMovedFiles.flatMap(movedFile =>
+        scanWikilinkReferencesInContent(content, sourceFile, relativePath, movedFile, vaultDir)
+          .map(ref => ({ ref, newPath: destinationPath(plan, movedFile) }))
+      );
+
+      // Sort by position descending
+      replacements.sort((a, b) => b.ref.position - a.ref.position);
+
       let newContent = content;
       let totalUpdated = 0;
-      
-      // Sort by position descending
-      const sortedRefs = [...allRefs].sort((a, b) => b.position - a.position);
-      
-      for (const ref of sortedRefs) {
-        const newPath = refToNewPath.get(ref)!;
+      for (const { ref, newPath } of replacements) {
         const newLink = generateUpdatedWikilink(
           ref.match,
           ref.linkTarget,
@@ -591,32 +710,32 @@ export async function executeBulkMove(options: {
           vaultDir,
           newFilePaths
         );
-        
+
         if (newLink !== ref.match) {
-          newContent = 
-            newContent.slice(0, ref.position) + 
-            newLink + 
+          newContent =
+            newContent.slice(0, ref.position) +
+            newLink +
             newContent.slice(ref.position + ref.match.length);
           totalUpdated++;
         }
       }
-      
+
       updateResult.linksUpdated = totalUpdated;
-      
+
       if (execute && totalUpdated > 0) {
-        await writeFile(sourceFile, newContent, 'utf-8');
+        await writeFile(filePath, newContent, 'utf-8');
         updateResult.applied = true;
       }
     } catch (err) {
       updateResult.error = err instanceof Error ? err.message : String(err);
-      result.errors.push(`Failed to update wikilinks in ${sourceRelativePath}: ${updateResult.error}`);
+      result.errors.push(`Failed to update wikilinks in ${relativePath}: ${updateResult.error}`);
     }
-    
+
     if (updateResult.linksUpdated > 0 || updateResult.error) {
       result.wikilinkUpdates.push(updateResult);
       result.totalLinksUpdated += updateResult.linksUpdated;
     }
   }
-  
+
   return result;
 }
