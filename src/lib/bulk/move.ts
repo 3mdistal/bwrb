@@ -556,7 +556,7 @@ export async function executeBulkMove(options: {
   }
 
   // Resolve target directory (relative to vault)
-  const absoluteTargetDir = isAbsolute(targetDir)
+  const absoluteTargetDir = targetDir.startsWith('/')
     ? targetDir
     : join(vaultDir, targetDir);
   const plan: MovePlan = {

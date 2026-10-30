@@ -28,8 +28,7 @@ All notable changes to Bowerbird are documented in this file.
   and each note whose links they rewrite) in the same sorted order as other
   locked writes, and scan for links again under those locks. A moved note's
   links to another moved note are now rewritten at its new path instead of
-  failing, and an absolute Windows target directory is no longer joined onto
-  the vault path.
+  failing.
 
 ## [0.3.1] - 2026-08-05
 

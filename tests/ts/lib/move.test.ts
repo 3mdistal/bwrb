@@ -611,7 +611,7 @@ Related to [[MyIdea]].
 
         const result = await executeBulkMove({
           vaultDir: tempDir,
-          targetDir: join(tempDir, 'Archive'),
+          targetDir: 'Archive',
           filesToMove: [join(tempDir, 'Ideas', 'A.md'), join(tempDir, 'Ideas', 'B.md')],
           execute: true,
         });
@@ -632,7 +632,7 @@ Related to [[MyIdea]].
 
         const result = await executeBulkMove({
           vaultDir: tempDir,
-          targetDir: join(tempDir, 'Archive'),
+          targetDir: 'Archive',
           filesToMove: [join(tempDir, 'Ideas', 'A.md'), join(tempDir, 'Ideas', 'B.md')],
           execute: true,
         });
@@ -653,7 +653,7 @@ Related to [[MyIdea]].
 
         const result = await executeBulkMove({
           vaultDir: tempDir,
-          targetDir: join(tempDir, 'Archive'),
+          targetDir: 'Archive',
           filesToMove: [join(tempDir, 'Ideas', 'A.md')],
           execute: true,
         });
@@ -674,7 +674,7 @@ Related to [[MyIdea]].
 
         await expect(executeBulkMove({
           vaultDir: tempDir,
-          targetDir: join(tempDir, 'Archive'),
+          targetDir: 'Archive',
           filesToMove: [join(tempDir, 'Ideas', 'A.md')],
           execute: true,
         })).rejects.toThrow('Notes kept gaining links to the moved notes while the move waited for locks; retry the move.');
@@ -704,7 +704,7 @@ Related to [[MyIdea]].
         const requested = nextLockRequested();
         const move = executeBulkMove({
           vaultDir: tempDir,
-          targetDir: join(tempDir, 'Archive'),
+          targetDir: 'Archive',
           filesToMove: [join(tempDir, 'Ideas', 'A.md')],
           execute: true,
         });
@@ -739,7 +739,7 @@ Related to [[MyIdea]].
               // yet. Continue once the move is waiting for its locks, or has
               // finished without taking any.
               const requested = nextLockRequested();
-              move = executeBulkMove({ vaultDir: tempDir, targetDir: join(tempDir, 'Archive'), filesToMove: [idea], execute: true });
+              move = executeBulkMove({ vaultDir: tempDir, targetDir: 'Archive', filesToMove: [idea], execute: true });
               await Promise.race([requested, move]);
             },
           },
@@ -764,7 +764,7 @@ Related to [[MyIdea]].
 
         const result = await executeBulkMove({
           vaultDir: tempDir,
-          targetDir: join(tempDir, 'Archive'),
+          targetDir: 'Archive',
           filesToMove: [join(tempDir, 'Ideas', 'A.md'), join(tempDir, 'ideas', 'B.md')],
           execute: true,
         });
@@ -777,7 +777,7 @@ Related to [[MyIdea]].
       it('takes no locks for a dry run, or when the caller holds them', async () => {
         await writeFile(join(tempDir, 'Ideas', 'A.md'), '# A');
         await writeFile(join(tempDir, 'Linker.md'), 'See [[A]].');
-        const move = { vaultDir: tempDir, targetDir: join(tempDir, 'Archive'), filesToMove: [join(tempDir, 'Ideas', 'A.md')] };
+        const move = { vaultDir: tempDir, targetDir: 'Archive', filesToMove: [join(tempDir, 'Ideas', 'A.md')] };
 
         await executeBulkMove({ ...move, execute: false });
         const held = await executeBulkMove({ ...move, execute: true, locksHeld: true });
