@@ -593,14 +593,17 @@ Related to [[MyIdea]].
         });
       }
 
-      /** Resolves once the next lock acquisition has started trying for its locks. */
-      function nextLockRequested(): Promise<void> {
-        return new Promise(requested => {
-          beforeNextLock(async () => {
-            // Acquisition retries every 20 ms; let it try a few times first.
-            setTimeout(requested, 100);
-          });
-        });
+      /** Gives the next lock acquisition a few quick tries, so a lock held elsewhere makes it time out. */
+      function nextLockTriesBriefly(): void {
+        locks.mockImplementationOnce((vaultDir, sourcePaths, task, options) =>
+          actualLocks.withLineageMutationLocks(vaultDir, sourcePaths, task, { ...options, attempts: 3, retryMs: 5 })
+        );
+      }
+
+      /** Runs a move whose lock acquisition gives up quickly; returns its error message, or 'moved'. */
+      function moveTryingBriefly(move: Parameters<typeof executeBulkMove>[0]): Promise<string> {
+        nextLockTriesBriefly();
+        return executeBulkMove(move).then(() => 'moved', (error: unknown) => String(error));
       }
 
       it('locks the moved notes under both paths and the notes whose links it rewrites', async () => {
@@ -685,38 +688,23 @@ Related to [[MyIdea]].
         expect(await readFile(join(tempDir, 'Linker.md'), 'utf-8')).toBe('See [[A]].');
       });
 
-      it('waits while another writer holds the lock on a note whose links it rewrites', async () => {
+      it('cannot move while another writer holds the lock on a note whose links it rewrites', async () => {
         await writeFile(join(tempDir, 'Ideas', 'A.md'), '# A');
         await mkdir(join(tempDir, 'Other'));
         await writeFile(join(tempDir, 'Other', 'A.md'), '# Other A');
         await writeFile(join(tempDir, 'Linker.md'), 'See [[A]].');
+        const move = { vaultDir: tempDir, targetDir: 'Archive', filesToMove: [join(tempDir, 'Ideas', 'A.md')], execute: true };
 
-        let release!: () => void;
-        let held!: () => void;
-        const isHeld = new Promise<void>(resolve => { held = resolve; });
-        const writer = actualLocks.withLineageMutationLocks(tempDir, [join(tempDir, 'Linker.md')], async () => {
-          held();
-          await new Promise<void>(resolve => { release = resolve; });
+        let blocked: string | undefined;
+        await actualLocks.withLineageMutationLocks(tempDir, [join(tempDir, 'Linker.md')], async () => {
+          blocked = await moveTryingBriefly(move);
           await writeFile(join(tempDir, 'Linker.md'), 'See [[A]] twice: [[A]].');
         });
-        await isHeld;
 
-        const requested = nextLockRequested();
-        const move = executeBulkMove({
-          vaultDir: tempDir,
-          targetDir: 'Archive',
-          filesToMove: [join(tempDir, 'Ideas', 'A.md')],
-          execute: true,
-        });
-        try {
-          await Promise.race([requested, move]);
-          await expect(access(join(tempDir, 'Ideas', 'A.md'))).resolves.toBeUndefined();
-        } finally {
-          release();
-          await writer;
-        }
-        const result = await move;
-
+        expect(blocked).toContain('Timed out waiting for a fork-lineage mutation lock');
+        await expect(access(join(tempDir, 'Ideas', 'A.md'))).resolves.toBeUndefined();
+        // Once the writer is done, the move rewrites the links it added.
+        const result = await executeBulkMove(move);
         expect(result.errors).toEqual([]);
         expect(result.totalLinksUpdated).toBe(2);
         expect(await readFile(join(tempDir, 'Linker.md'), 'utf-8'))
@@ -729,23 +717,20 @@ Related to [[MyIdea]].
         } });
         const idea = join(tempDir, 'Ideas', 'A.md');
         await writeFile(idea, '---\ntype: idea\nstatus: raw\n---\nBody\n');
+        const move = { vaultDir: tempDir, targetDir: 'Archive', filesToMove: [idea], execute: true };
 
-        let move: ReturnType<typeof executeBulkMove> | undefined;
+        let blocked: string | undefined;
         await editNoteFromJson(schema, tempDir, idea, '{"status":"settled"}', {
           mutationFaultInjector: {
             before: async (point) => {
-              if (point !== 'source-write') return;
-              // The edit has checked the note's bytes but not written them
-              // yet. Continue once the move is waiting for its locks, or has
-              // finished without taking any.
-              const requested = nextLockRequested();
-              move = executeBulkMove({ vaultDir: tempDir, targetDir: 'Archive', filesToMove: [idea], execute: true });
-              await Promise.race([requested, move]);
+              // The edit has checked the note's bytes but not written them yet.
+              if (point === 'source-write') blocked = await moveTryingBriefly(move);
             },
           },
         });
-        const result = await move!;
 
+        expect(blocked).toContain('Timed out waiting for a fork-lineage mutation lock');
+        const result = await executeBulkMove(move);
         expect(result.errors).toEqual([]);
         await expect(access(idea)).rejects.toThrow();
         expect(await readFile(join(tempDir, 'Archive', 'A.md'), 'utf-8')).toContain('status: settled');
