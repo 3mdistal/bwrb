@@ -779,6 +779,8 @@ async function applyUnsafeFilenameFixLocked(
     filesToMove: [filePath],
     execute: !isDryRunEnabled(),
     targetBasenames: new Map([[filePath, targetBasename]]),
+    // applyUnsafeFilenameFix holds the lock on this note.
+    locksHeld: true,
   });
   if (moveResult.errors.length > 0) {
     if (originalRaw !== undefined && titleUpdatedRaw !== undefined) {
