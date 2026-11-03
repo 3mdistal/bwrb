@@ -406,13 +406,14 @@ describe('edit patch batches', () => {
     expect(existsSync(join(vault, 'Tasks/B.md'))).toBe(false);
   });
 
-  it('keeps the written statuses when releasing a lock fails, and releases the other locks', async () => {
+  it('reports a written batch when a lock can\'t be released, warns, and releases the other locks', async () => {
     const { read: readNote, run, vault } = await fixture();
     const locks = ['Tasks/A.md', 'Tasks/B.md']
       .map((path) => getLineageMutationLockPath(vault, join(vault, path)))
       .sort((a, b) => a.localeCompare(b, 'en'));
     // Locks are released in reverse order, so fail the first one released.
     const [kept, failing] = locks as [string, string];
+    const warn = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined);
 
     const batch = await run([
       { path: 'Tasks/A.md', patch: { status: 'active' } },
@@ -428,11 +429,15 @@ describe('edit patch batches', () => {
       },
     });
 
-    expect(batch).toMatchObject({
-      success: false,
-      exitCode: 2,
-      error: 'Every note was written, but releasing a lock failed: simulated EIO',
-    });
+    const warnings = warn.mock.calls.slice();
+    warn.mockRestore();
+
+    // A lock left behind can't undo the writes, so the batch reports them as done.
+    expect(batch).toMatchObject({ success: true, exitCode: 0 });
+    expect(warnings).toContainEqual([
+      `Could not verify release of Bowerbird lock: ${failing}`,
+      { code: 'BWRB_LOCK_RELEASE_FAILED' },
+    ]);
     expect(batch.result.notes.map((note) => note.status)).toEqual(['applied', 'applied']);
     expect((await parseNote(join(vault, 'Tasks/B.md'))).frontmatter['status']).toBe('active');
     expect(existsSync(kept)).toBe(false);

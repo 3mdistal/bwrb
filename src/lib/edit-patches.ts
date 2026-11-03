@@ -719,33 +719,23 @@ export async function runPatchBatch(
   if (mode === 'preview') return outcome(mode, notes, true, ExitCodes.SUCCESS);
 
   const lockPaths = notes.flatMap((note) => [note.file!.path, ...(note.guardPaths ?? [])]);
-  // Set once the locked work has finished, so a failure releasing the locks
-  // afterwards is not mistaken for a batch that never ran.
-  const locked: { settled?: { failure?: string } } = {};
+  let failure: string | undefined;
   try {
-    await withLineageMutationLocks(vaultDir, lockPaths, async () => {
+    failure = await withLineageMutationLocks(vaultDir, lockPaths, async () => {
       await recheckUnderLock(schema, vaultDir, notes, loadGuardIndex);
       const stale = notes.filter((note) => note.result.errors?.length);
       if (stale.length > 0) {
         for (const note of notes) note.result.status = note.result.errors?.length ? 'blocked' : 'not-attempted';
-        locked.settled = { failure: blockedMessage(stale.length) };
-        return;
+        return blockedMessage(stale.length);
       }
-      const failure = await writeNotes(notes, options);
-      locked.settled = failure === undefined ? {} : { failure };
+      return writeNotes(notes, options);
     });
   } catch (error) {
-    const message = (error as Error).message;
-    if (!locked.settled) {
-      // The locks could not be taken, or the recheck failed; nothing was written.
-      for (const note of notes) note.result.status = 'not-attempted';
-      return outcome(mode, notes, false, ExitCodes.IO_ERROR, message);
-    }
-    // The notes are as reported; only releasing a lock went wrong.
-    const settled = (locked.settled.failure ?? 'Every note was written').replace(/\.$/, '');
-    return outcome(mode, notes, false, ExitCodes.IO_ERROR, `${settled}, but releasing a lock failed: ${message}`);
+    // The locks could not be taken, or the recheck failed; nothing was written.
+    // Releasing a lock never throws: one it can't verify is only a warning.
+    for (const note of notes) note.result.status = 'not-attempted';
+    return outcome(mode, notes, false, ExitCodes.IO_ERROR, (error as Error).message);
   }
-  const failure = locked.settled?.failure;
   if (failure !== undefined) {
     const anyBlocked = notes.some((note) => note.result.status === 'blocked');
     return outcome(mode, notes, false, anyBlocked ? blockedExitCode(notes) : ExitCodes.IO_ERROR, failure);

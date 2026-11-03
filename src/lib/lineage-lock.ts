@@ -77,21 +77,10 @@ export async function withLineageMutationLocks<T>(
     }
     return await task();
   } finally {
-    await releaseAll(releases);
-  }
-}
-
-/** Release in reverse order, attempting every lock before reporting the first failure. */
-async function releaseAll(releases: Array<() => Promise<void>>): Promise<void> {
-  const failures: unknown[] = [];
-  for (let index = releases.length - 1; index >= 0; index--) {
-    try {
+    for (let index = releases.length - 1; index >= 0; index--) {
       await releases[index]!();
-    } catch (error) {
-      failures.push(error);
     }
   }
-  if (failures.length > 0) throw failures[0];
 }
 
 /**
