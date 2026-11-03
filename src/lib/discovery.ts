@@ -629,12 +629,12 @@ export async function buildVaultNoteSnapshotFromFiles(
         // Keep the yaml@2 malformed-frontmatter preflight separate from the
         // gray-matter parse below: they deliberately have different contracts.
         // Read once so a snapshot cannot preflight one revision then parse another.
-        const parse = (raw: string) => {
+        const raw = await readFile(file.path, 'utf-8');
+        const parse = () => {
           if (hasMalformedTopFrontmatter(raw)) throw new Error('Malformed frontmatter');
           return parseNoteContent(raw).frontmatter;
         };
-        // The cache skips the read for a note unchanged since a settled earlier one.
-        const frontmatter = cache ? await cache.read(file.path, parse) : parse(await readFile(file.path, 'utf-8'));
+        const frontmatter = cache ? cache.parse(raw, parse) : parse();
         entry.frontmatter = frontmatter;
         const resolvedType = resolveTypeFromFrontmatter(schema, frontmatter);
         if (resolvedType) {
