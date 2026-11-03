@@ -138,8 +138,8 @@ manifest of a hundred notes takes seconds instead of minutes.
   write fails partway, the notes this run already wrote are restored, unless
   something else has changed them since (`RESTORE_SKIPPED`). A restore that
   itself fails is reported as `RESTORE_FAILED`. The locks hold off other
-  `bwrb` edits of the same notes, but not other programs, and not yet
-  `bwrb bulk --move`.
+  `bwrb` writes to the same notes, `bulk --move` included, but not other
+  programs.
 - **Safe to rerun.** A note that already holds its patched values is reported
   `unchanged` and left alone, even when its revision has moved on. After an
   interruption, rerun the same manifest to finish the rest.
