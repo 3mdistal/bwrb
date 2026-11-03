@@ -9,8 +9,15 @@ const FORMAT = 'normalized-frontmatter-v1';
 const MAX_BYTES = 32 * 1024 * 1024;
 const MAX_ENTRIES = 16_384;
 const MAX_VALUE_BYTES = 64 * 1024;
+// Room for a few checkouts of a large vault, since stamps are per path.
+const MAX_STAMPS = 32_768;
+// A stamp vouches for a file only when the file last changed this long before
+// it was taken. Any later write then carries a newer timestamp, even on
+// filesystems that keep coarse ones (FAT rounds mtimes to two seconds).
+const SETTLED_MS = 5_000;
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 type Entry = [string, string, string]; // current input hash, normalized JSON, JSON checksum
+type Stamp = [string, string, string]; // absolute path, file stamp, input hash of the bytes read after it
 let parserRevision: string | undefined | null = null;
 
 function getParserRevision(): string | undefined {
@@ -31,6 +38,8 @@ function getParserRevision(): string | undefined {
 /** A disposable parsing memo, not a file inventory, schema or identity authority. */
 export class SnapshotParseCache {
   private readonly entries = new Map<string, Entry>();
+  // Path to the stamp of the file when it was last read, and the hash of those bytes.
+  private readonly stamps = new Map<string, Stamp>();
   private retainedBytes = 512; // Includes the serialized document header allowance.
   private changed = false;
 
@@ -54,24 +63,59 @@ export class SnapshotParseCache {
         if (!/^[a-f0-9]{64}$/.test(key) || Buffer.byteLength(json) > MAX_VALUE_BYTES || hash(json) !== checksum) continue;
         this.retain([key, json, checksum]);
       }
+      // Stamps have their own checksum, so a cache written without them, or
+      // with damaged ones, still supplies its parsed entries.
+      if (!Array.isArray(document.stamps) || document.stamps.length > MAX_STAMPS ||
+          document.stampsChecksum !== hash(JSON.stringify(document.stamps))) return;
+      for (const stamp of [...document.stamps].reverse()) {
+        if (!Array.isArray(stamp) || stamp.length !== 3 ||
+            !stamp.every(value => typeof value === 'string')) continue;
+        const [path, fileStamp, key] = stamp as Stamp;
+        if (!isAbsolute(path) || !/^\d+:\d+:\d+:\d+:\d+$/.test(fileStamp) || !/^[a-f0-9]{64}$/.test(key)) continue;
+        this.retainStamp([path, fileStamp, key]);
+      }
     } catch { /* Missing, corrupt or unreadable cache means fresh parsing. */ }
   }
 
-  parse(raw: string, parse: () => Record<string, unknown>): Record<string, unknown> {
-    const key = hash(raw);
-    const entry = this.entries.get(key);
-    if (entry) {
-      try {
-        const value: unknown = JSON.parse(entry[1]);
-        if (isRecord(value) && reusable(value)) {
-          this.entries.delete(key);
-          this.entries.set(key, entry);
-          // Return a fresh value: callers cannot mutate another snapshot's memo.
-          return value;
-        }
-      } catch { /* Bad entry: use the actual parser below. */ }
-      this.remove(key);
+  /**
+   * Parse the note at `path`, skipping the read when the file's stamp (device,
+   * file ID, size, mtime and ctime) still matches a settled earlier read whose
+   * parse is retained. Any write changes ctime, even one that restores mtime.
+   */
+  async read(path: string, parse: (raw: string) => Record<string, unknown>): Promise<Record<string, unknown>> {
+    // Stat before reading, so a stamp never vouches for bytes older than itself.
+    const takenAt = Date.now();
+    const info = await stat(path, { bigint: true });
+    const fileStamp = `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
+    const known = this.stamps.get(path);
+    if (known) {
+      const value = known[1] === fileStamp ? this.reuse(known[2]) : undefined;
+      if (value) {
+        this.stamps.delete(path);
+        this.stamps.set(path, known);
+        return value;
+      }
+      this.stamps.delete(path);
+      this.changed = true;
     }
+    const raw = await readFile(path, 'utf8');
+    const key = hash(raw);
+    const value = this.parseKeyed(key, () => parse(raw));
+    const lastChange = info.mtimeNs > info.ctimeNs ? info.mtimeNs : info.ctimeNs;
+    if (this.entries.has(key) && Number(lastChange / 1_000_000n) <= takenAt - SETTLED_MS) {
+      this.retainStamp([path, fileStamp, key]);
+      this.changed = true;
+    }
+    return value;
+  }
+
+  parse(raw: string, parse: () => Record<string, unknown>): Record<string, unknown> {
+    return this.parseKeyed(hash(raw), parse);
+  }
+
+  private parseKeyed(key: string, parse: () => Record<string, unknown>): Record<string, unknown> {
+    const cached = this.reuse(key);
+    if (cached) return cached;
     const value = parse();
     // Exceptions, malformed notes and non-JSON values never become cache hits.
     try {
@@ -84,6 +128,28 @@ export class SnapshotParseCache {
       }
     } catch { /* Unsupported/deep metadata must still return the parser's value. */ }
     return value;
+  }
+
+  private reuse(key: string): Record<string, unknown> | undefined {
+    const entry = this.entries.get(key);
+    if (!entry) return undefined;
+    try {
+      const value: unknown = JSON.parse(entry[1]);
+      if (isRecord(value) && reusable(value)) {
+        this.entries.delete(key);
+        this.entries.set(key, entry);
+        // Return a fresh value: callers cannot mutate another snapshot's memo.
+        return value;
+      }
+    } catch { /* Bad entry: the caller uses the actual parser. */ }
+    this.remove(key);
+    return undefined;
+  }
+
+  private retainStamp(stamp: Stamp): void {
+    this.stamps.delete(stamp[0]);
+    this.stamps.set(stamp[0], stamp);
+    while (this.stamps.size > MAX_STAMPS) this.stamps.delete(this.stamps.keys().next().value!);
   }
 
   private remove(key: string): void {
@@ -116,8 +182,18 @@ export class SnapshotParseCache {
         entries.push(entry);
         bytes += size;
       }
+      // Stamps fill what the entries leave, and only for entries written here.
+      const written = new Set(entries.map(entry => entry[0]));
+      const stamps: Stamp[] = [];
+      for (const stamp of [...this.stamps.values()].reverse()) {
+        if (!written.has(stamp[2])) continue;
+        const size = Buffer.byteLength(JSON.stringify(stamp)) + 1;
+        if (bytes + size > MAX_BYTES) break;
+        stamps.push(stamp);
+        bytes += size;
+      }
       const document = JSON.stringify({ format: FORMAT, parser: getParserRevision(), node: process.versions.node.split('.')[0],
-        entries, checksum: hash(JSON.stringify(entries)) });
+        entries, checksum: hash(JSON.stringify(entries)), stamps, stampsChecksum: hash(JSON.stringify(stamps)) });
       await writeFile(temporary, document, { flag: 'wx', mode: 0o600 });
       // Concurrent writers can lose memo hits, never note content. Readers see a
       // complete old or new cache; Windows sharing errors merely drop this write.
@@ -132,7 +208,10 @@ function entryBytes(entry: Entry): number {
   return Buffer.byteLength(JSON.stringify(entry)) + 1;
 }
 
-/** Fresh discovery and fresh bytes remain mandatory even on a warm cache. */
+/**
+ * Fresh discovery remains mandatory even on a warm cache. A note's bytes are
+ * read fresh unless its current stamp matches a settled earlier read.
+ */
 export async function openSnapshotParseCache(vaultDir: string, cacheHome = defaultCacheHome()): Promise<SnapshotParseCache> {
   let directory: string;
   try {

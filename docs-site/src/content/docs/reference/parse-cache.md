@@ -1,22 +1,28 @@
 ---
 title: Note parsing cache
-description: Disposable, content-verified metadata reuse across Bowerbird runs
+description: Disposable, stamp- and content-verified metadata reuse across Bowerbird runs
 ---
 
 Bowerbird keeps a bounded cache of normalized note frontmatter between runs.
-Snapshots still rediscover files and read each note's current bytes. A cached
-parse is reused only when those bytes have the same SHA-256 fingerprint. File
-timestamps, Git HEAD and a previous file inventory are never freshness proofs.
+Snapshots still rediscover files every time. For each note, Bowerbird first
+reads its file stamp: device, file ID, size, modification time and change time.
+When the stamp matches the one recorded at the note's last read, the cached
+parse is reused without reading the note. A stamp is recorded only for a note
+that had not changed for five seconds before that read, so a later write always
+carries a newer timestamp, and any write changes the change time, even one that
+puts the modification time back. Otherwise Bowerbird reads the note's current
+bytes and reuses a cached parse only when they have the same SHA-256
+fingerprint. Git HEAD and a previous file inventory are never freshness proofs.
 Schema interpretation, aliases, ownership, dates and derived indexes are rebuilt
-against the current command's inputs. This reduces parsing work; it does not
-eliminate whole-vault discovery or note I/O.
+against the current command's inputs. This removes most note reads on a vault
+that is not changing; it does not eliminate whole-vault discovery.
 
-The memo is shared across vaults and short-lived transaction worktrees because
-it stores only content-derived parsing, not file paths or resolved schema state.
-Read failures still produce the original unreadable-note behavior, even if the
-same content was cached earlier. Malformed parses and values that cannot round-trip
-through JSON without loss are not stored. Node major version, parser dependencies
-and the normalization-format revision separate incompatible results.
+Parsed entries are keyed by content, so they are shared across vaults and
+short-lived transaction worktrees. Stamps are keyed by a note's absolute path, so
+each checkout keeps its own. A note whose stat or read fails still produces the
+original unreadable-note behavior. Malformed parses and values that cannot
+round-trip through JSON without loss are not stored. Node major version, parser
+dependencies and the normalization-format revision separate incompatible results.
 
 ## Location and limits
 
@@ -29,8 +35,9 @@ The cache is outside the vault in the operating system's user-cache directory:
 An absolute `XDG_CACHE_HOME` overrides that base. Persistence is disabled if its
 resolved location is inside the vault, including through directory symlinks.
 Each Node-major memo is limited to 16,384 entries and 32 MiB, with a 64 KiB limit
-on an individual normalized value. Only frontmatter is retained, not note bodies;
-it can still contain private information. Newly created cache directories and
+on an individual normalized value, and to 32,768 file stamps, which fill the
+32 MiB file after the entries. Only frontmatter and note paths are retained, not
+note bodies; they can still contain private information. Newly created cache directories and
 files request owner-only permissions (subject to the platform's filesystem ACLs).
 
 Missing, corrupt, incompatible or unwritable caches fall back to fresh parsing.

@@ -10,7 +10,7 @@ import { minimatch } from 'minimatch';
 import { parseDocument } from 'yaml';
 import { readdir, readFile, realpath } from 'fs/promises';
 import { join, basename, relative } from 'path';
-import { existsSync } from 'fs';
+import { existsSync, type Dirent } from 'fs';
 import {
   getType,
   getDescendants,
@@ -192,7 +192,16 @@ async function populateHierarchicalBwrbignore(
   } catch {
     return;
   }
+  await addChildBwrbignores(ignoreMatcher, vaultDir, dirFull, entries, excluded);
+}
 
+async function addChildBwrbignores(
+  ignoreMatcher: Ignore,
+  vaultDir: string,
+  dirFull: string,
+  entries: Dirent[],
+  excluded: Set<string>
+): Promise<void> {
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (entry.name.startsWith('.')) continue; // includes .git
@@ -209,8 +218,19 @@ async function populateHierarchicalBwrbignore(
     // Respect current ignore rules (gitignore + any already-loaded .bwrbignore).
     if (ignoreMatcher.ignores(childRelPosix) || ignoreMatcher.ignores(childRelPosix + '/')) continue;
 
-    await addBwrbignoreIfPresent(ignoreMatcher, childFull, childRelPosix);
-    await populateHierarchicalBwrbignore(ignoreMatcher, vaultDir, childFull, excluded);
+    let childEntries: Dirent[] | undefined;
+    try {
+      childEntries = await readdir(childFull, { withFileTypes: true });
+    } catch {
+      childEntries = undefined;
+    }
+    // Most directories have no .bwrbignore, so read one only where the listing
+    // shows it (in any case, as the filesystem may match it that way). A
+    // directory that can't be listed still gets the attempt.
+    if (!childEntries || childEntries.some(child => child.name.toLowerCase() === BWRBIGNORE_FILENAME)) {
+      await addBwrbignoreIfPresent(ignoreMatcher, childFull, childRelPosix);
+    }
+    if (childEntries) await addChildBwrbignores(ignoreMatcher, vaultDir, childFull, childEntries, excluded);
   }
 }
 
@@ -564,9 +584,10 @@ export async function buildNoteTargetIndex(
  */
 export async function buildVaultNoteSnapshot(
   schema: LoadedSchema,
-  vaultDir: string
+  vaultDir: string,
+  context?: DiscoveryContext
 ): Promise<VaultNoteSnapshot> {
-  const allFiles = await discoverFilesForQueryResolution(schema, vaultDir);
+  const allFiles = await discoverFilesForQueryResolution(schema, vaultDir, context);
   const cache = await openSnapshotParseCache(vaultDir);
   const snapshot = await buildVaultNoteSnapshotFromFiles(schema, allFiles, cache);
   await cache.flush();
@@ -608,12 +629,12 @@ export async function buildVaultNoteSnapshotFromFiles(
         // Keep the yaml@2 malformed-frontmatter preflight separate from the
         // gray-matter parse below: they deliberately have different contracts.
         // Read once so a snapshot cannot preflight one revision then parse another.
-        const raw = await readFile(file.path, 'utf-8');
-        const parse = () => {
+        const parse = (raw: string) => {
           if (hasMalformedTopFrontmatter(raw)) throw new Error('Malformed frontmatter');
           return parseNoteContent(raw).frontmatter;
         };
-        const frontmatter = cache ? cache.parse(raw, parse) : parse();
+        // The cache skips the read for a note unchanged since a settled earlier one.
+        const frontmatter = cache ? await cache.read(file.path, parse) : parse(await readFile(file.path, 'utf-8'));
         entry.frontmatter = frontmatter;
         const resolvedType = resolveTypeFromFrontmatter(schema, frontmatter);
         if (resolvedType) {
@@ -794,9 +815,10 @@ export function deriveNoteTargetIndex(
  */
 export async function buildVaultNoteIndex(
   schema: LoadedSchema,
-  vaultDir: string
+  vaultDir: string,
+  context?: DiscoveryContext
 ): Promise<VaultNoteIndex> {
-  const snapshot = await buildVaultNoteSnapshot(schema, vaultDir);
+  const snapshot = await buildVaultNoteSnapshot(schema, vaultDir, context);
   return {
     snapshot,
     allFiles: deriveAllFiles(snapshot),
@@ -814,14 +836,15 @@ export async function buildVaultNoteIndex(
 export async function discoverManagedFiles(
   schema: LoadedSchema,
   vaultDir: string,
-  typeName?: string
+  typeName?: string,
+  context?: DiscoveryContext
 ): Promise<ManagedFile[]> {
   if (typeName) {
     // Specific type - only check that type's files
-    return collectFilesForType(schema, vaultDir, typeName);
+    return collectFilesForType(schema, vaultDir, typeName, context);
   }
 
-  return discoverFilesForQueryResolution(schema, vaultDir);
+  return discoverFilesForQueryResolution(schema, vaultDir, context);
 }
 
 /**
@@ -1082,12 +1105,14 @@ export async function discoverFilesForNavigation(
  */
 export async function discoverFilesForQueryResolution(
   schema: LoadedSchema,
-  vaultDir: string
+  vaultDir: string,
+  existingContext?: DiscoveryContext
 ): Promise<ManagedFile[]> {
   // Both scans traverse the same immutable ignore/config context. Build it once
-  // per query-resolution pass, but deliberately do not cache discovered files:
-  // mutation relation validation must always rediscover the current vault.
-  const context = await loadDiscoveryContext(schema, vaultDir);
+  // per query-resolution pass (or take the one a command already loaded), but
+  // deliberately do not cache discovered files: mutation relation validation
+  // must always rediscover the current vault.
+  const context = existingContext ?? await loadDiscoveryContext(schema, vaultDir);
   const [managed, unmanaged] = await Promise.all([
     discoverAllTypeFiles(schema, vaultDir, context),
     discoverUnmanagedFiles(schema, vaultDir, context),
@@ -1103,12 +1128,13 @@ export async function discoverFilesForQueryResolution(
   return Array.from(allFiles.values()).sort(stablePathCompare);
 }
 
-interface DiscoveryContext {
+/** Exclusions and ignore rules for one command's discovery passes. */
+export interface DiscoveryContext {
   excluded: Set<string>;
   ignoreMatcher: Ignore;
 }
 
-async function loadDiscoveryContext(
+export async function loadDiscoveryContext(
   schema: LoadedSchema,
   vaultDir: string
 ): Promise<DiscoveryContext> {
@@ -1124,12 +1150,14 @@ export async function collectFilesForType(
   schema: LoadedSchema,
   vaultDir: string,
   typeName: string,
-  context?: { excluded: Set<string>; ignoreMatcher: Ignore }
+  existingContext?: DiscoveryContext
 ): Promise<ManagedFile[]> {
   const type = getType(schema, typeName);
   if (!type) return [];
 
   const files: ManagedFile[] = [];
+  // Load ignore rules once for this type and all its descendants.
+  const context = existingContext ?? await loadDiscoveryContext(schema, vaultDir);
   
   // Collect files for this type (including owned)
   const typeFiles = await collectFilesForTypeWithOwnership(schema, vaultDir, typeName, context);

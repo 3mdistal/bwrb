@@ -576,7 +576,7 @@ Use `--type` to filter by type; it does not fix missing type fields.
 
 ## See Also
 
-- [Note parsing cache](/reference/parse-cache/) — Parsing reuse does not bypass fresh note reads or validation
+- [Note parsing cache](/reference/parse-cache/) — Parsing reuse does not bypass discovery or validation
 - [Validation and Audit](/concepts/validation-and-audit/) — Audit concepts
 - [bwrb bulk](/reference/commands/bulk/) — Batch fix operations
 - [Targeting Model](/reference/targeting/) — Selector reference

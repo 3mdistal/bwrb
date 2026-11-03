@@ -13,6 +13,13 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Changed
 
+- **Fewer note reads per command** — vault snapshots skip reading a note whose
+  file stamp (device, file ID, size, modification and change times) still
+  matches a read taken after the note had been unchanged for five seconds, and
+  reuse that read's cached parse. A filtered `list` also builds its vault
+  snapshot once instead of twice, loads ignore rules once, reads `.bwrbignore`
+  only in directories that have one, and parses its target notes concurrently.
+
 - **Bounded default audit scope** — bare `bwrb audit` now runs core integrity
   checks without the optional `unlinked-mention` or `frequent-unlinked-term`
   prose heuristics. `--mentions` enables exact, alias, ambiguous, and frequent
