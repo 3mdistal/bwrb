@@ -65,12 +65,14 @@ export async function withLineageMutationLocks<T>(
   )).sort((a, b) => a.localeCompare(b, 'en'));
 
   const releases: Array<() => Promise<void>> = [];
+  const prepared = new Set<string>();
   try {
     for (const lockPath of lockPaths) {
       releases.push(await acquireLock(
         lockPath,
         options,
-        'Timed out waiting for a fork-lineage mutation lock; retry the command.'
+        'Timed out waiting for a fork-lineage mutation lock; retry the command.',
+        prepared
       ));
     }
     return await task();
@@ -158,10 +160,18 @@ export function getLineageMutationLockPath(vaultDir: string, sourcePath: string)
 async function acquireLock(
   lockPath: string,
   options: OwnershipFileLockOptions,
-  timeoutMessage: string
+  timeoutMessage: string,
+  prepared?: Set<string>
 ): Promise<() => Promise<void>> {
   await mkdir(dirname(lockPath), { recursive: true });
-  await prepareRuntimeLockDirectory(lockPath);
+  // A call taking many locks prepares their folder once. Preparing runs Git and checks every
+  // lock in the folder, so repeating it per lock made a 123-note patch batch five times
+  // slower. Locks this call already holds are live, so a repeat sweep finds nothing new, and
+  // a dead owner of a lock still to come is recovered by the acquisition loop below.
+  if (!prepared?.has(dirname(lockPath))) {
+    await prepareRuntimeLockDirectory(lockPath);
+    prepared?.add(dirname(lockPath));
+  }
   const recoveryPath = `${lockPath}.recovery`;
 
   for (let attempt = 0; attempt < options.attempts; attempt++) {
