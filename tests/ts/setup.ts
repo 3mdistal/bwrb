@@ -16,7 +16,10 @@
 
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { afterEach } from 'vitest';
+import { afterAll, afterEach } from 'vitest';
+import { randomUUID } from 'crypto';
+import { rm } from 'fs/promises';
+import { tmpdir } from 'os';
 import { killAllPtyProcesses } from './lib/pty-helpers.js';
 
 // Set BWRB_VAULT to fixture vault as a safety net.
@@ -24,6 +27,12 @@ import { killAllPtyProcesses } from './lib/pty-helpers.js';
 // Individual tests can still override via --vault flag or by creating temp vaults.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 process.env.BWRB_VAULT = path.resolve(__dirname, '../fixtures/vault');
+
+// Keep automatic parsing caches out of the developer's real user cache and
+// isolate each test file (including its spawned CLI processes).
+const cacheHome = path.join(tmpdir(), `bwrb-test-cache-${randomUUID()}`);
+process.env.XDG_CACHE_HOME = cacheHome;
+afterAll(async () => { await rm(cacheHome, { recursive: true, force: true }); });
 
 // Kill any orphaned PTY processes after each test
 afterEach(() => {

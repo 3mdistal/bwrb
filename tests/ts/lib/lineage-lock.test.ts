@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync } from 'fs';
 import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, unlink, utimes, writeFile } from 'fs/promises';
 import { basename, join } from 'path';
@@ -141,13 +141,20 @@ describe('lineage mutation lock', () => {
     await mkdir(join(vaultDir, '.bwrb', 'locks'), { recursive: true });
     await writeFile(lockPath, 'not-json\n');
 
-    await expect(withLineageMutationLocks(
-      vaultDir,
-      [source],
-      async () => undefined,
-      { attempts: 8, retryMs: 2, staleMs: 100 }
-    )).rejects.toThrow('Timed out waiting for a fork-lineage mutation lock');
-    expect(await readFile(lockPath, 'utf-8')).toBe('not-json\n');
+    // Git setup may take longer than this deliberately short test grace
+    // period on a contended host. Keep the owner snapshot fresh at the check.
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    try {
+      await expect(withLineageMutationLocks(
+        vaultDir,
+        [source],
+        async () => undefined,
+        { attempts: 8, retryMs: 2, staleMs: 100 }
+      )).rejects.toThrow('Timed out waiting for a fork-lineage mutation lock');
+      expect(await readFile(lockPath, 'utf-8')).toBe('not-json\n');
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it.skipIf(process.platform === 'win32')('fails closed when an existing lock cannot be read', async () => {

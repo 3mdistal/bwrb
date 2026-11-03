@@ -52,7 +52,7 @@ export async function runRetentionRemediation(args: {
         const liveType = resolveTypeFromFrontmatter(args.schema, live.frontmatter);
         const liveRetention = liveType ? getRetentionForType(args.schema, liveType) : undefined;
         if (!liveRetention || !isDue(live.frontmatter, liveRetention, today)) { skipped++; messages.push(`${candidate.relativePath}: no longer due`); return; }
-        const result = await executeBulkMove({ vaultDir: args.vaultDir, targetDir: action.directory, filesToMove: [candidate.path], execute: true, allVaultFiles });
+        const result = await executeBulkMove({ vaultDir: args.vaultDir, targetDir: action.directory, filesToMove: [candidate.path], execute: true, allVaultFiles, locksHeld: true });
         if (result.errors.length) { skipped++; messages.push(...result.errors); } else { applied++; messages.push(`Archived ${candidate.relativePath}`); }
       });
       continue;

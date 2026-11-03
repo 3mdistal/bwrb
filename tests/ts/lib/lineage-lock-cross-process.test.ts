@@ -308,6 +308,30 @@ describe.sequential('cross-process ownership file lock', () => {
     await expectNoArtifacts(lockPath);
   });
 
+  it('reaps a crashed unique lease when an unrelated lock is acquired', async () => {
+    const lease = join(tempDir, '.bwrb', 'locks', 'identity-transactions', 'abandoned.lease');
+    const crashed = startWorker({
+      mode: 'hold', lockPath: lease,
+      options: { retryMs: 5, attempts: 200, staleMs: 60_000, heartbeatMs: 10 },
+    });
+    await crashed.waitFor('ready');
+    crashed.send('start');
+    await crashed.waitFor('acquired');
+    crashed.send('crash');
+    expect(await crashed.exit).toBe(70);
+    expect(existsSync(lease)).toBe(true);
+    const successor = startWorker({
+      mode: 'hold', lockPath,
+      options: { retryMs: 5, attempts: 200, staleMs: 60_000, heartbeatMs: 10 },
+    });
+    await successor.waitFor('ready');
+    successor.send('start');
+    await successor.waitFor('acquired');
+    expect(existsSync(lease)).toBe(false);
+    successor.send('release');
+    expect(await successor.exit).toBe(0);
+  });
+
   it('classifies under-lock delete disappearance in the actual built CLI text and JSON contracts', async () => {
     const vaultDir = await createTestVault();
     vaults.push(vaultDir);

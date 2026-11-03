@@ -73,6 +73,28 @@ bwrb audit --only invalid-note-id --output json
 bwrb audit --only duplicate-note-id --output json
 ```
 
+## Runtime locks
+
+Before acquiring a Bowerbird lock, mutations recover abandoned locks and identity
+leases in `.bwrb/locks/`, including leases with unique names from prior commands.
+A valid lock whose PID is gone is recoverable immediately. A live, inaccessible,
+or reused PID is preserved regardless of age; incomplete owner metadata still
+gets a 30-second grace period. Concurrent recovery uses the same ownership guards
+as lock acquisition. No worker restart or manual lease deletion is needed.
+
+In a Git vault, Bowerbird adds a narrow lock-directory rule to the repository's
+local `info/exclude` before creating lock files. This works in linked worktrees
+and nested vaults without changing tracked vault configuration or the Git index.
+It does not hide files already tracked by Git: their owner must explicitly remove
+those runtime artifacts from tracking. If higher-priority `.gitignore` rules
+explicitly expose the lock directory, mutation stops before creating a lock and
+asks you to remove that conflicting negation; Bowerbird does not rewrite it.
+Read-only commands do not perform lock
+maintenance. Lock paths and migration-fence coordination are unchanged.
+
+If a lock cannot be released, Bowerbird warns on stderr rather than reporting a
+successful cleanup. A later mutation can recover it once its owner has exited.
+
 ## JSON output
 
 JSON reports `from`, `to`, note counts, exact blockers, and planned or applied
