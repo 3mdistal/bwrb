@@ -12,7 +12,7 @@ import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
 import { loadSchema, getType, formatUnknownTypeError } from '../lib/schema.js';
 import { configurePromptMode, printError, printSuccess } from '../lib/prompt.js';
-import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError } from '../lib/output.js';
+import { printJson, jsonSuccess, jsonError, ExitCodes, exitWithResolutionError, type ExitCode } from '../lib/output.js';
 import {
   buildNoteIndex,
   hydrateNoteIndexAliases,
@@ -21,6 +21,7 @@ import {
 } from '../lib/navigation.js';
 import { parsePickerMode, resolveAndPick, type PickerMode } from '../lib/picker.js';
 import { editNoteFromJson, editNoteInteractive } from '../lib/edit.js';
+import { formatPatchBatchText, PatchManifestError, runPatchBatch } from '../lib/edit-patches.js';
 import {
   getOpenResultData,
   openNote,
@@ -50,6 +51,8 @@ interface EditOptions {
   json?: string;
   jsonFile?: string;
   expectedRevision?: string;
+  patches?: string;
+  execute?: boolean;
   output?: string;
   open?: boolean;
   app?: string;
@@ -109,6 +112,78 @@ function printEditSuccess(
   printSuccess(`Updated: ${path}${updatedText}`);
 }
 
+/**
+ * `edit --patches <file>`: preview, or with --execute apply, one patch per
+ * exactly named note. Output is JSON unless --output text is asked for.
+ */
+async function runPatchesMode(
+  query: string | undefined,
+  mode: string | undefined,
+  options: EditOptions,
+  cmd: Command
+): Promise<void> {
+  const globalOpts = getGlobalOpts(cmd);
+  const outputFormat = options.output ?? globalOpts.output ?? 'json';
+  const jsonMode = outputFormat !== 'text';
+  const fail = (message: string, code: ExitCode): never => {
+    if (jsonMode) printJson(jsonError(message));
+    else printError(message);
+    process.exit(code);
+  };
+  if (outputFormat !== 'json' && outputFormat !== 'text') {
+    fail(`Unknown output format: ${outputFormat}`, ExitCodes.VALIDATION_ERROR);
+  }
+  if (options.patches === undefined) {
+    fail('--execute requires --patches <file>.', ExitCodes.VALIDATION_ERROR);
+  }
+  const conflicting = [
+    query !== undefined || mode !== undefined ? 'a note query' : undefined,
+    options.type !== undefined ? '--type' : undefined,
+    options.path !== undefined ? '--path' : undefined,
+    options.where !== undefined ? '--where' : undefined,
+    options.id !== undefined ? '--id' : undefined,
+    options.body !== undefined ? '--body' : undefined,
+    options.json !== undefined ? '--json' : undefined,
+    options.jsonFile !== undefined ? '--json-file' : undefined,
+    options.expectedRevision !== undefined ? '--expected-revision' : undefined,
+    options.open ? '--open' : undefined,
+    options.app !== undefined ? '--app' : undefined,
+  ].filter((name): name is string => name !== undefined);
+  if (conflicting.length > 0) {
+    fail(
+      `--patches names its notes in the manifest and cannot be combined with ${conflicting.join(', ')}.`,
+      ExitCodes.VALIDATION_ERROR
+    );
+  }
+
+  let manifestText: string;
+  try {
+    manifestText = await fs.readFile(options.patches!, 'utf8');
+  } catch (error) {
+    return fail(`Could not read patch manifest: ${(error as Error).message}`, ExitCodes.IO_ERROR);
+  }
+  const vaultOptions: { vault?: string; jsonMode: boolean } = { jsonMode };
+  if (globalOpts.vault) vaultOptions.vault = globalOpts.vault;
+  const vaultDir = await resolveVaultDirWithSelection(vaultOptions);
+  const schema = await loadSchema(vaultDir);
+
+  let batch;
+  try {
+    batch = await runPatchBatch(schema, vaultDir, manifestText, { execute: options.execute === true });
+  } catch (error) {
+    if (error instanceof PatchManifestError) fail(error.message, ExitCodes.VALIDATION_ERROR);
+    return fail(error instanceof Error ? error.message : String(error), ExitCodes.IO_ERROR);
+  }
+  if (jsonMode) {
+    printJson(batch.success
+      ? jsonSuccess({ data: batch.result })
+      : jsonError(batch.error ?? 'Patch batch failed.', { data: batch.result }));
+  } else {
+    console.log(formatPatchBatchText(batch));
+  }
+  process.exit(batch.exitCode);
+}
+
 // ============================================================================
 // Command Definition
 // ============================================================================
@@ -126,6 +201,8 @@ export const editCommand = new Command('edit')
   .option('--json <patch>', 'Non-interactive patch/merge mode')
   .option('--json-file <path>', 'Read the non-interactive JSON patch from a file (avoids command-line size limits)')
   .option('--expected-revision <revision>', 'Require this opaque revision when using --json')
+  .option('--patches <file>', 'Preview a different JSON patch for each note named in a manifest file')
+  .option('--execute', 'Apply the --patches manifest (all notes or none)')
   .option('--output <format>', 'Output format: text or json (default: json with --json)')
   .option('-o, --open', 'Open the note in Obsidian after editing')
   .option('--app <mode>', 'App mode for --open: system (default), editor, visual, obsidian, print')
@@ -152,6 +229,19 @@ Examples:
   bwrb edit "My Task" --json '{"status":"done"}' --output json
   bwrb edit "My Task" --json '{"status":"done"}' --output text
   bwrb edit -t task --where "status == 'active'" "Deploy" --json '{"priority":"high"}'
+
+Patch batches (one patch per note):
+  bwrb edit --patches plan.json             # Preview every patch; writes nothing
+  bwrb edit --patches plan.json --execute   # Apply all patches, or none
+
+  The manifest names each note exactly, by vault-relative path or stable id:
+    {"notes": [
+      {"path": "Tasks/Ship it.md", "patch": {"status": "done"}},
+      {"id": "<uuid>", "expectedRevision": "<revision>", "patch": {"priority": 2}}
+    ]}
+  Each patch is validated like --json. A note that already holds its values is
+  reported unchanged, so a manifest can be rerun. If any note is blocked, nothing
+  is written. Output is JSON unless --output text is given.
 
 Body replacement (JSON mode):
   The _body field replaces the current body atomically. It accepts a raw Markdown
@@ -180,6 +270,10 @@ Precedence (for --open app mode):
   // typo, and silently swallowing it (commander's default) hides the mistake.
   .allowExcessArguments(false)
   .action(async (query: string | undefined, mode: string | undefined, options: EditOptions, cmd: Command) => {
+    if (options.patches !== undefined || options.execute) {
+      await runPatchesMode(query, mode, options, cmd);
+      return;
+    }
     const patchMode = options.json !== undefined || options.jsonFile !== undefined;
     // App-mode precedence: an explicit --app flag wins over the positional
     // [mode]; the positional is the convenience form. An invalid positional

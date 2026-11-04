@@ -247,7 +247,9 @@ export async function validateRelativeDateCalendarOffsetsForWrite(
   vaultDir: string,
   typePath: string,
   frontmatter: Record<string, unknown>,
-  relativePath = `.__bwrb_pending__/${typePath.replace(/\//g, '-')}.md`
+  relativePath = `.__bwrb_pending__/${typePath.replace(/\//g, '-')}.md`,
+  /** Supplies the vault snapshot to validate against instead of reading the vault. */
+  loadSnapshot: () => Promise<VaultNoteSnapshot> = async () => (await buildVaultNoteIndex(schema, vaultDir)).snapshot
 ): Promise<RelativeDateDiagnostic[]> {
   const fields = getFieldsForType(schema, typePath);
   const relativeDateFieldNames = Object.entries(fields)
@@ -256,11 +258,11 @@ export async function validateRelativeDateCalendarOffsetsForWrite(
     .filter((fieldName) => frontmatter[fieldName] !== undefined);
   if (relativeDateFieldNames.length === 0) return [];
 
-  const index = await buildVaultNoteIndex(schema, vaultDir);
+  const vaultSnapshot = await loadSnapshot();
   const path = join(vaultDir, relativePath);
   const snapshot: VaultNoteSnapshot = {
     notes: [
-      ...index.snapshot.notes.filter((note) => note.relativePath !== relativePath),
+      ...vaultSnapshot.notes.filter((note) => note.relativePath !== relativePath),
       {
         path,
         relativePath,

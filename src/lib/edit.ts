@@ -7,14 +7,14 @@
  */
 
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
-import { join, relative } from 'path';
+import { basename, join, relative } from 'path';
 import { isDeepStrictEqual } from 'util';
 import {
   getType,
   resolveTypeFromFrontmatter,
   getFieldsForType,
 } from './schema.js';
-import { parseNote, writeNote, writeFileAtomic, generateBodySections, generateBodyWithContent, parseBodyInput } from './frontmatter.js';
+import { parseNote, writeNote, writeFileAtomic, generateBodySections, generateBodyWithContent, parseBodyInput, type ParsedNote } from './frontmatter.js';
 import {
   isBodySectionPresent,
   flattenBodySections,
@@ -35,6 +35,7 @@ import {
   validateContextFields,
   normalizeDateFields,
   applyDefaults,
+  type NoteTargetIndexSource,
 } from './validation.js';
 import { isBlankScalar } from './emptiness.js';
 import { validateParentNoCycle } from './hierarchy.js';
@@ -42,8 +43,10 @@ import {
   printJson,
   jsonError,
   ExitCodes,
+  type JsonError,
 } from './output.js';
-import { type LoadedSchema, type Field, type BodySection, getOptionValues } from '../types/schema.js';
+import type { VaultNoteSnapshot } from './discovery.js';
+import { type LoadedSchema, type Field, type BodySection, type ResolvedType, getOptionValues } from '../types/schema.js';
 import { ConcurrentNoteModificationError, UserCancelledError } from './errors.js';
 import { expandStaticValue } from './local-date.js';
 import { prepareRecurrenceFastPath, commitRecurrenceFastPath } from './recurrence-fast-path.js';
@@ -157,17 +160,8 @@ export async function editNoteFromJson(
   }
 
   // Disallow editing system-managed fields
-  const reservedField = Object.keys(patchData).find(isBwrbReservedFrontmatterField);
-  if (reservedField) {
-    const error = `Field '${reservedField}' is system-managed and cannot be modified`;
-    if (jsonMode) {
-      printJson(jsonError(error, {
-        errors: [{ field: reservedField, value: patchData[reservedField], message: error }],
-      }));
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-    throw new Error(error);
-  }
+  const reservedRejection = rejectReservedPatchFields(patchData);
+  if (reservedRejection) reportJsonEditRejection(reservedRejection, jsonMode);
 
   // A guarded caller must reread and reconsider a stale patch; replaying it
   // against unseen bytes would defeat the revision precondition.
@@ -222,208 +216,11 @@ async function editNoteFromJsonAttempt(
     await injectMutationFault(mutationFaultInjector, 'after', 'expected-revision-check');
   }
 
-  // Resolve type path from existing frontmatter
-  const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
-  if (!typePath) {
-    const error = 'Could not determine note type from frontmatter';
-    if (jsonMode) {
-      printJson(jsonError(error));
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-    throw new Error(error);
-  }
-
-  const typeDef = getType(schema, typePath);
-  if (!typeDef) {
-    const error = `Unknown type path: ${typePath}`;
-    if (jsonMode) {
-      printJson(jsonError(error));
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-    throw new Error(error);
-  }
-
-  const fields = getFieldsForType(schema, typePath);
-  const derivedPatchField = Object.keys(patchData).find((fieldName) => fields[fieldName]?.derived);
-  if (derivedPatchField) {
-    const error = `Derived field '${derivedPatchField}' is virtual and cannot be edited`;
-    if (jsonMode) {
-      printJson(jsonError(error));
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-    throw new Error(error);
-  }
-
-  const resolvedBody = typeof bodyInput === 'string'
-    ? bodyInput
-    : bodyInput
-      ? generateBodyWithContent(typeDef.bodySections ?? [], parseBodyInput(bodyInput, typeDef.bodySections ?? []))
-      : body;
-
-  const patchValidation = validateFrontmatter(schema, typePath, patchData, { strictFields: true });
-  const unknownPatchErrors = patchValidation.errors.filter(error => error.type === 'unknown_field');
-  if (unknownPatchErrors.length > 0) {
-    if (jsonMode) {
-      printJson({
-        success: false,
-        error: 'Validation failed',
-        errors: unknownPatchErrors.map(e => ({
-          field: e.field,
-          message: e.message,
-          ...(e.value !== undefined && { value: e.value }),
-          ...(e.suggestion !== undefined && { suggestion: e.suggestion }),
-        })),
-      });
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-    throw new Error(`Validation failed: ${unknownPatchErrors.map(e => e.message).join(', ')}`);
-  }
-
-  // Merge patch data into existing frontmatter
-  const mergedFrontmatter = mergeFrontmatter(frontmatter, patchData);
-  const updatedFields = [
-    ...Object.keys(patchData).filter(k => patchData[k] !== undefined),
-    ...(bodyInput !== undefined ? ['_body'] : []),
-  ];
-
-  // Materialize defaults BEFORE validating/writing — but ONLY for the parity
-  // case, SURGICALLY scoped to the keys the user blanked in THIS patch.
-  //
-  // The write↔audit parity bug (#707): a blank (incl. whitespace-only) value for
-  // a key whose field HAS a `default`/`value` passes validation —
-  // `validateFrontmatter` treats it as "unset → satisfied by the default" — but
-  // the blank would be PERSISTED, so `audit` then flags `empty-string-required`:
-  // write says OK, audit says broken. Materializing the default for that key makes
-  // write and audit agree.
-  //
-  // A BLANKET `applyDefaults` over the whole merged frontmatter over-corrects in
-  // two ways, so we scope instead:
-  //   1. Explicit removal (`{"field": null}`) is the documented way to delete a
-  //      field. `mergeFrontmatter` deletes it; a blanket default would write it
-  //      straight back. We EXCLUDE null (isBlankScalar is true for null, so we
-  //      filter on a blank STRING specifically) → removal is preserved.
-  //   2. An edit must not materialize defaults for fields the user never touched.
-  //      Scoping to user-patch keys leaves untouched fields alone.
-  //
-  // Keys the user blanked but whose field has NO default stay blank: optional →
-  // unset (trim-everywhere preserved), required → still rejected at validation.
-  const blankPatchKeys = new Set(
-    Object.keys(patchData).filter((key) => {
-      if (typeof patchData[key] !== 'string' || !isBlankScalar(patchData[key])) return false;
-      // Plain prompt:list fields must validate as arrays on write (#742). Do
-      // not let a default such as [] hide a user-supplied scalar patch before
-      // validation gets to enforce the same shape audit expects.
-      return fields[key]?.prompt !== 'list';
-    })
-  );
-  const defaultedFrontmatter = applyDefaults(
-    schema,
-    typePath,
-    mergedFrontmatter,
-    blankPatchKeys
-  );
-
-  // Normalize date-like fields to canonical YYYY-MM-DD strings — AFTER defaults
-  // are materialized (#707). A materialized date default can be non-canonical
-  // (e.g. `default: "12/25/2026"`); `validateFrontmatter` accepts the slash form,
-  // so without normalizing it here the raw default would be PERSISTED and `audit`
-  // would then flag `invalid-date-format`. Running the single date-normalization
-  // pass after `applyDefaults` canonicalizes BOTH user-supplied date values and
-  // any date default we just filled in, so write and audit agree on the stored
-  // form. (Mirrors `new`/json-mode, which materializes defaults before building
-  // the note.)
-  const resolvedFrontmatter = normalizeDateFields(schema, typePath, defaultedFrontmatter);
-
-  // Validate merged result
-  const validation = validateFrontmatter(schema, typePath, resolvedFrontmatter);
-  if (!validation.valid) {
-    if (jsonMode) {
-      printJson({
-        success: false,
-        error: 'Validation failed',
-        errors: validation.errors.map(e => ({
-          field: e.field,
-          message: e.message,
-          currentValue: frontmatter[e.field],
-          ...(e.value !== undefined && { value: e.value }),
-          ...(e.expected !== undefined && { expected: e.expected }),
-          ...(e.suggestion !== undefined && { suggestion: e.suggestion }),
-        })),
-      });
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-    throw new Error(`Validation failed: ${validation.errors.map(e => e.message).join(', ')}`);
-  }
-
-  // Validate context fields (source type constraints)
-  const contextValidation = await validateContextFields(schema, vaultDir, typePath, resolvedFrontmatter);
-  if (!contextValidation.valid) {
-    if (jsonMode) {
-      printJson({
-        success: false,
-        error: 'Context field validation failed',
-        errors: contextValidation.errors.map(e => ({
-          type: e.type,
-          field: e.field,
-          message: e.message,
-          currentValue: frontmatter[e.field],
-          ...(e.value !== undefined && { value: e.value }),
-          ...(e.expected !== undefined && { expected: e.expected }),
-        })),
-      });
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-    throw new Error(`Context validation failed: ${contextValidation.errors.map(e => e.message).join(', ')}`);
-  }
-
-  const relativeDateDiagnostics = await validateRelativeDateCalendarOffsetsForWrite(
-    schema,
-    vaultDir,
-    typePath,
-    resolvedFrontmatter,
-    relative(vaultDir, filePath)
-  );
-  if (relativeDateDiagnostics.length > 0) {
-    if (jsonMode) {
-      printJson({
-        success: false,
-        error: 'Validation failed',
-        errors: relativeDateDiagnostics.map(diagnostic => ({
-          field: diagnostic.field,
-          message: diagnostic.message,
-          currentValue: frontmatter[diagnostic.field],
-          value: resolvedFrontmatter[diagnostic.field],
-        })),
-      });
-      process.exit(ExitCodes.VALIDATION_ERROR);
-    }
-    throw new Error(`Validation failed: ${relativeDateDiagnostics.map(diagnostic => diagnostic.message).join(', ')}`);
-  }
-
-  // Validate parent field doesn't create a cycle (for recursive types)
-  if (typeDef.recursive && resolvedFrontmatter['parent']) {
-    const noteName = filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
-    const cycleError = await validateParentNoCycle(
-      schema,
-      vaultDir,
-      noteName,
-      resolvedFrontmatter['parent'] as string
-    );
-    if (cycleError) {
-      if (jsonMode) {
-        printJson({
-          success: false,
-          error: cycleError.message,
-          errors: [{
-            field: cycleError.field,
-            message: cycleError.message,
-          }],
-        });
-        process.exit(ExitCodes.VALIDATION_ERROR);
-      }
-      throw new Error(cycleError.message);
-    }
-  }
+  const resolved = resolveJsonEdit(schema, { frontmatter, body, raw }, patchData, bodyInput);
+  if (!resolved.ok) reportJsonEditRejection(resolved.rejection, jsonMode);
+  const vaultRejection = await validateJsonEditAgainstVault(schema, vaultDir, filePath, resolved.edit);
+  if (vaultRejection) reportJsonEditRejection(vaultRejection, jsonMode);
+  const { typeDef, resolvedFrontmatter, resolvedBody, updatedFields, orderedFields } = resolved.edit;
 
   // A semantic no-op must not pass through the YAML serializer. Rewriting an
   // unchanged parsed document would still alter source bytes such as quote
@@ -445,10 +242,6 @@ async function editNoteFromJsonAttempt(
     });
     return { updatedFields, path: filePath, revision };
   }
-
-  // Get field order
-  const fieldOrder = typeDef.fieldOrder;
-  const orderedFields = fieldOrder.length > 0 ? fieldOrder : Object.keys(resolvedFrontmatter);
 
   await injectMutationFault(mutationFaultInjector, 'before', 'guard-evaluation');
   await assertTransitionGuards(schema, vaultDir, typeDef.name, frontmatter, resolvedFrontmatter);
@@ -525,6 +318,313 @@ async function editNoteFromJsonAttempt(
     path: filePath,
     revision,
   };
+}
+
+// ============================================================================
+// Shared JSON Patch Steps
+// ============================================================================
+
+/** A rejected JSON patch, in the two forms `edit --json` reports it. */
+export interface JsonEditRejection {
+  /** The JSON value JSON mode prints. */
+  result: JsonError;
+  /** The message text mode throws. */
+  message: string;
+}
+
+/** A JSON patch merged into one note and validated in memory; nothing written. */
+export interface ResolvedJsonEdit {
+  typePath: string;
+  typeDef: ResolvedType;
+  frontmatter: Record<string, unknown>;
+  body: string;
+  raw: string;
+  resolvedFrontmatter: Record<string, unknown>;
+  resolvedBody: string;
+  updatedFields: string[];
+  orderedFields: string[];
+}
+
+export type ResolveJsonEditResult =
+  | { ok: true; edit: ResolvedJsonEdit }
+  | { ok: false; rejection: JsonEditRejection };
+
+/**
+ * Vault state shared across many patches. Each loader replaces a vault read
+ * the single-note edit would otherwise make for itself.
+ */
+export interface JsonEditVaultContext {
+  noteTargetIndex?: NoteTargetIndexSource;
+  /** Snapshot for relative-date checks. */
+  loadSnapshot?: () => Promise<VaultNoteSnapshot>;
+  /** Parent map for cycle checks. */
+  loadParentMap?: () => Promise<Map<string, string>>;
+}
+
+function plainRejection(error: string): JsonEditRejection {
+  return { result: jsonError(error), message: error };
+}
+
+function reportJsonEditRejection(rejection: JsonEditRejection, jsonMode: boolean): never {
+  if (jsonMode) {
+    printJson(rejection.result);
+    process.exit(ExitCodes.VALIDATION_ERROR);
+  }
+  throw new Error(rejection.message);
+}
+
+/** Reject a patch that names a system-managed field such as `id`. */
+export function rejectReservedPatchFields(patchData: Record<string, unknown>): JsonEditRejection | undefined {
+  const reservedField = Object.keys(patchData).find(isBwrbReservedFrontmatterField);
+  if (!reservedField) return undefined;
+  const error = `Field '${reservedField}' is system-managed and cannot be modified`;
+  return {
+    result: jsonError(error, {
+      errors: [{ field: reservedField, value: patchData[reservedField], message: error }],
+    }),
+    message: error,
+  };
+}
+
+/**
+ * Merge a JSON patch into a parsed note and run every check that needs only
+ * the note and the schema.
+ */
+export function resolveJsonEdit(
+  schema: LoadedSchema,
+  note: ParsedNote,
+  patchData: Record<string, unknown>,
+  bodyInput: string | Record<string, unknown> | undefined
+): ResolveJsonEditResult {
+  const { frontmatter, body, raw } = note;
+
+  // Resolve type path from existing frontmatter
+  const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
+  if (!typePath) {
+    return { ok: false, rejection: plainRejection('Could not determine note type from frontmatter') };
+  }
+
+  const typeDef = getType(schema, typePath);
+  if (!typeDef) {
+    return { ok: false, rejection: plainRejection(`Unknown type path: ${typePath}`) };
+  }
+
+  const fields = getFieldsForType(schema, typePath);
+  const derivedPatchField = Object.keys(patchData).find((fieldName) => fields[fieldName]?.derived);
+  if (derivedPatchField) {
+    return { ok: false, rejection: plainRejection(`Derived field '${derivedPatchField}' is virtual and cannot be edited`) };
+  }
+
+  const resolvedBody = typeof bodyInput === 'string'
+    ? bodyInput
+    : bodyInput
+      ? generateBodyWithContent(typeDef.bodySections ?? [], parseBodyInput(bodyInput, typeDef.bodySections ?? []))
+      : body;
+
+  const patchValidation = validateFrontmatter(schema, typePath, patchData, { strictFields: true });
+  const unknownPatchErrors = patchValidation.errors.filter(error => error.type === 'unknown_field');
+  if (unknownPatchErrors.length > 0) {
+    return {
+      ok: false,
+      rejection: {
+        result: {
+          success: false,
+          error: 'Validation failed',
+          errors: unknownPatchErrors.map(e => ({
+            field: e.field,
+            message: e.message,
+            ...(e.value !== undefined && { value: e.value }),
+            ...(e.suggestion !== undefined && { suggestion: e.suggestion }),
+          })),
+        },
+        message: `Validation failed: ${unknownPatchErrors.map(e => e.message).join(', ')}`,
+      },
+    };
+  }
+
+  // Merge patch data into existing frontmatter
+  const mergedFrontmatter = mergeFrontmatter(frontmatter, patchData);
+  const updatedFields = [
+    ...Object.keys(patchData).filter(k => patchData[k] !== undefined),
+    ...(bodyInput !== undefined ? ['_body'] : []),
+  ];
+
+  // Materialize defaults BEFORE validating/writing — but ONLY for the parity
+  // case, SURGICALLY scoped to the keys the user blanked in THIS patch.
+  //
+  // The write↔audit parity bug (#707): a blank (incl. whitespace-only) value for
+  // a key whose field HAS a `default`/`value` passes validation —
+  // `validateFrontmatter` treats it as "unset → satisfied by the default" — but
+  // the blank would be PERSISTED, so `audit` then flags `empty-string-required`:
+  // write says OK, audit says broken. Materializing the default for that key makes
+  // write and audit agree.
+  //
+  // A BLANKET `applyDefaults` over the whole merged frontmatter over-corrects in
+  // two ways, so we scope instead:
+  //   1. Explicit removal (`{"field": null}`) is the documented way to delete a
+  //      field. `mergeFrontmatter` deletes it; a blanket default would write it
+  //      straight back. We EXCLUDE null (isBlankScalar is true for null, so we
+  //      filter on a blank STRING specifically) → removal is preserved.
+  //   2. An edit must not materialize defaults for fields the user never touched.
+  //      Scoping to user-patch keys leaves untouched fields alone.
+  //
+  // Keys the user blanked but whose field has NO default stay blank: optional →
+  // unset (trim-everywhere preserved), required → still rejected at validation.
+  const blankPatchKeys = new Set(
+    Object.keys(patchData).filter((key) => {
+      if (typeof patchData[key] !== 'string' || !isBlankScalar(patchData[key])) return false;
+      // Plain prompt:list fields must validate as arrays on write (#742). Do
+      // not let a default such as [] hide a user-supplied scalar patch before
+      // validation gets to enforce the same shape audit expects.
+      return fields[key]?.prompt !== 'list';
+    })
+  );
+  const defaultedFrontmatter = applyDefaults(
+    schema,
+    typePath,
+    mergedFrontmatter,
+    blankPatchKeys
+  );
+
+  // Normalize date-like fields to canonical YYYY-MM-DD strings — AFTER defaults
+  // are materialized (#707). A materialized date default can be non-canonical
+  // (e.g. `default: "12/25/2026"`); `validateFrontmatter` accepts the slash form,
+  // so without normalizing it here the raw default would be PERSISTED and `audit`
+  // would then flag `invalid-date-format`. Running the single date-normalization
+  // pass after `applyDefaults` canonicalizes BOTH user-supplied date values and
+  // any date default we just filled in, so write and audit agree on the stored
+  // form. (Mirrors `new`/json-mode, which materializes defaults before building
+  // the note.)
+  const resolvedFrontmatter = normalizeDateFields(schema, typePath, defaultedFrontmatter);
+
+  // Validate merged result
+  const validation = validateFrontmatter(schema, typePath, resolvedFrontmatter);
+  if (!validation.valid) {
+    return {
+      ok: false,
+      rejection: {
+        result: {
+          success: false,
+          error: 'Validation failed',
+          errors: validation.errors.map(e => ({
+            field: e.field,
+            message: e.message,
+            currentValue: frontmatter[e.field],
+            ...(e.value !== undefined && { value: e.value }),
+            ...(e.expected !== undefined && { expected: e.expected }),
+            ...(e.suggestion !== undefined && { suggestion: e.suggestion }),
+          })),
+        },
+        message: `Validation failed: ${validation.errors.map(e => e.message).join(', ')}`,
+      },
+    };
+  }
+
+  const fieldOrder = typeDef.fieldOrder;
+  return {
+    ok: true,
+    edit: {
+      typePath,
+      typeDef,
+      frontmatter,
+      body,
+      raw,
+      resolvedFrontmatter,
+      resolvedBody,
+      updatedFields,
+      orderedFields: fieldOrder.length > 0 ? fieldOrder : Object.keys(resolvedFrontmatter),
+    },
+  };
+}
+
+/**
+ * Run the checks that read other notes: relation targets, relative-date
+ * anchors and parent cycles. Without a context, each reads the vault itself.
+ */
+export async function validateJsonEditAgainstVault(
+  schema: LoadedSchema,
+  vaultDir: string,
+  filePath: string,
+  edit: ResolvedJsonEdit,
+  context: JsonEditVaultContext = {}
+): Promise<JsonEditRejection | undefined> {
+  const { typePath, typeDef, frontmatter, resolvedFrontmatter } = edit;
+
+  // Validate context fields (source type constraints)
+  const contextValidation = await validateContextFields(
+    schema,
+    vaultDir,
+    typePath,
+    resolvedFrontmatter,
+    context.noteTargetIndex ? { noteTargetIndex: context.noteTargetIndex } : {}
+  );
+  if (!contextValidation.valid) {
+    return {
+      result: {
+        success: false,
+        error: 'Context field validation failed',
+        errors: contextValidation.errors.map(e => ({
+          type: e.type,
+          field: e.field,
+          message: e.message,
+          currentValue: frontmatter[e.field],
+          ...(e.value !== undefined && { value: e.value }),
+          ...(e.expected !== undefined && { expected: e.expected }),
+        })),
+      },
+      message: `Context validation failed: ${contextValidation.errors.map(e => e.message).join(', ')}`,
+    };
+  }
+
+  const relativeDateDiagnostics = await validateRelativeDateCalendarOffsetsForWrite(
+    schema,
+    vaultDir,
+    typePath,
+    resolvedFrontmatter,
+    relative(vaultDir, filePath),
+    context.loadSnapshot
+  );
+  if (relativeDateDiagnostics.length > 0) {
+    return {
+      result: {
+        success: false,
+        error: 'Validation failed',
+        errors: relativeDateDiagnostics.map(diagnostic => ({
+          field: diagnostic.field,
+          message: diagnostic.message,
+          currentValue: frontmatter[diagnostic.field],
+          value: resolvedFrontmatter[diagnostic.field],
+        })),
+      },
+      message: `Validation failed: ${relativeDateDiagnostics.map(diagnostic => diagnostic.message).join(', ')}`,
+    };
+  }
+
+  // Validate parent field doesn't create a cycle (for recursive types)
+  if (typeDef.recursive && resolvedFrontmatter['parent']) {
+    const cycleError = await validateParentNoCycle(
+      schema,
+      vaultDir,
+      basename(filePath, '.md'),
+      resolvedFrontmatter['parent'] as string,
+      context.loadParentMap
+    );
+    if (cycleError) {
+      return {
+        result: {
+          success: false,
+          error: cycleError.message,
+          errors: [{
+            field: cycleError.field,
+            message: cycleError.message,
+          }],
+        },
+        message: cycleError.message,
+      };
+    }
+  }
+
+  return undefined;
 }
 
 async function injectMutationFault(

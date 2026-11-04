@@ -486,6 +486,19 @@ bwrb edit --id "<uuid>" --expected-revision "<revision>" \
 `_body` is a body replacement, not frontmatter. A raw Markdown string replaces the body verbatim; an object
 uses the type's declared body-section names. Frontmatter and body are written under the same revision check.
 
+To give many notes different frontmatter patches, write one manifest instead of looping over `bwrb edit`:
+
+```bash
+# plan.json: {"notes": [{"id": "<uuid>", "expectedRevision": "<revision>", "patch": {"priority": "high"}},
+#                        {"path": "Tasks/Ship it.md", "patch": {"status": "done"}}]}
+bwrb edit --patches plan.json            # preview every patch; writes nothing
+bwrb edit --patches plan.json --execute  # apply all of them, or none
+```
+
+Each patch is validated like `--json`, and one blocked entry (missing, ambiguous or repeated target, invalid
+value, stale revision) stops the whole batch before any write. Notes that already hold their values report
+`unchanged`, so rerun the same manifest after an interruption. Read `data.notes[].status` and `errors[].code`.
+
 Notes:
 - If multiple notes share the same name, `bwrb edit` errors, lists candidate paths, and asks for an exact-path retry. Disambiguate with `--type`, `--path`, or a listed vault-relative path.
 - `bwrb new --json` rejects unknown frontmatter fields after merging template defaults. `bwrb edit --json` rejects unknown fields in the frontmatter patch while reserving `_body` for revision-safe body replacement.
@@ -728,10 +741,9 @@ bwrb list task --where "status == 'active'" --output json
 # Create a task and capture the path
 bwrb new task --json '{"name": "New Task", "status": "backlog"}' --output json
 
-# Bulk update (edit works on single notes; loop for bulk)
-for note in $(bwrb list task --where "status == 'in-progress'" --output paths); do
-  bwrb edit "$note" --json '{"status": "done"}'
-done
+# Different values per note: one previewed, all-or-nothing batch
+bwrb edit --patches plan.json
+bwrb edit --patches plan.json --execute
 
 # Bulk update (non-interactive confirmation)
 bwrb bulk --all --set status=processed --execute --yes

@@ -2,7 +2,7 @@ import { join, relative } from 'path';
 import type { LoadedSchema, TransitionGuard } from '../types/schema.js';
 import { getEffectiveTraitNames, getFieldsForType, getDescendants } from './schema.js';
 import { getOptionValues } from '../types/schema.js';
-import { buildNoteTargetIndex, resolveRelationTarget } from './discovery.js';
+import { buildNoteTargetIndex, resolveRelationTarget, type NoteTargetIndex } from './discovery.js';
 import { parseNote } from './frontmatter.js';
 import { extractLinkTargets } from './links.js';
 
@@ -88,8 +88,12 @@ function matches(predicate: { field: string; equals?: string | undefined; in?: s
   return expected.includes(String(value));
 }
 
+/** Supplies the relation index for guard evaluation; a batch shares one. */
+export type GuardIndexLoader = () => Promise<NoteTargetIndex>;
+
 export async function explainTransition(
-  schema: LoadedSchema, vaultDir: string, typeName: string, frontmatter: Record<string, unknown>, transition: TransitionTrigger
+  schema: LoadedSchema, vaultDir: string, typeName: string, frontmatter: Record<string, unknown>, transition: TransitionTrigger,
+  loadIndex: GuardIndexLoader = () => buildNoteTargetIndex(schema, vaultDir)
 ): Promise<TransitionExplanation> {
   const errors = validateTransitionGuards(schema, typeName);
   if (errors.length) throw new Error(errors.join(' '));
@@ -97,7 +101,7 @@ export async function explainTransition(
     const trigger = parseTransitionTrigger(guard.on)!;
     return trigger.field === transition.field && trigger.value === transition.value;
   });
-  const index = await buildNoteTargetIndex(schema, vaultDir);
+  const index = await loadIndex();
   const fields = getFieldsForType(schema, typeName);
   const guards: TransitionGuardResult[] = [];
   for (const guard of matching) {
@@ -133,12 +137,13 @@ export async function explainTransition(
 }
 
 export async function assertTransitionGuards(
-  schema: LoadedSchema, vaultDir: string, typeName: string, before: Record<string, unknown>, after: Record<string, unknown>
+  schema: LoadedSchema, vaultDir: string, typeName: string, before: Record<string, unknown>, after: Record<string, unknown>,
+  loadIndex?: GuardIndexLoader
 ): Promise<void> {
   for (const guard of getTransitionGuardsForType(schema, typeName)) {
     const trigger = parseTransitionTrigger(guard.on);
     if (!trigger || String(before[trigger.field] ?? '') === trigger.value || String(after[trigger.field] ?? '') !== trigger.value) continue;
-    const explanation = await explainTransition(schema, vaultDir, typeName, after, trigger);
+    const explanation = await explainTransition(schema, vaultDir, typeName, after, trigger, loadIndex);
     if (explanation.blocked) {
       const error = new Error('Transition guard requirements are not satisfied.');
       Object.assign(error, { code: 'TRANSITION_GUARD_FAILED', explanation });
@@ -153,7 +158,8 @@ export async function transitionGuardTargetPaths(
   vaultDir: string,
   typeName: string,
   before: Record<string, unknown>,
-  after: Record<string, unknown>
+  after: Record<string, unknown>,
+  loadIndex: GuardIndexLoader = () => buildNoteTargetIndex(schema, vaultDir)
 ): Promise<string[]> {
   const entered = getTransitionGuardsForType(schema, typeName).filter((guard) => {
     const trigger = parseTransitionTrigger(guard.on);
@@ -163,7 +169,7 @@ export async function transitionGuardTargetPaths(
   });
   if (entered.length === 0) return [];
 
-  const index = await buildNoteTargetIndex(schema, vaultDir);
+  const index = await loadIndex();
   const fields = getFieldsForType(schema, typeName);
   const paths = new Set<string>();
   for (const guard of entered) {
