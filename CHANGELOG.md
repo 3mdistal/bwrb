@@ -13,6 +13,11 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Changed
 
+- **Faster filtered `list`** — a filtered `list` builds its vault snapshot once
+  instead of twice, loads ignore rules once, reads `.bwrbignore` only in
+  directories that have one, and parses its target notes concurrently. Every
+  note's current bytes are still read on every run.
+
 - **Bounded default audit scope** — bare `bwrb audit` now runs core integrity
   checks without the optional `unlinked-mention` or `frequent-unlinked-term`
   prose heuristics. `--mentions` enables exact, alias, ambiguous, and frequent

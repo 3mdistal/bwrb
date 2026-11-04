@@ -21,6 +21,7 @@ import {
   deriveNoteTargetIndex,
   resolveRelationTarget,
   type VaultNoteSnapshot,
+  type DiscoveryContext,
   type VaultNoteIndex,
 } from './discovery.js';
 import {
@@ -74,6 +75,8 @@ export interface FrontmatterFilterOptions {
 
 export interface QueryExecutionContext {
   vaultIndex?: VaultNoteIndex;
+  // Ignore rules the command already loaded for its targets, reused for the index.
+  discovery?: DiscoveryContext;
 }
 
 // ============================================================================
@@ -715,15 +718,16 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
   const usesRelationQuantifiers = schema &&
     [...directExpressionAsts, ...schemaDerivedQuantifierAsts].some(ast => collectRelationQuantifierFields(ast).length > 0);
   // A quantifier needs every target frontmatter record, and hierarchy augmentation
-  // may need the same snapshot. Build it once for this command.
-  const vaultIndex = (schema && usesRelationQuantifiers)
-    ? (options.queryContext?.vaultIndex ?? await buildVaultNoteIndex(schema, vaultDir))
+  // and relative dates read the same vault snapshot. Build it once for this
+  // command and share it, so `list` renders from it instead of reading the vault again.
+  const vaultIndex = (schema && (usesRelationQuantifiers || expressionPairs.length > 0))
+    ? (options.queryContext?.vaultIndex ?? await buildVaultNoteIndex(schema, vaultDir, options.queryContext?.discovery))
     : undefined;
   if (vaultIndex && options.queryContext) options.queryContext.vaultIndex = vaultIndex;
-  const vaultSnapshot = (schema && !usesRelationQuantifiers && expressionsNeedVaultAugmentation(normalizedExpressions))
-    ? await buildVaultNoteSnapshot(schema, vaultDir)
-    : vaultIndex?.snapshot;
-  const relationQuantifierIndex = vaultIndex ? createRelationQuantifierIndexContext(vaultIndex) : undefined;
+  const vaultSnapshot = vaultIndex?.snapshot;
+  const relationQuantifierIndex = usesRelationQuantifiers && vaultIndex
+    ? createRelationQuantifierIndexContext(vaultIndex)
+    : undefined;
 
   // Build hierarchy data if any expression uses hierarchy functions
   // This is done once before the loop for efficiency

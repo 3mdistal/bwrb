@@ -19,6 +19,7 @@ import {
   discoverManagedFiles,
   discoverFilesForQueryResolution,
   filterByPath,
+  loadDiscoveryContext,
 } from './discovery.js';
 import { parseNote } from './frontmatter.js';
 import { searchContent } from './content-search.js';
@@ -225,15 +226,18 @@ export async function resolveTargets(
   const queryContext: QueryExecutionContext = {};
 
   try {
-    // Step 1: Discover base files
+    // Step 1: Discover base files. A where filter's vault index reuses these
+    // ignore rules, so one command loads them once.
     let files: ManagedFile[];
+    const discovery = await loadDiscoveryContext(schema, vaultDir);
+    queryContext.discovery = discovery;
 
     if (options.type) {
       // Type-specific discovery
-      files = await discoverManagedFiles(schema, vaultDir, options.type);
+      files = await discoverManagedFiles(schema, vaultDir, options.type, discovery);
     } else {
       // Vault-wide discovery (includes dot-directory type output dirs)
-      files = await discoverFilesForQueryResolution(schema, vaultDir);
+      files = await discoverFilesForQueryResolution(schema, vaultDir, discovery);
     }
 
     if (files.length === 0) {
@@ -289,21 +293,24 @@ export async function resolveTargets(
       }
     }
 
-    // Step 4: Parse frontmatter for remaining files
-    const filesWithFrontmatter: TargetedFile[] = [];
-
-    for (const file of files) {
-      try {
-        const { frontmatter } = await parseNote(file.path);
-        filesWithFrontmatter.push({
-          ...file,
-          frontmatter,
-        });
-      } catch {
-        // Skip files that can't be parsed
-        // This could be files without frontmatter or malformed YAML
+    // Step 4: Parse frontmatter for remaining files. Overlap reads like the
+    // vault snapshot does, keeping results in discovery order.
+    const parsed = new Array<TargetedFile | undefined>(files.length);
+    let nextIndex = 0;
+    await Promise.all(Array.from({ length: Math.min(16, files.length) }, async () => {
+      while (nextIndex < files.length) {
+        const index = nextIndex++;
+        const file = files[index]!;
+        try {
+          const { frontmatter } = await parseNote(file.path);
+          parsed[index] = { ...file, frontmatter };
+        } catch {
+          // Skip files that can't be parsed
+          // This could be files without frontmatter or malformed YAML
+        }
       }
-    }
+    }));
+    const filesWithFrontmatter = parsed.filter((file): file is TargetedFile => file !== undefined);
 
     let filteredFiles: TargetedFile[] = filesWithFrontmatter;
 
@@ -359,6 +366,7 @@ export async function resolveTargets(
     return {
       files: filteredFiles,
       hasTargeting,
+      queryContext,
     };
   } catch (err) {
     return {
