@@ -289,8 +289,10 @@ describe('query', () => {
         // Regression for #634: the full-vault augmentation used to walk + parse
         // the vault twice per `under` query (once for the parent map via
         // discoverManagedFiles + parseNote, once for the alias map via its own
-        // buildVaultNoteSnapshot). Both maps now come from a SINGLE snapshot.
+        // buildVaultNoteSnapshot). Both maps now come from a SINGLE snapshot,
+        // which relative-date resolution shares too: one index, no other snapshot.
         const snapshotSpy = vi.spyOn(discovery, 'buildVaultNoteSnapshot');
+        const indexSpy = vi.spyOn(discovery, 'buildVaultNoteIndex');
         try {
           const files = makeFiles([
             { path: 'Objectives/Tasks/Leaf.md', fm: { type: 'task', status: 'backlog', milestone: '"[[Vercel]]"' } },
@@ -306,9 +308,11 @@ describe('query', () => {
           // Behavior unchanged: still matches the deep-descendant relation target.
           expect(result).toHaveLength(1);
           // And the vault snapshot was built exactly once for the query.
-          expect(snapshotSpy).toHaveBeenCalledTimes(1);
+          expect(indexSpy).toHaveBeenCalledTimes(1);
+          expect(snapshotSpy).not.toHaveBeenCalled();
         } finally {
           snapshotSpy.mockRestore();
+          indexSpy.mockRestore();
         }
       });
 

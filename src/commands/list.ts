@@ -913,7 +913,7 @@ export async function listObjects(
   });
   const needsVaultIndex = needsRelationQuantifiers || schemaHasRelativeDateFields(schema);
   const vaultIndex = needsVaultIndex
-    ? (options.queryContext?.vaultIndex ?? await buildVaultNoteIndex(schema, vaultDir))
+    ? (options.queryContext?.vaultIndex ?? await buildVaultNoteIndex(schema, vaultDir, options.queryContext?.discovery))
     : undefined;
   if (vaultIndex && options.queryContext) options.queryContext.vaultIndex = vaultIndex;
   const relationIndex = needsRelationQuantifiers && vaultIndex

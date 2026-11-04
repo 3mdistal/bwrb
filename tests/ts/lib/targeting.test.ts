@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { writeFile } from 'fs/promises';
+import { join } from 'path';
 import type { LoadedSchema } from '../../../src/types/schema.js';
 import {
   detectPositionalType,
@@ -10,7 +12,7 @@ import {
   formatTargetingSummary,
   hasAnyTargeting,
 } from '../../../src/lib/targeting.js';
-import type { ManagedFile } from '../../../src/lib/discovery.js';
+import { discoverManagedFiles, type ManagedFile } from '../../../src/lib/discovery.js';
 import { loadSchema } from '../../../src/lib/schema.js';
 import { createTestVault, cleanupTestVault } from '../fixtures/setup.js';
 
@@ -331,6 +333,25 @@ describe('targeting', () => {
       expect(result.hasTargeting).toBe(true);
       expect(result.files.length).toBeGreaterThan(0);
       expect(result.files.every(f => f.relativePath.startsWith('Ideas/'))).toBe(true);
+    });
+
+    it('keeps discovery order while parsing targets concurrently', async () => {
+      // More notes than concurrent readers, with sizes that finish out of order.
+      for (let index = 0; index < 40; index++) {
+        await writeFile(join(vaultDir, 'Ideas', `Order ${String(index).padStart(2, '0')}.md`),
+          `---\ntype: idea\nstatus: raw\n---\n${'x'.repeat(((index * 7919) % 40) * 4096)}\n`);
+      }
+      const discovered = (await discoverManagedFiles(schema, vaultDir, 'idea')).map(f => f.relativePath);
+      const result = await resolveTargets({ type: 'idea' }, schema, vaultDir);
+      const parsed = result.files.map(f => f.relativePath);
+      expect(parsed.length).toBeGreaterThan(40);
+      expect(parsed).toEqual(discovered.filter(path => parsed.includes(path)));
+    });
+
+    it('hands a where filter\'s vault index to the caller, so list does not build another', async () => {
+      const result = await resolveTargets({ type: 'idea', where: ['status=raw'] }, schema, vaultDir);
+      expect(result.error).toBeUndefined();
+      expect(result.queryContext?.vaultIndex?.snapshot.notes.length).toBeGreaterThan(0);
     });
 
     it('composes type and path with AND', async () => {
