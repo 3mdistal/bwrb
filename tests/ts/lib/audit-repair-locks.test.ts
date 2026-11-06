@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { withLineageMutationLocks } from '../../../src/lib/lineage-lock.js';
 import { resolveSchema } from '../../../src/lib/schema.js';
 import { sanitizeFilenameBase } from '../../../src/lib/filename.js';
+import { parseFrontmatter } from '../../../src/lib/frontmatter.js';
 import { runAutoFix } from '../../../src/lib/audit/fix.js';
 import { runRetentionRemediation } from '../../../src/lib/audit/retention.js';
 import type { AuditIssue } from '../../../src/lib/audit/types.js';
@@ -87,7 +88,7 @@ describe('audit repairs that move notes', () => {
       expect(lockedPaths(1)).toEqual([`Ideas/${longBase}.md`, `Ideas/${safeBase}.md`, 'Late.md', 'Linker.md'].sort());
       expect(await readFile(join(tempDir, 'Linker.md'), 'utf-8')).toBe(`See [[${safeBase}]].`);
       expect(await readFile(join(tempDir, 'Late.md'), 'utf-8')).toBe(`Also [[${safeBase}]].`);
-      expect(await readFile(join(tempDir, 'Ideas', `${safeBase}.md`), 'utf-8')).toContain(`name: ${longBase}`);
+      expect(parseFrontmatter(await readFile(join(tempDir, 'Ideas', `${safeBase}.md`), 'utf-8')).name).toBe(longBase);
     });
 
     it('takes no locks and changes nothing in a dry run', async () => {
