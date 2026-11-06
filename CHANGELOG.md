@@ -40,6 +40,13 @@ All notable changes to Bowerbird are documented in this file.
   locked writes, and scan for links again under those locks. A moved note's
   links to another moved note are now rewritten at its new path instead of
   failing.
+- **Setting a note's type with `edit`** — `edit --json` and `edit --patches`
+  check a patch that sets `type` against that type. A note whose type is
+  missing or not in the schema can now be given one by id or path
+  (`--json '{"type":"task"}'`) instead of being refused with "Could not
+  determine note type from frontmatter", which now says how to set it. A patch
+  can no longer set an unknown type or remove the type, and a retyped note's
+  fields are checked against its new type rather than its old one.
 
 ## [0.3.1] - 2026-08-05
 
