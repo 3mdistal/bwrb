@@ -783,18 +783,18 @@ Related to [[MyIdea]].
         await writeFile(join(tempDir, 'Linker.md'), 'See [[A]].');
         beforeNextLock(() => writeFile(join(tempDir, 'Late.md'), 'Also [[A]].'));
 
-        let lockCallsInTask: number | undefined;
+        const lockCallsInTask: number[] = [];
         const result = await withBulkMoveLocks({
           vaultDir: tempDir,
           targetDir: 'Archive',
           filesToMove: [join(tempDir, 'Ideas', 'A.md')],
         }, async move => {
-          lockCallsInTask = locks.mock.calls.length;
+          lockCallsInTask.push(locks.mock.calls.length);
           return move();
         });
 
         // The task ran once, inside the second acquisition, which covers the late linker.
-        expect(lockCallsInTask).toBe(2);
+        expect(lockCallsInTask).toEqual([2]);
         expect(lockedPaths(1)).toEqual(['Archive/A.md', 'Ideas/A.md', 'Late.md', 'Linker.md']);
         expect(result.errors).toEqual([]);
         expect(await readFile(join(tempDir, 'Late.md'), 'utf-8')).toMatch(/^Also \[\[Archive[\\/]A\]\]\.$/);
