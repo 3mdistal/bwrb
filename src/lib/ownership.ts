@@ -8,7 +8,7 @@
  */
 
 import { readdir } from 'fs/promises';
-import { join, dirname, relative } from 'path';
+import { join, dirname } from 'path';
 import { existsSync } from 'fs';
 import {
   getOwnedFields,
@@ -17,6 +17,7 @@ import {
   resolveTypeFromFrontmatter,
 } from './schema.js';
 import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
+import { vaultRelativePath } from './vault-relative-path.js';
 import type { LoadedSchema } from '../types/schema.js';
 import {
   extractLinkTargets,
@@ -244,7 +245,7 @@ async function indexOwnerNote(
   ambiguousDeclaredOwners: Set<string>,
   declaredOwnersByName: Map<string, OwnedNoteInfo[]>
 ): Promise<void> {
-  const relativeOwnerPath = relative(vaultDir, ownerNotePath);
+  const relativeOwnerPath = vaultRelativePath(vaultDir, ownerNotePath);
   const ownedFields = getOwnedFields(schema, ownerTypeName);
 
   if (ownedFields.length === 0) return;
@@ -364,7 +365,7 @@ async function indexOwnerNote(
     for (const childEntry of childEntries) {
       if (childEntry.isFile() && childEntry.name.endsWith('.md')) {
         const ownedNotePath = join(ownedFieldFolder, childEntry.name);
-        const relativeOwnedPath = relative(vaultDir, ownedNotePath);
+        const relativeOwnedPath = vaultRelativePath(vaultDir, ownedNotePath);
 
         // Add to index
         ownedNotes.set(relativeOwnedPath, {

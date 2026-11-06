@@ -22,7 +22,7 @@ import {
   getRetentionForType,
 } from '../schema.js';
 import { readStructuralFrontmatter } from './structural.js';
-import { getOwnedChildFolder } from '../ownership-paths.js';
+import { getOwnedChildVaultFolder } from '../ownership-paths.js';
 import {
   splitLinesPreserveEol,
   parseSimpleYamlKeyValueLine,
@@ -580,7 +580,7 @@ export async function auditFile(
       getDescendants(schema, file.ownership.ownerType).includes(ownerNoteType));
   const expectedOutputDir =
     file.ownership && resolvedTypeMatchesOwnedChild && ownerNoteIsValid
-      ? getOwnedChildFolder(file.ownership.ownerPath, file.ownership.fieldName)
+      ? getOwnedChildVaultFolder(file.ownership.ownerPath, file.ownership.fieldName)
       : getOutputDir(schema, resolvedTypePath);
   // A genuinely-misplaced OWNED note (one an owner declares in its `owned` field
   // but which has been moved out of its `<owner-dir>/<field>/` subtree) is
@@ -1995,7 +1995,7 @@ type MisplacedOwnedNote =
  * note declared in field A but physically sitting under field B's subfolder: the
  * owner matches yet the note is misplaced and belongs under field A. Comparing
  * the actual directory against the declaring field's expected subfolder (the same
- * `getOwnedChildFolder` target used for the restore) catches this and the
+ * `getOwnedChildVaultFolder` target used for the restore) catches this and the
  * wrong-OWNER case uniformly: `actualDir === expectedDir` → correct; otherwise
  * `misplaced` targeting the declaring field's subfolder. A path-qualified
  * declaration that explicitly points at the note's CURRENT path is honored as
@@ -2124,7 +2124,7 @@ function findMisplacedOwnedNote(
   // the declaration whose field actually resolves THIS note (e.g. a
   // path-qualified declaration only survives when it resolves to the audited
   // file). Computing the expected subfolder from `declared.fieldName` — the same
-  // `getOwnedChildFolder` target used for the restore — and comparing it to the
+  // `getOwnedChildVaultFolder` target used for the restore — and comparing it to the
   // actual directory catches the wrong-OWNER case (#734, defect B) and the
   // wrong-FIELD-subfolder case under the same owner uniformly, while leaving a
   // note ALREADY in its declaring field's subfolder correct
@@ -2132,7 +2132,7 @@ function findMisplacedOwnedNote(
   // resolves to a DIFFERENT (correctly-placed) note never reaches here — it was
   // dropped by `declarationMatchesAuditedFile` — so this note is not moved
   // against an explicit path-qualified declaration that points elsewhere.
-  const expectedDir = getOwnedChildFolder(declared.ownerPath, declared.fieldName);
+  const expectedDir = getOwnedChildVaultFolder(declared.ownerPath, declared.fieldName);
 
   const normalizedExpected = expectedDir.replace(/\/$/, '');
   const normalizedActual = actualDir.replace(/\/$/, '');

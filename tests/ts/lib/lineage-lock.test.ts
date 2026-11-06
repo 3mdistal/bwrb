@@ -37,6 +37,17 @@ describe('lineage mutation lock', () => {
     expect(existsSync(lockPath)).toBe(false);
   });
 
+  it('refuses a source outside the vault', () => {
+    expect(() => getLineageMutationLockPath(vaultDir, join(vaultDir, '..', 'Outside.md')))
+      .toThrow('must be a file inside the vault');
+  });
+
+  it.runIf(process.platform === 'win32')('refuses a source on another Windows drive', () => {
+    const otherDrive = vaultDir.slice(0, 1).toUpperCase() === 'Z' ? 'Y' : 'Z';
+    expect(() => getLineageMutationLockPath(vaultDir, `${otherDrive}:\\Elsewhere\\Note.md`))
+      .toThrow('must be a file inside the vault');
+  });
+
   it('acquires multiple locks in deterministic order without deadlock', async () => {
     const a = join(vaultDir, 'A.md');
     const b = join(vaultDir, 'B.md');

@@ -7,7 +7,8 @@ import { withLineageMutationLocks } from '../lineage-lock.js';
 import { executeBulkMove, findAllMarkdownFiles, findWikilinksToFile } from '../bulk/move.js';
 import { buildVaultNoteSnapshot } from '../discovery.js';
 import { assessDeleteLineage } from '../delete-lineage-guard.js';
-import { basename, relative } from 'path';
+import { vaultRelativePath } from '../vault-relative-path.js';
+import { basename } from 'path';
 import type { LoadedSchema } from '../../types/schema.js';
 import type { FileAuditResult } from './types.js';
 
@@ -85,7 +86,7 @@ export async function runRetentionRemediation(args: {
 /** Conservative relation safety independent of wikilink vs markdown link format. */
 async function findTypedRelationReferences(schema: LoadedSchema, vaultDir: string, targetPath: string, files: string[]): Promise<string[]> {
   const targetName = basename(targetPath, '.md');
-  const targetRelative = relative(vaultDir, targetPath).replace(/\.md$/, '');
+  const targetRelative = vaultRelativePath(vaultDir, targetPath).replace(/\.md$/, '');
   const references: string[] = [];
   for (const file of files) {
     if (file === targetPath) continue;

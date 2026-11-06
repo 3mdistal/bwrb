@@ -10,6 +10,7 @@
 import { readFile, writeFile, link, unlink, mkdir, readdir, realpath, stat } from 'fs/promises';
 import { join, relative, basename, extname, isAbsolute, resolve, sep } from 'path';
 import { getLineageMutationLockPath, withLineageMutationLocks } from '../lineage-lock.js';
+import { vaultRelativePath } from '../vault-relative-path.js';
 
 // ============================================================================
 // Types
@@ -145,7 +146,7 @@ export function wikilinkMatchesFile(
   vaultDir: string
 ): boolean {
   const fileBasename = getFileBasename(filePath);
-  const fileRelPath = relative(vaultDir, filePath);
+  const fileRelPath = vaultRelativePath(vaultDir, filePath);
   const fileRelPathNoExt = fileRelPath.replace(/\.md$/, '');
   
   // Normalize the link target (remove .md if present)
@@ -244,7 +245,7 @@ export async function findWikilinksToFile(
     }
 
     const content = await readFile(sourceFile, 'utf-8');
-    const sourceRelativePath = relative(vaultDir, sourceFile);
+    const sourceRelativePath = vaultRelativePath(vaultDir, sourceFile);
 
     references.push(
       ...scanWikilinkReferencesInContent(
@@ -275,7 +276,7 @@ export function generateUpdatedWikilink(
   allFilePaths: string[]
 ): string {
   const newBasename = getFileBasename(newFilePath);
-  const newRelPath = relative(vaultDir, newFilePath).replace(/\.md$/, '');
+  const newRelPath = vaultRelativePath(vaultDir, newFilePath).replace(/\.md$/, '');
   
   // Check if the new filename is unique
   const filesWithSameName = allFilePaths.filter(f => 
@@ -403,8 +404,8 @@ async function moveFile(
 ): Promise<MoveResult> {
   const fileName = targetBasename ?? basename(filePath);
   const newPath = join(targetDir, fileName);
-  const oldRelativePath = relative(vaultDir, filePath);
-  const newRelativePath = relative(vaultDir, newPath);
+  const oldRelativePath = vaultRelativePath(vaultDir, filePath);
+  const newRelativePath = vaultRelativePath(vaultDir, newPath);
 
   const result: MoveResult = {
     oldPath: filePath,
@@ -556,7 +557,7 @@ export async function executeBulkMove(options: {
   }
 
   // Resolve target directory (relative to vault)
-  const absoluteTargetDir = targetDir.startsWith('/')
+  const absoluteTargetDir = isAbsolute(targetDir)
     ? targetDir
     : join(vaultDir, targetDir);
   const plan: MovePlan = {
@@ -678,7 +679,7 @@ async function applyBulkMove(
     const filePath = execute && movedSource && movedFiles.has(movedSource)
       ? destinationPath(plan, movedSource)
       : sourceFile;
-    const relativePath = relative(vaultDir, filePath);
+    const relativePath = vaultRelativePath(vaultDir, filePath);
 
     const updateResult: WikilinkUpdateResult = {
       filePath,
