@@ -13,6 +13,8 @@ import {
   getType,
   resolveTypeFromFrontmatter,
   getFieldsForType,
+  formatUnknownTypeError,
+  suggestTypeName,
 } from './schema.js';
 import { parseNote, writeNote, writeFileAtomic, generateBodySections, generateBodyWithContent, parseBodyInput, type ParsedNote } from './frontmatter.js';
 import {
@@ -387,6 +389,47 @@ export function rejectReservedPatchFields(patchData: Record<string, unknown>): J
 }
 
 /**
+ * The type a note will have once the patch is applied, which is the type the
+ * edit is checked against. A patch that sets `type` can therefore give a type
+ * to a note whose own type is missing or not in the schema, and a patch can
+ * never leave a note without a valid type.
+ */
+function resolvePatchedTypePath(
+  schema: LoadedSchema,
+  frontmatter: Record<string, unknown>,
+  patchData: Record<string, unknown>
+): { ok: true; typePath: string } | { ok: false; error: string } {
+  const patchType = patchData['type'];
+  if (patchType === undefined) {
+    const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
+    if (typePath) return { ok: true, typePath };
+    const currentType = frontmatter['type'];
+    if (isBlankScalar(currentType)) {
+      return {
+        ok: false,
+        error: 'Could not determine note type from frontmatter: the note has no type. '
+          + 'Set one in the patch, for example {"type":"<type>"}.',
+      };
+    }
+    const suggestion = typeof currentType === 'string' ? suggestTypeName(schema, currentType) : undefined;
+    return {
+      ok: false,
+      error: `Could not determine note type from frontmatter: '${String(currentType)}' is not a type in the schema. `
+        + `Set one in the patch, for example {"type":"${suggestion ?? '<type>'}"}.`,
+    };
+  }
+  if (patchType === null || isBlankScalar(patchType)) {
+    return { ok: false, error: "A note's type cannot be removed. Set a type from the schema instead." };
+  }
+  if (typeof patchType !== 'string') {
+    return { ok: false, error: `Field 'type' must be a type name from the schema, not ${JSON.stringify(patchType)}` };
+  }
+  const typePath = resolveTypeFromFrontmatter(schema, mergeFrontmatter(frontmatter, patchData));
+  if (!typePath) return { ok: false, error: formatUnknownTypeError(schema, patchType) };
+  return { ok: true, typePath };
+}
+
+/**
  * Merge a JSON patch into a parsed note and run every check that needs only
  * the note and the schema.
  */
@@ -398,11 +441,11 @@ export function resolveJsonEdit(
 ): ResolveJsonEditResult {
   const { frontmatter, body, raw } = note;
 
-  // Resolve type path from existing frontmatter
-  const typePath = resolveTypeFromFrontmatter(schema, frontmatter);
-  if (!typePath) {
-    return { ok: false, rejection: plainRejection('Could not determine note type from frontmatter') };
+  const typeResolution = resolvePatchedTypePath(schema, frontmatter, patchData);
+  if (!typeResolution.ok) {
+    return { ok: false, rejection: plainRejection(typeResolution.error) };
   }
+  const { typePath } = typeResolution;
 
   const typeDef = getType(schema, typePath);
   if (!typeDef) {

@@ -502,6 +502,7 @@ value, stale revision) stops the whole batch before any write. Notes that alread
 Notes:
 - If multiple notes share the same name, `bwrb edit` errors, lists candidate paths, and asks for an exact-path retry. Disambiguate with `--type`, `--path`, or a listed vault-relative path.
 - `bwrb new --json` rejects unknown frontmatter fields after merging template defaults. `bwrb edit --json` rejects unknown fields in the frontmatter patch while reserving `_body` for revision-safe body replacement.
+- A patch that sets `type` is validated against that type. Use it to repair a note whose type is missing or not in the schema (`bwrb edit --id "<uuid>" --json '{"type":"task"}'`); `edit` refuses such a note otherwise. Unknown, null and blank types are refused.
 - A validated JSON patch with no semantic change preserves the note's exact bytes and raw-byte revision.
 - Edit commits coordinate with fork/adopt lineage writes. JSON patches make up to three total attempts (the initial attempt plus at most two retries) from fresh bytes; on exhaustion, retry only when JSON has numeric `code: 2`, `data.reason: "note-modified-concurrently"`, and `data.retryable: true`. Interactive edits do not replay answers gathered from stale values.
 

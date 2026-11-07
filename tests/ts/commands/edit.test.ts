@@ -604,6 +604,129 @@ context: "[[contexts/The Molting]]"
     });
   });
 
+  describe('setting a missing or invalid type', () => {
+    const auditErrors = async (path: string) => {
+      const audit = await runCLI(['audit', path, '--output', 'json'], vaultDir);
+      const json = JSON.parse(audit.stdout) as {
+        files: { issues: { severity: string; code: string }[] }[];
+      };
+      return json.files.flatMap((file) => file.issues)
+        .filter((issue) => issue.severity === 'error')
+        .map((issue) => issue.code);
+    };
+
+    it('sets the type of an untyped note selected by --id', async () => {
+      const id = '5d0e3c1a-7f7e-4c3b-9b1e-2a6f0c4d8e11';
+      const filePath = join(vaultDir, 'Objectives/Tasks/Untyped.md');
+      await writeFile(filePath, `---\nid: ${id}\nstatus: backlog\n---\nKeep this body.\n`, 'utf-8');
+      expect(await auditErrors('Objectives/Tasks/Untyped.md')).toEqual(['orphan-file']);
+
+      const result = await runCLI(['edit', '--id', id, '--json', '{"type":"task"}'], vaultDir);
+
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json).toMatchObject({ success: true, path: 'Objectives/Tasks/Untyped.md', updated: ['type'] });
+      const updated = await readFile(filePath, 'utf-8');
+      expect(updated).toContain('type: task');
+      expect(updated).toContain('status: backlog');
+      expect(updated).toContain(`id: ${id}`);
+      expect(updated).toContain('Keep this body.');
+      expect(await auditErrors('Objectives/Tasks/Untyped.md')).toEqual([]);
+    });
+
+    it('replaces a type that is not in the schema, selected by path', async () => {
+      const filePath = join(vaultDir, 'Objectives/Tasks/Mistyped.md');
+      await writeFile(filePath, `---\ntype: chore\nstatus: backlog\nlegacy-note: keep me\n---\n`, 'utf-8');
+      expect(await auditErrors('Objectives/Tasks/Mistyped.md')).toEqual(['invalid-type']);
+
+      const result = await runCLI(
+        ['edit', 'Objectives/Tasks/Mistyped.md', '--json', '{"type":"task"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(0);
+      const updated = await readFile(filePath, 'utf-8');
+      expect(updated).toContain('type: task');
+      expect(updated).toContain('legacy-note: keep me');
+      expect(await auditErrors('Objectives/Tasks/Mistyped.md')).toEqual([]);
+    });
+
+    it('checks the rest of the note against the type it is given', async () => {
+      const filePath = join(vaultDir, 'Ideas/Untyped Idea.md');
+      const source = `---\nstatus: wild\n---\n`;
+      await writeFile(filePath, source, 'utf-8');
+
+      const refused = await runCLI(['edit', 'Ideas/Untyped Idea.md', '--json', '{"type":"idea"}'], vaultDir);
+
+      expect(refused.exitCode).toBe(1);
+      const refusedJson = JSON.parse(refused.stdout);
+      expect(refusedJson.error).toBe('Validation failed');
+      expect(refusedJson.errors[0]).toMatchObject({ field: 'status', value: 'wild' });
+      expect(await readFile(filePath, 'utf-8')).toBe(source);
+
+      const fixed = await runCLI(
+        ['edit', 'Ideas/Untyped Idea.md', '--json', '{"type":"idea","status":"raw"}'],
+        vaultDir
+      );
+
+      expect(fixed.exitCode).toBe(0);
+      expect(JSON.parse(fixed.stdout).updated).toEqual(['type', 'status']);
+      expect(await auditErrors('Ideas/Untyped Idea.md')).toEqual([]);
+    });
+
+    it('says how to set the type when the patch leaves it out', async () => {
+      await writeFile(join(vaultDir, 'Ideas/Untyped.md'), `---\nstatus: raw\n---\n`, 'utf-8');
+      await writeFile(join(vaultDir, 'Ideas/Typo.md'), `---\ntype: ideaa\nstatus: raw\n---\n`, 'utf-8');
+
+      const untyped = await runCLI(['edit', 'Ideas/Untyped.md', '--json', '{"status":"backlog"}'], vaultDir);
+      const typo = await runCLI(['edit', 'Ideas/Typo.md', '--json', '{"status":"backlog"}'], vaultDir);
+
+      expect(untyped.exitCode).toBe(1);
+      expect(JSON.parse(untyped.stdout).error).toBe(
+        'Could not determine note type from frontmatter: the note has no type. '
+          + 'Set one in the patch, for example {"type":"<type>"}.'
+      );
+      expect(typo.exitCode).toBe(1);
+      expect(JSON.parse(typo.stdout).error).toBe(
+        "Could not determine note type from frontmatter: 'ideaa' is not a type in the schema. "
+          + 'Set one in the patch, for example {"type":"idea"}.'
+      );
+    });
+
+    it.each([
+      ['an unknown type', '{"type":"bogus"}', 'Unknown type: bogus'],
+      ['a misspelled type', '{"type":"tsk"}', "Unknown type: tsk. Did you mean 'task'?"],
+      ['a null type', '{"type":null}', "A note's type cannot be removed. Set a type from the schema instead."],
+      ['a blank type', '{"type":"  "}', "A note's type cannot be removed. Set a type from the schema instead."],
+      ['a non-string type', '{"type":["task"]}', `Field 'type' must be a type name from the schema, not ["task"]`],
+    ])('refuses %s and leaves the note as it was', async (_label, patch, error) => {
+      const filePath = join(vaultDir, 'Ideas/Sample Idea.md');
+      const before = await readFile(filePath, 'utf-8');
+
+      const result = await runCLI(['edit', 'Ideas/Sample Idea.md', '--json', patch], vaultDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout).error).toBe(error);
+      expect(await readFile(filePath, 'utf-8')).toBe(before);
+    });
+
+    it('checks the fields of a retyped note against its new type', async () => {
+      const filePath = join(vaultDir, 'Ideas/Sample Idea.md');
+      const before = await readFile(filePath, 'utf-8');
+
+      // priority belongs to idea, not task.
+      const result = await runCLI(
+        ['edit', 'Ideas/Sample Idea.md', '--json', '{"type":"task","priority":"high"}'],
+        vaultDir
+      );
+
+      expect(result.exitCode).toBe(1);
+      const json = JSON.parse(result.stdout);
+      expect(json.errors[0]).toMatchObject({ field: 'priority', message: 'Unknown field: priority' });
+      expect(await readFile(filePath, 'utf-8')).toBe(before);
+    });
+  });
+
   describe('body preservation', () => {
     it('should preserve body content after frontmatter edit', async () => {
       // First, create a file with rich body content
