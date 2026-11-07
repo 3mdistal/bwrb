@@ -4,7 +4,7 @@ import { parseNote, writeNote } from '../frontmatter.js';
 import { validateFrontmatter } from '../validation.js';
 import { formatLocalDate } from '../local-date.js';
 import { withLineageMutationLocks } from '../lineage-lock.js';
-import { executeBulkMove, findAllMarkdownFiles, findWikilinksToFile } from '../bulk/move.js';
+import { findAllMarkdownFiles, findWikilinksToFile, withBulkMoveLocks } from '../bulk/move.js';
 import { buildVaultNoteSnapshot } from '../discovery.js';
 import { assessDeleteLineage } from '../delete-lineage-guard.js';
 import { basename, relative } from 'path';
@@ -43,16 +43,15 @@ export async function runRetentionRemediation(args: {
     if (!type || !retention || !action || !isDue(initial.frontmatter, retention, today)) { skipped++; messages.push(`${candidate.relativePath}: no longer due or action is not configured`); continue; }
     if (!args.execute) { messages.push(`Would ${args.action} ${candidate.relativePath}`); continue; }
     if (action.kind === 'archive') {
-      // The move rewrites backlink source files too, so lock the complete
-      // mutation set rather than only the note being archived.
-      const allVaultFiles = await findAllMarkdownFiles(args.vaultDir);
-      const references = await findWikilinksToFile(args.vaultDir, candidate.path, allVaultFiles);
-      await withLineageMutationLocks(args.vaultDir, [candidate.path, ...references.map(reference => reference.sourceFile)], async () => {
+      // The move rewrites backlink source files too, so hold a bulk move's
+      // locks (the note at its old and new path, and every note linking to
+      // it) while checking the note is still due and moving it.
+      await withBulkMoveLocks({ vaultDir: args.vaultDir, targetDir: action.directory, filesToMove: [candidate.path] }, async move => {
         const live = await parseNote(candidate.path);
         const liveType = resolveTypeFromFrontmatter(args.schema, live.frontmatter);
         const liveRetention = liveType ? getRetentionForType(args.schema, liveType) : undefined;
         if (!liveRetention || !isDue(live.frontmatter, liveRetention, today)) { skipped++; messages.push(`${candidate.relativePath}: no longer due`); return; }
-        const result = await executeBulkMove({ vaultDir: args.vaultDir, targetDir: action.directory, filesToMove: [candidate.path], execute: true, allVaultFiles, locksHeld: true });
+        const result = await move();
         if (result.errors.length) { skipped++; messages.push(...result.errors); } else { applied++; messages.push(`Archived ${candidate.relativePath}`); }
       });
       continue;

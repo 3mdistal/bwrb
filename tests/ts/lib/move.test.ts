@@ -12,6 +12,7 @@ import {
   generateUpdatedWikilink,
   updateWikilinksInContent,
   executeBulkMove,
+  withBulkMoveLocks,
 } from '../../../src/lib/bulk/move.js';
 
 // Pass-through mock, so a test can see which notes a move locks.
@@ -759,16 +760,61 @@ Related to [[MyIdea]].
         expect(await readFile(join(tempDir, 'Archive', 'B.md'), 'utf-8')).toMatch(/^See \[\[Archive[\\/]A\]\]\.$/);
       });
 
-      it('takes no locks for a dry run, or when the caller holds them', async () => {
+      it('takes no locks for a dry run', async () => {
         await writeFile(join(tempDir, 'Ideas', 'A.md'), '# A');
         await writeFile(join(tempDir, 'Linker.md'), 'See [[A]].');
-        const move = { vaultDir: tempDir, targetDir: 'Archive', filesToMove: [join(tempDir, 'Ideas', 'A.md')] };
 
-        await executeBulkMove({ ...move, execute: false });
-        const held = await executeBulkMove({ ...move, execute: true, locksHeld: true });
+        const result = await executeBulkMove({
+          vaultDir: tempDir,
+          targetDir: 'Archive',
+          filesToMove: [join(tempDir, 'Ideas', 'A.md')],
+          execute: false,
+        });
 
         expect(locks).not.toHaveBeenCalled();
-        expect(held.moveResults[0]!.applied).toBe(true);
+        expect(result.moveResults[0]!.applied).toBe(false);
+        await expect(access(join(tempDir, 'Ideas', 'A.md'))).resolves.toBeUndefined();
+      });
+
+      it("runs a caller's task and its move under the move's locks", async () => {
+        await writeFile(join(tempDir, 'Ideas', 'A.md'), '# A');
+        await mkdir(join(tempDir, 'Other'));
+        await writeFile(join(tempDir, 'Other', 'A.md'), '# Other A');
+        await writeFile(join(tempDir, 'Linker.md'), 'See [[A]].');
+        beforeNextLock(() => writeFile(join(tempDir, 'Late.md'), 'Also [[A]].'));
+
+        const lockCallsInTask: number[] = [];
+        const result = await withBulkMoveLocks({
+          vaultDir: tempDir,
+          targetDir: 'Archive',
+          filesToMove: [join(tempDir, 'Ideas', 'A.md')],
+        }, async move => {
+          lockCallsInTask.push(locks.mock.calls.length);
+          return move();
+        });
+
+        // The task ran once, inside the second acquisition, which covers the late linker.
+        expect(lockCallsInTask).toEqual([2]);
+        expect(lockedPaths(1)).toEqual(['Archive/A.md', 'Ideas/A.md', 'Late.md', 'Linker.md']);
+        expect(result.errors).toEqual([]);
+        expect(await readFile(join(tempDir, 'Late.md'), 'utf-8')).toMatch(/^Also \[\[Archive[\\/]A\]\]\.$/);
+      });
+
+      it('moves nothing when the task returns without calling move', async () => {
+        await writeFile(join(tempDir, 'Ideas', 'A.md'), '# A');
+        await writeFile(join(tempDir, 'Linker.md'), 'See [[A]].');
+
+        const outcome = await withBulkMoveLocks({
+          vaultDir: tempDir,
+          targetDir: 'Archive',
+          filesToMove: [join(tempDir, 'Ideas', 'A.md')],
+        }, async () => 'skipped');
+
+        expect(outcome).toBe('skipped');
+        expect(locks).toHaveBeenCalledTimes(1);
+        await expect(access(join(tempDir, 'Ideas', 'A.md'))).resolves.toBeUndefined();
+        await expect(access(join(tempDir, 'Archive', 'A.md'))).rejects.toThrow();
+        expect(await readFile(join(tempDir, 'Linker.md'), 'utf-8')).toBe('See [[A]].');
       });
     });
   });

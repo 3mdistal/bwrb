@@ -76,7 +76,9 @@ bwrb audit --all --fix --only retention-due --retention-action archive --execute
 
 Before writing, Bowerbird re-reads the note under its mutation lock and confirms it is
 still due. Archive updates wikilinks, tombstone applies only the schema-declared patch,
-and delete refuses live lineage, backlinks, or typed relations.
+and delete refuses live lineage, backlinks, or typed relations. Archive takes the same
+locks as [`bulk --move`](/reference/commands/bulk/): the note at its old and new path
+and every note whose links it rewrites.
 
 `unlinked-mention` auto-fixes normally link every eligible exact/alias occurrence. Set
 `config.mention_link_once: true` or pass `--mention-link-once` to make
@@ -103,7 +105,7 @@ Delete semantics in repair mode:
 | Type | Description |
 |------|-------------|
 | `missing-frontmatter` | Plain Markdown in a managed directory has no valid top frontmatter. Guided repair adopts it by adding only the minimal valid frontmatter and a UUID while preserving the body bytes; auto-repair runs only when type and required values are deterministic. Mapping-like prose is not relocated. |
-| `unsafe-filename` | The filename contains non-portable characters, a Windows device basename, a trailing dot/space, or exceeds Bowerbird's 192-byte Markdown filename budget. Repair deterministically renames it, preserves the full title in `name`, and updates backlinks; collisions fail without overwrite. |
+| `unsafe-filename` | The filename contains non-portable characters, a Windows device basename, a trailing dot/space, or exceeds Bowerbird's 192-byte Markdown filename budget. Repair deterministically renames it, preserves the full title in `name`, and updates backlinks, holding the same locks as `bulk --move`; collisions fail without overwrite. |
 | `orphan-file` | File in managed directory but no `type` field |
 | `invalid-type` | Type field value not recognized in schema |
 | `missing-required` | Required field is missing |

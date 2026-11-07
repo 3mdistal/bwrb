@@ -528,52 +528,75 @@ function isInsideVault(vaultDir: string, filePath: string): boolean {
 }
 
 /**
- * Execute a bulk move operation with wikilink updates.
- *
- * When executing, the move holds a lineage mutation lock on every note it
- * writes: each moved note under its old and new path, and every note whose
- * links it rewrites. It takes them in one sorted acquisition, like other
- * locked writes, so it cannot deadlock with them.
+ * The notes to move and where they go.
  */
-export async function executeBulkMove(options: {
+interface BulkMoveOptions {
   vaultDir: string;
   targetDir: string;
   filesToMove: string[];
-  execute: boolean;
   allVaultFiles?: string[];
   /** Optional exact destination basenames, keyed by source path, for safe renames. */
   targetBasenames?: ReadonlyMap<string, string>;
-  /**
-   * The caller already holds the lineage locks for this move. The locks are
-   * not reentrant, so the move then takes none of its own.
-   */
-  locksHeld?: boolean;
-}): Promise<BulkMoveResult> {
-  const { vaultDir, targetDir, filesToMove, execute } = options;
+}
 
-  if (filesToMove.length === 0) {
-    return { dryRun: !execute, moveResults: [], wikilinkUpdates: [], totalLinksUpdated: 0, errors: [] };
-  }
-
+function createMovePlan(options: BulkMoveOptions, execute: boolean): MovePlan {
+  const { vaultDir, targetDir, filesToMove } = options;
   // Resolve target directory (relative to vault)
   const absoluteTargetDir = targetDir.startsWith('/')
     ? targetDir
     : join(vaultDir, targetDir);
-  const plan: MovePlan = {
+  return {
     vaultDir,
     absoluteTargetDir,
     filesToMove,
     execute,
     ...(options.targetBasenames && { targetBasenames: options.targetBasenames }),
   };
+}
+
+function emptyMoveResult(execute: boolean): BulkMoveResult {
+  return { dryRun: !execute, moveResults: [], wikilinkUpdates: [], totalLinksUpdated: 0, errors: [] };
+}
+
+/**
+ * Execute a bulk move operation with wikilink updates.
+ *
+ * When executing, the move holds the locks {@link withBulkMoveLocks} takes.
+ */
+export async function executeBulkMove(
+  options: BulkMoveOptions & { execute: boolean }
+): Promise<BulkMoveResult> {
+  const { vaultDir, filesToMove, execute } = options;
+
+  if (filesToMove.length === 0) return emptyMoveResult(execute);
+  if (execute) return withBulkMoveLocks(options, move => move());
 
   // Get all markdown files in the vault for wikilink scanning
   const allVaultFiles = options.allVaultFiles ?? await findAllMarkdownFiles(vaultDir);
   const linkingNotes = await findLinkingNotes(vaultDir, filesToMove, allVaultFiles);
+  return applyBulkMove(createMovePlan(options, false), linkingNotes, allVaultFiles);
+}
 
-  if (!execute || options.locksHeld) {
-    return applyBulkMove(plan, linkingNotes, allVaultFiles);
-  }
+/**
+ * Run a task holding a lineage mutation lock on every note a move writes: each
+ * moved note under its old and new path, and every note whose links it
+ * rewrites. The locks are taken in one sorted acquisition, like other locked
+ * writes, so the move cannot deadlock with them.
+ *
+ * The task gets `move`, which executes the move with the links found under
+ * the locks. A caller that must check or change a moved note first does so in
+ * the task, so the check, the change and the move share the locks.
+ */
+export async function withBulkMoveLocks<T>(
+  options: BulkMoveOptions,
+  task: (move: () => Promise<BulkMoveResult>) => Promise<T>
+): Promise<T> {
+  const { vaultDir, filesToMove } = options;
+  const plan = createMovePlan(options, true);
+  if (filesToMove.length === 0) return task(async () => emptyMoveResult(true));
+
+  const allVaultFiles = options.allVaultFiles ?? await findAllMarkdownFiles(vaultDir);
+  const linkingNotes = await findLinkingNotes(vaultDir, filesToMove, allVaultFiles);
 
   // Lock paths, keyed by lock file so two spellings of one path count once.
   const lockPaths = new Map<string, string>();
@@ -595,7 +618,7 @@ export async function executeBulkMove(options: {
       const unlocked = [...lockedLinkingNotes.keys()]
         .filter(sourceFile => !lockPaths.has(getLineageMutationLockPath(vaultDir, sourceFile)));
       if (unlocked.length > 0) return { unlocked };
-      return { result: await applyBulkMove(plan, lockedLinkingNotes, lockedVaultFiles) };
+      return { result: await task(() => applyBulkMove(plan, lockedLinkingNotes, lockedVaultFiles)) };
     });
     if ('result' in outcome) return outcome.result;
     if (attempt === MOVE_LOCK_ATTEMPTS) {
