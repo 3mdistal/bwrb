@@ -101,6 +101,27 @@ describe('vault path spelling', () => {
       expect(await auditedPaths('--path', 'Objectives/Tasks/*')).toContain(BROKEN_NOTE);
     });
 
+    it('keeps glob escapes in --path', async () => {
+      await writeFile(join(vaultDir, 'Ideas', '[draft].md'), '---\ntype: idea\nstatus: nope\n---\n');
+      const pattern = 'Ideas/\\[draft\\].md';
+
+      const list = await runCLI(['list', '--path', pattern, '--output', 'paths'], vaultDir);
+      expect(list.stdout.trim()).toBe('Ideas/[draft].md');
+      expect(await auditedPaths('--path', pattern)).toEqual(['Ideas/[draft].md']);
+    });
+
+    it('finds a note by a name with a backslash', async () => {
+      await writeFile(
+        join(vaultDir, 'Ideas', 'Band.md'),
+        '---\ntype: idea\nid: 11111111-2222-4333-8444-666666666666\nname: AC\\DC\nstatus: raw\n---\n'
+      );
+
+      const result = await runCLI(['list', '--lineage', 'AC\\DC', '--output', 'paths'], vaultDir);
+
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(result.stdout).toContain('Ideas/Band.md');
+    });
+
     it('finds a note by its absolute path', async () => {
       const result = await runCLI(
         ['edit', join(vaultDir, 'Objectives', 'Tasks', 'Broken.md'), '--json', '{"status":"backlog"}'],

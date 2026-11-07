@@ -151,11 +151,11 @@ function resolveExactFile(
     return index.byPath.get(relativeTarget) ?? index.byPath.get(withExtension);
   }
 
-  const normalizedTarget = withForwardSlashes(target).replace(/^\.\//, '');
-  const cleanTarget = normalizedTarget.replace(/\.md$/, '');
-  const withExtension = `${cleanTarget}.md`;
+  const cleanTarget = target.replace(/^\.\//, '').replace(/\.md$/, '');
+  const pathTarget = withForwardSlashes(target).replace(/^\.\//, '');
+  const withExtension = `${pathTarget.replace(/\.md$/, '')}.md`;
 
-  const pathMatch = index.byPath.get(normalizedTarget) ?? index.byPath.get(withExtension);
+  const pathMatch = index.byPath.get(pathTarget) ?? index.byPath.get(withExtension);
   if (pathMatch) return pathMatch;
 
   const basenameMatches = exactMapMatches(index.byBasename, cleanTarget);

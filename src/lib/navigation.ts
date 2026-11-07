@@ -257,17 +257,14 @@ function dedupeFiles(files: ManagedFile[]): ManagedFile[] {
  * but is excluded by a scope, callers can report no match instead of quietly
  * substituting a fuzzy neighbour from the filtered index.
  */
-export function resolveExactNoteQuery(index: NoteIndex, rawQuery: string): ResolutionResult {
-  const query = withForwardSlashes(rawQuery);
+export function resolveExactNoteQuery(index: NoteIndex, query: string): ResolutionResult {
   const cleanQuery = query.replace(/\.md$/, '');
   const cleanQueryWithExt = cleanQuery + '.md';
   
   // 1. Exact path match
-  if (index.byPath.has(query)) {
-    return { exact: index.byPath.get(query)!, candidates: [], isAmbiguous: false };
-  }
-  if (index.byPath.has(cleanQueryWithExt)) {
-    return { exact: index.byPath.get(cleanQueryWithExt)!, candidates: [], isAmbiguous: false };
+  const pathMatch = index.byPath.get(withForwardSlashes(query)) ?? index.byPath.get(withForwardSlashes(cleanQueryWithExt));
+  if (pathMatch) {
+    return { exact: pathMatch, candidates: [], isAmbiguous: false };
   }
   
   // 2. Exact basename match (case-sensitive)

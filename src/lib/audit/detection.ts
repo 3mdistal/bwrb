@@ -114,7 +114,7 @@ import { detectMissingBodySections } from './body-sections.js';
 // Import body-link validation (#652)
 import { detectBodyLinks } from './body-links.js';
 import { parseNote } from '../frontmatter.js';
-import { withForwardSlashes } from '../vault-relative-path.js';
+import { globWithForwardSlashes } from '../vault-relative-path.js';
 
 /**
  * Synthetic vault-relative path used to group vault-global (aggregate) findings
@@ -144,7 +144,7 @@ export async function runAuditDetailed(
   // Apply path filter (glob pattern or substring match)
   let filteredFiles = files;
   if (options.pathFilter) {
-    const pattern = withForwardSlashes(options.pathFilter);
+    const pattern = globWithForwardSlashes(options.pathFilter);
     // If pattern contains glob characters, use minimatch; otherwise do substring match
     const isGlob = /[*?[\]]/.test(pattern);
     if (isGlob) {

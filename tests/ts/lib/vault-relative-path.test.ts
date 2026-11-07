@@ -2,8 +2,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { resolveExactNoteQuery, type NoteIndex } from '../../../src/lib/navigation.js';
 import { unregisterIssuedNotePath } from '../../../src/lib/note-id.js';
-import { vaultRelativePath, withForwardSlashes } from '../../../src/lib/vault-relative-path.js';
+import {
+  globWithForwardSlashes,
+  vaultRelativePath,
+  withForwardSlashes,
+} from '../../../src/lib/vault-relative-path.js';
 
 const ON_WINDOWS = process.platform === 'win32';
 
@@ -18,6 +23,39 @@ describe('withForwardSlashes', () => {
 
   it.skipIf(ON_WINDOWS)('keeps a backslash, which is a filename character here', () => {
     expect(withForwardSlashes('Ideas/odd\\name.md')).toBe('Ideas/odd\\name.md');
+  });
+});
+
+describe('globWithForwardSlashes', () => {
+  it('keeps an escaped glob character', () => {
+    expect(globWithForwardSlashes('Ideas/\\[draft\\].md')).toBe('Ideas/\\[draft\\].md');
+  });
+
+  it.runIf(ON_WINDOWS)('turns separators into forward slashes, including before a wildcard', () => {
+    expect(globWithForwardSlashes('Ideas\\Sub\\*')).toBe('Ideas/Sub/*');
+    expect(globWithForwardSlashes('Ideas\\Sub\\?.md')).toBe('Ideas/Sub/?.md');
+  });
+
+  it.skipIf(ON_WINDOWS)('leaves every backslash alone, because each one is an escape here', () => {
+    expect(globWithForwardSlashes('Ideas\\Sub\\*')).toBe('Ideas\\Sub\\*');
+  });
+});
+
+describe('resolveExactNoteQuery', () => {
+  const file = { path: join(tmpdir(), 'Bands', 'Rock.md'), relativePath: 'Bands/Rock.md' };
+  const index: NoteIndex = {
+    allFiles: [file],
+    byPath: new Map([[file.relativePath, file]]),
+    byBasename: new Map([['Rock', [file]]]),
+    byAlias: new Map([['AC\\DC', [file]]]),
+  };
+
+  it('matches an alias with a backslash as it was written', () => {
+    expect(resolveExactNoteQuery(index, 'AC\\DC').exact).toBe(file);
+  });
+
+  it.runIf(ON_WINDOWS)('matches a path with backslashes', () => {
+    expect(resolveExactNoteQuery(index, 'Bands\\Rock').exact).toBe(file);
   });
 });
 
