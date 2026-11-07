@@ -49,6 +49,22 @@ describe('edit --patches', () => {
     expect(await readNote('Ideas/Another Idea.md')).toContain('priority: medium');
   });
 
+  it('sets the type of an untyped note named by id', async () => {
+    const id = '7c1f5a2e-0b4d-4e8a-9d3c-6f2b1a0e9c44';
+    await writeFile(join(vaultDir, 'Ideas/Untyped.md'), `---\nid: ${id}\nstatus: raw\n---\n`);
+    await writeManifest([{ id, patch: { type: 'idea' } }]);
+
+    const result = await runCLI(['edit', '--patches', manifestPath, '--execute'], vaultDir);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout).data.notes[0]).toMatchObject({
+      path: 'Ideas/Untyped.md',
+      status: 'applied',
+      updated: ['type'],
+    });
+    expect(await readNote('Ideas/Untyped.md')).toContain('type: idea');
+  });
+
   it('reports a blocked batch with its notes and writes nothing', async () => {
     await writeManifest([
       { path: 'Ideas/Sample Idea.md', patch: { status: 'backlog' } },
