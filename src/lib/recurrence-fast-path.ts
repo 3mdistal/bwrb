@@ -24,6 +24,7 @@
  * It is a no-op when the type does not recur or no transition occurred.
  */
 
+import { basename } from 'path';
 import { writeNote } from './frontmatter.js';
 import { getRecurrenceForType } from './schema.js';
 import { getType } from './schema.js';
@@ -78,7 +79,7 @@ export async function prepareRecurrenceFastPath(
   newFrontmatter: Record<string, unknown>,
   body: string
 ): Promise<PreparedFastPath> {
-  const predecessorName = filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
+  const predecessorName = basename(filePath, '.md');
   const typeDef = getType(schema, typeName);
   const orderList = typeDef?.fieldOrder;
   const order = orderList && orderList.length > 0 ? orderList : undefined;

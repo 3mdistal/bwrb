@@ -66,6 +66,8 @@ All notable changes to Bowerbird are documented in this file.
   such as `edit <path>` accept backslashes, so a path saved earlier still
   works. `audit --path` no longer checks 0 files and reports success for one.
   In a `--path` glob, a backslash before `[ ] ( ) { } ! + @` stays an escape.
+- **Recurring notes on Windows** — completing a recurring note creates the next
+  note instead of failing with "Failed to spawn recurrence successor".
 
 ## [0.3.1] - 2026-08-05
 

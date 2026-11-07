@@ -700,7 +700,7 @@ export async function editNoteInteractive(
   const { checkSections = true, beforeCommit } = options;
   
   const { frontmatter, body, raw } = await parseNote(filePath);
-  const fileName = filePath.split('/').pop() ?? filePath;
+  const fileName = basename(filePath);
 
   printInfo(`\n=== Editing: ${fileName} ===`);
 
