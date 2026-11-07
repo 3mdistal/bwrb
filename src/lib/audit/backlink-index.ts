@@ -25,12 +25,12 @@
  */
 
 import { readFile } from 'fs/promises';
-import { relative } from 'path';
 import {
   findAllMarkdownFiles,
   scanWikilinkReferencesInContent,
   type WikilinkReference,
 } from '../bulk/move.js';
+import { vaultRelativePath } from '../vault-relative-path.js';
 
 export class BacklinkScanner {
   private readonly vaultDir: string;
@@ -75,7 +75,7 @@ export class BacklinkScanner {
         continue;
       }
       const content = await this.getContent(sourceFile);
-      const sourceRelativePath = relative(this.vaultDir, sourceFile);
+      const sourceRelativePath = vaultRelativePath(this.vaultDir, sourceFile);
       references.push(
         ...scanWikilinkReferencesInContent(
           content,

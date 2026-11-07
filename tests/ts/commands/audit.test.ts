@@ -7314,7 +7314,8 @@ priority: medium
       expect(await readFile(backlinkPath, 'utf8')).toContain(`[[${repairedName!.slice(0, -3)}]]`);
     });
 
-    it('leaves the source and destination untouched when a repaired filename collides', async () => {
+    // Windows forbids `?` in filenames, so this note can't exist there.
+    it.skipIf(process.platform === 'win32')('leaves the source and destination untouched when a repaired filename collides', async () => {
       const sourcePath = join(tempVaultDir, 'Ideas', 'Bad?.md');
       const destinationPath = join(tempVaultDir, 'Ideas', 'Bad.md');
       const source = '---\ntype: idea\nid: 123e4567-e89b-42d3-a456-426614174010\nstatus: raw\n---\nSource\n';

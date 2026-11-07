@@ -47,6 +47,13 @@ All notable changes to Bowerbird are documented in this file.
   determine note type from frontmatter", which now says how to set it. A patch
   can no longer set an unknown type or remove the type, and a retyped note's
   fields are checked against its new type rather than its old one.
+- **Moves and audit on Windows** — `audit --fix` moves and `bulk --move` into
+  an absolute folder no longer join the vault path on twice and fail. Rewritten
+  links use forward slashes (`[[Archive/Ideas/Note]]`), and links that name a
+  folder match their notes, so a move updates them and retention sees them
+  before a delete. Audit no longer reports owned notes in the right folder as
+  `owned-wrong-location`, and it finds references to another owner's note. A
+  note on another drive is refused as outside the vault.
 
 ## [0.3.1] - 2026-08-05
 

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import { lstat, mkdir, open, readFile, readdir, rename, stat, unlink } from 'fs/promises';
-import { basename, dirname, relative, resolve } from 'path';
+import { basename, dirname, isAbsolute, relative, resolve } from 'path';
 import { excludeRuntimeLocksFromGit } from './lock-git-exclude.js';
 
 const LOCK_RETRY_MS = 20;
@@ -135,7 +135,9 @@ export function getLineageMutationLockPath(vaultDir: string, sourcePath: string)
     relativeSource === '' ||
     relativeSource === '..' ||
     relativeSource.startsWith('../') ||
-    relativeSource.startsWith('/')
+    // A source on another Windows drive has no relative path; relative()
+    // returns it whole, as `D:/...`.
+    isAbsolute(relativeSource)
   ) {
     throw new Error(`Lineage lock source must be a file inside the vault: ${sourcePath}`);
   }
