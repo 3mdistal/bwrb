@@ -64,6 +64,21 @@ bwrb edit -t task --where "status == 'active'" "Deploy" --json '{"priority":"hig
 
 `--json` mode rejects patch fields that are not defined for the resolved note type. Existing legacy or unknown fields in the note are preserved unless the patch changes them.
 
+### Setting a note's type
+
+A patch that sets `type` is checked against that type, not the note's old one.
+This is how to repair a note whose type is missing or not in the schema, which
+`edit` otherwise refuses because it can't tell which fields apply:
+
+```bash
+bwrb edit --id "<uuid>" --json '{"type":"task"}'
+bwrb edit "Objectives/Tasks/Old note.md" --json '{"type":"task","status":"backlog"}'
+```
+
+The rest of the note must be valid for the new type, so put any other fixes in
+the same patch. A patch can't set a type the schema doesn't define, or remove
+the type with `null` or a blank value.
+
 After validation, a patch that makes no semantic change is a byte-preserving
 no-op: Bowerbird still checks the expected revision, mutation lock, and current
 raw bytes, but it does not reserialize or rewrite the note. The returned
