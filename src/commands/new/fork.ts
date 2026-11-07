@@ -1,5 +1,5 @@
 import { unlink } from 'fs/promises';
-import { basename, dirname, relative, resolve } from 'path';
+import { basename, dirname, resolve } from 'path';
 import type { LoadedSchema } from '../../types/schema.js';
 import { withNoteIdentityTransaction } from '../../lib/identity-transaction.js';
 import type { ManagedFile } from '../../lib/navigation.js';
@@ -33,6 +33,7 @@ import {
   assertNoteBytesUnchanged,
   rollbackNoteIfUnchanged,
 } from '../../lib/note-write-concurrency.js';
+import { vaultRelativePath } from '../../lib/vault-relative-path.js';
 
 const PORTABLE_PATH_WARNING_LENGTH = 200;
 const PORTABLE_PATH_MAX_LENGTH = 260;
@@ -124,7 +125,7 @@ async function forkNoteWithinIdentityTransaction(
     frontmatter.id = childId;
 
     const pathResult = buildNotePath(dirname(source.file.path), childName, 'interactive');
-    const relativePath = relative(vaultDir, pathResult.path);
+    const relativePath = vaultRelativePath(vaultDir, pathResult.path);
     if (relativePath.length > PORTABLE_PATH_MAX_LENGTH) {
       throw new Error(
         `Note path is ${relativePath.length} characters, exceeding the portable limit of ${PORTABLE_PATH_MAX_LENGTH}: ${relativePath}`
@@ -217,7 +218,7 @@ async function ensureSourceId(
     const existing = parsed.frontmatter.id;
     if (existing !== undefined) {
       if (!isValidNoteId(existing)) {
-        throw new Error(`Fork source has an invalid id and was not modified: ${relative(vaultDir, sourcePath)}`);
+        throw new Error(`Fork source has an invalid id and was not modified: ${vaultRelativePath(vaultDir, sourcePath)}`);
       }
       await assertSourceIdUnique(schema, vaultDir, sourcePath, existing);
       return existing;
@@ -262,13 +263,13 @@ async function assertSourceIdUnique(
   if (otherMatches.length === 0) return;
 
   const candidates = Array.from(new Set([
-    relative(vaultDir, sourcePath),
+    vaultRelativePath(vaultDir, sourcePath),
     ...matches.map(file => file.relativePath),
   ]))
     .sort()
     .join(', ');
   throw new Error(
-    `Cannot fork source ${relative(vaultDir, sourcePath)}: id ${id} is duplicated; matches: ${candidates}`
+    `Cannot fork source ${vaultRelativePath(vaultDir, sourcePath)}: id ${id} is duplicated; matches: ${candidates}`
   );
 }
 

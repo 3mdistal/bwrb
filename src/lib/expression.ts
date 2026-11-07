@@ -3,6 +3,7 @@ import type { Expression, BinaryExpression, UnaryExpression, CallExpression, Ide
 import { formatLocalDate } from './local-date.js';
 import { FRONTMATTER_IDENTIFIER } from './where-constants.js';
 import { extractLinkTargets } from './links.js';
+import { vaultRelativePath } from './vault-relative-path.js';
 import { resolveRelationTarget, type NoteTargetIndex } from './discovery.js';
 import type { LoadedSchema } from '../types/schema.js';
 import { compareCalendarDateValues, isCalendarDateValue, parseCalendarDate } from './calendar-date.js';
@@ -207,9 +208,9 @@ export async function buildEvalContext(
   asOf?: string
 ): Promise<EvalContext> {
   const { stat } = await import('fs/promises');
-  const { basename, dirname, relative } = await import('path');
+  const { basename, dirname } = await import('path');
 
-  const relativePath = relative(vaultDir, filePath);
+  const relativePath = vaultRelativePath(vaultDir, filePath);
   const fileName = basename(filePath, '.md');
   const folder = dirname(relativePath);
 

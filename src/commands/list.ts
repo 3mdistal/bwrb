@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { basename, relative } from 'path';
+import { basename } from 'path';
 import chalk from 'chalk';
 import {
   loadSchema,
@@ -86,6 +86,7 @@ import {
   createRelationQuantifierIndexContext,
   type QueryExecutionContext,
 } from '../lib/query.js';
+import { vaultRelativePath } from '../lib/vault-relative-path.js';
 
 /**
  * Resolve the output format from --output flag.
@@ -1031,7 +1032,7 @@ export async function listObjects(
       // Multiple results - use picker
       const pickerFiles = filteredFiles.map(f => ({
         path: f.path,
-        relativePath: relative(vaultDir, f.path),
+        relativePath: vaultRelativePath(vaultDir, f.path),
       }));
       const pickerResult = await pickFile(pickerFiles, {
         mode: parsePickerMode(options.pickerMode),
@@ -1055,7 +1056,7 @@ export async function listObjects(
     } else {
       exitWithResolutionError(
         `Ambiguous query: ${filteredFiles.length} matches found`,
-        filteredFiles.map(f => ({ relativePath: relative(vaultDir, f.path) })),
+        filteredFiles.map(f => ({ relativePath: vaultRelativePath(vaultDir, f.path) })),
         jsonMode
       );
     }
@@ -1074,7 +1075,7 @@ export async function listObjects(
         // reads of a note that an editor could change between them.
         const snapshot = await parseNote(path);
         const rawFrontmatter = snapshot.frontmatter;
-        const notePath = relative(vaultDir, path);
+        const notePath = vaultRelativePath(vaultDir, path);
         const noteName = basename(path, '.md');
         const typePath = _typePath ?? resolveTypeFromFrontmatter(schema, rawFrontmatter);
         const frontmatter = projectListFields(rawFrontmatter, notePath, typePath);
@@ -1288,7 +1289,7 @@ function printTable(
   const rows: Array<Record<string, string>> = [];
 
   for (const { path, frontmatter } of files) {
-    const name = showPaths ? relative(vaultDir, path) : basename(path, '.md');
+    const name = showPaths ? vaultRelativePath(vaultDir, path) : basename(path, '.md');
     const row: Record<string, string> = {
       primary: name,
     };
@@ -1303,7 +1304,7 @@ function printTable(
       const value = field === 'name' || field === '_name'
         ? basename(path, '.md')
         : field === '_path'
-          ? relative(vaultDir, path)
+          ? vaultRelativePath(vaultDir, path)
           : getListJsonFieldValue(path, field, frontmatter, relativeDateFields);
       row[field] = formatDisplayValue(value, { empty: '—' });
     }
@@ -1430,7 +1431,7 @@ function printTree(
 ): void {
   function printNode(node: TreeNode, prefix: string, isLast: boolean): void {
     const connector = isLast ? '└── ' : '├── ';
-    const display = showPaths ? relative(vaultDir, node.path) : node.name;
+    const display = showPaths ? vaultRelativePath(vaultDir, node.path) : node.name;
     console.log(prefix + connector + display);
     
     const childPrefix = prefix + (isLast ? '    ' : '│   ');
@@ -1461,7 +1462,7 @@ function printDirectoryTree(roots: DirectoryTreeNode[], showPaths: boolean): voi
       ...directory.notes.map(note => ({
         kind: 'note' as const,
         name: showPaths
-          ? String(note.frontmatter._relativePath ?? relative('', note.path))
+          ? String(note.frontmatter._relativePath ?? vaultRelativePath('', note.path))
           : String(note.frontmatter._displayName ?? basename(note.path, '.md')),
       })),
     ],

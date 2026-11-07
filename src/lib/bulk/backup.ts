@@ -3,8 +3,9 @@
  */
 
 import { mkdir, writeFile, cp } from 'fs/promises';
-import { join, dirname, relative } from 'path';
+import { join, dirname } from 'path';
 import type { BackupManifest } from './types.js';
+import { vaultRelativePath } from '../vault-relative-path.js';
 
 /**
  * Get the backups directory path.
@@ -47,7 +48,7 @@ export async function createBackup(
   // Copy each file, preserving relative paths
   const relativeFiles: string[] = [];
   for (const file of files) {
-    const relativePath = relative(vaultDir, file);
+    const relativePath = vaultRelativePath(vaultDir, file);
     relativeFiles.push(relativePath);
 
     const destPath = join(filesDir, relativePath);

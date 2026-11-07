@@ -11,9 +11,10 @@
  * unit-testable. See issue #597.
  */
 
-import { basename, relative } from 'path';
+import { basename } from 'path';
 import { extractWikilinkTarget } from './links.js';
 import { compareCalendarDateValues, isCalendarDateValue } from './calendar-date.js';
+import { vaultRelativePath } from './vault-relative-path.js';
 
 // ============================================================================
 // Types
@@ -160,7 +161,7 @@ export function getSortValue(
     return basename(file.path, '.md');
   }
   if (field === '_path') {
-    return relative(vaultDir, file.path);
+    return vaultRelativePath(vaultDir, file.path);
   }
   if (isFileSortKey(field)) {
     const stat = fileStats?.get(file.path);
@@ -450,7 +451,7 @@ export function buildDirectoryTree(
   };
 
   for (const file of files) {
-    const relativePath = relative(vaultDir, file.path);
+    const relativePath = vaultRelativePath(vaultDir, file.path);
     const segments = relativePath.split('/');
     const noteName = basename(file.path, '.md');
     const directorySegments = segments.slice(0, -1);

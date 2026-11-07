@@ -1,5 +1,4 @@
 import { Command } from 'commander';
-import { relative } from 'path';
 import { loadSchema, resolveTypeFromFrontmatter } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
@@ -8,6 +7,7 @@ import { parseNote } from '../lib/frontmatter.js';
 import { explainTransition, getTransitionGuardsForType, parseTransitionTrigger } from '../lib/transition-guards.js';
 import { printJson, jsonError, ExitCodes } from '../lib/output.js';
 import { printError } from '../lib/prompt.js';
+import { vaultRelativePath } from '../lib/vault-relative-path.js';
 
 export const explainCommand = new Command('explain')
   .description('Explain relation-backed transition requirements for a note')
@@ -40,9 +40,9 @@ export const explainCommand = new Command('explain')
       const explanation = await explainTransition(schema, vaultDir, type, note.frontmatter, transition);
       if (explanation.guards.length === 0) throw new Error(`No transition guard is configured for '${transition.field} = ${transition.value}'.`);
       if (json) {
-        printJson({ success: true, data: { path: relative(vaultDir, resolved.exact.path), ...explanation } });
+        printJson({ success: true, data: { path: vaultRelativePath(vaultDir, resolved.exact.path), ...explanation } });
       } else {
-        console.log(`${explanation.blocked ? 'Blocked' : 'Allowed'}: ${transition.field} = ${transition.value} (${relative(vaultDir, resolved.exact.path)})`);
+        console.log(`${explanation.blocked ? 'Blocked' : 'Allowed'}: ${transition.field} = ${transition.value} (${vaultRelativePath(vaultDir, resolved.exact.path)})`);
         for (const guard of explanation.guards) for (const requirement of guard.requirements) {
           console.log(`  ${requirement.relation}: ${requirement.status} (${requirement.targets.length}/${requirement.min})`);
           for (const target of requirement.targets) console.log(`    ${target.target}: ${target.status}`);

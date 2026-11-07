@@ -1,6 +1,5 @@
 import { Command } from 'commander';
 import { readFile } from 'fs/promises';
-import { relative } from 'path';
 import { loadSchema, getType, formatUnknownTypeError } from '../lib/schema.js';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts } from '../lib/command.js';
@@ -34,6 +33,7 @@ import { OwnerResolutionError } from './new/ownership.js';
 import type { NewCommandOptions } from './new/types.js';
 import { JsonCommandError } from './new/errors.js';
 import { forkNote } from './new/fork.js';
+import { vaultRelativePath } from '../lib/vault-relative-path.js';
 
 export const newCommand = new Command('new')
   .description('Create a new note (interactive type navigation if type omitted)')
@@ -129,7 +129,7 @@ Template management:
           nonInteractive: globalOpts.nonInteractive === true || forkJsonMode,
         });
 
-        const relativePath = relative(vaultDir, result.path);
+        const relativePath = vaultRelativePath(vaultDir, result.path);
         if (forkJsonMode) {
           const jsonOutput: Record<string, unknown> = {
             path: relativePath,
@@ -191,7 +191,7 @@ Template management:
           { owner: options.owner, standalone: options.standalone, noInstances: options.instances === false }
         );
 
-        const jsonOutput: Record<string, unknown> = { path: relative(vaultDir, result.path) };
+        const jsonOutput: Record<string, unknown> = { path: vaultRelativePath(vaultDir, result.path) };
         if (result.nameTransformed) {
           jsonOutput.nameTransformed = result.nameTransformed;
         }
@@ -200,8 +200,8 @@ Template management:
         }
         if (result.instances) {
           jsonOutput.instances = {
-            created: result.instances.created.map(p => relative(vaultDir, p)),
-            skipped: result.instances.skipped.map(p => relative(vaultDir, p)),
+            created: result.instances.created.map(p => vaultRelativePath(vaultDir, p)),
+            skipped: result.instances.skipped.map(p => vaultRelativePath(vaultDir, p)),
             errors: result.instances.errors,
           };
         }

@@ -1,4 +1,3 @@
-import { relative } from 'path';
 import {
   generateBodyWithContent,
   mergeBodySectionContent,
@@ -28,6 +27,7 @@ import { promptBodySections, promptField } from './prompting.js';
 import { resolveInteractiveOwnership } from './ownership.js';
 import { writeNotePlan } from './write-plan.js';
 import { isBwrbReservedFrontmatterField } from '../../lib/frontmatter/systemFields.js';
+import { vaultRelativePath } from '../../lib/vault-relative-path.js';
 
 export async function createNoteInteractive(
   schema: LoadedSchema,
@@ -84,7 +84,7 @@ export async function createNoteInteractive(
   );
 
   if (ownership.kind === 'owned') {
-    printSuccess(`\n✓ Created: ${relative(vaultDir, result.path)}`);
+    printSuccess(`\n✓ Created: ${vaultRelativePath(vaultDir, result.path)}`);
     printInfo(`  Owned by: ${ownership.owner.ownerName}`);
   } else {
     printSuccess(`\n✓ Created: ${result.path}`);

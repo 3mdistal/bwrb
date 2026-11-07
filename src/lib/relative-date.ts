@@ -1,4 +1,4 @@
-import { join, relative } from 'path';
+import { join } from 'path';
 import type { Calendar, LoadedSchema, Field } from '../types/schema.js';
 import { getFieldsForType, resolveDateCalendar, resolveTypeFromFrontmatter } from './schema.js';
 import { extractLinkTarget } from './links.js';
@@ -11,6 +11,7 @@ import {
 } from './discovery.js';
 import { parseDate } from './local-date.js';
 import { formatLinearCalendarDate, parseCalendarDate } from './calendar-date.js';
+import { vaultRelativePath } from './vault-relative-path.js';
 
 export type RelativeDateKind = 'equal' | 'after' | 'before';
 export type RelativeDateUnit = 'min' | 'h' | 'd' | 'w';
@@ -235,7 +236,7 @@ export function buildRelativeDateFieldMap(
 
   // Keep diagnostics stable and display-oriented.
   diagnostics.sort((a, b) => {
-    const pathCompare = relative(vaultDir, a.path).localeCompare(relative(vaultDir, b.path));
+    const pathCompare = vaultRelativePath(vaultDir, a.path).localeCompare(vaultRelativePath(vaultDir, b.path));
     return pathCompare || a.field.localeCompare(b.field) || a.code.localeCompare(b.code);
   });
 

@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { join, relative } from 'path';
+import { join } from 'path';
 import { mkdir, unlink } from 'fs/promises';
 import chalk from 'chalk';
 import {
@@ -43,6 +43,7 @@ import { UserCancelledError } from '../lib/errors.js';
 import { promptField, CLEAR } from '../lib/field-prompt.js';
 import { getTtyContext } from '../lib/tty/context.js';
 import { renderTable } from '../lib/tty/table.js';
+import { vaultRelativePath } from '../lib/vault-relative-path.js';
 
 interface TemplateListOptions {
   output?: string;
@@ -159,7 +160,7 @@ function serializeTemplateForList(
     type: template.templateFor,
     name: template.name,
     description: template.description,
-    path: relative(vaultDir, template.path),
+    path: vaultRelativePath(vaultDir, template.path),
     hasDefaults: Boolean(template.defaults && Object.keys(template.defaults).length > 0),
     promptFields: template.promptFields,
     filenamePattern: template.filenamePattern,
@@ -499,7 +500,7 @@ async function showTemplateDetails(
       data: {
         name: template.name,
         type: template.templateFor,
-        path: relative(vaultDir, template.path),
+        path: vaultRelativePath(vaultDir, template.path),
         description: template.description,
         defaults: template.defaults,
         promptFields: template.promptFields,
@@ -516,7 +517,7 @@ async function showTemplateDetails(
   // Text output
   console.log(chalk.bold(`\nTemplate: ${template.name}\n`));
   console.log(`  ${chalk.cyan('Type:')} ${template.templateFor}`);
-  console.log(`  ${chalk.cyan('Path:')} ${relative(vaultDir, template.path)}`);
+  console.log(`  ${chalk.cyan('Path:')} ${vaultRelativePath(vaultDir, template.path)}`);
   console.log(`  ${chalk.cyan('Status:')} ${formatTemplateHealthStatus(validation)}`);
   
   if (template.description) {
@@ -823,7 +824,7 @@ async function createTemplateFromJson(
     const validation = await validateTemplate(vaultDir, template, schema);
     if (!validation.valid) {
       printJson(jsonSuccess({
-        path: relative(vaultDir, templatePath),
+        path: vaultRelativePath(vaultDir, templatePath),
         message: 'Template created with validation warnings',
         data: { issues: validation.issues },
       }));
@@ -832,7 +833,7 @@ async function createTemplateFromJson(
   }
 
   printJson(jsonSuccess({
-    path: relative(vaultDir, templatePath),
+    path: vaultRelativePath(vaultDir, templatePath),
     message: 'Template created successfully',
   }));
 }
@@ -876,7 +877,7 @@ async function createTemplateMinimal(
   await mkdir(templateDir, { recursive: true });
   await writeNote(templatePath, frontmatter, body, ['type', 'template-for', 'description']);
 
-  printSuccess(`Template created: ${relative(vaultDir, templatePath)}`);
+  printSuccess(`Template created: ${vaultRelativePath(vaultDir, templatePath)}`);
 }
 
 /**
@@ -1020,7 +1021,7 @@ async function createTemplateInteractive(
     }
   }
 
-  printSuccess(`\n✓ Created: ${relative(vaultDir, templatePath)}`);
+  printSuccess(`\n✓ Created: ${vaultRelativePath(vaultDir, templatePath)}`);
 }
 
 /**
@@ -1252,7 +1253,7 @@ async function editTemplateFromJson(
     const validation = await validateTemplate(vaultDir, updated, schema);
     if (!validation.valid) {
       printJson(jsonSuccess({
-        path: relative(vaultDir, template.path),
+        path: vaultRelativePath(vaultDir, template.path),
         updated: updatedFields,
         message: 'Template updated with validation errors',
         data: { issues: validation.issues },
@@ -1262,7 +1263,7 @@ async function editTemplateFromJson(
   }
 
   printJson(jsonSuccess({
-    path: relative(vaultDir, template.path),
+    path: vaultRelativePath(vaultDir, template.path),
     updated: updatedFields,
     message: 'Template updated successfully',
   }));
@@ -1278,7 +1279,7 @@ async function editTemplateInteractive(
 ): Promise<void> {
   console.log(chalk.bold(`\nEditing template: ${template.name}\n`));
   console.log(`  ${chalk.cyan('Type:')} ${template.templateFor}`);
-  console.log(`  ${chalk.cyan('Path:')} ${relative(vaultDir, template.path)}\n`);
+  console.log(`  ${chalk.cyan('Path:')} ${vaultRelativePath(vaultDir, template.path)}\n`);
 
   // Parse existing template file
   const { frontmatter, body } = await parseNote(template.path);
@@ -1418,7 +1419,7 @@ async function editTemplateInteractive(
     }
   }
 
-  printSuccess(`\n✓ Updated: ${relative(vaultDir, template.path)}`);
+  printSuccess(`\n✓ Updated: ${vaultRelativePath(vaultDir, template.path)}`);
 }
 
 /**
@@ -1525,7 +1526,7 @@ templateCommand
         process.exit(1);
       }
 
-      const relativePath = relative(vaultDir, template.path);
+      const relativePath = vaultRelativePath(vaultDir, template.path);
 
       if (globalOpts.nonInteractive && !options.force) {
         printError('bwrb template delete requires --force when --non-interactive is set.');

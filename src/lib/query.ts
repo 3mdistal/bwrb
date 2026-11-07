@@ -1,4 +1,4 @@
-import { basename, relative } from 'path';
+import { basename } from 'path';
 import type { LoadedSchema } from '../types/schema.js';
 import {
   getAllFieldsForType,
@@ -31,6 +31,7 @@ import {
 import { calendarDateValue, parseCalendarDate } from './calendar-date.js';
 import { getDerivedFieldPlan, projectDerivedFields } from './derived-fields.js';
 import { resolveAsOf } from './as-of.js';
+import { vaultRelativePath } from './vault-relative-path.js';
 
 /**
  * Validate that a field name is valid for a type.
@@ -518,7 +519,7 @@ function resolveParentTargetPath(
 }
 
 function notePathKey(path: string, vaultDir?: string): string | undefined {
-  const relativePath = vaultDir ? relative(vaultDir, path) : path;
+  const relativePath = vaultDir ? vaultRelativePath(vaultDir, path) : path;
   const normalized = relativePath.replace(/\\/g, '/').replace(/\.md$/i, '').trim();
   return normalized || undefined;
 }
@@ -784,13 +785,13 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
           quantifierExpressions,
           relationSources,
           relationType,
-          relative(vaultDir, file.path)
+          vaultRelativePath(vaultDir, file.path)
         );
       }
       const relationQuantifiers = usesRelationQuantifiers && schema && relationQuantifierIndex
         ? buildRelationQuantifierContext(
             baseFrontmatter,
-            relative(vaultDir, file.path),
+            vaultRelativePath(vaultDir, file.path),
             quantifierExpressions,
             schema,
             relationQuantifierIndex,
@@ -803,7 +804,7 @@ export async function applyFrontmatterFilters<T extends FileWithFrontmatter>(
             baseFrontmatter,
             {
               asOf: effectiveAsOf,
-              notePath: relative(vaultDir, file.path),
+              notePath: vaultRelativePath(vaultDir, file.path),
               ...(relationQuantifiers ? { relationQuantifiers } : {}),
             }
           )

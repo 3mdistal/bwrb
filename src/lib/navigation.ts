@@ -17,6 +17,7 @@ import {
   type ManagedFile
 } from './discovery.js';
 import { getEntityAliases } from './schema.js';
+import { withForwardSlashes } from './vault-relative-path.js';
 
 // ============================================================================
 // Types
@@ -256,7 +257,8 @@ function dedupeFiles(files: ManagedFile[]): ManagedFile[] {
  * but is excluded by a scope, callers can report no match instead of quietly
  * substituting a fuzzy neighbour from the filtered index.
  */
-export function resolveExactNoteQuery(index: NoteIndex, query: string): ResolutionResult {
+export function resolveExactNoteQuery(index: NoteIndex, rawQuery: string): ResolutionResult {
+  const query = withForwardSlashes(rawQuery);
   const cleanQuery = query.replace(/\.md$/, '');
   const cleanQueryWithExt = cleanQuery + '.md';
   

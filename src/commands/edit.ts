@@ -6,7 +6,7 @@
  */
 
 import { Command } from 'commander';
-import { basename, isAbsolute, relative } from 'path';
+import { basename, isAbsolute } from 'path';
 import fs from 'fs/promises';
 import { resolveVaultDirWithSelection } from '../lib/vaultSelection.js';
 import { getGlobalOpts, resolveGlobalPickerMode } from '../lib/command.js';
@@ -36,6 +36,7 @@ import { ConcurrentNoteModificationError, UserCancelledError } from '../lib/erro
 import { concurrentModificationData } from '../lib/note-write-concurrency.js';
 import { RevisionMismatchError } from '../lib/note-revision.js';
 import type { ResolvedConfig } from '../types/schema.js';
+import { vaultRelativePath } from '../lib/vault-relative-path.js';
 
 // ============================================================================
 // Types
@@ -383,13 +384,13 @@ Precedence (for --open app mode):
             if (options.open) {
               const appMode = resolveAppMode(appModeInput, schema.config);
               if (!jsonMode) {
-                printEditSuccess(relative(vaultDir, query), editResult.updatedFields, jsonMode);
+                printEditSuccess(vaultRelativePath(vaultDir, query), editResult.updatedFields, jsonMode);
                 await openAfterEdit(vaultDir, query, appMode, schema.config, jsonMode);
                 return;
               }
               openData = await openAfterEdit(vaultDir, query, appMode, schema.config, jsonMode);
             }
-            printEditSuccess(relative(vaultDir, query), editResult.updatedFields, jsonMode, editResult.revision, openData);
+            printEditSuccess(vaultRelativePath(vaultDir, query), editResult.updatedFields, jsonMode, editResult.revision, openData);
           } else {
             await editNoteInteractive(schema, vaultDir, query, {});
             printSuccess(`Updated ${basename(query, '.md')}`);

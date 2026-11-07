@@ -54,6 +54,17 @@ All notable changes to Bowerbird are documented in this file.
   before a delete. Audit no longer reports owned notes in the right folder as
   `owned-wrong-location`, and it finds references to another owner's note. A
   note on another drive is refused as outside the vault.
+- **Printed paths on Windows** — every vault path Bowerbird prints or compares
+  now uses forward slashes, so `new --json`, `list`, `recent` and `template`
+  print a path that `audit` and the other commands accept. `--output tree`
+  nests folders, and `delete` removes the registry row of a note created on
+  Windows, including rows saved earlier with backslashes. Absolute paths, such
+  as `backupPath`, keep the system's spelling. `--where` now sees `file.path`
+  and `file.folder` with forward slashes, so a Windows expression that compared
+  either to a backslash string needs updating.
+- **Backslash paths on Windows** — `audit <path>`, `--path` and note targets
+  such as `edit <path>` accept backslashes, so a path saved earlier still
+  works. `audit --path` no longer checks 0 files and reports success for one.
 
 ## [0.3.1] - 2026-08-05
 

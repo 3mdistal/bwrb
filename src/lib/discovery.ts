@@ -26,6 +26,7 @@ import { parseNoteContent } from './frontmatter.js';
 import { openSnapshotParseCache, type SnapshotParseCache } from './snapshot-parse-cache.js';
 import { getOwnedChildFolderFromOwnerDir } from './ownership-paths.js';
 import { levenshteinDistance } from './levenshtein.js';
+import { withForwardSlashes } from './vault-relative-path.js';
 import type { LoadedSchema, OwnedFieldInfo } from '../types/schema.js';
 
 // ============================================================================
@@ -955,7 +956,7 @@ export function filterByPath(
  * matching semantics as `--path`.
  */
 export function normalizePathPattern(pathPattern: string): string {
-  let pattern = pathPattern;
+  let pattern = withForwardSlashes(pathPattern);
 
   // Normalize directory-like patterns to match .md files
   if (pattern.endsWith('/')) {

@@ -7,7 +7,7 @@
  */
 
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
-import { basename, join, relative } from 'path';
+import { basename, join } from 'path';
 import { isDeepStrictEqual } from 'util';
 import {
   getType,
@@ -59,6 +59,7 @@ import { assertNoteBytesUnchanged } from './note-write-concurrency.js';
 import { assertExpectedRevision, noteRevision } from './note-revision.js';
 import { assertTransitionGuards, transitionGuardTargetPaths } from './transition-guards.js';
 import { commitTransitionEffects, prepareTransitionEffects, rollbackTransitionEffects, transitionEffectTargetPaths } from './transition-effects.js';
+import { vaultRelativePath } from './vault-relative-path.js';
 
 // ============================================================================
 // Types
@@ -624,7 +625,7 @@ export async function validateJsonEditAgainstVault(
     vaultDir,
     typePath,
     resolvedFrontmatter,
-    relative(vaultDir, filePath),
+    vaultRelativePath(vaultDir, filePath),
     context.loadSnapshot
   );
   if (relativeDateDiagnostics.length > 0) {

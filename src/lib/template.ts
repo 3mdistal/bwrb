@@ -1,5 +1,5 @@
 import { readdir, mkdir } from 'fs/promises';
-import { join, basename, relative } from 'path';
+import { join, basename } from 'path';
 import { existsSync } from 'fs';
 import { parseNote, writeNote, generateBodySections } from './frontmatter.js';
 import { closestMatch } from './close-match.js';
@@ -20,6 +20,7 @@ import {
   generateUniqueNoteId,
   registerIssuedNoteId,
 } from './note-id.js';
+import { vaultRelativePath } from './vault-relative-path.js';
 
 /**
  * Template Discovery and Parsing
@@ -1008,7 +1009,7 @@ export async function validateTemplate(
   schema: LoadedSchema
 ): Promise<TemplateValidationResult> {
   const issues: TemplateValidationIssue[] = [];
-  const relativePath = relative(vaultDir, template.path);
+  const relativePath = vaultRelativePath(vaultDir, template.path);
   
   // 1. Check type exists
   const typeDef = getType(schema, template.templateFor);

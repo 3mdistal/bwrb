@@ -4,7 +4,7 @@
  * @module
  */
 
-import { basename, isAbsolute, relative, resolve } from "node:path";
+import { basename, isAbsolute, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { detectObsidianVault } from "../lib/schema.js";
 import {
@@ -14,6 +14,7 @@ import {
   ExitCodes,
 } from "../lib/output.js";
 import type { ResolvedConfig } from "../types/schema.js";
+import { vaultRelativePath } from '../lib/vault-relative-path.js';
 
 // App modes for opening notes
 // - system: Open with OS default handler (default)
@@ -82,7 +83,7 @@ export function resolveAppMode(
 function resolveOpenPath(vaultDir: string, notePath: string): OpenPathData {
   const fullPath = isAbsolute(notePath) ? resolve(notePath) : resolve(vaultDir, notePath);
   return {
-    relativePath: relative(vaultDir, fullPath),
+    relativePath: vaultRelativePath(vaultDir, fullPath),
     fullPath,
   };
 }

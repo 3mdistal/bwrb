@@ -16,7 +16,7 @@
  */
 
 import { readdir } from 'fs/promises';
-import { join, relative } from 'path';
+import { join } from 'path';
 import { parseNote } from './frontmatter.js';
 import {
   getAllOwnFieldNames,
@@ -24,6 +24,7 @@ import {
   getFieldsForType,
 } from './schema.js';
 import { type LoadedSchema, type Field, getOptionValues } from '../types/schema.js';
+import { vaultRelativePath } from './vault-relative-path.js';
 
 // ============================================================================
 // Value-type classification
@@ -327,14 +328,14 @@ export async function buildDiscoverReport(
 
   const accumulators = new Map<string, FieldAccumulator>();
   const unreadable: Array<{ file: string; error: string }> = unreadableDirs.map(
-    (d) => ({ file: relative(root, d.dir), error: d.error })
+    (d) => ({ file: vaultRelativePath(root, d.dir), error: d.error })
   );
   let filesWithFrontmatter = 0;
 
   const schemaInfo = schema ? collateSchemaFields(schema) : undefined;
 
   for (const filePath of files) {
-    const rel = relative(root, filePath);
+    const rel = vaultRelativePath(root, filePath);
     let frontmatter: Record<string, unknown>;
     try {
       ({ frontmatter } = await parseNote(filePath));
