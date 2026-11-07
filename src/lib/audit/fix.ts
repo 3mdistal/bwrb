@@ -46,6 +46,8 @@ import {
   findAllMarkdownFiles,
   findWikilinksToFile,
   executeBulkMove,
+  withBulkMoveLocks,
+  type BulkMoveResult,
   type WikilinkReference,
 } from '../bulk/move.js';
 import { formatValue } from '../vault.js';
@@ -726,23 +728,37 @@ async function applyUnsafeFilenameFix(
   filePath: string,
   issue: AuditIssue
 ): Promise<FixResult> {
-  return withLineageMutationLocks(vaultDir, [filePath], () =>
-    applyUnsafeFilenameFixLocked(vaultDir, filePath, issue)
-  );
-}
-
-async function applyUnsafeFilenameFixLocked(
-  vaultDir: string,
-  filePath: string,
-  issue: AuditIssue
-): Promise<FixResult> {
-  const originalBase = basename(filePath, '.md');
-  const safe = sanitizeFilenameBase(originalBase);
+  const safe = sanitizeFilenameBase(basename(filePath, '.md'));
   if (!safe.transformation || !safe.sanitized) {
     return { file: filePath, issue, action: 'skipped', message: 'Filename is already safe' };
   }
 
   const targetBasename = `${safe.sanitized}.md`;
+  const move = {
+    vaultDir,
+    targetDir: dirname(filePath),
+    filesToMove: [filePath],
+    targetBasenames: new Map([[filePath, targetBasename]]),
+  };
+  if (isDryRunEnabled()) {
+    return applyUnsafeFilenameFixLocked(filePath, issue, targetBasename, () =>
+      executeBulkMove({ ...move, execute: false })
+    );
+  }
+  // The rename rewrites every link to the note, so it holds a bulk move's
+  // locks: the note under both names and each note that links to it.
+  return withBulkMoveLocks(move, applyMove =>
+    applyUnsafeFilenameFixLocked(filePath, issue, targetBasename, applyMove)
+  );
+}
+
+async function applyUnsafeFilenameFixLocked(
+  filePath: string,
+  issue: AuditIssue,
+  targetBasename: string,
+  applyMove: () => Promise<BulkMoveResult>
+): Promise<FixResult> {
+  const originalBase = basename(filePath, '.md');
   let originalRaw: string | undefined;
   let titleUpdatedRaw: string | undefined;
   if (!isDryRunEnabled()) {
@@ -773,15 +789,7 @@ async function applyUnsafeFilenameFixLocked(
     }
   }
 
-  const moveResult = await executeBulkMove({
-    vaultDir,
-    targetDir: dirname(filePath),
-    filesToMove: [filePath],
-    execute: !isDryRunEnabled(),
-    targetBasenames: new Map([[filePath, targetBasename]]),
-    // applyUnsafeFilenameFix holds the lock on this note.
-    locksHeld: true,
-  });
+  const moveResult = await applyMove();
   if (moveResult.errors.length > 0) {
     if (originalRaw !== undefined && titleUpdatedRaw !== undefined) {
       const rolledBack = await rollbackNoteIfUnchanged(filePath, titleUpdatedRaw, originalRaw);

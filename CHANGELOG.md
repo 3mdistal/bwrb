@@ -34,12 +34,12 @@ All notable changes to Bowerbird are documented in this file.
 
 ### Fixed
 
-- **Locked note moves** — `bulk --move --execute` and `audit --fix` directory
-  moves lock every note they write (each moved note at its old and new path,
-  and each note whose links they rewrite) in the same sorted order as other
-  locked writes, and scan for links again under those locks. A moved note's
-  links to another moved note are now rewritten at its new path instead of
-  failing.
+- **Locked note moves** — `bulk --move --execute`, `audit --fix` directory
+  moves, unsafe-filename renames and retention archiving lock every note they
+  write (each moved note at its old and new path, and each note whose links
+  they rewrite) in the same sorted order as other locked writes, and scan for
+  links again under those locks. A moved note's links to another moved note
+  are now rewritten at its new path instead of failing.
 - **Setting a note's type with `edit`** — `edit --json` and `edit --patches`
   check a patch that sets `type` against that type. A note whose type is
   missing or not in the schema can now be given one by id or path
