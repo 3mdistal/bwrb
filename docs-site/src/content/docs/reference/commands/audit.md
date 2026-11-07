@@ -27,7 +27,14 @@ The target argument is auto-detected as type, path (contains `/`), or where expr
 | `-p, --path <glob>` | Filter by file path pattern |
 | `-w, --where <expr>` | Filter by frontmatter expression (repeatable) |
 | `-b, --body <query>` | Filter by Markdown body content; YAML frontmatter is excluded |
+| `--exact-path <path>` | Repeatable literal vault-relative Markdown path selector; report-only and mutually exclusive with the other targeting selectors |
 | `-a, --all` | Target all files (explicit vault-wide selector) |
+
+`--exact-path` is for automation that already has an exact path manifest. It does not interpret glob characters, requires every requested path to be an extant readable Markdown file discovered by Bowerbird, rejects absolute/traversal/non-normalized/duplicate paths, and fails the whole audit if any target is invalid. JSON output includes sorted `selectedPaths` and `summary.filesChecked` so callers can verify the selected set. For an option-like filename, use the equals form so Commander does not parse the value as another flag:
+
+```bash
+bwrb audit --exact-path="Ideas/One Note.md" --exact-path="-literal-name.md" --output json
+```
 
 ### Issue Filtering
 

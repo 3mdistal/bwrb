@@ -239,6 +239,8 @@ export type { ManagedFile } from '../discovery.js';
 export interface AuditOptions {
   strict?: boolean;
   path?: string;
+  /** Literal, vault-relative paths selected by the read-only exact selector. */
+  exactPath?: string[];
   only?: string;
   ignore?: string;
   output?: string;
@@ -277,6 +279,8 @@ export interface AuditRunOptions {
   typePath?: string | undefined;
   strict: boolean;
   pathFilter?: string | undefined;
+  /** Validated literal vault-relative paths. Mutually exclusive at the CLI boundary. */
+  exactPaths?: string[] | undefined;
   /** Where expressions for frontmatter filtering */
   whereExpressions?: string[] | undefined;
   /** Text query for body content filtering */
