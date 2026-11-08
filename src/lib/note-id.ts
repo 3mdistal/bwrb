@@ -1,13 +1,14 @@
 import { randomUUID } from 'crypto';
 import { mkdir, open, readFile, rename, stat, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
-import { basename, dirname, join, relative, resolve } from 'path';
+import { basename, dirname, join, resolve } from 'path';
 import {
   type OwnershipFileLockOptions,
   withOwnershipFileLock,
 } from './lineage-lock.js';
 import { buildVaultNoteSnapshot } from './discovery.js';
 import type { LoadedSchema } from '../types/schema.js';
+import { vaultRelativePath, withForwardSlashes } from './vault-relative-path.js';
 
 export type NoteIdentityStore = 'registry-v1' | 'frontmatter-v1';
 
@@ -132,7 +133,7 @@ export async function registerIssuedNoteIds(
     const rows = registrations.map(({ id, notePath }) => JSON.stringify({
       id,
       createdAt,
-      path: relative(vaultDir, notePath),
+      path: vaultRelativePath(vaultDir, notePath),
     } satisfies IdRegistryEntry));
     const separator = current.length === 0 || current.endsWith('\n') ? '' : '\n';
     await writeRegistryAtomic(registryPath, `${current}${separator}${rows.join('\n')}\n`);
@@ -158,7 +159,8 @@ export async function unregisterIssuedNotePath(
 
       try {
         const parsed = JSON.parse(trimmed) as Partial<IdRegistryEntry>;
-        if (parsed.path === relativePath) continue;
+        // Rows written on Windows before paths were normalized hold backslashes.
+        if (typeof parsed.path === 'string' && withForwardSlashes(parsed.path) === withForwardSlashes(relativePath)) continue;
       } catch {
         // Keep legacy/plain lines because they cannot be matched to a path.
       }
@@ -196,11 +198,11 @@ export async function rebuildIssuedNoteRegistry(
   await withNoteIdRegistryLock(vaultDir, async () => {
     const existingCreatedAt = await readRegistryCreatedAtById(vaultDir);
     const rows = [...registrations]
-      .sort((a, b) => relative(vaultDir, a.notePath).localeCompare(relative(vaultDir, b.notePath), 'en'))
+      .sort((a, b) => vaultRelativePath(vaultDir, a.notePath).localeCompare(vaultRelativePath(vaultDir, b.notePath), 'en'))
       .map(({ id, notePath }) => JSON.stringify({
         id,
         createdAt: existingCreatedAt.get(normalizeNoteId(id)) ?? rebuiltAt,
-        path: relative(vaultDir, notePath),
+        path: vaultRelativePath(vaultDir, notePath),
       } satisfies IdRegistryEntry));
     await writeRegistryAtomic(getIdRegistryPath(vaultDir), rows.length > 0 ? `${rows.join('\n')}\n` : '');
   });

@@ -16,10 +16,10 @@ import { readFile } from 'fs/promises';
 import { validateContextFields, validateFrontmatter } from './validation.js';
 import { normalizeDateFields } from './validation.js';
 import { validateRelativeDateCalendarOffsetsForWrite } from './relative-date.js';
-import { relative } from 'path';
 import { isBwrbReservedFrontmatterField } from './frontmatter/systemFields.js';
 import { getTransitionGuardsForType, parseTransitionTrigger } from './transition-guards.js';
 import { expandStaticValue } from './local-date.js';
+import { vaultRelativePath } from './vault-relative-path.js';
 
 export interface PreparedTransitionEffect {
   path: string;
@@ -150,14 +150,14 @@ export async function prepareTransitionEffects(
 
   for (const target of prepared.values()) {
     const targetType = resolveTypeFromFrontmatter(schema, target.after);
-    if (!targetType) throw new Error(`Transition effect target '${relative(vaultDir, target.path)}' has no recognized type.`);
+    if (!targetType) throw new Error(`Transition effect target '${vaultRelativePath(vaultDir, target.path)}' has no recognized type.`);
     target.after = normalizeDateFields(schema, targetType, target.after);
     const validation = validateFrontmatter(schema, targetType, target.after);
-    if (!validation.valid) throw new Error(`Transition effect target '${relative(vaultDir, target.path)}' is invalid: ${validation.errors.map((error) => error.message).join(', ')}`);
+    if (!validation.valid) throw new Error(`Transition effect target '${vaultRelativePath(vaultDir, target.path)}' is invalid: ${validation.errors.map((error) => error.message).join(', ')}`);
     const context = await validateContextFields(schema, vaultDir, targetType, target.after);
-    if (!context.valid) throw new Error(`Transition effect target '${relative(vaultDir, target.path)}' has invalid relations: ${context.errors.map((error) => error.message).join(', ')}`);
-    const dates = await validateRelativeDateCalendarOffsetsForWrite(schema, vaultDir, targetType, target.after, relative(vaultDir, target.path));
-    if (dates.length) throw new Error(`Transition effect target '${relative(vaultDir, target.path)}' is invalid: ${dates.map((error) => error.message).join(', ')}`);
+    if (!context.valid) throw new Error(`Transition effect target '${vaultRelativePath(vaultDir, target.path)}' has invalid relations: ${context.errors.map((error) => error.message).join(', ')}`);
+    const dates = await validateRelativeDateCalendarOffsetsForWrite(schema, vaultDir, targetType, target.after, vaultRelativePath(vaultDir, target.path));
+    if (dates.length) throw new Error(`Transition effect target '${vaultRelativePath(vaultDir, target.path)}' is invalid: ${dates.map((error) => error.message).join(', ')}`);
     target.order = Object.keys(target.after);
   }
   return [...prepared.values()].sort((a, b) => a.path.localeCompare(b.path));

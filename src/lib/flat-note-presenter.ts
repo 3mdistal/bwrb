@@ -1,4 +1,5 @@
-import { basename, relative } from 'path';
+import { basename } from 'path';
+import { vaultRelativePath } from './vault-relative-path.js';
 
 export type FlatNoteOutputFormat = 'paths' | 'link';
 
@@ -19,7 +20,7 @@ export function renderFlatNotePaths(
   if (paths.length === 0) return '';
 
   const lines = format === 'paths'
-    ? paths.map(path => relative(vaultDir, path))
+    ? paths.map(path => vaultRelativePath(vaultDir, path))
     : paths.map(path => `[[${basename(path, '.md')}]]`);
   return `${lines.join('\n')}\n`;
 }

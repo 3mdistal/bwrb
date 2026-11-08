@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'crypto';
 import { lstat, mkdir, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'fs/promises';
 import { homedir } from 'os';
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
+import { basename, dirname, isAbsolute, join, resolve } from 'path';
 import { createRequire } from 'module';
+import { vaultRelativePath } from './vault-relative-path.js';
 
 // Bump when the YAML preflight, gray-matter parser or normalization changes.
 const FORMAT = 'normalized-frontmatter-v1';
@@ -140,7 +141,7 @@ export async function openSnapshotParseCache(vaultDir: string, cacheHome = defau
     // Parsing depends on bytes, not paths/schema. Share a bounded memo across
     // short-lived transaction worktrees instead of allocating one per checkout.
     directory = await canonicalCachePath(resolve(cacheHome, 'bwrb', 'snapshot-parsing', `node-${process.versions.node.split('.')[0]}`));
-    const inside = relative(vault, directory).replace(/\\/g, '/');
+    const inside = vaultRelativePath(vault, directory);
     if (inside === '' || (inside !== '..' && !inside.startsWith('../') && !isAbsolute(inside))) return new SnapshotParseCache();
   } catch {
     return new SnapshotParseCache();

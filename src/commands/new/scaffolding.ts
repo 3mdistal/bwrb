@@ -1,7 +1,8 @@
-import { dirname, relative } from 'path';
+import { dirname } from 'path';
 import { createScaffoldedInstances, type ScaffoldResult } from '../../lib/template.js';
 import { printError, printInfo, printSuccess, printWarning } from '../../lib/prompt.js';
 import type { LoadedSchema, Template } from '../../types/schema.js';
+import { vaultRelativePath } from '../../lib/vault-relative-path.js';
 
 export async function handleInstanceScaffolding(
   schema: LoadedSchema,
@@ -43,14 +44,14 @@ function printInstanceScaffoldOutput(vaultDir: string, result: ScaffoldResult): 
   if (result.created.length > 0) {
     printInfo('\nInstances created:');
     for (const path of result.created) {
-      printSuccess(`  ✓ ${relative(vaultDir, path)}`);
+      printSuccess(`  ✓ ${vaultRelativePath(vaultDir, path)}`);
     }
   }
 
   if (result.skipped.length > 0) {
     printInfo('\nInstances skipped (already exist):');
     for (const path of result.skipped) {
-      printWarning(`  - ${relative(vaultDir, path)}`);
+      printWarning(`  - ${vaultRelativePath(vaultDir, path)}`);
     }
   }
 

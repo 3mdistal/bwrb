@@ -22,6 +22,7 @@ import {
   loadDiscoveryContext,
 } from './discovery.js';
 import { parseNote } from './frontmatter.js';
+import { withForwardSlashes } from './vault-relative-path.js';
 import { searchContent } from './content-search.js';
 import { getType, getTypeNames } from './schema.js';
 import { applyWhereExpressions } from './where-targeting.js';
@@ -112,7 +113,7 @@ export function detectPositionalType(
   }
 
   // Check for path indicators
-  if (arg.includes('/') || arg.includes('*')) {
+  if (withForwardSlashes(arg).includes('/') || arg.includes('*')) {
     return 'path';
   }
 

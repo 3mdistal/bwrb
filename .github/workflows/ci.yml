@@ -433,10 +433,10 @@ jobs:
       - name: Run focused lineage lock tests
         run: pnpm exec vitest run tests/ts/lib/lineage-lock.test.ts tests/ts/lib/lineage-lock-cross-process.test.ts tests/ts/lib/note-id-lock.test.ts tests/ts/commands/delete-lineage.test.ts
 
-      # Moves, link rewrites and the ownership index must spell vault paths
-      # with forward slashes on Windows too.
+      # Moves, link rewrites, the ownership index and printed paths must spell
+      # vault paths with forward slashes on Windows too.
       - name: Run focused Windows path tests
-        run: pnpm exec vitest run tests/ts/lib/move.test.ts tests/ts/lib/audit-backlink-index.test.ts tests/ts/lib/ownership.test.ts
+        run: pnpm exec vitest run tests/ts/lib/move.test.ts tests/ts/lib/audit-backlink-index.test.ts tests/ts/lib/ownership.test.ts tests/ts/lib/vault-relative-path.test.ts tests/ts/lib/recurrence.test.ts tests/ts/commands/forward-slash-paths.test.ts
 
   test-pty:
     name: PTY Tests

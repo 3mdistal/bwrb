@@ -1,7 +1,7 @@
 import { readFile } from 'fs/promises';
-import { relative } from 'path';
 import { ConcurrentNoteModificationError } from './errors.js';
 import { writeFileAtomic } from './frontmatter.js';
+import { vaultRelativePath } from './vault-relative-path.js';
 
 /** Assert that a note still has the exact bytes used to prepare a mutation. */
 export async function assertNoteBytesUnchanged(
@@ -38,7 +38,7 @@ export function concurrentModificationData(
   return {
     reason: 'note-modified-concurrently',
     retryable: true,
-    path: relative(vaultDir, error.path).replace(/\\/g, '/'),
+    path: vaultRelativePath(vaultDir, error.path),
     attempts: error.attempts,
   };
 }

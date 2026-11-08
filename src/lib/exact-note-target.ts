@@ -1,4 +1,5 @@
-import { isAbsolute, relative, resolve, sep } from 'path';
+import { isAbsolute, resolve, sep } from 'path';
+import { vaultRelativePath, withForwardSlashes } from './vault-relative-path.js';
 import type { LoadedSchema } from '../types/schema.js';
 import { parseNote } from './frontmatter.js';
 import { isValidNoteId, normalizeNoteId } from './note-id.js';
@@ -145,16 +146,16 @@ function resolveExactFile(
     const absolute = resolve(target);
     const root = resolve(vaultDir);
     if (absolute !== root && !absolute.startsWith(`${root}${sep}`)) return undefined;
-    const relativeTarget = relative(root, absolute);
+    const relativeTarget = vaultRelativePath(root, absolute);
     const withExtension = relativeTarget.endsWith('.md') ? relativeTarget : `${relativeTarget}.md`;
     return index.byPath.get(relativeTarget) ?? index.byPath.get(withExtension);
   }
 
-  const normalizedTarget = target.replace(/^\.\//, '');
-  const cleanTarget = normalizedTarget.replace(/\.md$/, '');
-  const withExtension = `${cleanTarget}.md`;
+  const cleanTarget = target.replace(/^\.\//, '').replace(/\.md$/, '');
+  const pathTarget = withForwardSlashes(target).replace(/^\.\//, '');
+  const withExtension = `${pathTarget.replace(/\.md$/, '')}.md`;
 
-  const pathMatch = index.byPath.get(normalizedTarget) ?? index.byPath.get(withExtension);
+  const pathMatch = index.byPath.get(pathTarget) ?? index.byPath.get(withExtension);
   if (pathMatch) return pathMatch;
 
   const basenameMatches = exactMapMatches(index.byBasename, cleanTarget);

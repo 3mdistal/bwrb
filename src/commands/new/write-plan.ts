@@ -1,5 +1,5 @@
 import { existsSync } from 'fs';
-import { join, relative } from 'path';
+import { join } from 'path';
 import {
   writeNote,
   writeNoteExclusive,
@@ -20,6 +20,7 @@ import { throwJsonError } from './errors.js';
 import { handleInstanceScaffolding } from './scaffolding.js';
 import type { LoadedSchema } from '../../types/schema.js';
 import { withNoteIdentityTransaction } from '../../lib/identity-transaction.js';
+import { vaultRelativePath } from '../../lib/vault-relative-path.js';
 
 const PORTABLE_PATH_WARNING_LENGTH = 200;
 const PORTABLE_PATH_MAX_LENGTH = 260;
@@ -55,7 +56,7 @@ async function writeNotePlanWithinIdentityTransaction(
   const outputDir = await resolveOutputDir(args.schema, args.vaultDir, args.typeDef.name, args.ownership);
   const pathResult = buildNotePath(outputDir, args.content.itemName, args.mode, args.content.nameTransformed);
   const filePath = pathResult.path;
-  const relativePath = relative(args.vaultDir, filePath);
+  const relativePath = vaultRelativePath(args.vaultDir, filePath);
   const pathLengthWarning = getPathLengthWarning(relativePath);
 
   if (relativePath.length > PORTABLE_PATH_MAX_LENGTH) {

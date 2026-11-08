@@ -1,10 +1,11 @@
-import { join, relative } from 'path';
+import { join } from 'path';
 import type { LoadedSchema, TransitionGuard } from '../types/schema.js';
 import { getEffectiveTraitNames, getFieldsForType, getDescendants } from './schema.js';
 import { getOptionValues } from '../types/schema.js';
 import { buildNoteTargetIndex, resolveRelationTarget, type NoteTargetIndex } from './discovery.js';
 import { parseNote } from './frontmatter.js';
 import { extractLinkTargets } from './links.js';
+import { vaultRelativePath } from './vault-relative-path.js';
 
 export interface TransitionTrigger { field: string; value: string }
 export interface TransitionGuardTargetResult {
@@ -122,7 +123,7 @@ export async function explainTransition(
           const status = requirement.stale_when && matches(requirement.stale_when, note.frontmatter)
             ? 'stale' : requirement.failed_when && matches(requirement.failed_when, note.frontmatter)
               ? 'failed' : matches(requirement.all, note.frontmatter) ? 'satisfied' : 'failed';
-          targets.push({ target, path: relative(vaultDir, join(vaultDir, resolved.resolvedPath)), status, value });
+          targets.push({ target, path: vaultRelativePath(vaultDir, join(vaultDir, resolved.resolvedPath)), status, value });
         } catch { targets.push({ target, path: resolved.resolvedPath, status: 'unresolved' }); }
       }
       const status = targets.length < (requirement.min ?? 1) ? 'missing'

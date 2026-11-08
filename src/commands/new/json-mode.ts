@@ -24,13 +24,13 @@ import {
 import { evaluateTemplateDefault } from '../../lib/date-expression.js';
 import { validateParentNoCycle } from '../../lib/hierarchy.js';
 import { ExitCodes, jsonError } from '../../lib/output.js';
-import { relative } from 'path';
 import type { LoadedSchema, ResolvedType, Template } from '../../types/schema.js';
 import type { JsonNoteInputResult, NoteCreationResult, PlannedNoteContent } from './types.js';
 import { throwJsonError } from './errors.js';
 import { resolveJsonOwnership } from './ownership.js';
 import { writeNotePlan } from './write-plan.js';
 import { isBwrbReservedFrontmatterField } from '../../lib/frontmatter/systemFields.js';
+import { vaultRelativePath } from '../../lib/vault-relative-path.js';
 
 export async function createNoteFromJson(
   schema: LoadedSchema,
@@ -62,7 +62,7 @@ export async function createNoteFromJson(
     },
     {
       onExists: (filePath, baseDir) => {
-        throwJsonError(jsonError(`File already exists: ${relative(baseDir, filePath)}`), ExitCodes.IO_ERROR);
+        throwJsonError(jsonError(`File already exists: ${vaultRelativePath(baseDir, filePath)}`), ExitCodes.IO_ERROR);
       },
     },
     ownershipOptions?.noInstances ?? false

@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { basename, relative } from 'path';
+import { basename } from 'path';
 import { stat } from 'fs/promises';
 import chalk from 'chalk';
 import { loadSchema, getType, formatUnknownTypeError } from '../lib/schema.js';
@@ -29,6 +29,7 @@ import { pickFile, parsePickerMode } from '../lib/picker.js';
 import { createDashboard, updateDashboard, getDashboard } from '../lib/dashboard.js';
 import type { DashboardDefinition } from '../types/schema.js';
 import { renderFlatNotePaths } from '../lib/flat-note-presenter.js';
+import { vaultRelativePath } from '../lib/vault-relative-path.js';
 
 /**
  * Default number of recently-modified notes to show when --limit is omitted.
@@ -341,7 +342,7 @@ Examples:
         } else if (process.stdin.isTTY && process.stdout.isTTY) {
           const pickerFiles = limited.map(f => ({
             path: f.path,
-            relativePath: relative(vaultDir, f.path),
+            relativePath: vaultRelativePath(vaultDir, f.path),
           }));
           const pickerResult = await pickFile(pickerFiles, {
             mode: parsePickerMode(resolveGlobalPickerMode(undefined, globalOpts, 'auto')),
@@ -370,7 +371,7 @@ Examples:
       switch (outputFormat) {
         case 'json': {
           const jsonOutput = limited.map(({ path, frontmatter, mtimeMs }) => ({
-            _path: relative(vaultDir, path),
+            _path: vaultRelativePath(vaultDir, path),
             _name: basename(path, '.md'),
             _modified: new Date(mtimeMs).toISOString(),
             ...frontmatter,

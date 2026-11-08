@@ -17,6 +17,7 @@ import {
   type ManagedFile
 } from './discovery.js';
 import { getEntityAliases } from './schema.js';
+import { withForwardSlashes } from './vault-relative-path.js';
 
 // ============================================================================
 // Types
@@ -261,11 +262,9 @@ export function resolveExactNoteQuery(index: NoteIndex, query: string): Resoluti
   const cleanQueryWithExt = cleanQuery + '.md';
   
   // 1. Exact path match
-  if (index.byPath.has(query)) {
-    return { exact: index.byPath.get(query)!, candidates: [], isAmbiguous: false };
-  }
-  if (index.byPath.has(cleanQueryWithExt)) {
-    return { exact: index.byPath.get(cleanQueryWithExt)!, candidates: [], isAmbiguous: false };
+  const pathMatch = index.byPath.get(withForwardSlashes(query)) ?? index.byPath.get(withForwardSlashes(cleanQueryWithExt));
+  if (pathMatch) {
+    return { exact: pathMatch, candidates: [], isAmbiguous: false };
   }
   
   // 2. Exact basename match (case-sensitive)

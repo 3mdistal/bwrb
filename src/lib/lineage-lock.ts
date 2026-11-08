@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'crypto';
 import { lstat, mkdir, open, readFile, readdir, rename, stat, unlink } from 'fs/promises';
-import { basename, dirname, isAbsolute, relative, resolve } from 'path';
+import { basename, dirname, isAbsolute, resolve } from 'path';
 import { excludeRuntimeLocksFromGit } from './lock-git-exclude.js';
+import { vaultRelativePath } from './vault-relative-path.js';
 
 const LOCK_RETRY_MS = 20;
 const LOCK_ATTEMPTS = 1_500;
@@ -130,12 +131,12 @@ export async function ownershipFileLockIsLive(
 export function getLineageMutationLockPath(vaultDir: string, sourcePath: string): string {
   const vaultRoot = resolve(vaultDir);
   const absoluteSource = resolve(sourcePath);
-  const relativeSource = relative(vaultRoot, absoluteSource).replace(/\\/g, '/');
+  const relativeSource = vaultRelativePath(vaultRoot, absoluteSource);
   if (
     relativeSource === '' ||
     relativeSource === '..' ||
     relativeSource.startsWith('../') ||
-    // A source on another Windows drive has no relative path; relative()
+    // A source on another Windows drive has no relative path; vaultRelativePath()
     // returns it whole, as `D:/...`.
     isAbsolute(relativeSource)
   ) {
